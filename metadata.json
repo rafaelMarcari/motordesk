@@ -1,0 +1,6 @@
+{
+  "name": "MotorDesk",
+  "description": "Sistema de gerenciamento de oficina mecânica e painel interativo de Portfólio QA (PRD, Casos de Teste, Matriz de Rastreabilidade e Automação Cypress).",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -1,0 +1,2718 @@
+/**
+ * @license
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+import React, { useState, useEffect } from 'react';
+import { 
+  Plus, 
+  Check, 
+  Shield, 
+  Users, 
+  AlertCircle, 
+  CheckCircle, 
+  X, 
+  Settings, 
+  RefreshCw, 
+  Lock, 
+  Unlock,
+  Building2, 
+  Phone, 
+  MessageSquare, 
+  Save, 
+  Calendar, 
+  DollarSign, 
+  CreditCard, 
+  AlertTriangle,
+  ArrowRight,
+  ChevronDown,
+  FileText,
+  FileCheck,
+  Upload,
+  Download,
+  Printer,
+  Eye,
+  UserCheck
+} from 'lucide-react';
+import { User, UserRole, UserPermissions, CompanyInfo } from '../types';
+import { AppDatabase } from '../data/mockData';
+
+interface UserManagementViewProps {
+  db: AppDatabase;
+  currentUser: User;
+  onSaveUsers: (users: User[]) => void;
+  onSaveCompanyInfo?: (companyInfo: CompanyInfo) => void;
+  onSaveRegisteredCompanies?: (companies: CompanyInfo[], activeCompanyId?: string) => void;
+  onAddHistoryLog: (type: 'budget' | 'service_order' | 'payment' | 'user_activity' | 'system', title: string, description: string, clientId: string, vehicleId: string) => void;
+  globalModules: { [key: string]: boolean };
+  onUpdateGlobalModules: (modules: { [key: string]: boolean }) => void;
+}
+
+const DEFAULT_LEVEL_PERMISSIONS: { [key in UserRole]: UserPermissions } = {
+  admin: {
+    accessDashboard: true,
+    accessClients: true,
+    accessVehicles: true,
+    accessParts: true,
+    accessServices: true,
+    accessBudgets: true,
+    accessServiceOrders: true,
+    accessHistory: true,
+    accessReports: true,
+    accessUserManagement: true,
+    accessQAPanel: true,
+    accessQuotations: true,
+    accessAccountsReceivable: true,
+    accessAccountsPayable: true,
+    accessFinancial: true,
+    accessFiscal: true,
+    canEditBudgets: true,
+    canCustomizePdf: true,
+    canViewOtherStoresStock: true,
+    canSellOtherStoresStock: true,
+  },
+  atendente: {
+    accessDashboard: true,
+    accessClients: true,
+    accessVehicles: true,
+    accessParts: false,
+    accessServices: false,
+    accessBudgets: true,
+    accessServiceOrders: false,
+    accessHistory: true,
+    accessReports: true,
+    accessUserManagement: false,
+    accessQAPanel: true,
+    accessQuotations: false,
+    accessAccountsReceivable: true,
+    accessAccountsPayable: false,
+    accessFinancial: false,
+    accessFiscal: true,
+    canEditBudgets: true,
+    canCustomizePdf: true,
+    canViewOtherStoresStock: true,
+    canSellOtherStoresStock: false,
+  },
+  mecanico: {
+    accessDashboard: true,
+    accessClients: false,
+    accessVehicles: false,
+    accessParts: true,
+    accessServices: true,
+    accessBudgets: false,
+    accessServiceOrders: true,
+    accessHistory: true,
+    accessReports: false,
+    accessUserManagement: false,
+    accessQAPanel: true,
+    accessQuotations: false,
+    accessAccountsReceivable: false,
+    accessAccountsPayable: false,
+    accessFinancial: false,
+    accessFiscal: false,
+    canEditBudgets: false,
+    canCustomizePdf: false,
+    canViewOtherStoresStock: false,
+    canSellOtherStoresStock: false,
+  },
+  qa: {
+    accessDashboard: true,
+    accessClients: true,
+    accessVehicles: true,
+    accessParts: true,
+    accessServices: true,
+    accessBudgets: true,
+    accessServiceOrders: true,
+    accessHistory: true,
+    accessReports: true,
+    accessUserManagement: true,
+    accessQAPanel: true,
+    accessQuotations: true,
+    accessAccountsReceivable: true,
+    accessAccountsPayable: true,
+    accessFinancial: true,
+    accessFiscal: true,
+    canEditBudgets: true,
+    canCustomizePdf: true,
+    canViewOtherStoresStock: true,
+    canSellOtherStoresStock: true,
+  }
+};
+
+const PERMISSION_LABEL_MAP: { [K in keyof UserPermissions]: string } = {
+  accessDashboard: "Dashboard Geral KPI",
+  accessClients: "Cadastro de Clientes",
+  accessVehicles: "Cadastro de Veículos",
+  accessParts: "Controle de Peças e Estoque",
+  accessQuotations: "Cotação de Preços & Fornecedores",
+  accessServices: "Tabela de Serviços",
+  accessBudgets: "Orçamentos Builder",
+  accessServiceOrders: "Ordens de Serviço (OS)",
+  accessHistory: "Histórico do Veículo (RN007)",
+  accessReports: "Relatórios Financeiros (RF015)",
+  accessUserManagement: "Controle de Colaboradores",
+  accessQAPanel: "Painel Integrado de QA",
+  accessNotifications: "Notificações do Sistema",
+  accessAccountsReceivable: "Contas a Receber",
+  accessAccountsPayable: "Contas a Pagar",
+  accessFinancial: "DRE & Caixa Financeiro",
+  accessFiscal: "Módulo Fiscal, Boletos & SEFAZ",
+  canEditBudgets: "Editar Orçamentos Existentes (Adicionar/Alterar Itens e Dados)",
+  canCustomizePdf: "Personalizar Layout e Campos do PDF / Relatório",
+  canViewOtherStoresStock: "Visualizar Estoque de Outras Lojas/Filiais (Rede)",
+  canSellOtherStoresStock: "Realizar Venda / OS de Peças de Outras Lojas/Filiais"
+};
+
+export default function UserManagementView({ 
+  db, 
+  currentUser, 
+  onSaveUsers, 
+  onSaveCompanyInfo, 
+  onSaveRegisteredCompanies,
+  onAddHistoryLog, 
+  globalModules, 
+  onUpdateGlobalModules 
+}: UserManagementViewProps) {
+  const [isFormOpen, setIsFormOpen] = useState(false);
+  const [editingUser, setEditingUser] = useState<User | null>(null);
+  const [adminSubView, setAdminSubView] = useState<'users' | 'levels' | 'company' | 'subscription'>('subscription');
+
+  // List of registered multi-tenant companies
+  const registeredCompaniesList = db.registeredCompanies && db.registeredCompanies.length > 0
+    ? db.registeredCompanies
+    : [db.companyInfo];
+
+  // Currently selected company ID in the Combobox
+  const [selectedCompanyId, setSelectedCompanyId] = useState<string>(() => {
+    return db.companyInfo?.id || registeredCompaniesList[0]?.id || 'comp-1';
+  });
+
+  // Current company object derived from selectedCompanyId
+  const currentCompany = registeredCompaniesList.find(c => c.id === selectedCompanyId) || registeredCompaniesList[0] || db.companyInfo;
+
+  // Unsaved Changes Tracking State
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState<boolean>(false);
+  const [showUnsavedChangesModal, setShowUnsavedChangesModal] = useState<boolean>(false);
+  const [pendingTargetCompanyId, setPendingTargetCompanyId] = useState<string | null>(null);
+
+  // New Company Creation Modal
+  const [showNewCompanyModal, setShowNewCompanyModal] = useState<boolean>(false);
+  const [newCompName, setNewCompName] = useState('');
+  const [newCompCnpj, setNewCompCnpj] = useState('');
+  const [newCompType, setNewCompType] = useState<'matriz' | 'filial'>('matriz');
+  const [newCompParentMatrizId, setNewCompParentMatrizId] = useState<string>('');
+  const [newCompPhone, setNewCompPhone] = useState('');
+  const [newCompWhatsapp, setNewCompWhatsapp] = useState('');
+  const [newCompEmail, setNewCompEmail] = useState('');
+  const [newCompAddress, setNewCompAddress] = useState('');
+  const [newCompFee, setNewCompFee] = useState(299.90);
+  const [newCompLegalRepName, setNewCompLegalRepName] = useState('');
+  const [newCompLegalRepCpf, setNewCompLegalRepCpf] = useState('');
+
+  // Local Form State for the selected company
+  const [compName, setCompName] = useState(currentCompany?.name || 'MotorDesk Auto Center');
+  const [compCnpj, setCompCnpj] = useState(currentCompany?.cnpj || '12.345.678/0001-90');
+  const [compType, setCompType] = useState<'matriz' | 'filial'>(currentCompany?.companyType || 'matriz');
+  const [compParentMatrizId, setCompParentMatrizId] = useState<string>(currentCompany?.parentMatrizId || '');
+  const [compWhatsapp, setCompWhatsapp] = useState(currentCompany?.whatsapp || '11987654321');
+  const [compPhone, setCompPhone] = useState(currentCompany?.phone || '(11) 3344-5566');
+  const [compEmail, setCompEmail] = useState(currentCompany?.email || 'contato@motordesk.com.br');
+  const [compAddress, setCompAddress] = useState(currentCompany?.address || 'Av. das Nações Unidas, 1200 - SP');
+  const [compWelcome, setCompWelcome] = useState(currentCompany?.welcomeMessage || 'Agradecemos a preferência!');
+  const [compLogoUrl, setCompLogoUrl] = useState(currentCompany?.logoUrl || '');
+
+  // Responsável Legal & Contrato de Prestação de Serviços (SaaS)
+  const [compLegalRepName, setCompLegalRepName] = useState(currentCompany?.legalRepresentativeName || '');
+  const [compLegalRepCpf, setCompLegalRepCpf] = useState(currentCompany?.legalRepresentativeCpf || '');
+  const [compSignedContractUrl, setCompSignedContractUrl] = useState(currentCompany?.signedContractUrl || '');
+  const [compSignedContractFileName, setCompSignedContractFileName] = useState(currentCompany?.signedContractFileName || '');
+  const [compSignedContractDate, setCompSignedContractDate] = useState(currentCompany?.signedContractDate || '');
+  const [compContractStatus, setCompContractStatus] = useState<'pending' | 'signed'>(currentCompany?.contractStatus || (currentCompany?.signedContractUrl ? 'signed' : 'pending'));
+  const [showContractModal, setShowContractModal] = useState(false);
+  const [showSignedContractPreviewModal, setShowSignedContractPreviewModal] = useState(false);
+
+  // Função para imprimir contrato em janela dedicada / popup ou suporte via browser iframe
+  const handlePrintContract = () => {
+    try {
+      const printWindow = window.open('', '_blank', 'width=900,height=1000');
+      if (printWindow) {
+        printWindow.document.write(`
+          <!DOCTYPE html>
+          <html lang="pt-BR">
+          <head>
+            <meta charset="UTF-8">
+            <title>Contrato MotorDesk - ${compName || 'Empresa'}</title>
+            <style>
+              @page { size: A4; margin: 20mm; }
+              body { font-family: system-ui, -apple-system, sans-serif; font-size: 12px; line-height: 1.6; color: #0f172a; padding: 30px; margin: 0; background: #fff; }
+              .header { text-align: center; border-bottom: 2px solid #1e293b; padding-bottom: 12px; margin-bottom: 20px; }
+              .brand { font-size: 22px; font-weight: 900; color: #4338ca; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px; }
+              .title { font-size: 13px; font-weight: 800; text-transform: uppercase; margin: 8px 0 4px 0; color: #0f172a; }
+              .subtitle { font-size: 11px; color: #475569; font-weight: 500; }
+              .legal-box { background-color: #f8fafc; border: 1px solid #cbd5e1; padding: 12px 16px; border-radius: 8px; margin: 16px 0; font-size: 11px; }
+              .legal-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; }
+              .legal-item { background: #ffffff; border: 1px solid #e2e8f0; padding: 6px 10px; border-radius: 4px; font-size: 10.5px; }
+              .clause-title { font-weight: 800; font-size: 11.5px; margin-top: 18px; border-bottom: 1px solid #cbd5e1; padding-bottom: 3px; color: #0f172a; text-transform: uppercase; }
+              p { margin: 6px 0; text-align: justify; }
+              .signatures { margin-top: 50px; display: flex; justify-content: space-between; gap: 40px; page-break-inside: avoid; }
+              .sig-box { flex: 1; text-align: center; font-size: 11px; }
+              .sig-line { border-top: 1px solid #0f172a; margin-bottom: 8px; }
+              @media print {
+                body { padding: 0; }
+                .no-print { display: none; }
+              }
+            </style>
+          </head>
+          <body>
+            <div class="header">
+              <div class="brand">MotorDesk Systems</div>
+              <div class="title">CONTRATO DE PRESTAÇÃO DE SERVIÇOS DE TECNOLOGIA DA INFORMAÇÃO, LICENCIAMENTO DE SOFTWARE E SUPORTE TÉCNICO (SaaS)</div>
+              <div class="subtitle">Instrumento Particular de Contratação Eletrônica e Licença de Uso de Software</div>
+            </div>
+
+            <div class="legal-box">
+              <strong style="color: #3730a3; text-transform: uppercase;">Legislação Aplicável e Marco Regulatório:</strong>
+              <div class="legal-grid">
+                <div class="legal-item"><strong>Lei do Software (nº 9.609/1998):</strong> Licenciamento SaaS e propriedade intelectual.</div>
+                <div class="legal-item"><strong>Marco Civil da Internet (nº 12.965/2014):</strong> Guarda responsável de registros na web.</div>
+                <div class="legal-item"><strong>LGPD (nº 13.709/2018):</strong> Proteção e privacidade de dados de clientes e veículos.</div>
+                <div class="legal-item"><strong>Código Civil (nº 10.406/2002):</strong> Regras de Prestação de Serviços (Art. 593 a 609).</div>
+              </div>
+            </div>
+
+            <div class="clause-title">1. DAS PARTES CONTRATANTES</div>
+            <p><strong>CONTRATADA:</strong> <strong>MotorDesk Soluções em Tecnologia e Software LTDA</strong>, pessoa jurídica de direito privado, inscrita no CNPJ/MF sob o nº 12.345.678/0001-90, com sede na Av. das Nações Unidas, 1200 - Pinheiros, São Paulo - SP.</p>
+            <p><strong>CONTRATANTE:</strong> <strong>${compName || 'NÃO INFORMADA'}</strong>, inscrita no CNPJ/MF sob o nº <strong>${compCnpj || 'NÃO INFORMADO'}</strong>, estabelecida no endereço <strong>${compAddress || 'NÃO INFORMADO'}</strong>, representada neste ato por seu Responsável Legal <strong>${compLegalRepName || 'NÃO INFORMADO'}</strong>, portador(a) do CPF nº <strong>${compLegalRepCpf || 'NÃO INFORMADO'}</strong>.</p>
+
+            <div class="clause-title">CLÁUSULA PRIMEIRA - DO OBJETO E LICENCIAMENTO SAAS</div>
+            <p>1.1. O presente contrato tem por objeto o licenciamento de uso não exclusivo, temporário e intransferível do sistema de gestão de oficinas mecânicas <strong>MotorDesk</strong> no modelo SaaS (Software as a Service), incluindo acesso aos módulos de Clientes, Veículos, Orçamentos, Ordens de Serviço, Estoque, Peças, Serviços, Financeiro, Emissão de Documentos e Gestão de Filiais.</p>
+
+            <div class="clause-title">CLÁUSULA SEGUNDA - DA DISPONIBILIDADE E SUPORTE TÉCNICO (SLA)</div>
+            <p>2.1. A CONTRATADA garante o índice de disponibilidade do sistema (uptime) de <strong>99,5% (noventa e nove vírgula cinco por cento)</strong> ao mês.</p>
+            <p>2.2. O suporte técnico relativo ao manuseio, esclarecimento de dúvidas e correção de inconsistências será prestado nos dias úteis em horário comercial.</p>
+
+            <div class="clause-title">CLÁUSULA TERCEIRA - DA SEGURANÇA E PROTEÇÃO DE DADOS (LGPD)</div>
+            <p>3.1. Em observância à <strong>Lei Geral de Proteção de Dados (Lei nº 13.709/2018 - LGPD)</strong>, a CONTRATADA declara que adota medidas técnicas, organizacionais e de criptografia para proteger os dados armazenados.</p>
+            <p>3.2. A CONTRATANTE declara-se titular dos dados operacionais e de seus clientes inseridos no sistema, cabendo à CONTRATADA apenas o papel de operadora de dados sob as diretrizes legais.</p>
+
+            <div class="clause-title">CLÁUSULA QUARTA - DOS VALORES E CONDIÇÕES DE PAGAMENTO</div>
+            <p>4.1. Pela prestação dos serviços e licença de uso acordada, a CONTRATANTE pagará à CONTRATADA a mensalidade no valor ajustado de <strong>R$ ${subMonthlyFee.toFixed(2)} (${subMonthlyFee.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })})</strong>.</p>
+            <p>4.2. O inadimplemento da mensalidade por prazo superior a 15 (quinze) dias poderá acarretar a suspensão temporária dos acessos operacionais ao sistema até a devida regularização.</p>
+
+            <div class="clause-title">CLÁUSULA QUINTA - DA VIGÊNCIA E RESCISÃO</div>
+            <p>5.1. Este contrato entra em vigor na data da sua assinatura por prazo indeterminado, podendo ser rescindido por qualquer uma das partes mediante aviso prévio por escrito de no mínimo 30 (trinta) dias, sem incidência de multa rescisória.</p>
+
+            <p style="margin-top: 35px; text-align: center; font-weight: 600;">E por estarem assim justas e contratadas, as partes firmam o presente instrumento legal em formato digital.</p>
+
+            <div class="signatures">
+              <div class="sig-box">
+                <div class="sig-line"></div>
+                <strong>MotorDesk Soluções em Tecnologia LTDA</strong><br/>
+                CONTRATADA (CNPJ: 12.345.678/0001-90)
+              </div>
+              <div class="sig-box">
+                <div class="sig-line"></div>
+                <strong>${compName || 'CONTRATANTE'}</strong><br/>
+                Resp. Legal: ${compLegalRepName || '__________________________'}<br/>
+                CPF: ${compLegalRepCpf || '__________________________'} | CNPJ: ${compCnpj || '__________________________'}
+              </div>
+            </div>
+
+            <script>
+              window.onload = function() {
+                setTimeout(function() {
+                  window.print();
+                }, 250);
+              };
+            </script>
+          </body>
+          </html>
+        `);
+        printWindow.document.close();
+      } else {
+        window.print();
+      }
+    } catch {
+      window.print();
+    }
+  };
+
+  const handleLogoFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.size > 3 * 1024 * 1024) {
+        alert('A imagem da logomarca deve ter no máximo 3MB.');
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const base64 = event.target?.result as string;
+        setCompLogoUrl(base64);
+        setHasUnsavedChanges(true);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleSignedContractFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.size > 15 * 1024 * 1024) {
+        alert('O arquivo do contrato deve ter no máximo 15MB.');
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const base64 = event.target?.result as string;
+        const nowFormatted = new Date().toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
+        setCompSignedContractUrl(base64);
+        setCompSignedContractFileName(file.name);
+        setCompSignedContractDate(nowFormatted);
+        setCompContractStatus('signed');
+        setHasUnsavedChanges(true);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  // Subscription / SaaS Fields for selected company
+  const [subStatus, setSubStatus] = useState<'active' | 'blocked' | 'overdue' | 'trial'>(currentCompany?.subscriptionStatus || 'active');
+  const [subStartDate, setSubStartDate] = useState(currentCompany?.startDate || '2026-01-01');
+  const [subExpirationDate, setSubExpirationDate] = useState(currentCompany?.expirationDate || '2026-12-31');
+  const [subMonthlyFee, setSubMonthlyFee] = useState<number>(currentCompany?.monthlyFee || 299.90);
+  const [subPaymentStatus, setSubPaymentStatus] = useState<'paid' | 'pending' | 'overdue'>(currentCompany?.paymentStatus || 'paid');
+  const [subNotes, setSubNotes] = useState(currentCompany?.notes || '');
+
+  // Permissions by Level for the currently selected company
+  const [levelPermissions, setLevelPermissions] = useState<{ [key in UserRole]: UserPermissions }>(() => {
+    if (currentCompany?.levelPermissions) {
+      return currentCompany.levelPermissions as any;
+    }
+    const saved = localStorage.getItem(`motordesk_level_permissions_${selectedCompanyId}`);
+    if (saved) {
+      try { return JSON.parse(saved); } catch (e) { console.error(e); }
+    }
+    return DEFAULT_LEVEL_PERMISSIONS;
+  });
+
+  const [showSaveConfirmationModal, setShowSaveConfirmationModal] = useState(false);
+  const [saveModalData, setSaveModalData] = useState<{
+    title: string;
+    message: string;
+    targetType: 'user' | 'level' | 'company' | 'modules' | 'subscription';
+    affectedCount?: number;
+    userName?: string;
+    userRole?: string;
+    permissionsList?: string[];
+  } | null>(null);
+
+  // Sync state whenever selectedCompanyId changes
+  useEffect(() => {
+    const comp = registeredCompaniesList.find(c => c.id === selectedCompanyId) || registeredCompaniesList[0];
+    if (comp) {
+      setCompName(comp.name || '');
+      setCompCnpj(comp.cnpj || '');
+      setCompType(comp.companyType || 'matriz');
+      setCompParentMatrizId(comp.parentMatrizId || '');
+      setCompWhatsapp(comp.whatsapp || '');
+      setCompPhone(comp.phone || '');
+      setCompEmail(comp.email || '');
+      setCompAddress(comp.address || '');
+      setCompWelcome(comp.welcomeMessage || '');
+      setCompLogoUrl(comp.logoUrl || '');
+
+      setCompLegalRepName(comp.legalRepresentativeName || '');
+      setCompLegalRepCpf(comp.legalRepresentativeCpf || '');
+      setCompSignedContractUrl(comp.signedContractUrl || '');
+      setCompSignedContractFileName(comp.signedContractFileName || '');
+      setCompSignedContractDate(comp.signedContractDate || '');
+      setCompContractStatus(comp.contractStatus || (comp.signedContractUrl ? 'signed' : 'pending'));
+
+      setSubStatus(comp.subscriptionStatus || 'active');
+      setSubStartDate(comp.startDate || '2026-01-01');
+      setSubExpirationDate(comp.expirationDate || '2026-12-31');
+      setSubMonthlyFee(comp.monthlyFee || 299.90);
+      setSubPaymentStatus(comp.paymentStatus || 'paid');
+      setSubNotes(comp.notes || '');
+
+      if (comp.levelPermissions) {
+        setLevelPermissions(comp.levelPermissions as any);
+      } else {
+        setLevelPermissions(DEFAULT_LEVEL_PERMISSIONS);
+      }
+      setHasUnsavedChanges(false);
+    }
+  }, [selectedCompanyId]);
+
+  // Form fields for User creation/edition
+  const [username, setUsername] = useState('');
+  const [name, setName] = useState('');
+  const [password, setPassword] = useState('');
+  const [role, setRole] = useState<UserRole>('atendente');
+  const [permissions, setPermissions] = useState<UserPermissions>(DEFAULT_LEVEL_PERMISSIONS.atendente);
+
+  const [errorMsg, setErrorMsg] = useState('');
+  const [successMsg, setSuccessMsg] = useState('');
+
+  // Combobox Switch Handler with Unsaved Changes Intercept
+  const handleCompanySelectChange = (targetId: string) => {
+    if (targetId === selectedCompanyId) return;
+
+    if (hasUnsavedChanges) {
+      setPendingTargetCompanyId(targetId);
+      setShowUnsavedChangesModal(true);
+      return;
+    }
+
+    // Direct switch if clean
+    setSelectedCompanyId(targetId);
+  };
+
+  // Helper to save current company edits to DB
+  const saveCurrentCompanyData = (): CompanyInfo => {
+    const updatedCompany: CompanyInfo = {
+      ...currentCompany,
+      id: selectedCompanyId,
+      name: compName,
+      cnpj: compCnpj,
+      companyType: compType,
+      parentMatrizId: compType === 'filial' ? compParentMatrizId : undefined,
+      phone: compPhone,
+      whatsapp: compWhatsapp,
+      email: compEmail,
+      address: compAddress,
+      welcomeMessage: compWelcome,
+      logoUrl: compLogoUrl,
+      legalRepresentativeName: compLegalRepName,
+      legalRepresentativeCpf: compLegalRepCpf,
+      signedContractUrl: compSignedContractUrl,
+      signedContractFileName: compSignedContractFileName,
+      signedContractDate: compSignedContractDate,
+      contractStatus: compContractStatus,
+      subscriptionStatus: subStatus,
+      startDate: subStartDate,
+      expirationDate: subExpirationDate,
+      monthlyFee: subMonthlyFee,
+      paymentStatus: subPaymentStatus,
+      notes: subNotes,
+      levelPermissions: levelPermissions,
+      registeredAt: currentCompany?.registeredAt || new Date().toISOString()
+    };
+
+    const updatedList = registeredCompaniesList.map(c => c.id === selectedCompanyId ? updatedCompany : c);
+    if (!updatedList.some(c => c.id === selectedCompanyId)) {
+      updatedList.push(updatedCompany);
+    }
+
+    if (onSaveRegisteredCompanies) {
+      onSaveRegisteredCompanies(updatedList, selectedCompanyId);
+    } else if (onSaveCompanyInfo) {
+      onSaveCompanyInfo(updatedCompany);
+    }
+
+    setHasUnsavedChanges(false);
+    return updatedCompany;
+  };
+
+  // Modal Actions for Unsaved Changes Prompt
+  const handleConfirmSaveAndSwitch = () => {
+    saveCurrentCompanyData();
+    if (pendingTargetCompanyId) {
+      setSelectedCompanyId(pendingTargetCompanyId);
+    }
+    setShowUnsavedChangesModal(false);
+    setPendingTargetCompanyId(null);
+  };
+
+  const handleConfirmDiscardAndSwitch = () => {
+    if (pendingTargetCompanyId) {
+      setSelectedCompanyId(pendingTargetCompanyId);
+    }
+    setHasUnsavedChanges(false);
+    setShowUnsavedChangesModal(false);
+    setPendingTargetCompanyId(null);
+  };
+
+  const handleCancelCompanySwitch = () => {
+    setShowUnsavedChangesModal(false);
+    setPendingTargetCompanyId(null);
+  };
+
+  // Register New Company Action
+  const handleCreateNewCompany = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newCompName.trim() || !newCompCnpj.trim()) {
+      alert('Nome e CNPJ da nova empresa são obrigatórios.');
+      return;
+    }
+
+    const newCompId = `comp-${Date.now()}`;
+    const todayStr = new Date().toISOString().split('T')[0];
+    const expDate = new Date();
+    expDate.setFullYear(expDate.getFullYear() + 1);
+    const expStr = expDate.toISOString().split('T')[0];
+
+    const newCompanyObj: CompanyInfo = {
+      id: newCompId,
+      name: newCompName.trim(),
+      cnpj: newCompCnpj.trim(),
+      companyType: newCompType,
+      parentMatrizId: newCompType === 'filial' ? newCompParentMatrizId : undefined,
+      phone: newCompPhone.trim() || '(11) 3000-0000',
+      whatsapp: newCompWhatsapp.trim() || '11900000000',
+      email: newCompEmail.trim() || 'contato@novaempresa.com.br',
+      address: newCompAddress.trim() || 'Endereço Comercial',
+      welcomeMessage: 'Agradecemos a preferência!',
+      registeredAt: new Date().toISOString(),
+      subscriptionStatus: 'active',
+      startDate: todayStr,
+      expirationDate: expStr,
+      monthlyFee: Number(newCompFee) || 299.90,
+      paymentStatus: 'paid',
+      lastPaymentDate: todayStr,
+      legalRepresentativeName: newCompLegalRepName.trim(),
+      legalRepresentativeCpf: newCompLegalRepCpf.trim(),
+      contractStatus: 'pending',
+      levelPermissions: DEFAULT_LEVEL_PERMISSIONS
+    };
+
+    const updatedList = [...registeredCompaniesList, newCompanyObj];
+    if (onSaveRegisteredCompanies) {
+      onSaveRegisteredCompanies(updatedList, newCompId);
+    }
+
+    // Automatically create default QA user with full permissions for system configuration
+    const newQAUser: User = {
+      id: `usr-qa-${Date.now()}`,
+      username: 'qa',
+      name: `Analista de QA (${newCompanyObj.name})`,
+      role: 'qa',
+      passwordHash: 'qa123',
+      companyId: newCompId,
+      permissions: {
+        accessDashboard: true,
+        accessClients: true,
+        accessVehicles: true,
+        accessParts: true,
+        accessServices: true,
+        accessBudgets: true,
+        accessServiceOrders: true,
+        accessHistory: true,
+        accessReports: true,
+        accessUserManagement: true,
+        accessQAPanel: true,
+        accessQuotations: true,
+        accessNotifications: true,
+        accessAccountsReceivable: true,
+        accessAccountsPayable: true,
+        accessFinancial: true,
+        canEditBudgets: true,
+      }
+    };
+
+    const updatedUsersList = [...(db.users || []), newQAUser];
+    onSaveUsers(updatedUsersList);
+
+    onAddHistoryLog(
+      'system',
+      `Nova Empresa Cadastrada: ${newCompanyObj.name}`,
+      `Nova empresa contratante "${newCompanyObj.name}" (CNPJ ${newCompanyObj.cnpj}) foi cadastrada. Usuário @qa criado com senha padrão 'qa123' e acesso total liberado.`,
+      '',
+      ''
+    );
+
+    // Reset Form & Switch Combobox to New Company
+    setNewCompName('');
+    setNewCompCnpj('');
+    setNewCompPhone('');
+    setNewCompWhatsapp('');
+    setNewCompEmail('');
+    setNewCompAddress('');
+    setShowNewCompanyModal(false);
+    setSelectedCompanyId(newCompId);
+    setSuccessMsg(`Empresa "${newCompanyObj.name}" cadastrada e ativada com sucesso!`);
+    setTimeout(() => setSuccessMsg(''), 5000);
+  };
+
+  // Quick Action: Register Payment & Renew +30 Days
+  const handleRegisterPaymentAndRenew = () => {
+    const today = new Date();
+    const currExp = new Date(subExpirationDate);
+    const startFrom = !isNaN(currExp.getTime()) && currExp > today ? currExp : today;
+    
+    startFrom.setDate(startFrom.getDate() + 30);
+    const newExpStr = startFrom.toISOString().split('T')[0];
+
+    setSubExpirationDate(newExpStr);
+    setSubStatus('active');
+    setSubPaymentStatus('paid');
+
+    const updatedComp: CompanyInfo = {
+      ...currentCompany,
+      id: selectedCompanyId,
+      name: compName,
+      cnpj: compCnpj,
+      phone: compPhone,
+      whatsapp: compWhatsapp,
+      email: compEmail,
+      address: compAddress,
+      welcomeMessage: compWelcome,
+      subscriptionStatus: 'active',
+      startDate: subStartDate,
+      expirationDate: newExpStr,
+      monthlyFee: subMonthlyFee,
+      paymentStatus: 'paid',
+      lastPaymentDate: new Date().toISOString().split('T')[0],
+      notes: subNotes,
+      levelPermissions: levelPermissions
+    };
+
+    const updatedList = registeredCompaniesList.map(c => c.id === selectedCompanyId ? updatedComp : c);
+    if (onSaveRegisteredCompanies) {
+      onSaveRegisteredCompanies(updatedList, selectedCompanyId);
+    } else if (onSaveCompanyInfo) {
+      onSaveCompanyInfo(updatedComp);
+    }
+
+    setHasUnsavedChanges(false);
+
+    onAddHistoryLog(
+      'payment',
+      `Pagamento de Mensalidade Registrado: ${compName}`,
+      `Pagamento da mensalidade de R$ ${subMonthlyFee.toFixed(2)} foi confirmado. Validade da assinatura estendida até ${newExpStr}.`,
+      '',
+      ''
+    );
+
+    setSaveModalData({
+      title: `Pagamento Confirmado & Assinatura Renovada!`,
+      message: `A mensalidade de R$ ${subMonthlyFee.toFixed(2)} foi registrada com sucesso para "${compName}". O acesso aos módulos foi mantido ativado até ${newExpStr}.`,
+      targetType: 'subscription'
+    });
+    setShowSaveConfirmationModal(true);
+  };
+
+  // Quick Action: Block Access (Inadimplência)
+  const handleBlockCompanyAccess = () => {
+    setSubStatus('blocked');
+    setSubPaymentStatus('overdue');
+
+    const updatedComp: CompanyInfo = {
+      ...currentCompany,
+      id: selectedCompanyId,
+      name: compName,
+      cnpj: compCnpj,
+      phone: compPhone,
+      whatsapp: compWhatsapp,
+      email: compEmail,
+      address: compAddress,
+      welcomeMessage: compWelcome,
+      subscriptionStatus: 'blocked',
+      startDate: subStartDate,
+      expirationDate: subExpirationDate,
+      monthlyFee: subMonthlyFee,
+      paymentStatus: 'overdue',
+      notes: subNotes,
+      levelPermissions: levelPermissions
+    };
+
+    const updatedList = registeredCompaniesList.map(c => c.id === selectedCompanyId ? updatedComp : c);
+    if (onSaveRegisteredCompanies) {
+      onSaveRegisteredCompanies(updatedList, selectedCompanyId);
+    } else if (onSaveCompanyInfo) {
+      onSaveCompanyInfo(updatedComp);
+    }
+
+    setHasUnsavedChanges(false);
+
+    onAddHistoryLog(
+      'system',
+      `Acesso Suspenso por Inadimplência: ${compName}`,
+      `O acesso da empresa "${compName}" aos módulos foi suspenso devido à falta de pagamento da assinatura.`,
+      '',
+      ''
+    );
+
+    setSaveModalData({
+      title: `Acesso Suspenso com Sucesso`,
+      message: `O acesso da empresa "${compName}" aos módulos foi bloqueado por inadimplência. Os usuários receberão aviso ao tentar operar.`,
+      targetType: 'subscription'
+    });
+    setShowSaveConfirmationModal(true);
+  };
+
+  // Level Permissions Toggle
+  const saveLevelPermissions = (updated: { [key in UserRole]: UserPermissions }, autoSyncUsers = false, targetRole?: UserRole) => {
+    setLevelPermissions(updated);
+    setHasUnsavedChanges(true);
+
+    if (autoSyncUsers) {
+      const updatedUsers = db.users.map(u => {
+        if ((u.companyId || 'comp-1') === selectedCompanyId && (!targetRole || u.role === targetRole)) {
+          return {
+            ...u,
+            permissions: updated[u.role] ? { ...updated[u.role] } : u.permissions
+          };
+        }
+        return u;
+      });
+      onSaveUsers(updatedUsers);
+    }
+  };
+
+  const handleSaveSingleLevel = (roleKey: UserRole) => {
+    saveLevelPermissions(levelPermissions, true, roleKey);
+    saveCurrentCompanyData();
+
+    const rolePerms = levelPermissions[roleKey];
+    const affectedUsers = db.users.filter(u => u.role === roleKey);
+    const activePermsList = (Object.keys(rolePerms) as (keyof UserPermissions)[])
+      .filter(k => rolePerms[k])
+      .map(k => PERMISSION_LABEL_MAP[k] || k);
+
+    onAddHistoryLog(
+      'user_activity',
+      `Configuração Salva: Nível ${roleKey.toUpperCase()} (${compName})`,
+      `Definições de permissões do nível "${roleKey.toUpperCase()}" foram gravadas para a empresa "${compName}".`,
+      '',
+      ''
+    );
+
+    setSaveModalData({
+      title: `Permissões do Nível ${roleKey.toUpperCase()} Salvas para ${compName}!`,
+      message: `As liberações de módulos para o perfil "${roleKey.toUpperCase()}" na empresa "${compName}" foram salvas no banco de dados.`,
+      targetType: 'level',
+      affectedCount: affectedUsers.length,
+      userRole: roleKey.toUpperCase(),
+      permissionsList: activePermsList
+    });
+    setShowSaveConfirmationModal(true);
+  };
+
+  const handleSaveAllLevels = () => {
+    saveLevelPermissions(levelPermissions, true);
+    saveCurrentCompanyData();
+
+    onAddHistoryLog(
+      'user_activity',
+      `Matriz Geral de Níveis Salva (${compName})`,
+      `O administrador "${currentUser.name}" salvou e sincronizou a matriz de permissões por perfil para a empresa "${compName}".`,
+      '',
+      ''
+    );
+
+    setSaveModalData({
+      title: `Matriz de Níveis Salva com Sucesso!`,
+      message: `As definições de permissões para todos os perfis da empresa "${compName}" foram salvas com sucesso.`,
+      targetType: 'level'
+    });
+    setShowSaveConfirmationModal(true);
+  };
+
+  const handleRoleChange = (selectedRole: UserRole) => {
+    setRole(selectedRole);
+    setPermissions(levelPermissions[selectedRole] || DEFAULT_LEVEL_PERMISSIONS[selectedRole]);
+  };
+
+  const togglePermission = (key: keyof UserPermissions) => {
+    setPermissions(prev => ({
+      ...prev,
+      [key]: !prev[key]
+    }));
+  };
+
+  const handleCreateUser = (e: React.FormEvent) => {
+    e.preventDefault();
+    setErrorMsg('');
+
+    if (!username.trim() || !name.trim()) {
+      setErrorMsg('Nome completo e nome de usuário são obrigatórios.');
+      return;
+    }
+
+    const isUsernameChanged = editingUser ? editingUser.username.toLowerCase() !== username.trim().toLowerCase() : true;
+    if (isUsernameChanged) {
+      const usernameExists = db.users.some(u => (u.companyId || 'comp-1') === selectedCompanyId && u.username.toLowerCase() === username.trim().toLowerCase());
+      if (usernameExists) {
+        setErrorMsg(`O nome de usuário "${username}" já está cadastrado nesta empresa.`);
+        return;
+      }
+    }
+
+    let updatedUsersList: User[] = [];
+
+    if (editingUser) {
+      const updatedUser: User = {
+        ...editingUser,
+        username: username.trim().toLowerCase(),
+        name: name.trim(),
+        role,
+        passwordHash: password || editingUser.passwordHash,
+        permissions,
+        companyId: selectedCompanyId
+      };
+
+      updatedUsersList = db.users.map(u => u.id === editingUser.id ? updatedUser : u);
+      onSaveUsers(updatedUsersList);
+
+      onAddHistoryLog(
+        'user_activity', 
+        'Permissões Alteradas', 
+        `Nível e permissões do colaborador "${updatedUser.name}" (@${updatedUser.username}) atualizadas na empresa ${compName}.`, 
+        '', 
+        ''
+      );
+
+      const activePermsList = (Object.keys(updatedUser.permissions) as (keyof UserPermissions)[])
+        .filter(k => updatedUser.permissions[k])
+        .map(k => PERMISSION_LABEL_MAP[k] || k);
+
+      setSaveModalData({
+        title: 'Permissões do Usuário Atualizadas!',
+        message: `As alterações do colaborador "${updatedUser.name}" foram salvas no banco de dados.`,
+        targetType: 'user',
+        userName: updatedUser.name,
+        userRole: updatedUser.role.toUpperCase(),
+        permissionsList: activePermsList
+      });
+      setShowSaveConfirmationModal(true);
+    } else {
+      if (!password.trim()) {
+        setErrorMsg('Senha inicial é obrigatória para novos operadores.');
+        return;
+      }
+
+      const newUser: User = {
+        id: `usr-${Date.now()}`,
+        username: username.trim().toLowerCase(),
+        name: name.trim(),
+        role,
+        passwordHash: password,
+        permissions,
+        companyId: selectedCompanyId
+      };
+
+      updatedUsersList = [...db.users, newUser];
+      onSaveUsers(updatedUsersList);
+
+      onAddHistoryLog(
+        'user_activity', 
+        'Novo Usuário Cadastrado', 
+        `Operador ${newUser.name} (@${newUser.username}) adicionado à empresa ${compName}.`, 
+        '', 
+        ''
+      );
+
+      const activePermsList = (Object.keys(newUser.permissions) as (keyof UserPermissions)[])
+        .filter(k => newUser.permissions[k])
+        .map(k => PERMISSION_LABEL_MAP[k] || k);
+
+      setSaveModalData({
+        title: 'Novo Operador Cadastrado!',
+        message: `O operador "${newUser.name}" (@${newUser.username}) foi cadastrado para a empresa ${compName}.`,
+        targetType: 'user',
+        userName: newUser.name,
+        userRole: newUser.role.toUpperCase(),
+        permissionsList: activePermsList
+      });
+      setShowSaveConfirmationModal(true);
+    }
+
+    setUsername('');
+    setName('');
+    setPassword('');
+    setEditingUser(null);
+    setIsFormOpen(false);
+  };
+
+  const handleDeleteUser = (userId: string, userName: string) => {
+    if (userId === currentUser.id) {
+      alert('Você não pode excluir a sua própria conta logada.');
+      return;
+    }
+
+    if (window.confirm(`Tem certeza que deseja excluir o operador "${userName}"? Ele perderá o acesso a esta empresa.`)) {
+      const updatedUsers = db.users.filter(u => u.id !== userId);
+      onSaveUsers(updatedUsers);
+      onAddHistoryLog(
+        'user_activity',
+        'Operador Excluído',
+        `O operador "${userName}" foi desvinculado e excluído do cadastro da empresa "${compName}".`,
+        '',
+        ''
+      );
+      setSuccessMsg(`Operador "${userName}" removido com sucesso.`);
+      setTimeout(() => setSuccessMsg(''), 4000);
+    }
+  };
+
+  return (
+    <div className="space-y-6 animate-fade-in" id="user-management-view-container">
+      {/* Top Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between border-b border-gray-100 pb-5 gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight text-slate-800 font-display">
+            Gestão Multi-Empresa & Módulos SaaS
+          </h1>
+          <p className="text-sm text-slate-500">
+            Liberação de módulos por perfil e controle de assinaturas por empresa contratante.
+          </p>
+        </div>
+
+        {/* Action Button */}
+        {adminSubView === 'users' && !isFormOpen && (
+          <button 
+            id="btn-add-user"
+            onClick={() => {
+              setEditingUser(null);
+              setName('');
+              setUsername('');
+              setPassword('');
+              setRole('atendente');
+              setPermissions(levelPermissions['atendente'] || DEFAULT_LEVEL_PERMISSIONS.atendente);
+              setIsFormOpen(true);
+            }} 
+            className="flex items-center justify-center gap-2 bg-indigo-600 text-white px-4 py-2.5 rounded-xl text-sm font-semibold hover:bg-indigo-700 transition cursor-pointer shadow-xs"
+          >
+            <Plus className="w-4 h-4" /> Cadastrar Operador
+          </button>
+        )}
+      </div>
+
+      {/* MULTI-TENANT COMPANY SELECTOR COMBOBOX (REQUISITO PRINCIPAL) */}
+      <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white p-5 rounded-2xl shadow-lg border border-indigo-900/40 space-y-3">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <Building2 className="w-5 h-5 text-indigo-400" />
+              <span className="text-xs font-bold uppercase tracking-wider text-indigo-300">
+                Empresa Contratante (Tenant)
+              </span>
+              {hasUnsavedChanges && (
+                <span className="text-[10px] bg-amber-500/20 text-amber-300 border border-amber-500/40 px-2 py-0.5 rounded-full font-bold flex items-center gap-1 animate-pulse">
+                  <AlertTriangle className="w-3 h-3" /> Alterações não salvas
+                </span>
+              )}
+            </div>
+            <h2 className="text-lg font-bold font-display text-white">
+              {currentCompany?.name || 'Selecione uma Empresa'}
+            </h2>
+          </div>
+
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+            {/* Combobox Selection Dropdown */}
+            <div className="relative min-w-[280px]">
+              <label htmlFor="company-combobox-select" className="sr-only">Selecione a Empresa</label>
+              <select
+                id="company-combobox-select"
+                value={selectedCompanyId}
+                onChange={(e) => handleCompanySelectChange(e.target.value)}
+                className="w-full bg-slate-800/90 border border-indigo-700/60 text-white text-xs font-semibold px-4 py-2.5 rounded-xl focus:ring-2 focus:ring-indigo-400 focus:outline-hidden cursor-pointer shadow-inner appearance-none pr-10"
+              >
+                {registeredCompaniesList.map((comp) => (
+                  <option key={comp.id} value={comp.id} className="bg-slate-900 text-white py-2">
+                    {comp.name} {comp.subscriptionStatus === 'blocked' ? '🔒 (Bloqueado)' : '✅ (Ativo)'}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown className="w-4 h-4 text-indigo-300 absolute right-3 top-3 pointer-events-none" />
+            </div>
+
+            {/* Button to Add New Company */}
+            <button
+              type="button"
+              id="btn-open-new-company-modal"
+              onClick={() => setShowNewCompanyModal(true)}
+              className="bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs px-4 py-2.5 rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer shadow-xs shrink-0"
+            >
+              <Plus className="w-4 h-4" /> Nova Empresa
+            </button>
+          </div>
+        </div>
+
+        {/* Selected Company Status Badge Summary */}
+        <div className="pt-2 border-t border-indigo-900/60 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-300">
+          <div className="flex items-center gap-4">
+            <span className="flex items-center gap-1.5">
+              <CreditCard className="w-3.5 h-3.5 text-indigo-400" />
+              CNPJ: <strong className="text-white font-mono">{compCnpj || 'Não informado'}</strong>
+            </span>
+            <span className="flex items-center gap-1.5">
+              <Calendar className="w-3.5 h-3.5 text-indigo-400" />
+              Validade da Assinatura: <strong className="text-white font-mono">{subExpirationDate || 'Sem data'}</strong>
+            </span>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] font-bold text-slate-400">Status de Uso:</span>
+            {subStatus === 'blocked' || subPaymentStatus === 'overdue' ? (
+              <span className="px-2.5 py-1 rounded-full text-[10px] font-bold uppercase bg-rose-500/20 text-rose-300 border border-rose-500/40 flex items-center gap-1">
+                <Lock className="w-3 h-3 text-rose-400" /> Bloqueado (Inadimplente)
+              </span>
+            ) : (
+              <span className="px-2.5 py-1 rounded-full text-[10px] font-bold uppercase bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 flex items-center gap-1">
+                <Unlock className="w-3 h-3 text-emerald-400" /> Liberado / Em Dia
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Subview Navigation Tabs */}
+      <div className="flex border-b border-slate-200 gap-4 overflow-x-auto pb-0.5" id="user-subview-selector">
+        <button 
+          id="btn-subview-subscription"
+          type="button"
+          onClick={() => { setAdminSubView('subscription'); setIsFormOpen(false); }}
+          className={`pb-3 text-xs font-bold uppercase tracking-wider border-b-2 transition whitespace-nowrap flex items-center gap-2 ${
+            adminSubView === 'subscription' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-400 hover:text-slate-600'
+          }`}
+        >
+          <CreditCard className="w-4 h-4" /> Gestão de Assinatura & Inadimplência
+        </button>
+        <button 
+          id="btn-subview-levels"
+          type="button"
+          onClick={() => { setAdminSubView('levels'); setIsFormOpen(false); }}
+          className={`pb-3 text-xs font-bold uppercase tracking-wider border-b-2 transition whitespace-nowrap flex items-center gap-2 ${
+            adminSubView === 'levels' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-400 hover:text-slate-600'
+          }`}
+        >
+          <Settings className="w-4 h-4" /> Liberação de Módulos por Perfil
+        </button>
+        <button 
+          id="btn-subview-users"
+          type="button"
+          onClick={() => { setAdminSubView('users'); setIsFormOpen(false); }}
+          className={`pb-3 text-xs font-bold uppercase tracking-wider border-b-2 transition whitespace-nowrap flex items-center gap-2 ${
+            adminSubView === 'users' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-400 hover:text-slate-600'
+          }`}
+        >
+          <Users className="w-4 h-4" /> Operadores da Empresa ({db.users.filter(u => !u.companyId || u.companyId === selectedCompanyId).length})
+        </button>
+        <button 
+          id="btn-subview-company"
+          type="button"
+          onClick={() => { setAdminSubView('company'); setIsFormOpen(false); }}
+          className={`pb-3 text-xs font-bold uppercase tracking-wider border-b-2 transition whitespace-nowrap flex items-center gap-2 ${
+            adminSubView === 'company' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-400 hover:text-slate-600'
+          }`}
+        >
+          <Building2 className="w-4 h-4" /> Dados da Oficina & WhatsApp
+        </button>
+      </div>
+
+      {successMsg && (
+        <div id="user-success-alert" className="p-4 bg-emerald-50 text-emerald-800 text-sm rounded-xl flex items-center gap-2 border border-emerald-200 animate-slide-up">
+          <CheckCircle className="w-5 h-5 flex-shrink-0 text-emerald-600" />
+          <p className="font-medium">{successMsg}</p>
+        </div>
+      )}
+
+      {/* 1. SAAS SUBSCRIPTION & ACCESS LOCK MANAGEMENT VIEW */}
+      {adminSubView === 'subscription' && (
+        <div className="space-y-6 animate-fade-in" id="saas-subscription-panel">
+          <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-xs space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-4">
+              <div>
+                <h3 className="text-base font-bold text-slate-800 font-display flex items-center gap-2">
+                  <CreditCard className="w-5 h-5 text-indigo-600" />
+                  Controle de Licença, Validade e Bloqueio de Acesso SaaS
+                </h3>
+                <p className="text-xs text-slate-500 mt-1">
+                  Configure o período negociado de início e término de uso para a empresa <strong className="text-slate-700">{compName}</strong>. 
+                  Em caso de não pagamento, o sistema bloqueia dinamicamente os módulos para esta empresa.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  id="btn-renew-payment-30days"
+                  onClick={handleRegisterPaymentAndRenew}
+                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl transition flex items-center gap-1.5 shadow-xs cursor-pointer"
+                  title="Registrar pagamento e prorrogar validade em +30 dias"
+                >
+                  <DollarSign className="w-4 h-4" /> Registrar Pagamento (+30 Dias)
+                </button>
+
+                {subStatus === 'blocked' ? (
+                  <button
+                    type="button"
+                    id="btn-unblock-access"
+                    onClick={() => {
+                      setSubStatus('active');
+                      setSubPaymentStatus('paid');
+                      setHasUnsavedChanges(true);
+                    }}
+                    className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl transition flex items-center gap-1.5 shadow-xs cursor-pointer"
+                  >
+                    <Unlock className="w-4 h-4" /> Desbloquear Acesso
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    id="btn-block-access-overdue"
+                    onClick={handleBlockCompanyAccess}
+                    className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-xl transition flex items-center gap-1.5 shadow-xs cursor-pointer"
+                  >
+                    <Lock className="w-4 h-4" /> Bloquear Acesso (Inadimplente)
+                  </button>
+                )}
+              </div>
+            </div>
+
+            <form 
+              id="form-subscription-settings"
+              onSubmit={(e) => {
+                e.preventDefault();
+                saveCurrentCompanyData();
+                setSaveModalData({
+                  title: 'Parâmetros de Assinatura Salvos!',
+                  message: `As datas do contrato e o status de faturamento da empresa "${compName}" foram salvas no sistema com sucesso.`,
+                  targetType: 'subscription'
+                });
+                setShowSaveConfirmationModal(true);
+              }}
+              className="grid grid-cols-1 md:grid-cols-3 gap-6"
+            >
+              {/* Data Início e Término */}
+              <div className="bg-slate-50/70 p-4 rounded-xl border border-slate-200/80 space-y-4">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-600 flex items-center gap-1.5">
+                  <Calendar className="w-4 h-4 text-indigo-600" /> Vigência da Licença de Uso
+                </h4>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-slate-700" htmlFor="sub-start-date">
+                    Data de Início do Uso *
+                  </label>
+                  <input
+                    id="sub-start-date"
+                    type="date"
+                    required
+                    value={subStartDate}
+                    onChange={(e) => {
+                      setSubStartDate(e.target.value);
+                      setHasUnsavedChanges(true);
+                    }}
+                    className="w-full text-xs p-2.5 border border-slate-200 rounded-lg bg-white font-mono font-semibold"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-slate-700" htmlFor="sub-expiration-date">
+                    Data de Término / Validade *
+                  </label>
+                  <input
+                    id="sub-expiration-date"
+                    type="date"
+                    required
+                    value={subExpirationDate}
+                    onChange={(e) => {
+                      setSubExpirationDate(e.target.value);
+                      setHasUnsavedChanges(true);
+                    }}
+                    className="w-full text-xs p-2.5 border border-slate-200 rounded-lg bg-white font-mono font-bold text-indigo-900"
+                  />
+                  <p className="text-[10px] text-slate-400">Após esta data, os usuários receberão alertas de vencimento ou bloqueio de tela.</p>
+                </div>
+              </div>
+
+              {/* Status do Acesso e Faturamento */}
+              <div className="bg-slate-50/70 p-4 rounded-xl border border-slate-200/80 space-y-4">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-600 flex items-center gap-1.5">
+                  <Lock className="w-4 h-4 text-indigo-600" /> Status de Acesso & Mensalidade
+                </h4>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-slate-700" htmlFor="sub-status-select">
+                    Situação da Liberação do Sistema *
+                  </label>
+                  <select
+                    id="sub-status-select"
+                    value={subStatus}
+                    onChange={(e) => {
+                      setSubStatus(e.target.value as any);
+                      setHasUnsavedChanges(true);
+                    }}
+                    className={`w-full text-xs p-2.5 border rounded-lg font-bold ${
+                      subStatus === 'blocked' 
+                        ? 'bg-rose-50 border-rose-300 text-rose-800' 
+                        : 'bg-white border-slate-200 text-slate-800'
+                    }`}
+                  >
+                    <option value="active">Ativo (Módulos Liberados)</option>
+                    <option value="blocked">Bloqueado por Inadimplência</option>
+                    <option value="overdue">Atrasado (Com Aviso de Vencimento)</option>
+                    <option value="trial">Período de Testes (Trial)</option>
+                  </select>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-slate-700" htmlFor="sub-fee-input">
+                    Valor da Mensalidade (R$) *
+                  </label>
+                  <input
+                    id="sub-fee-input"
+                    type="number"
+                    step="0.01"
+                    required
+                    value={subMonthlyFee}
+                    onChange={(e) => {
+                      setSubMonthlyFee(Number(e.target.value));
+                      setHasUnsavedChanges(true);
+                    }}
+                    className="w-full text-xs p-2.5 border border-slate-200 rounded-lg bg-white font-mono font-bold text-slate-800"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-slate-700" htmlFor="sub-payment-status">
+                    Status do Pagamento
+                  </label>
+                  <select
+                    id="sub-payment-status"
+                    value={subPaymentStatus}
+                    onChange={(e) => {
+                      setSubPaymentStatus(e.target.value as any);
+                      setHasUnsavedChanges(true);
+                    }}
+                    className="w-full text-xs p-2.5 border border-slate-200 rounded-lg bg-white font-semibold"
+                  >
+                    <option value="paid">Em Dia / Pago</option>
+                    <option value="pending">Pendente (Aguardando)</option>
+                    <option value="overdue">Em Atraso / Vencido</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Observações Contratuais */}
+              <div className="bg-slate-50/70 p-4 rounded-xl border border-slate-200/80 space-y-4 flex flex-col justify-between">
+                <div className="space-y-2">
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-slate-600 flex items-center gap-1.5">
+                    <MessageSquare className="w-4 h-4 text-indigo-600" /> Anotações do Contrato SaaS
+                  </h4>
+                  <textarea
+                    rows={4}
+                    value={subNotes}
+                    onChange={(e) => {
+                      setSubNotes(e.target.value);
+                      setHasUnsavedChanges(true);
+                    }}
+                    placeholder="Ex: Contrato fechado em 12 parcelas mensais via PIX. Liberado módulo estendido de estoque."
+                    className="w-full text-xs p-2.5 border border-slate-200 rounded-lg bg-white"
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  id="btn-save-subscription-settings"
+                  className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl transition flex items-center justify-center gap-2 shadow-xs cursor-pointer mt-2"
+                >
+                  <Save className="w-4 h-4" /> Salvar Alterações de Assinatura
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* 2. PROFILE MODULE PERMISSIONS MATRIX FOR SELECTED COMPANY */}
+      {adminSubView === 'levels' && (
+        <div className="space-y-6 animate-slide-up" id="level-permissions-panel">
+          <div className="bg-white border border-slate-200 rounded-xl shadow-xs p-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-2 mb-1">
+                <Shield className="w-5 h-5 text-indigo-600" />
+                <h3 className="text-base font-semibold text-slate-800 font-display">
+                  Liberação de Módulos por Perfil — <span className="text-indigo-600">{compName}</span>
+                </h3>
+              </div>
+              <p className="text-xs text-slate-500 leading-relaxed max-w-2xl font-sans">
+                Selecione os módulos liberados para cada perfil específico da empresa selecionada no combobox.
+              </p>
+            </div>
+            <button
+              id="btn-save-all-levels"
+              type="button"
+              onClick={handleSaveAllLevels}
+              className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs px-5 py-2.5 rounded-xl transition flex items-center justify-center gap-2 shadow-xs cursor-pointer font-sans shrink-0"
+            >
+              <Save className="w-4 h-4" />
+              Salvar Matriz Geral para {compName}
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            {(['admin', 'atendente', 'mecanico', 'qa'] as UserRole[]).map((roleKey) => {
+              const roleTitleMap: { [key in UserRole]: string } = {
+                admin: "Gerente / Administrador",
+                atendente: "Atendente (Recepção)",
+                mecanico: "Mecânico (Oficina)",
+                qa: "QA Tester (Qualidade)"
+              };
+
+              const roleDescMap: { [key in UserRole]: string } = {
+                admin: "Gestão administrativa e faturamento completo",
+                atendente: "Recepção de clientes, veículos e orçamentos",
+                mecanico: "Execução mecânica, peças e ordens de serviço",
+                qa: "Inspeção completa do sistema e automação de testes"
+              };
+
+              const rolePermissions = levelPermissions[roleKey] || DEFAULT_LEVEL_PERMISSIONS[roleKey];
+
+              const permissionList: { key: keyof UserPermissions; label: string }[] = [
+                { key: 'accessDashboard', label: 'Painel Geral / KPIs' },
+                { key: 'accessClients', label: 'Cadastro de Clientes' },
+                { key: 'accessVehicles', label: 'Cadastro de Veículos' },
+                { key: 'accessParts', label: 'Catálogo de Peças' },
+                { key: 'accessQuotations', label: 'Cotação & Fornecedores' },
+                { key: 'accessServices', label: 'Tabela de Serviços' },
+                { key: 'accessBudgets', label: 'Orçamentos Builder' },
+                { key: 'accessServiceOrders', label: 'Ordens de Serviço (OS)' },
+                { key: 'accessAccountsReceivable', label: 'Contas a Receber' },
+                { key: 'accessAccountsPayable', label: 'Contas a Pagar' },
+                { key: 'accessFinancial', label: 'Fluxo de Caixa / DRE' },
+                { key: 'accessFiscal', label: 'Módulo Fiscal, Boletos & SEFAZ' },
+                { key: 'accessHistory', label: 'Histórico do Veículo' },
+                { key: 'accessReports', label: 'Relatórios Financeiros' },
+                { key: 'accessUserManagement', label: 'Controle de Colaboradores' },
+                { key: 'accessQAPanel', label: 'Painel de Testes QA' },
+                { key: 'canViewOtherStoresStock', label: 'Estoque Outras Lojas (Rede)' },
+                { key: 'canSellOtherStoresStock', label: 'Venda de Peças Outra Loja' }
+              ];
+
+              return (
+                <div key={roleKey} className="bg-white border border-slate-200 rounded-xl shadow-xs overflow-hidden flex flex-col h-full" id={`level-card-${roleKey}`}>
+                  <div className="p-4 bg-slate-50 border-b border-slate-100 flex-shrink-0">
+                    <span className="text-[10px] font-bold uppercase text-indigo-600 bg-indigo-50 border border-indigo-100 px-2 py-0.5 rounded-full font-sans">
+                      Perfil: {roleKey.toUpperCase()}
+                    </span>
+                    <h4 className="font-semibold text-slate-800 text-sm mt-1.5 font-sans">{roleTitleMap[roleKey]}</h4>
+                    <p className="text-[10px] text-slate-400 mt-0.5 leading-snug h-8 overflow-hidden font-sans">{roleDescMap[roleKey]}</p>
+                  </div>
+
+                  <div className="p-4 flex-grow space-y-2.5 overflow-y-auto max-h-[380px]">
+                    {permissionList.map((perm) => {
+                      const isChecked = rolePermissions[perm.key];
+                      return (
+                        <label 
+                          key={perm.key} 
+                          className="flex items-start gap-2 text-xs text-slate-600 hover:text-slate-800 cursor-pointer select-none transition font-sans"
+                        >
+                          <input 
+                            type="checkbox"
+                            checked={Boolean(isChecked)}
+                            onChange={() => {
+                              const updatedPermissions = {
+                                ...rolePermissions,
+                                [perm.key]: !rolePermissions[perm.key]
+                              };
+                              const updatedLevelPermissions = {
+                                ...levelPermissions,
+                                [roleKey]: updatedPermissions
+                              };
+                              saveLevelPermissions(updatedLevelPermissions, true, roleKey);
+                            }}
+                            className="mt-0.5 h-3.5 w-3.5 rounded text-indigo-600 border-slate-300 focus:ring-indigo-500"
+                          />
+                          <span className={`${isChecked ? 'font-medium text-slate-700' : 'text-slate-400'}`}>
+                            {perm.label}
+                          </span>
+                        </label>
+                      );
+                    })}
+                  </div>
+
+                  <div className="p-3 bg-slate-50/50 border-t border-slate-100 mt-auto flex-shrink-0 space-y-2">
+                    <button
+                      type="button"
+                      onClick={() => handleSaveSingleLevel(roleKey)}
+                      className="w-full flex items-center justify-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white py-2 px-3 rounded-lg text-xs font-bold transition shadow-xs cursor-pointer font-sans"
+                      id={`btn-save-level-${roleKey}`}
+                    >
+                      <Save className="w-3.5 h-3.5" /> Salvar {roleKey.toUpperCase()}
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* 3. USERS / OPERATORS MANAGEMENT FOR SELECTED COMPANY */}
+      {adminSubView === 'users' && (
+        <div className="space-y-6 animate-slide-up">
+          {/* Create User Form */}
+          {isFormOpen && (
+            <div className="bg-white p-6 rounded-xl border border-indigo-100 shadow-md animate-slide-up" id="user-form-panel">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-3 mb-5">
+                <h3 className="font-semibold text-slate-800 font-display text-base">
+                  {editingUser ? `Alterar Nível / Permissões: ${editingUser.name}` : `Criar Operador para ${compName}`}
+                </h3>
+                <button id="btn-close-user-form" onClick={() => { setIsFormOpen(false); setEditingUser(null); }} className="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-50 transition">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {errorMsg && (
+                <div id="user-error-alert" className="mb-4 p-4 bg-rose-50 text-rose-800 text-xs rounded-lg flex items-center gap-2 border border-rose-100">
+                  <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                  <p className="font-medium">{errorMsg}</p>
+                </div>
+              )}
+
+              <form onSubmit={handleCreateUser} className="grid grid-cols-1 lg:grid-cols-3 gap-6" id="form-user">
+                <div className="lg:col-span-1 space-y-4">
+                  <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 space-y-4">
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400">Credenciais de Acesso</h4>
+                    
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-semibold text-slate-600" htmlFor="user-name-input">Nome Completo *</label>
+                      <input 
+                        id="user-name-input"
+                        type="text" 
+                        value={name}
+                        onChange={e => setName(e.target.value)}
+                        placeholder="Ex: Alberto Roberto" 
+                        className="w-full text-xs px-3 py-2 border border-slate-200 rounded-lg bg-white"
+                        required
+                      />
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-semibold text-slate-600" htmlFor="user-username-input">Usuário de Login (Username) *</label>
+                      <input 
+                        id="user-username-input"
+                        type="text" 
+                        value={username}
+                        onChange={e => setUsername(e.target.value)}
+                        placeholder="Ex: alberto" 
+                        className="w-full text-xs px-3 py-2 border border-slate-200 rounded-lg bg-white font-mono"
+                        required
+                      />
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-semibold text-slate-600" htmlFor="user-password-input">
+                        {editingUser ? 'Alterar Senha (Opcional)' : 'Senha Inicial *'}
+                      </label>
+                      <input 
+                        id="user-password-input"
+                        type="password" 
+                        value={password}
+                        onChange={e => setPassword(e.target.value)}
+                        placeholder={editingUser ? "Deixe em branco para manter" : "Min. 4 caracteres"} 
+                        className="w-full text-xs px-3 py-2 border border-slate-200 rounded-lg bg-white font-mono"
+                        required={!editingUser}
+                      />
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-semibold text-slate-600" htmlFor="user-role-select">Perfil Padrão *</label>
+                      <select 
+                        id="user-role-select"
+                        value={role}
+                        onChange={e => handleRoleChange(e.target.value as UserRole)}
+                        className="w-full text-xs px-3 py-2 border border-slate-200 rounded-lg bg-white font-semibold text-slate-700"
+                      >
+                        <option value="admin">Administrador (Total)</option>
+                        <option value="atendente">Atendente (Serviço de Entrada)</option>
+                        <option value="mecanico">Mecânico (Execução e Diagnóstico)</option>
+                        <option value="qa">QA Engineer / Tester (Analista)</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="lg:col-span-2 space-y-4">
+                  <div className="bg-indigo-50/20 p-5 rounded-xl border border-indigo-100/50 space-y-3">
+                    <div className="flex items-center gap-2 text-indigo-900">
+                      <Shield className="w-5 h-5" />
+                      <h4 className="text-xs font-bold uppercase tracking-wider">Permissões de Acesso do Operador</h4>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
+                      {Object.keys(PERMISSION_LABEL_MAP).map((permKey) => {
+                        const key = permKey as keyof UserPermissions;
+                        const isChecked = Boolean(permissions[key]);
+
+                        return (
+                          <div 
+                            key={key} 
+                            onClick={() => togglePermission(key)}
+                            className={`p-3 rounded-lg border flex items-center justify-between cursor-pointer transition ${
+                              isChecked 
+                                ? 'bg-white border-indigo-200 shadow-3xs' 
+                                : 'bg-slate-50/30 border-slate-100 opacity-60'
+                            }`}
+                          >
+                            <span className="text-xs text-slate-700 font-medium">{PERMISSION_LABEL_MAP[key]}</span>
+                            <div className={`w-5 h-5 rounded-sm flex items-center justify-center border transition ${
+                              isChecked ? 'bg-indigo-600 border-indigo-600 text-white' : 'bg-white border-slate-200'
+                            }`}>
+                              {isChecked && <Check className="w-3.5 h-3.5" />}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div className="flex gap-3 justify-end pt-2">
+                    <button 
+                      id="btn-save-user-submit"
+                      type="submit" 
+                      className="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-sm px-6 py-2.5 rounded-lg transition cursor-pointer"
+                    >
+                      {editingUser ? 'Salvar Operador' : 'Confirmar e Cadastrar Operador'}
+                    </button>
+                    <button 
+                      id="btn-cancel-user-form"
+                      type="button" 
+                      onClick={() => { setIsFormOpen(false); setEditingUser(null); }} 
+                      className="bg-slate-150 hover:bg-slate-200 text-slate-600 font-semibold text-sm px-6 py-2.5 rounded-lg transition cursor-pointer"
+                    >
+                      Cancelar
+                    </button>
+                  </div>
+                </div>
+              </form>
+            </div>
+          )}
+
+          {/* Active Users List */}
+          {!isFormOpen && (
+            <div className="bg-white border border-slate-200 rounded-xl shadow-xs overflow-hidden" id="users-list-panel">
+              <div className="p-4 bg-slate-50 border-b border-slate-100 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Users className="w-4 h-4 text-slate-400" />
+                  <h3 className="text-xs font-bold text-slate-600 uppercase tracking-wider">
+                    Operadores Cadastrados para {compName}
+                  </h3>
+                </div>
+              </div>
+
+              <div className="divide-y divide-slate-100">
+                {(() => {
+                  const companyUsers = db.users.filter(u => (u.companyId || 'comp-1') === selectedCompanyId);
+                  if (companyUsers.length === 0) {
+                    return (
+                      <div className="p-8 text-center bg-slate-50 text-slate-500 text-xs">
+                        <Users className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+                        <p className="font-bold text-slate-700 text-sm">Nenhum operador cadastrado para {compName}</p>
+                        <p className="text-slate-400 mt-1 max-w-md mx-auto">
+                          Os usuários cadastrados em outras empresas são isolados e não aparecem aqui.
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditingUser(null);
+                            setName('');
+                            setUsername('');
+                            setPassword('');
+                            setRole('atendente');
+                            setPermissions(levelPermissions.atendente || DEFAULT_LEVEL_PERMISSIONS.atendente);
+                            setIsFormOpen(true);
+                          }}
+                          className="mt-4 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg text-xs transition cursor-pointer"
+                        >
+                          + Cadastrar Operador Exclusivo para {compName}
+                        </button>
+                      </div>
+                    );
+                  }
+
+                  return companyUsers.map(user => (
+                    <div key={user.id} className="p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 hover:bg-slate-50/20 transition duration-150" id={`user-row-${user.id}`}>
+                      <div className="flex items-center gap-3">
+                        <div className="p-2 bg-indigo-50 text-indigo-600 rounded-lg">
+                          <Shield className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <h4 className="text-sm font-semibold text-slate-800">{user.name}</h4>
+                          <div className="flex items-center gap-2 mt-0.5 text-xs text-slate-400">
+                            <span className="font-mono">User: {user.username}</span>
+                            <span>•</span>
+                            <span className="font-bold uppercase text-[9px] bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded border border-slate-200">
+                              {user.role}
+                            </span>
+                            <span>•</span>
+                            <span className="text-[10px] text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100 font-medium">
+                              Empresa: {compName}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <button
+                          id={`btn-edit-user-permissions-${user.id}`}
+                          type="button"
+                          onClick={() => {
+                            setEditingUser(user);
+                            setName(user.name);
+                            setUsername(user.username);
+                            setPassword('');
+                            setRole(user.role);
+                            setPermissions(user.permissions);
+                            setIsFormOpen(true);
+                          }}
+                          className="flex items-center gap-1.5 bg-slate-100 hover:bg-indigo-50 text-slate-700 hover:text-indigo-700 border border-slate-200 hover:border-indigo-200 px-3 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer"
+                        >
+                          <Shield className="w-3.5 h-3.5" />
+                          Editar Operador
+                        </button>
+
+                        <button
+                          id={`btn-delete-user-${user.id}`}
+                          type="button"
+                          onClick={() => handleDeleteUser(user.id, user.name)}
+                          className="flex items-center gap-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 px-3 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer"
+                          title="Excluir este operador da empresa"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                          Excluir
+                        </button>
+                      </div>
+                    </div>
+                  ));
+                })()}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* 4. COMPANY DETAILS VIEW */}
+      {adminSubView === 'company' && (
+        <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm space-y-6 animate-fade-in" id="company-settings-panel">
+          <div className="border-b border-slate-100 pb-4">
+            <h3 className="text-base font-bold text-slate-800 font-display flex items-center gap-2">
+              <Building2 className="w-5 h-5 text-indigo-600" />
+              Cadastro da Empresa ({compName})
+            </h3>
+            <p className="text-xs text-slate-500 mt-1">
+              Estes dados serão incorporados ao cabeçalho de orçamentos e Ordens de Serviço.
+            </p>
+          </div>
+
+          <form
+            id="form-company-settings"
+            onSubmit={(e) => {
+              e.preventDefault();
+              saveCurrentCompanyData();
+              setSaveModalData({
+                title: 'Dados da Empresa Salvos!',
+                message: `As configurações cadastrais da oficina "${compName}" foram salvas no sistema com sucesso.`,
+                targetType: 'company'
+              });
+              setShowSaveConfirmationModal(true);
+            }}
+            className="space-y-4 max-w-2xl"
+          >
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-1 sm:col-span-2">
+                <label className="text-xs font-bold text-slate-700 uppercase" htmlFor="comp-name-input">
+                  Nome da Empresa / Oficina *
+                </label>
+                <input
+                  id="comp-name-input"
+                  type="text"
+                  required
+                  value={compName}
+                  onChange={e => { setCompName(e.target.value); setHasUnsavedChanges(true); }}
+                  className="w-full text-xs p-2.5 border border-slate-200 rounded-lg bg-white font-medium"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-slate-700 uppercase" htmlFor="comp-cnpj-input">
+                  CNPJ *
+                </label>
+                <input
+                  id="comp-cnpj-input"
+                  type="text"
+                  required
+                  value={compCnpj}
+                  onChange={e => { setCompCnpj(e.target.value); setHasUnsavedChanges(true); }}
+                  className="w-full text-xs p-2.5 border border-slate-200 rounded-lg bg-white font-mono"
+                />
+              </div>
+
+              {/* Matriz / Filial (Estrutura de Rede de Lojas) */}
+              <div className="space-y-3 bg-indigo-50/50 p-4 rounded-xl border border-indigo-100 sm:col-span-2">
+                <label className="text-xs font-bold text-indigo-900 uppercase tracking-wider flex items-center gap-1.5">
+                  <Building2 className="w-4 h-4 text-indigo-600" />
+                  Estrutura de Rede / Tipo de Unidade (Matriz x Filial)
+                </label>
+                <p className="text-xs text-slate-600 leading-relaxed">
+                  Defina se esta unidade é uma <strong>Sede Principal (Matriz)</strong> ou uma <strong>Sucursal (Filial)</strong> vinculada a outra loja da rede.
+                </p>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                  <label 
+                    className={`p-3 rounded-xl border-2 flex items-center gap-3 cursor-pointer transition ${
+                      compType === 'matriz' 
+                        ? 'bg-white border-indigo-600 shadow-xs' 
+                        : 'bg-white/60 border-slate-200 text-slate-500 hover:border-slate-300'
+                    }`}
+                  >
+                    <input 
+                      type="radio" 
+                      name="compTypeRadio" 
+                      value="matriz" 
+                      checked={compType === 'matriz'} 
+                      onChange={() => {
+                        setCompType('matriz');
+                        setCompParentMatrizId('');
+                        setHasUnsavedChanges(true);
+                      }}
+                      className="h-4 w-4 text-indigo-600 border-slate-300 focus:ring-indigo-500 cursor-pointer"
+                    />
+                    <div>
+                      <span className="font-bold text-xs text-slate-800 block">🏢 Empresa Matriz (Sede)</span>
+                      <span className="text-[10px] text-slate-500 block">Sede principal. Será listada para vínculo de Filiais.</span>
+                    </div>
+                  </label>
+
+                  <label 
+                    className={`p-3 rounded-xl border-2 flex items-center gap-3 cursor-pointer transition ${
+                      compType === 'filial' 
+                        ? 'bg-white border-indigo-600 shadow-xs' 
+                        : 'bg-white/60 border-slate-200 text-slate-500 hover:border-slate-300'
+                    }`}
+                  >
+                    <input 
+                      type="radio" 
+                      name="compTypeRadio" 
+                      value="filial" 
+                      checked={compType === 'filial'} 
+                      onChange={() => {
+                        setCompType('filial');
+                        const firstMatriz = registeredCompaniesList.find(c => c.companyType === 'matriz' && c.id !== selectedCompanyId);
+                        if (firstMatriz) setCompParentMatrizId(firstMatriz.id);
+                        setHasUnsavedChanges(true);
+                      }}
+                      className="h-4 w-4 text-indigo-600 border-slate-300 focus:ring-indigo-500 cursor-pointer"
+                    />
+                    <div>
+                      <span className="font-bold text-xs text-slate-800 block">🏬 Empresa Filial (Sucursal)</span>
+                      <span className="text-[10px] text-slate-500 block">Loja dependente vinculada a uma Matriz.</span>
+                    </div>
+                  </label>
+                </div>
+
+                {compType === 'filial' && (
+                  <div className="pt-2 space-y-1.5 animate-fade-in">
+                    <label className="text-xs font-bold text-slate-700 uppercase" htmlFor="comp-matriz-select">
+                      Selecione a Empresa Matriz *
+                    </label>
+                    <select
+                      id="comp-matriz-select"
+                      value={compParentMatrizId}
+                      onChange={e => { setCompParentMatrizId(e.target.value); setHasUnsavedChanges(true); }}
+                      className="w-full text-xs p-2.5 border border-indigo-200 rounded-lg bg-white font-semibold text-slate-800 shadow-xs focus:ring-2 focus:ring-indigo-500"
+                      required={compType === 'filial'}
+                    >
+                      <option value="">-- Selecione uma Matriz cadastrada --</option>
+                      {registeredCompaniesList
+                        .filter(c => (c.companyType === 'matriz' || !c.companyType) && c.id !== selectedCompanyId)
+                        .map(m => (
+                          <option key={m.id} value={m.id}>
+                            🏢 {m.name} (CNPJ: {m.cnpj})
+                          </option>
+                        ))}
+                    </select>
+
+                    {registeredCompaniesList.filter(c => (c.companyType === 'matriz' || !c.companyType) && c.id !== selectedCompanyId).length === 0 && (
+                      <p className="text-[11px] text-amber-700 bg-amber-50 p-2 rounded border border-amber-200 font-medium">
+                        ⚠️ Nenhuma outra empresa cadastrada como "Matriz" no sistema. Selecione "Matriz" no cadastro das outras lojas para liberá-las aqui.
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-emerald-700 uppercase flex items-center gap-1" htmlFor="comp-whatsapp-input">
+                  <MessageSquare className="w-3.5 h-3.5" />
+                  WhatsApp Oficial da Oficina *
+                </label>
+                <input
+                  id="comp-whatsapp-input"
+                  type="text"
+                  required
+                  value={compWhatsapp}
+                  onChange={e => { setCompWhatsapp(e.target.value); setHasUnsavedChanges(true); }}
+                  className="w-full text-xs p-2.5 border border-emerald-300 rounded-lg bg-emerald-50/30 font-mono font-bold text-emerald-900"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-slate-700 uppercase" htmlFor="comp-phone-input">
+                  Telefone Fixo
+                </label>
+                <input
+                  id="comp-phone-input"
+                  type="text"
+                  value={compPhone}
+                  onChange={e => { setCompPhone(e.target.value); setHasUnsavedChanges(true); }}
+                  className="w-full text-xs p-2.5 border border-slate-200 rounded-lg bg-white"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-slate-700 uppercase" htmlFor="comp-email-input">
+                  E-mail de Atendimento *
+                </label>
+                <input
+                  id="comp-email-input"
+                  type="email"
+                  required
+                  value={compEmail}
+                  onChange={e => { setCompEmail(e.target.value); setHasUnsavedChanges(true); }}
+                  className="w-full text-xs p-2.5 border border-slate-200 rounded-lg bg-white"
+                />
+              </div>
+
+              <div className="space-y-1 sm:col-span-2">
+                <label className="text-xs font-bold text-slate-700 uppercase" htmlFor="comp-address-input">
+                  Endereço Completo
+                </label>
+                <input
+                  id="comp-address-input"
+                  type="text"
+                  value={compAddress}
+                  onChange={e => { setCompAddress(e.target.value); setHasUnsavedChanges(true); }}
+                  className="w-full text-xs p-2.5 border border-slate-200 rounded-lg bg-white"
+                />
+              </div>
+
+              {/* Responsável Legal Conforme Legislação */}
+              <div className="space-y-3 sm:col-span-2 bg-slate-50/80 p-4 rounded-xl border border-slate-200 mt-2">
+                <div className="flex items-center justify-between border-b border-slate-200/60 pb-2">
+                  <label className="text-xs font-bold text-slate-800 uppercase flex items-center gap-1.5">
+                    <UserCheck className="w-4 h-4 text-indigo-600" />
+                    Responsável Legal (Conforme Legislação Vigente)
+                  </label>
+                  <span className="text-[10px] bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded border border-indigo-200 font-semibold">
+                    Representante Legal / Sócio Administrador
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-slate-700 uppercase" htmlFor="comp-legal-rep-name">
+                      Nome Completo do Responsável Legal *
+                    </label>
+                    <input
+                      id="comp-legal-rep-name"
+                      type="text"
+                      placeholder="Ex: Rafael Marcari"
+                      value={compLegalRepName}
+                      onChange={e => { setCompLegalRepName(e.target.value); setHasUnsavedChanges(true); }}
+                      className="w-full text-xs p-2.5 border border-slate-200 rounded-lg bg-white font-medium"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-slate-700 uppercase" htmlFor="comp-legal-rep-cpf">
+                      CPF do Responsável Legal *
+                    </label>
+                    <input
+                      id="comp-legal-rep-cpf"
+                      type="text"
+                      placeholder="000.000.000-00"
+                      value={compLegalRepCpf}
+                      onChange={e => { setCompLegalRepCpf(e.target.value); setHasUnsavedChanges(true); }}
+                      className="w-full text-xs p-2.5 border border-slate-200 rounded-lg bg-white font-mono"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* MÓDULO DE CONTRATO DE PRESTAÇÃO DE SERVIÇOS SAAS & UPLOAD */}
+              <div className="space-y-4 sm:col-span-2 bg-gradient-to-br from-indigo-900 via-slate-900 to-indigo-950 p-5 rounded-2xl text-white shadow-md border border-indigo-700/40 mt-2">
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b border-indigo-700/50 pb-3">
+                  <div className="space-y-0.5">
+                    <div className="flex items-center gap-2">
+                      <FileText className="w-5 h-5 text-indigo-400" />
+                      <h4 className="text-sm font-bold text-white font-display tracking-wide">
+                        Contrato de Prestação de Serviços de Informática & SaaS
+                      </h4>
+                    </div>
+                    <p className="text-xs text-indigo-200/90 leading-relaxed">
+                      Conformidade legal com a <strong>Lei do Software (9.609/98)</strong>, <strong>Marco Civil da Internet (12.965/14)</strong> e <strong>LGPD (13.709/18)</strong>.
+                    </p>
+                  </div>
+
+                  <button
+                    id="btn-generate-legal-contract"
+                    type="button"
+                    onClick={() => setShowContractModal(true)}
+                    className="px-4 py-2 bg-indigo-500 hover:bg-indigo-400 text-white font-bold text-xs rounded-xl transition flex items-center gap-2 shadow-sm cursor-pointer shrink-0 border border-indigo-300/30"
+                  >
+                    <Printer className="w-4 h-4" />
+                    Gerar Contrato Completo
+                  </button>
+                </div>
+
+                {/* PAINEL DE STATUS DO CONTRATO ASSINADO */}
+                {compContractStatus === 'signed' || compSignedContractUrl ? (
+                  <div className="bg-emerald-50 border-2 border-emerald-500 p-4 rounded-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-slate-800 shadow-sm animate-fade-in">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2.5 bg-emerald-600 text-white rounded-xl shadow-xs shrink-0">
+                        <CheckCircle className="w-6 h-6" />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-black text-emerald-950 text-sm tracking-wide">
+                            Contrato assinado
+                          </span>
+                          <span className="bg-emerald-700 text-white text-[10px] font-extrabold px-2 py-0.5 rounded-full uppercase tracking-wider">
+                            HOMOLOGADO
+                          </span>
+                        </div>
+                        <p className="text-xs text-emerald-900 font-medium mt-0.5">
+                          Arquivo: <strong className="font-bold">{compSignedContractFileName || 'Contrato_Assinado.pdf'}</strong>
+                          {compSignedContractDate && ` • Enviado em: ${compSignedContractDate}`}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 shrink-0 w-full sm:w-auto">
+                      <button
+                        type="button"
+                        onClick={() => setShowSignedContractPreviewModal(true)}
+                        className="flex-1 sm:flex-initial px-3 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs rounded-lg transition flex items-center justify-center gap-1.5 shadow-xs cursor-pointer"
+                      >
+                        <Eye className="w-3.5 h-3.5" />
+                        Visualizar
+                      </button>
+
+                      {compSignedContractUrl && (
+                        <a
+                          href={compSignedContractUrl}
+                          download={compSignedContractFileName || `Contrato_Assinado_${compName}.pdf`}
+                          className="flex-1 sm:flex-initial px-3 py-1.5 bg-emerald-100 hover:bg-emerald-200 text-emerald-900 border border-emerald-300 font-bold text-xs rounded-lg transition flex items-center justify-center gap-1.5 shadow-xs cursor-pointer"
+                        >
+                          <Download className="w-3.5 h-3.5" />
+                          Baixar
+                        </a>
+                      )}
+
+                      <label className="flex-1 sm:flex-initial px-3 py-1.5 bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 font-bold text-xs rounded-lg transition cursor-pointer flex items-center justify-center gap-1.5 shadow-xs">
+                        <Upload className="w-3.5 h-3.5 text-indigo-600" />
+                        Substituir
+                        <input
+                          type="file"
+                          accept=".pdf,.png,.jpg,.jpeg,.doc,.docx"
+                          onChange={handleSignedContractFileUpload}
+                          className="hidden"
+                        />
+                      </label>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="bg-slate-800/80 border border-indigo-500/30 p-4 rounded-xl space-y-3">
+                    <div className="flex items-center justify-between flex-wrap gap-2">
+                      <div className="flex items-center gap-2">
+                        <AlertCircle className="w-4 h-4 text-amber-400" />
+                        <span className="text-xs font-bold text-amber-200">
+                          Contrato Pendente de Assinatura & Upload
+                        </span>
+                      </div>
+                      <span className="text-[10px] text-indigo-300 font-medium">
+                        Gere o contrato acima, colha a assinatura do responsável e faça o upload abaixo.
+                      </span>
+                    </div>
+
+                    <div className="flex flex-col sm:flex-row items-center gap-3 pt-1">
+                      <label className="w-full sm:w-auto px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl transition cursor-pointer flex items-center justify-center gap-2 shadow-sm">
+                        <Upload className="w-4 h-4" />
+                        Upload do Contrato Assinado (PDF ou Imagem)
+                        <input
+                          type="file"
+                          accept=".pdf,.png,.jpg,.jpeg,.doc,.docx"
+                          onChange={handleSignedContractFileUpload}
+                          className="hidden"
+                        />
+                      </label>
+                      <span className="text-[11px] text-slate-400">
+                        Formatos aceitos: PDF, PNG, JPG, DOCX (Máx. 15MB)
+                      </span>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Logo da Empresa (Canto Superior Esquerdo dos Documentos e Relatórios) */}
+              <div className="space-y-2 sm:col-span-2 bg-slate-50 p-4 rounded-xl border border-slate-200/90 mt-2">
+                <label className="text-xs font-bold text-slate-800 uppercase flex items-center justify-between">
+                  <span className="flex items-center gap-1.5">
+                    <Building2 className="w-4 h-4 text-indigo-600" />
+                    Logomarca / Imagem da Empresa (Canto Superior Esquerdo)
+                  </span>
+                  {compLogoUrl ? (
+                    <span className="text-[10px] text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 flex items-center gap-1">
+                      <CheckCircle className="w-3 h-3 text-emerald-600" /> Logo Ativo
+                    </span>
+                  ) : (
+                    <span className="text-[10px] text-slate-500 font-medium bg-slate-200 px-2 py-0.5 rounded">
+                      Sem Logo
+                    </span>
+                  )}
+                </label>
+
+                <div className="flex flex-col sm:flex-row items-center gap-4 pt-1">
+                  {/* Visualização de posicionamento do canto superior esquerdo */}
+                  <div className="w-48 h-20 bg-white border-2 border-dashed border-slate-300 rounded-lg p-2 flex items-center justify-center relative overflow-hidden group shrink-0 shadow-2xs">
+                    {compLogoUrl ? (
+                      <img 
+                        src={compLogoUrl} 
+                        alt="Logomarca da Empresa" 
+                        className="max-h-full max-w-full object-contain" 
+                      />
+                    ) : (
+                      <div className="text-center p-1">
+                        <Building2 className="w-7 h-7 text-slate-300 mx-auto mb-0.5" />
+                        <span className="text-[10px] text-slate-400 font-semibold block">Posição Superior Esquerda</span>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="flex-1 space-y-2 text-xs w-full">
+                    <p className="text-slate-600 leading-relaxed text-[11px]">
+                      A logomarca cadastrada aqui será exibida automaticamente no <strong>canto superior esquerdo</strong> de orçamentos, ordens de serviço e relatórios para clientes ou fornecedores enviados por WhatsApp/E-mail.
+                    </p>
+
+                    <div className="flex flex-wrap items-center gap-2">
+                      <label className="px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-lg transition cursor-pointer flex items-center gap-1.5 shadow-xs">
+                        <Plus className="w-3.5 h-3.5" />
+                        {compLogoUrl ? 'Alterar Logomarca' : 'Carregar Imagem / Logo'}
+                        <input 
+                          type="file" 
+                          accept="image/*" 
+                          onChange={handleLogoFileUpload} 
+                          className="hidden" 
+                        />
+                      </label>
+
+                      {compLogoUrl && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setCompLogoUrl('');
+                            setHasUnsavedChanges(true);
+                          }}
+                          className="px-3 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-semibold text-xs rounded-lg transition flex items-center gap-1 cursor-pointer"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                          Remover Logo
+                        </button>
+                      )}
+                    </div>
+
+                    <div>
+                      <input 
+                        type="text"
+                        value={compLogoUrl}
+                        onChange={e => { setCompLogoUrl(e.target.value); setHasUnsavedChanges(true); }}
+                        placeholder="Ou digite/cole a URL da imagem (Ex: https://...)"
+                        className="w-full text-[11px] p-2 border border-slate-200 rounded-lg bg-white font-mono text-slate-600"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="pt-2 flex justify-end">
+              <button
+                id="btn-save-company-info"
+                type="submit"
+                className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs px-6 py-2.5 rounded-xl transition flex items-center gap-2 shadow-xs cursor-pointer"
+              >
+                <Save className="w-4 h-4" />
+                Salvar Configurações da Empresa
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* MODAL DE ALERTAS DE ALTERAÇÕES NÃO SALVAS AO MUDAR EMPRESA NO COMBOBOX (REQUISITO EXPLÍCITO) */}
+      {showUnsavedChangesModal && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-4 animate-fade-in" id="unsaved-changes-modal">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-amber-200 space-y-5 animate-scale-up">
+            <div className="flex items-start gap-4">
+              <div className="p-3 bg-amber-100 text-amber-800 rounded-2xl shrink-0">
+                <AlertTriangle className="w-7 h-7" />
+              </div>
+              <div className="space-y-1">
+                <h3 className="text-lg font-bold text-slate-800 font-display">
+                  Alterações não salvas detectadas!
+                </h3>
+                <p className="text-xs text-slate-600 leading-relaxed font-sans">
+                  Você fez modificações nas configurações ou permissões da empresa <strong className="text-slate-800">{compName}</strong> que ainda não foram salvas. O que deseja fazer antes de trocar de empresa?
+                </p>
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-2 pt-2">
+              <button
+                id="btn-unsaved-save-and-switch"
+                type="button"
+                onClick={handleConfirmSaveAndSwitch}
+                className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs py-3 px-4 rounded-xl transition shadow-xs cursor-pointer flex items-center justify-center gap-2"
+              >
+                <Save className="w-4 h-4" /> Salvar Alterações e Mudar de Empresa
+              </button>
+
+              <button
+                id="btn-unsaved-discard-and-switch"
+                type="button"
+                onClick={handleConfirmDiscardAndSwitch}
+                className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs py-2.5 px-4 rounded-xl transition cursor-pointer flex items-center justify-center gap-2"
+              >
+                Não Salvar (Descartar Alterações)
+              </button>
+
+              <button
+                id="btn-unsaved-cancel-switch"
+                type="button"
+                onClick={handleCancelCompanySwitch}
+                className="w-full bg-white hover:bg-slate-50 text-slate-500 border border-slate-200 font-medium text-xs py-2 px-4 rounded-xl transition cursor-pointer flex items-center justify-center gap-2"
+              >
+                Cancelar (Permanecer na Empresa Atual)
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL DE CADASTRO DE NOVA EMPRESA (TENANT) */}
+      {showNewCompanyModal && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-4 animate-fade-in" id="new-company-modal">
+          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-slate-100 space-y-5 animate-scale-up">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <h3 className="text-base font-bold text-slate-800 font-display flex items-center gap-2">
+                <Building2 className="w-5 h-5 text-indigo-600" />
+                Cadastrar Nova Empresa (Tenant SaaS)
+              </h3>
+              <button onClick={() => setShowNewCompanyModal(false)} className="text-slate-400 hover:text-slate-600 p-1 rounded-lg">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateNewCompany} className="space-y-4">
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-slate-700 uppercase" htmlFor="new-comp-name">
+                  Razão Social / Nome Fantasia *
+                </label>
+                <input
+                  id="new-comp-name"
+                  type="text"
+                  required
+                  value={newCompName}
+                  onChange={e => setNewCompName(e.target.value)}
+                  placeholder="Ex: Auto Center Speed Motors LTDA"
+                  className="w-full text-xs p-2.5 border border-slate-200 rounded-lg bg-white"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-700 uppercase" htmlFor="new-comp-cnpj">
+                    CNPJ *
+                  </label>
+                  <input
+                    id="new-comp-cnpj"
+                    type="text"
+                    required
+                    value={newCompCnpj}
+                    onChange={e => setNewCompCnpj(e.target.value)}
+                    placeholder="00.000.000/0001-00"
+                    className="w-full text-xs p-2.5 border border-slate-200 rounded-lg bg-white font-mono"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-700 uppercase" htmlFor="new-comp-fee">
+                    Mensalidade (R$) *
+                  </label>
+                  <input
+                    id="new-comp-fee"
+                    type="number"
+                    step="0.01"
+                    required
+                    value={newCompFee}
+                    onChange={e => setNewCompFee(Number(e.target.value))}
+                    className="w-full text-xs p-2.5 border border-slate-200 rounded-lg bg-white font-mono font-bold"
+                  />
+                </div>
+              </div>
+
+              {/* Matriz ou Filial */}
+              <div className="space-y-2 bg-indigo-50/60 p-3 rounded-xl border border-indigo-100">
+                <label className="text-xs font-bold text-indigo-900 uppercase tracking-wider block">
+                  Tipo de Empresa (Estrutura da Rede)
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <label className={`p-2 rounded-lg border flex items-center gap-2 cursor-pointer text-xs font-semibold ${newCompType === 'matriz' ? 'bg-white border-indigo-600 text-indigo-900' : 'bg-slate-50 text-slate-600'}`}>
+                    <input 
+                      type="radio" 
+                      name="newCompTypeRadio" 
+                      checked={newCompType === 'matriz'} 
+                      onChange={() => { setNewCompType('matriz'); setNewCompParentMatrizId(''); }} 
+                    />
+                    🏢 Matriz (Sede)
+                  </label>
+
+                  <label className={`p-2 rounded-lg border flex items-center gap-2 cursor-pointer text-xs font-semibold ${newCompType === 'filial' ? 'bg-white border-indigo-600 text-indigo-900' : 'bg-slate-50 text-slate-600'}`}>
+                    <input 
+                      type="radio" 
+                      name="newCompTypeRadio" 
+                      checked={newCompType === 'filial'} 
+                      onChange={() => { 
+                        setNewCompType('filial'); 
+                        const first = registeredCompaniesList.find(c => c.companyType === 'matriz' || !c.companyType);
+                        if (first) setNewCompParentMatrizId(first.id);
+                      }} 
+                    />
+                    🏬 Filial (Sucursal)
+                  </label>
+                </div>
+
+                {newCompType === 'filial' && (
+                  <div className="pt-1 space-y-1">
+                    <label className="text-[11px] font-bold text-slate-700 uppercase" htmlFor="new-comp-parent-matriz">
+                      Vincular a qual Matriz? *
+                    </label>
+                    <select
+                      id="new-comp-parent-matriz"
+                      value={newCompParentMatrizId}
+                      onChange={e => setNewCompParentMatrizId(e.target.value)}
+                      className="w-full text-xs p-2 border border-indigo-200 rounded-lg bg-white font-semibold"
+                      required={newCompType === 'filial'}
+                    >
+                      <option value="">-- Selecione a Matriz da rede --</option>
+                      {registeredCompaniesList
+                        .filter(c => c.companyType === 'matriz' || !c.companyType)
+                        .map(m => (
+                          <option key={m.id} value={m.id}>
+                            🏢 {m.name}
+                          </option>
+                        ))}
+                    </select>
+                  </div>
+                )}
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-emerald-700 uppercase" htmlFor="new-comp-whatsapp">
+                    WhatsApp Comercial
+                  </label>
+                  <input
+                    id="new-comp-whatsapp"
+                    type="text"
+                    value={newCompWhatsapp}
+                    onChange={e => setNewCompWhatsapp(e.target.value)}
+                    placeholder="11988887777"
+                    className="w-full text-xs p-2.5 border border-slate-200 rounded-lg bg-white font-mono"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-700 uppercase" htmlFor="new-comp-email">
+                    E-mail Principal
+                  </label>
+                  <input
+                    id="new-comp-email"
+                    type="text"
+                    value={newCompEmail}
+                    onChange={e => setNewCompEmail(e.target.value)}
+                    placeholder="contato@empresa.com.br"
+                    className="w-full text-xs p-2.5 border border-slate-200 rounded-lg bg-white"
+                  />
+                </div>
+              </div>
+
+              {/* Responsável Legal da Nova Empresa */}
+              <div className="space-y-2 bg-slate-50 p-3 rounded-xl border border-slate-200">
+                <label className="text-xs font-bold text-slate-800 uppercase flex items-center gap-1.5">
+                  <UserCheck className="w-4 h-4 text-indigo-600" />
+                  Responsável Legal (Conforme Legislação)
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-slate-600 uppercase" htmlFor="new-comp-legal-name">
+                      Nome do Responsável
+                    </label>
+                    <input
+                      id="new-comp-legal-name"
+                      type="text"
+                      placeholder="Ex: Rafael Marcari"
+                      value={newCompLegalRepName}
+                      onChange={e => setNewCompLegalRepName(e.target.value)}
+                      className="w-full text-xs p-2 border border-slate-200 rounded-lg bg-white"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-slate-600 uppercase" htmlFor="new-comp-legal-cpf">
+                      CPF do Responsável
+                    </label>
+                    <input
+                      id="new-comp-legal-cpf"
+                      type="text"
+                      placeholder="000.000.000-00"
+                      value={newCompLegalRepCpf}
+                      onChange={e => setNewCompLegalRepCpf(e.target.value)}
+                      className="w-full text-xs p-2 border border-slate-200 rounded-lg bg-white font-mono"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="pt-3 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowNewCompanyModal(false)}
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs rounded-xl"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  id="btn-save-new-company-submit"
+                  className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl flex items-center gap-1.5"
+                >
+                  <Check className="w-4 h-4" /> Cadastrar Empresa
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* CONFIRMATION MODAL AFTER SAVING */}
+      {showSaveConfirmationModal && saveModalData && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-4 animate-fade-in" id="save-confirmation-modal">
+          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-slate-100 space-y-5 animate-scale-up">
+            <div className="flex items-start gap-4">
+              <div className="p-3 bg-emerald-100 text-emerald-700 rounded-2xl shrink-0">
+                <CheckCircle className="w-7 h-7" />
+              </div>
+              <div className="space-y-1">
+                <h3 className="text-lg font-bold text-slate-800 font-display">
+                  {saveModalData.title}
+                </h3>
+                <p className="text-xs text-slate-500 leading-relaxed font-sans">
+                  {saveModalData.message}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex justify-end pt-2">
+              <button
+                id="btn-close-save-confirmation-modal"
+                type="button"
+                onClick={() => {
+                  setShowSaveConfirmationModal(false);
+                  setSaveModalData(null);
+                }}
+                className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs px-6 py-2.5 rounded-xl transition shadow-xs cursor-pointer font-sans flex items-center gap-2"
+              >
+                <Check className="w-4 h-4" /> Entendido / Concluir
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL DE CONTRATO DE PRESTAÇÃO DE SERVIÇOS DE INFORMÁTICA / SAAS */}
+      {showContractModal && (
+        <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-xs z-50 flex items-center justify-center p-2 sm:p-4 overflow-y-auto animate-fade-in" id="contract-view-modal">
+          <div className="bg-white rounded-2xl max-w-4xl w-full p-6 sm:p-8 shadow-2xl border border-slate-200 space-y-6 animate-scale-up my-auto max-h-[92vh] flex flex-col">
+            
+            {/* Header / Actions bar */}
+            <div className="flex items-center justify-between border-b border-slate-200 pb-4 shrink-0 print:hidden">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 bg-indigo-600 text-white rounded-xl shadow-xs">
+                  <FileText className="w-6 h-6" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-800 font-display">
+                    Contrato de Licenciamento & Prestação de Serviços SaaS
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    Gerado para: <strong className="text-slate-800">{compName}</strong> (CNPJ: {compCnpj})
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handlePrintContract}
+                  className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl transition flex items-center gap-1.5 shadow-xs cursor-pointer"
+                >
+                  <Printer className="w-4 h-4" />
+                  Imprimir / Baixar PDF
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowContractModal(false)}
+                  className="text-slate-400 hover:text-slate-600 p-2 rounded-xl hover:bg-slate-100 transition"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+
+            {/* Contract Body Document View (Printable) */}
+            <div className="flex-1 overflow-y-auto pr-2 space-y-6 text-slate-700 text-xs leading-relaxed font-sans bg-slate-50/50 p-6 rounded-xl border border-slate-200 print:bg-white print:p-0 print:border-none">
+              
+              {/* Document Header */}
+              <div className="text-center border-b-2 border-slate-800 pb-4 space-y-1">
+                <div className="flex items-center justify-center gap-2 mb-2">
+                  <Building2 className="w-8 h-8 text-indigo-700" />
+                  <span className="font-extrabold text-slate-900 text-lg tracking-wider font-display uppercase">MotorDesk Systems</span>
+                </div>
+                <h2 className="text-sm font-black text-slate-900 uppercase tracking-wide font-display">
+                  CONTRATO DE PRESTAÇÃO DE SERVIÇOS DE TECNOLOGIA DA INFORMAÇÃO, LICENCIAMENTO DE SOFTWARE E SUPORTE TÉCNICO (SaaS)
+                </h2>
+                <p className="text-[11px] text-slate-600 font-medium">
+                  Instrumento Particular de Contratação Eletrônica e Licença de Uso de Software
+                </p>
+              </div>
+
+              {/* Fundamentação Legal Banner */}
+              <div className="bg-indigo-50/90 border border-indigo-200 p-3.5 rounded-xl space-y-1.5">
+                <span className="text-[11px] font-extrabold text-indigo-950 uppercase tracking-wider flex items-center gap-1.5">
+                  <Shield className="w-3.5 h-3.5 text-indigo-600" />
+                  LEGISLAÇÃO APLICÁVEL E MARCO REGULATÓRIO
+                </span>
+                <p className="text-[11px] text-indigo-900 leading-normal">
+                  Este contrato é elaborado e regido rigorosamente em conformidade com as leis brasileiras vigentes de tecnologia da informação e prestação de serviços:
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 pt-1 text-[10.5px]">
+                  <div className="bg-white p-2 rounded border border-indigo-100 font-medium text-slate-800">
+                    📜 <strong>Lei do Software (Lei nº 9.609/1998):</strong> Proteção da propriedade intelectual de programa de computador e licenciamento SaaS.
+                  </div>
+                  <div className="bg-white p-2 rounded border border-indigo-100 font-medium text-slate-800">
+                    🌐 <strong>Marco Civil da Internet (Lei nº 12.965/2014):</strong> Direitos, garantias, deveres e guarda responsável de registros na web.
+                  </div>
+                  <div className="bg-white p-2 rounded border border-indigo-100 font-medium text-slate-800">
+                    🔒 <strong>LGPD (Lei nº 13.709/2018):</strong> Proteção, confidencialidade e privacidade dos dados de clientes, veículos e ordens de serviço.
+                  </div>
+                  <div className="bg-white p-2 rounded border border-indigo-100 font-medium text-slate-800">
+                    ⚖️ <strong>Código Civil (Lei nº 10.406/2002):</strong> Artigos 593 a 609 referentes às Regras de Prestação de Serviços.
+                  </div>
+                </div>
+              </div>
+
+              {/* Das Partes */}
+              <div className="space-y-2">
+                <h3 className="font-bold text-slate-900 uppercase text-xs border-b border-slate-300 pb-1">
+                  1. DAS PARTES CONTRATANTES
+                </h3>
+                <p>
+                  <strong>CONTRATADA:</strong> <strong>MotorDesk Soluções em Tecnologia e Software LTDA</strong>, pessoa jurídica de direito privado, inscrita no CNPJ/MF sob o nº 12.345.678/0001-90, com sede na Av. das Nações Unidas, 1200 - Pinheiros, São Paulo - SP.
+                </p>
+                <p>
+                  <strong>CONTRATANTE:</strong> <strong>{compName || 'NÃO INFORMADA'}</strong>, inscrita no CNPJ/MF sob o nº <strong>{compCnpj || 'NÃO INFORMADO'}</strong>, com sede estabelecida no endereço <strong>{compAddress || 'NÃO INFORMADO'}</strong>, representada neste ato por seu Responsável Legal <strong>{compLegalRepName || 'NÃO INFORMADO'}</strong>, portador(a) do CPF nº <strong>{compLegalRepCpf || 'NÃO INFORMADO'}</strong>, doravante denominada simplesmente CONTRATANTE.
+                </p>
+              </div>
+
+              {/* Cláusula Primeira */}
+              <div className="space-y-1.5">
+                <h3 className="font-bold text-slate-900 uppercase text-xs border-b border-slate-300 pb-1">
+                  CLÁUSULA PRIMEIRA - DO OBJETO E LICENCIAMENTO SAAS
+                </h3>
+                <p>
+                  1.1. O presente contrato tem por objeto o licenciamento de uso não exclusivo, temporário e intransferível do sistema de gestão de oficinas mecânicas <strong>MotorDesk</strong> no modelo SaaS (Software as a Service), incluindo acesso aos módulos de Clientes, Veículos, Orçamentos, Ordens de Serviço, Estoque, Peças, Serviços, Financeiro, Emissão de Documentos e Gestão de Filiais.
+                </p>
+              </div>
+
+              {/* Cláusula Segunda */}
+              <div className="space-y-1.5">
+                <h3 className="font-bold text-slate-900 uppercase text-xs border-b border-slate-300 pb-1">
+                  CLÁUSULA SEGUNDA - DA DISPONIBILIDADE E SUPORTE TÉCNICO (SLA)
+                </h3>
+                <p>
+                  2.1. A CONTRATADA garante o índice de disponibilidade do sistema (uptime) de <strong>99,5% (noventa e nove vírgula cinco por cento)</strong> ao mês, ressalvadas as janelas de manutenção preventiva devidamente comunicadas com antecedência.
+                </p>
+                <p>
+                  2.2. O suporte técnico relativo ao manuseio, esclarecimento de dúvidas e correção de inconsistências será prestado nos dias úteis em horário comercial via canais oficiais de atendimento da CONTRATADA.
+                </p>
+              </div>
+
+              {/* Cláusula Terceira */}
+              <div className="space-y-1.5">
+                <h3 className="font-bold text-slate-900 uppercase text-xs border-b border-slate-300 pb-1">
+                  CLÁUSULA TERCEIRA - DA SEGURANÇA E PROTEÇÃO DE DADOS (LGPD)
+                </h3>
+                <p>
+                  3.1. Em observância à <strong>Lei Geral de Proteção de Dados (Lei nº 13.709/2018 - LGPD)</strong>, a CONTRATADA declara que adota medidas técnicas, organizacionais e de criptografia para proteger os dados armazenados contra acessos não autorizados, vazamentos ou perda acidental.
+                </p>
+                <p>
+                  3.2. A CONTRATANTE declara-se titular dos dados operacionais e de seus clientes inseridos no sistema, cabendo à CONTRATADA apenas o papel de operadora de dados sob as diretrizes legais.
+                </p>
+              </div>
+
+              {/* Cláusula Quarta */}
+              <div className="space-y-1.5">
+                <h3 className="font-bold text-slate-900 uppercase text-xs border-b border-slate-300 pb-1">
+                  CLÁUSULA QUARTA - DOS VALORES E CONDIÇÕES DE PAGAMENTO
+                </h3>
+                <p>
+                  4.1. Pela prestação dos serviços e licença de uso acordada, a CONTRATANTE pagará à CONTRATADA a mensalidade no valor ajustado de <strong>R$ {subMonthlyFee.toFixed(2)} ({subMonthlyFee.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })})</strong>.
+                </p>
+                <p>
+                  4.2. O inadimplemento da mensalidade por prazo superior a 15 (quinze) dias poderá acarretar a suspensão temporária dos acessos operacionais ao sistema até a devida regularização.
+                </p>
+              </div>
+
+              {/* Cláusula Quinta */}
+              <div className="space-y-1.5">
+                <h3 className="font-bold text-slate-900 uppercase text-xs border-b border-slate-300 pb-1">
+                  CLÁUSULA QUINTA - DA VIGÊNCIA E RESCISÃO
+                </h3>
+                <p>
+                  5.1. Este contrato entra em vigor na data da sua assinatura por prazo indeterminado, podendo ser rescindido por qualquer uma das partes mediante aviso prévio por escrito de no mínimo 30 (trinta) dias, sem incidência de multa rescisória.
+                </p>
+              </div>
+
+              {/* Assinaturas */}
+              <div className="pt-8 space-y-6">
+                <p className="text-center font-medium">
+                  E por estarem assim justas e contratadas, as partes firmam o presente instrumento em formato digital para todos os fins de direito.
+                </p>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-8 pt-4">
+                  <div className="text-center space-y-2">
+                    <div className="border-b border-slate-800 w-3/4 mx-auto pb-1">
+                      <span className="font-bold text-slate-900 block">MotorDesk Soluções em Tecnologia LTDA</span>
+                    </div>
+                    <span className="text-[10px] text-slate-500 font-semibold block">CONTRATADA (Provedora do Sistema)</span>
+                    <span className="text-[10px] font-mono text-slate-400 block">CNPJ: 12.345.678/0001-90</span>
+                  </div>
+
+                  <div className="text-center space-y-2">
+                    <div className="border-b border-slate-800 w-3/4 mx-auto pb-1">
+                      <span className="font-bold text-slate-900 block">{compName || '__________________________'}</span>
+                    </div>
+                    <span className="text-[10px] text-slate-700 font-bold block">
+                      Responsável Legal: {compLegalRepName || '__________________________'}
+                    </span>
+                    <span className="text-[10px] font-mono text-slate-600 block">
+                      CPF: {compLegalRepCpf || '__________________________'} | CNPJ: {compCnpj || '__________________________'}
+                    </span>
+                    <span className="text-[10px] text-slate-500 font-semibold block">CONTRATANTE</span>
+                  </div>
+                </div>
+              </div>
+
+            </div>
+
+            {/* Modal Footer */}
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2 border-t border-slate-200 shrink-0 print:hidden">
+              <span className="text-[11px] text-slate-500 font-medium">
+                💡 Após assinar este contrato, faça o upload do arquivo assinado na tela de cadastro da empresa.
+              </span>
+
+              <div className="flex items-center gap-2 w-full sm:w-auto">
+                <button
+                  type="button"
+                  onClick={handlePrintContract}
+                  className="flex-1 sm:flex-initial px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl transition flex items-center justify-center gap-1.5 shadow-xs cursor-pointer"
+                >
+                  <Printer className="w-4 h-4" /> Imprimir / Salvar PDF
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowContractModal(false)}
+                  className="flex-1 sm:flex-initial px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition cursor-pointer"
+                >
+                  Fechar
+                </button>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      )}
+
+      {/* MODAL PARA VISUALIZAR CONTRATO ASSINADO */}
+      {showSignedContractPreviewModal && (
+        <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-xs z-50 flex items-center justify-center p-4 animate-fade-in" id="signed-contract-preview-modal">
+          <div className="bg-white rounded-2xl max-w-3xl w-full p-6 shadow-2xl border border-slate-100 space-y-5 animate-scale-up max-h-[90vh] flex flex-col">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-emerald-100 text-emerald-800 rounded-xl">
+                  <CheckCircle className="w-6 h-6" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-800 font-display flex items-center gap-2">
+                    Contrato Assinado - {compName}
+                  </h3>
+                  <p className="text-xs text-emerald-800 font-semibold">
+                    Contrato Assinado e Homologado no Sistema
+                  </p>
+                </div>
+              </div>
+              <button onClick={() => setShowSignedContractPreviewModal(false)} className="text-slate-400 hover:text-slate-600 p-1 rounded-lg">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto bg-slate-900 rounded-xl p-4 flex items-center justify-center min-h-[350px]">
+              {compSignedContractUrl ? (
+                compSignedContractUrl.startsWith('data:image/') || compSignedContractFileName?.match(/\.(png|jpg|jpeg)$/i) ? (
+                  <img src={compSignedContractUrl} alt="Contrato Assinado Anexado" className="max-h-[60vh] object-contain rounded-lg border border-slate-700" />
+                ) : (
+                  <iframe src={compSignedContractUrl} className="w-full h-[60vh] rounded-lg border border-slate-700" title="Contrato Assinado" />
+                )
+              ) : (
+                <div className="text-center text-slate-400 space-y-2 p-6">
+                  <FileText className="w-12 h-12 text-slate-600 mx-auto" />
+                  <p className="text-xs font-semibold">Documento de contrato anexado ao cadastro da empresa.</p>
+                  <p className="text-[11px] text-slate-500">Arquivo: {compSignedContractFileName || 'Contrato_Assinado.pdf'}</p>
+                </div>
+              )}
+            </div>
+
+            <div className="flex justify-between items-center pt-2 border-t border-slate-100">
+              <span className="text-xs text-slate-500 font-medium">
+                Enviado em: <strong>{compSignedContractDate || 'Data não especificada'}</strong>
+              </span>
+
+              <div className="flex items-center gap-2">
+                {compSignedContractUrl && (
+                  <a
+                    href={compSignedContractUrl}
+                    download={compSignedContractFileName || `Contrato_Assinado_${compName}.pdf`}
+                    className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl flex items-center gap-1.5 shadow-xs"
+                  >
+                    <Download className="w-4 h-4" /> Download do Arquivo
+                  </a>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setShowSignedContractPreviewModal(false)}
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs rounded-xl"
+                >
+                  Fechar
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
