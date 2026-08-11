@@ -56,11 +56,29 @@ export const getDbInstance = () => {
   }
 };
 
+export const ensureAppStoreTableExists = async (): Promise<boolean> => {
+  try {
+    const pool = createPool();
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS app_store (
+        id TEXT PRIMARY KEY,
+        data JSONB NOT NULL,
+        updated_at TIMESTAMP DEFAULT NOW() NOT NULL
+      );
+    `);
+    return true;
+  } catch (err: any) {
+    console.warn("Warning creating app_store table in Cloud SQL:", err.message);
+    return false;
+  }
+};
+
 export const checkDatabaseHealth = async (): Promise<{ connected: boolean; database?: string; error?: string }> => {
   try {
     const pool = createPool();
     const result = await pool.query("SELECT current_database(), current_user, version();");
     const dbName = result.rows[0]?.current_database || process.env.SQL_DB_NAME || 'cloud_sql_production_database';
+    await ensureAppStoreTableExists();
     return { connected: true, database: dbName };
   } catch (err: any) {
     console.error("Database health check failed:", err.message);

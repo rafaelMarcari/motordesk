@@ -90,24 +90,19 @@ export class ApiPostgresProvider implements IDataProvider {
       if (res.status === 200 && res.data) {
         const body = res.data;
         if (body.success && body.data) {
-          // Cloud SQL PostgreSQL é a ÚNICA fonte de verdade oficial.
-          // Atualiza o cache do LocalStorage APENAS após resposta confirmada do servidor.
+          // Servidor/Cloud SQL é a ÚNICA fonte de verdade oficial.
+          // Sincroniza LocalStorage apenas como cache espelho.
           try {
             localStorage.setItem(STORAGE_KEY, JSON.stringify(body.data));
           } catch (e) {
-            console.warn("[ApiPostgresProvider] Não foi possível atualizar cache de leitura no LocalStorage:", e);
+            console.warn("[ApiPostgresProvider] Não foi possível atualizar cache no LocalStorage:", e);
           }
           return body.data;
-        } else if (body.success && body.data === null) {
-          // Banco conectado no PostgreSQL, porém sem registros ainda: semeia estrutura inicial no PostgreSQL
-          const defaultDb = this.getDefaultDb();
-          await this.saveDatabase(defaultDb);
-          return defaultDb;
         }
       }
-      throw new Error(res.data?.error || res.data?.message || 'Resposta inválida da API do PostgreSQL Cloud SQL');
+      throw new Error(res.data?.error || res.data?.message || 'Resposta inválida da API do Banco Centralizado');
     } catch (e: any) {
-      console.warn("[ApiPostgresProvider] Não foi possível obter dados remotos do PostgreSQL Cloud SQL, usando cache local / dados padrão:", e?.response?.data || e.message);
+      console.warn("[ApiPostgresProvider] Não foi possível obter dados do servidor backend, tentando ler cache local:", e?.response?.data || e.message);
 
       const cached = localStorage.getItem(STORAGE_KEY);
       if (cached) {
