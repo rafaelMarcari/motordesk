@@ -1258,19 +1258,38 @@ export default function App() {
     );
   }
 
+  const activeCompanyObj = (db?.registeredCompanies || []).find(c => c.id === activeCompanyId) || db?.companyInfo;
+  const activeCompanyModules = activeCompanyObj?.globalModules || globalModules;
+
   const isModuleLocked = (permissionKey: string) => {
-    return globalModules[permissionKey] === false && currentUser?.role !== 'admin';
+    if (permissionKey === 'accessUserManagement' || permissionKey === 'accessDashboard') return false;
+    return activeCompanyModules[permissionKey as keyof typeof activeCompanyModules] === false;
   };
 
   const renderLockedScreen = () => (
     <div className="flex flex-col items-center justify-center p-12 text-center bg-white rounded-2xl border border-slate-200/80 my-12 animate-fade-in shadow-xs" id="locked-module-screen">
-      <div className="w-12 h-12 bg-rose-50 border border-rose-100 text-rose-500 rounded-full flex items-center justify-center text-xl mb-4 shadow-inner font-bold">
+      <div className="w-14 h-14 bg-amber-50 border border-amber-200 text-amber-600 rounded-2xl flex items-center justify-center text-2xl mb-4 shadow-xs font-bold">
         🔒
       </div>
-      <h2 className="text-base font-semibold text-slate-800 font-display">Módulo Bloqueado pela Administração</h2>
+      <h2 className="text-base font-bold text-slate-800 font-display">Módulo Não Contratado no Plano SaaS</h2>
       <p className="text-xs text-slate-500 max-w-md mt-1 leading-relaxed">
-        Este módulo foi suspenso temporariamente pela gerência administrativa da oficina. Por favor, solicite a liberação ao gerente caso necessite realizar operações nesta seção.
+        Este módulo funcional não consta na relação de módulos liberados no contrato de prestação de serviços da empresa <strong className="text-slate-700">{activeCompanyObj?.name || 'sua empresa'}</strong>.
       </p>
+      <div className="mt-4 p-3.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-600 max-w-md text-left space-y-1">
+        <p className="font-bold text-slate-800">📄 Liberação do Módulo no Sistema e no Contrato:</p>
+        <p className="text-[11px] text-slate-500">
+          Para ativar esta funcionalidade na aplicação, o responsável legal pode solicitar a inclusão do módulo ou, se você for administrador, acesse a tela de <strong>"Gestão Multi-Empresa & Módulos SaaS"</strong> para emitir o <strong>Termo Aditivo</strong> de contratação.
+        </p>
+      </div>
+      {currentUser?.role === 'admin' && (
+        <button
+          type="button"
+          onClick={() => setActiveView('users')}
+          className="mt-4 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl transition flex items-center gap-1.5 shadow-xs cursor-pointer"
+        >
+          Acessar Gestão de Módulos & Termos Aditivos
+        </button>
+      )}
     </div>
   );
 
@@ -1338,7 +1357,7 @@ export default function App() {
                   <LayoutDashboard className="w-4 h-4 shrink-0" />
                   {(!isSidebarCollapsed || isSidebarHovered) && <span className="truncate">Dashboard KPI</span>}
                 </div>
-                {(!isSidebarCollapsed || isSidebarHovered) && globalModules.accessDashboard === false && (
+                {(!isSidebarCollapsed || isSidebarHovered) && activeCompanyModules.accessDashboard === false && (
                   <span className="text-[9px] bg-amber-500/10 text-amber-500 px-1 py-0.2 rounded border border-amber-500/20 font-mono">🔒</span>
                 )}
               </button>
@@ -1360,7 +1379,7 @@ export default function App() {
                   <Users className="w-4 h-4 shrink-0" />
                   {(!isSidebarCollapsed || isSidebarHovered) && <span className="truncate">Clientes</span>}
                 </div>
-                {(!isSidebarCollapsed || isSidebarHovered) && globalModules.accessClients === false && (
+                {(!isSidebarCollapsed || isSidebarHovered) && activeCompanyModules.accessClients === false && (
                   <span className="text-[9px] bg-amber-500/10 text-amber-500 px-1 py-0.2 rounded border border-amber-500/20 font-mono">🔒</span>
                 )}
               </button>
@@ -1382,7 +1401,7 @@ export default function App() {
                   <Car className="w-4 h-4 shrink-0" />
                   {(!isSidebarCollapsed || isSidebarHovered) && <span className="truncate">Veículos</span>}
                 </div>
-                {(!isSidebarCollapsed || isSidebarHovered) && globalModules.accessVehicles === false && (
+                {(!isSidebarCollapsed || isSidebarHovered) && activeCompanyModules.accessVehicles === false && (
                   <span className="text-[9px] bg-amber-500/10 text-amber-500 px-1 py-0.2 rounded border border-amber-500/20 font-mono">🔒</span>
                 )}
               </button>
@@ -1404,7 +1423,7 @@ export default function App() {
                   <Package className="w-4 h-4 shrink-0" />
                   {(!isSidebarCollapsed || isSidebarHovered) && <span className="truncate">Estoque & NFe</span>}
                 </div>
-                {(!isSidebarCollapsed || isSidebarHovered) && globalModules.accessParts === false && (
+                {(!isSidebarCollapsed || isSidebarHovered) && activeCompanyModules.accessParts === false && (
                   <span className="text-[9px] bg-amber-500/10 text-amber-500 px-1 py-0.2 rounded border border-amber-500/20 font-mono">🔒</span>
                 )}
               </button>
@@ -1426,7 +1445,7 @@ export default function App() {
                   <ShoppingBag className="w-4 h-4 shrink-0" />
                   {(!isSidebarCollapsed || isSidebarHovered) && <span className="truncate">Cotação & Fornecedores</span>}
                 </div>
-                {(!isSidebarCollapsed || isSidebarHovered) && globalModules.accessQuotations === false && (
+                {(!isSidebarCollapsed || isSidebarHovered) && activeCompanyModules.accessQuotations === false && (
                   <span className="text-[9px] bg-amber-500/10 text-amber-500 px-1 py-0.2 rounded border border-amber-500/20 font-mono">🔒</span>
                 )}
               </button>
@@ -1539,7 +1558,7 @@ export default function App() {
                   <Wrench className="w-4 h-4 shrink-0" />
                   {(!isSidebarCollapsed || isSidebarHovered) && <span className="truncate">Serviços / Mão de Obra</span>}
                 </div>
-                {(!isSidebarCollapsed || isSidebarHovered) && globalModules.accessServices === false && (
+                {(!isSidebarCollapsed || isSidebarHovered) && activeCompanyModules.accessServices === false && (
                   <span className="text-[9px] bg-amber-500/10 text-amber-500 px-1 py-0.2 rounded border border-amber-500/20 font-mono">🔒</span>
                 )}
               </button>
@@ -1561,7 +1580,7 @@ export default function App() {
                   <FileSpreadsheet className="w-4 h-4 shrink-0" />
                   {(!isSidebarCollapsed || isSidebarHovered) && <span className="truncate">Orçamentos Builder</span>}
                 </div>
-                {(!isSidebarCollapsed || isSidebarHovered) && globalModules.accessBudgets === false && (
+                {(!isSidebarCollapsed || isSidebarHovered) && activeCompanyModules.accessBudgets === false && (
                   <span className="text-[9px] bg-amber-500/10 text-amber-500 px-1 py-0.2 rounded border border-amber-500/20 font-mono">🔒</span>
                 )}
               </button>
@@ -1583,7 +1602,7 @@ export default function App() {
                   <ClipboardList className="w-4 h-4 shrink-0" />
                   {(!isSidebarCollapsed || isSidebarHovered) && <span className="truncate">Ordens de Serviço</span>}
                 </div>
-                {(!isSidebarCollapsed || isSidebarHovered) && globalModules.accessServiceOrders === false && (
+                {(!isSidebarCollapsed || isSidebarHovered) && activeCompanyModules.accessServiceOrders === false && (
                   <span className="text-[9px] bg-amber-500/10 text-amber-500 px-1 py-0.2 rounded border border-amber-500/20 font-mono">🔒</span>
                 )}
               </button>
@@ -1605,7 +1624,7 @@ export default function App() {
                   <History className="w-4 h-4 shrink-0" />
                   {(!isSidebarCollapsed || isSidebarHovered) && <span className="truncate">Histórico Auditoria</span>}
                 </div>
-                {(!isSidebarCollapsed || isSidebarHovered) && globalModules.accessHistory === false && (
+                {(!isSidebarCollapsed || isSidebarHovered) && activeCompanyModules.accessHistory === false && (
                   <span className="text-[9px] bg-amber-500/10 text-amber-500 px-1 py-0.2 rounded border border-amber-500/20 font-mono">🔒</span>
                 )}
               </button>
@@ -1627,7 +1646,7 @@ export default function App() {
                   <BarChart3 className="w-4 h-4 shrink-0" />
                   {(!isSidebarCollapsed || isSidebarHovered) && <span className="truncate">Relatórios</span>}
                 </div>
-                {(!isSidebarCollapsed || isSidebarHovered) && globalModules.accessReports === false && (
+                {(!isSidebarCollapsed || isSidebarHovered) && activeCompanyModules.accessReports === false && (
                   <span className="text-[9px] bg-amber-500/10 text-amber-500 px-1 py-0.2 rounded border border-amber-500/20 font-mono">🔒</span>
                 )}
               </button>
@@ -1649,7 +1668,7 @@ export default function App() {
                   <UserPlus className="w-4 h-4 shrink-0" />
                   {(!isSidebarCollapsed || isSidebarHovered) && <span className="truncate">Criar Usuários / Níveis</span>}
                 </div>
-                {(!isSidebarCollapsed || isSidebarHovered) && globalModules.accessUserManagement === false && (
+                {(!isSidebarCollapsed || isSidebarHovered) && activeCompanyModules.accessUserManagement === false && (
                   <span className="text-[9px] bg-amber-500/10 text-amber-500 px-1 py-0.2 rounded border border-amber-500/20 font-mono">🔒</span>
                 )}
               </button>
@@ -1671,7 +1690,7 @@ export default function App() {
                   <Bug className="w-4 h-4 shrink-0 text-amber-400" />
                   {(!isSidebarCollapsed || isSidebarHovered) && <span className="truncate">Painel de Testes QA</span>}
                 </div>
-                {(!isSidebarCollapsed || isSidebarHovered) && globalModules.accessQAPanel === false && (
+                {(!isSidebarCollapsed || isSidebarHovered) && activeCompanyModules.accessQAPanel === false && (
                   <span className="text-[9px] bg-amber-500/10 text-amber-500 px-1 py-0.2 rounded border border-amber-500/20 font-mono">🔒</span>
                 )}
               </button>
@@ -1992,8 +2011,8 @@ export default function App() {
 
           {activeView === 'qa_panel' && currentUser.permissions.accessQAPanel && (
             <QAPortfolioView 
-              testCases={db.testCases} 
-              db={db}
+              testCases={db?.testCases || []} 
+              db={db || undefined}
               currentUser={currentUser}
               onUpdateTestCaseStatus={handleUpdateTestCaseStatus}
               onResetTestCases={handleResetQADb}

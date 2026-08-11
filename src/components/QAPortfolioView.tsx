@@ -41,11 +41,16 @@ interface QAPortfolioViewProps {
   onOpenDocModal?: () => void;
 }
 
-export default function QAPortfolioView({ testCases, onUpdateTestCaseStatus, onResetTestCases, db, onRegisterCompany, currentUser, onOpenDocModal }: QAPortfolioViewProps) {
+export default function QAPortfolioView({ testCases = [], onUpdateTestCaseStatus, onResetTestCases, db, onRegisterCompany, currentUser, onOpenDocModal }: QAPortfolioViewProps) {
   const [activeSubTab, setActiveSubTab] = useState<'prd' | 'cases' | 'matrix' | 'cypress' | 'sql' | 'companies'>('prd');
   const [copied, setCopied] = useState(false);
   const [selectedCase, setSelectedCase] = useState<TestCase | null>(null);
   const [simFeedback, setSimFeedback] = useState('');
+
+  // Safe fallback for testCases
+  const safeTestCases = Array.isArray(testCases) && testCases.length > 0 
+    ? testCases 
+    : (db?.testCases && Array.isArray(db.testCases) ? db.testCases : []);
 
   // Audit History Filters State
   const [auditCompId, setAuditCompId] = useState<string>('all');
@@ -156,11 +161,11 @@ export default function QAPortfolioView({ testCases, onUpdateTestCaseStatus, onR
   };
 
   // Count passes, fails, and pendings
-  const passCount = testCases.filter(c => c.status === 'passed').length;
-  const failCount = testCases.filter(c => c.status === 'failed').length;
-  const pendingCount = testCases.filter(c => c.status === 'pending').length;
-  const totalCount = testCases.length;
-  const passPercent = Math.round((passCount / totalCount) * 100);
+  const passCount = safeTestCases.filter(c => c.status === 'passed').length;
+  const failCount = safeTestCases.filter(c => c.status === 'failed').length;
+  const pendingCount = safeTestCases.filter(c => c.status === 'pending').length;
+  const totalCount = safeTestCases.length || 1;
+  const passPercent = totalCount > 0 ? Math.round((passCount / totalCount) * 100) : 0;
 
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
@@ -556,7 +561,7 @@ describe('MotorDesk Mechanical Workshop - QA Test Suite', () => {
             </div>
 
             <div className="space-y-2">
-              {testCases.map(tc => (
+              {safeTestCases.map(tc => (
                 <div 
                   key={tc.id}
                   onClick={() => {

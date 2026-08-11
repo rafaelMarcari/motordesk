@@ -32,7 +32,13 @@ import {
   Download,
   Printer,
   Eye,
-  UserCheck
+  UserCheck,
+  Layers,
+  Sliders,
+  Headphones,
+  Clock,
+  Video,
+  PlusCircle
 } from 'lucide-react';
 import { User, UserRole, UserPermissions, CompanyInfo } from '../types';
 import { AppDatabase } from '../data/mockData';
@@ -285,19 +291,70 @@ export default function UserManagementView({
             <p><strong>CONTRATANTE:</strong> <strong>${compName || 'NÃO INFORMADA'}</strong>, inscrita no CNPJ/MF sob o nº <strong>${compCnpj || 'NÃO INFORMADO'}</strong>, estabelecida no endereço <strong>${compAddress || 'NÃO INFORMADO'}</strong>, representada neste ato por seu Responsável Legal <strong>${compLegalRepName || 'NÃO INFORMADO'}</strong>, portador(a) do CPF nº <strong>${compLegalRepCpf || 'NÃO INFORMADO'}</strong>.</p>
 
             <div class="clause-title">CLÁUSULA PRIMEIRA - DO OBJETO E LICENCIAMENTO SAAS</div>
-            <p>1.1. O presente contrato tem por objeto o licenciamento de uso não exclusivo, temporário e intransferível do sistema de gestão de oficinas mecânicas <strong>MotorDesk</strong> no modelo SaaS (Software as a Service), incluindo acesso aos módulos de Clientes, Veículos, Orçamentos, Ordens de Serviço, Estoque, Peças, Serviços, Financeiro, Emissão de Documentos e Gestão de Filiais.</p>
+            <p>1.1. O presente contrato tem por objeto o licenciamento de uso não exclusivo, temporário e intransferível do sistema de gestão de oficinas mecânicas <strong>MotorDesk</strong> no modelo SaaS (Software as a Service), englobando o Plano Básico e os módulos operacionais adicionais liberados para a CONTRATANTE.</p>
+            <p>1.2. A liberação tecnológica dos módulos objeto deste contrato é realizada em tempo real no ambiente da aplicação <strong>MotorDesk</strong>. A ativação ou desativação de módulos reflete diretamente nos menus, relatórios e telas operacionais de todos os colaboradores vinculados à CONTRATANTE.</p>
+
+            <div class="clause-title">ANEXO I - MÓDULOS LIBERADOS E ESPECIFICAÇÃO NA APLICAÇÃO</div>
+            <p>Fica expressamente detalhada a composição dos módulos contratados e o status de liberação na aplicação para a CONTRATANTE:</p>
+
+            <div style="background-color: #f8fafc; border: 1px solid #cbd5e1; padding: 12px; border-radius: 6px; margin: 10px 0;">
+              <strong style="color: #3730a3; font-size: 11px; text-transform: uppercase;">A. Módulos Inclusos no Plano Básico Core (Padrão do Sistema):</strong>
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 6px; font-size: 10.5px;">
+                <div style="background: #fff; padding: 5px 8px; border: 1px solid #e2e8f0; border-radius: 4px; font-weight: 600;">✅ Painel Principal / Dashboard KPI</div>
+                <div style="background: #fff; padding: 5px 8px; border: 1px solid #e2e8f0; border-radius: 4px; font-weight: 600;">✅ Cadastro e Gestão de Clientes</div>
+                <div style="background: #fff; padding: 5px 8px; border: 1px solid #e2e8f0; border-radius: 4px; font-weight: 600;">✅ Gestão de Veículos & Histórico</div>
+                <div style="background: #fff; padding: 5px 8px; border: 1px solid #e2e8f0; border-radius: 4px; font-weight: 600;">✅ Tabela de Serviços & Mão de Obra</div>
+                <div style="background: #fff; padding: 5px 8px; border: 1px solid #e2e8f0; border-radius: 4px; font-weight: 600;">✅ Emissão e Impressão de Orçamentos</div>
+                <div style="background: #fff; padding: 5px 8px; border: 1px solid #e2e8f0; border-radius: 4px; font-weight: 600;">✅ Ordens de Serviço (OS) & Oficina</div>
+              </div>
+
+              <strong style="color: #3730a3; font-size: 11px; text-transform: uppercase; display: block; margin-top: 12px;">B. Módulos Opcionais - Status de Liberação na Aplicação:</strong>
+              <table style="width: 100%; border-collapse: collapse; margin-top: 6px; background: #fff; border: 1px solid #cbd5e1; font-size: 10.5px;">
+                <thead>
+                  <tr style="background: #f1f5f9; text-align: left; color: #334155;">
+                    <th style="padding: 6px 8px; border: 1px solid #cbd5e1;">Módulo Funcional</th>
+                    <th style="padding: 6px 8px; border: 1px solid #cbd5e1;">Status de Liberação no Sistema</th>
+                    <th style="padding: 6px 8px; border: 1px solid #cbd5e1; text-align: right;">Valor Adicional / Mês</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${Object.keys(DEFAULT_OPTIONAL_MODULE_PRICES).map(mKey => {
+                    const info = DEFAULT_OPTIONAL_MODULE_PRICES[mKey];
+                    const isEnabled = !!companyGlobalModules[mKey];
+                    const price = optionalModulePrices[mKey] !== undefined ? optionalModulePrices[mKey] : info.defaultPrice;
+                    return `
+                      <tr>
+                        <td style="padding: 5px 8px; border: 1px solid #e2e8f0; font-weight: ${isEnabled ? 'bold' : 'normal'}; color: ${isEnabled ? '#0f172a' : '#64748b'};">
+                          ${info.label}
+                        </td>
+                        <td style="padding: 5px 8px; border: 1px solid #e2e8f0;">
+                          <span style="font-weight: bold; color: ${isEnabled ? '#059669' : '#dc2626'};">
+                            ${isEnabled ? '✅ LIBERADO E ATIVO NA APLICAÇÃO' : '🔒 BLOQUEADO / NÃO CONTRATADO'}
+                          </span>
+                        </td>
+                        <td style="padding: 5px 8px; border: 1px solid #e2e8f0; text-align: right; font-family: monospace;">
+                          ${isEnabled ? `R$ ${price.toFixed(2)}` : 'R$ 0,00'}
+                        </td>
+                      </tr>
+                    `;
+                  }).join('')}
+                </tbody>
+              </table>
+            </div>
 
             <div class="clause-title">CLÁUSULA SEGUNDA - DA DISPONIBILIDADE E SUPORTE TÉCNICO (SLA)</div>
             <p>2.1. A CONTRATADA garante o índice de disponibilidade do sistema (uptime) de <strong>99,5% (noventa e nove vírgula cinco por cento)</strong> ao mês.</p>
-            <p>2.2. O suporte técnico relativo ao manuseio, esclarecimento de dúvidas e correção de inconsistências será prestado nos dias úteis em horário comercial.</p>
+            <p>2.2. O suporte técnico relativo ao manuseio, esclarecimento de dúvidas e apoio operacional será prestado nos dias úteis e no período comercial estipulado: <strong>${compSupportBusinessHours}</strong>.</p>
+            <p>2.3. Os serviços de suporte serão disponibilizados através do número oficial de WhatsApp do desenvolvedor/fornecedor: <strong>${compSupportWhatsapp}</strong>, contemplando envio de mensagens de texto/áudio, chamadas telefônicas diretas e agendamento de reuniões online por vídeo (via Microsoft Teams, Google Meet, Zoom ou aplicativo de conferência equivalente disponível).</p>
 
             <div class="clause-title">CLÁUSULA TERCEIRA - DA SEGURANÇA E PROTEÇÃO DE DADOS (LGPD)</div>
             <p>3.1. Em observância à <strong>Lei Geral de Proteção de Dados (Lei nº 13.709/2018 - LGPD)</strong>, a CONTRATADA declara que adota medidas técnicas, organizacionais e de criptografia para proteger os dados armazenados.</p>
             <p>3.2. A CONTRATANTE declara-se titular dos dados operacionais e de seus clientes inseridos no sistema, cabendo à CONTRATADA apenas o papel de operadora de dados sob as diretrizes legais.</p>
 
-            <div class="clause-title">CLÁUSULA QUARTA - DOS VALORES E CONDIÇÕES DE PAGAMENTO</div>
-            <p>4.1. Pela prestação dos serviços e licença de uso acordada, a CONTRATANTE pagará à CONTRATADA a mensalidade no valor ajustado de <strong>R$ ${subMonthlyFee.toFixed(2)} (${subMonthlyFee.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })})</strong>.</p>
-            <p>4.2. O inadimplemento da mensalidade por prazo superior a 15 (quinze) dias poderá acarretar a suspensão temporária dos acessos operacionais ao sistema até a devida regularização.</p>
+            <div class="clause-title">CLÁUSULA QUARTA - DOS VALORES, COMPOSIÇÃO MODULAR E PAGAMENTO</div>
+            <p>4.1. Pela prestação dos serviços e licença de uso acordada, a CONTRATANTE pagará à CONTRATADA a mensalidade global ajustada no valor de <strong>R$ ${subMonthlyFee.toFixed(2)} (${subMonthlyFee.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })})</strong>.</p>
+            <p>4.2. A mensalidade é composta pela taxa do Plano Básico (R$ ${basePlanFee.toFixed(2)}) acrescida dos módulos operacionais selecionados. Na eventual inclusão de novos módulos a pedido da CONTRATANTE, será emitido o correspondente <strong>Termo Aditivo ao Contrato</strong> com o devido acréscimo proporcional na mensalidade.</p>
+            <p>4.3. O inadimplemento da mensalidade por prazo superior a 15 (quinze) dias poderá acarretar a suspensão temporária dos acessos operacionais ao sistema até a devida regularização.</p>
 
             <div class="clause-title">CLÁUSULA QUINTA - DA VIGÊNCIA E RESCISÃO</div>
             <p>5.1. Este contrato entra em vigor na data da sua assinatura por prazo indeterminado, podendo ser rescindido por qualquer uma das partes mediante aviso prévio por escrito de no mínimo 30 (trinta) dias, sem incidência de multa rescisória.</p>
@@ -335,6 +392,181 @@ export default function UserManagementView({
     } catch {
       window.print();
     }
+  };
+
+  const handlePrintAddendum = (addendum: any) => {
+    try {
+      const printWindow = window.open('', '_blank');
+      if (printWindow) {
+        const addedModuleListText = (addendum.addedModuleNames || addendum.addedModules || [])
+          .map((mName: string) => `<li><strong>${mName}</strong></li>`)
+          .join('');
+
+        printWindow.document.write(`
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <title>Aditivo Contratual - ${compName}</title>
+            <style>
+              body { font-family: 'Helvetica Neue', Arial, sans-serif; padding: 30px; color: #1e293b; font-size: 11px; line-height: 1.6; }
+              .header { border-bottom: 2px solid #0f172a; padding-bottom: 12px; margin-bottom: 20px; text-align: center; }
+              .brand { font-size: 18px; font-weight: 900; color: #3730a3; text-transform: uppercase; letter-spacing: 1px; }
+              .title { font-size: 12px; font-weight: 800; text-transform: uppercase; margin: 8px 0 4px 0; color: #0f172a; }
+              .subtitle { font-size: 10.5px; color: #475569; font-weight: 500; }
+              .addendum-box { background-color: #f8fafc; border: 1px solid #cbd5e1; padding: 14px; border-radius: 8px; margin: 16px 0; }
+              .clause-title { font-weight: 800; font-size: 11px; margin-top: 16px; border-bottom: 1px solid #cbd5e1; padding-bottom: 3px; color: #0f172a; text-transform: uppercase; }
+              p { margin: 6px 0; text-align: justify; }
+              .signatures { margin-top: 50px; display: flex; justify-content: space-between; gap: 40px; page-break-inside: avoid; }
+              .sig-box { flex: 1; text-align: center; font-size: 10.5px; }
+              .sig-line { border-top: 1px solid #0f172a; margin-bottom: 8px; }
+              table { width: 100%; border-collapse: collapse; margin: 12px 0; }
+              th, td { border: 1px solid #cbd5e1; padding: 8px 12px; text-align: left; font-size: 10.5px; }
+              th { background-color: #f1f5f9; font-weight: 800; }
+            </style>
+          </head>
+          <body>
+            <div class="header">
+              <div class="brand">MotorDesk Systems</div>
+              <div class="title">TERMO ADITIVO AO CONTRATO DE LICENCIAMENTO DE SOFTWARE E SUPORTE TÉCNICO (SaaS)</div>
+              <div class="subtitle">Aditivo de Inclusão de Módulo Operacional • Data da Emissão: ${addendum.date || new Date().toLocaleDateString('pt-BR')}</div>
+            </div>
+
+            <div class="addendum-box">
+              <strong>IDENTIFICAÇÃO DAS PARTES CONTRATANTES:</strong><br/>
+              <strong>CONTRATADA:</strong> MotorDesk Soluções em Tecnologia e Software LTDA (CNPJ: 12.345.678/0001-90)<br/>
+              <strong>CONTRATANTE:</strong> ${compName || 'NÃO INFORMADA'} (CNPJ: ${compCnpj || 'NÃO INFORMADO'})<br/>
+              <strong>RESPONSÁVEL LEGAL:</strong> ${compLegalRepName || 'NÃO INFORMADO'} (CPF: ${compLegalRepCpf || 'NÃO INFORMADO'})
+            </div>
+
+            <div class="clause-title">CLÁUSULA PRIMEIRA - DO OBJETO DO ADITIVO</div>
+            <p>1.1. O presente Termo Aditivo tem por objetivo formalizar a inclusão e a imediata liberação operacional do(s) seguinte(s) módulo(s) opcional(is) na conta do sistema MotorDesk mantida pela CONTRATANTE:</p>
+            <ul style="margin: 8px 0; padding-left: 20px;">
+              ${addedModuleListText}
+            </ul>
+
+            <div class="clause-title">CLÁUSULA SEGUNDA - DA ADEQUAÇÃO DA MENSALIDADE</div>
+            <p>2.1. Em virtude da adição do(s) novo(s) módulo(s) estipulado(s) na Cláusula Primeira, o valor da mensalidade do contrato de prestação de serviços SaaS é readequado nos seguintes termos:</p>
+            <table>
+              <thead>
+                <tr>
+                  <th>Descrição da Composição</th>
+                  <th>Valor Mensal (R$)</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Valor da Mensalidade Contratada Anteriormente</td>
+                  <td>R$ ${Number(addendum.previousMonthlyFee || 0).toFixed(2)}</td>
+                </tr>
+                <tr>
+                  <td>Valor Adicional do(s) Novo(s) Módulo(s) Incluído(s)</td>
+                  <td>+ R$ ${Number(addendum.additionalMonthlyFee || 0).toFixed(2)}</td>
+                </tr>
+                <tr style="background-color: #f1f5f9; font-weight: bold; color: #3730a3;">
+                  <td>NOVO VALOR TOTAL DA MENSALIDADE REAJUSTADA</td>
+                  <td>R$ ${Number(addendum.newTotalMonthlyFee || 0).toFixed(2)}</td>
+                </tr>
+              </tbody>
+            </table>
+
+            <div class="clause-title">CLÁUSULA TERCEIRA - DA EXTENSÃO DO SUPORTE TÉCNICO</div>
+            <p>3.1. Fica ratificado que a garantia de Suporte Técnico prestada pela CONTRATADA abrange integralmente o(s) novo(s) módulo(s) liberado(s), disponibilizado através do WhatsApp de suporte <strong>${compSupportWhatsapp}</strong> no período comercial (<strong>${compSupportBusinessHours}</strong>) via mensagens, chamadas telefônicas e reuniões virtuais em aplicativos online (Microsoft Teams/Google Meet).</p>
+
+            <div class="clause-title">CLÁUSULA QUARTA - DA RATIFICAÇÃO DO CONTRATO PRINCIPAL</div>
+            <p>4.1. Permanecem inalteradas e plenamente válidas todas as demais cláusulas e condições do Contrato Principal de Prestação de Serviços SaaS que não foram expressamente modificadas por este aditivo.</p>
+
+            <p style="margin-top: 35px; text-align: center; font-weight: 600;">E por estarem de perfeito acordo, as partes assinam o presente Termo Aditivo Contratual.</p>
+
+            <div class="signatures">
+              <div class="sig-box">
+                <div class="sig-line"></div>
+                <strong>MotorDesk Soluções em Tecnologia LTDA</strong><br/>
+                CONTRATADA (CNPJ: 12.345.678/0001-90)
+              </div>
+              <div class="sig-box">
+                <div class="sig-line"></div>
+                <strong>${compName || 'CONTRATANTE'}</strong><br/>
+                Resp. Legal: ${compLegalRepName || '__________________________'}<br/>
+                CPF: ${compLegalRepCpf || '__________________________'} | CNPJ: ${compCnpj || '__________________________'}
+              </div>
+            </div>
+
+            <script>
+              window.onload = function() {
+                setTimeout(function() { window.print(); }, 250);
+              };
+            </script>
+          </body>
+          </html>
+        `);
+        printWindow.document.close();
+      } else {
+        window.print();
+      }
+    } catch {
+      window.print();
+    }
+  };
+
+  const handleCreateAddendum = () => {
+    if (selectedAddendumModules.length === 0) {
+      alert('Por favor, selecione ao menos um módulo para emitir o aditivo.');
+      return;
+    }
+
+    let additionalTotal = 0;
+    const addedNames: string[] = [];
+
+    selectedAddendumModules.forEach(modKey => {
+      const price = optionalModulePrices[modKey] !== undefined 
+        ? optionalModulePrices[modKey] 
+        : DEFAULT_OPTIONAL_MODULE_PRICES[modKey]?.defaultPrice || 0;
+      additionalTotal += price;
+
+      const name = DEFAULT_OPTIONAL_MODULE_PRICES[modKey]?.label || modKey;
+      addedNames.push(name);
+    });
+
+    const previousFee = subMonthlyFee;
+    const newTotalFee = Number((previousFee + additionalTotal).toFixed(2));
+
+    // Enable selected modules globally in company state
+    const updatedGlobalModules = { ...companyGlobalModules };
+    selectedAddendumModules.forEach(modKey => {
+      updatedGlobalModules[modKey] = true;
+    });
+    setCompanyGlobalModules(updatedGlobalModules);
+
+    if (onUpdateGlobalModules) {
+      onUpdateGlobalModules(updatedGlobalModules);
+    }
+
+    // Update monthly fee
+    setSubMonthlyFee(newTotalFee);
+
+    const newAddendum = {
+      id: `addendum-${Date.now()}`,
+      date: new Date().toLocaleDateString('pt-BR'),
+      addedModules: selectedAddendumModules,
+      addedModuleNames: addedNames,
+      previousMonthlyFee: previousFee,
+      additionalMonthlyFee: additionalTotal,
+      newTotalMonthlyFee: newTotalFee,
+      notes: addendumNotes.trim(),
+      signedByClient: true,
+      signedDate: new Date().toLocaleString('pt-BR')
+    };
+
+    const updatedAddendumsList = [newAddendum, ...contractAddendums];
+    setContractAddendums(updatedAddendumsList);
+
+    setShowAddendumModal(false);
+    setSelectedAddendumModules([]);
+    setAddendumNotes('');
+    setHasUnsavedChanges(true);
+
+    // Open PDF print for this newly generated addendum
+    handlePrintAddendum(newAddendum);
   };
 
   const handleLogoFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -379,9 +611,73 @@ export default function UserManagementView({
   const [subStatus, setSubStatus] = useState<'active' | 'blocked' | 'overdue' | 'trial'>(currentCompany?.subscriptionStatus || 'active');
   const [subStartDate, setSubStartDate] = useState(currentCompany?.startDate || '2026-01-01');
   const [subExpirationDate, setSubExpirationDate] = useState(currentCompany?.expirationDate || '2026-12-31');
-  const [subMonthlyFee, setSubMonthlyFee] = useState<number>(currentCompany?.monthlyFee || 299.90);
+  const [subMonthlyFee, setSubMonthlyFee] = useState<number>(currentCompany?.monthlyFee || 199.90);
   const [subPaymentStatus, setSubPaymentStatus] = useState<'paid' | 'pending' | 'overdue'>(currentCompany?.paymentStatus || 'paid');
   const [subNotes, setSubNotes] = useState(currentCompany?.notes || '');
+
+  // Support & Contact Information State
+  const [compSupportWhatsapp, setCompSupportWhatsapp] = useState(currentCompany?.supportWhatsapp || '(11) 98765-4321');
+  const [compSupportBusinessHours, setCompSupportBusinessHours] = useState(currentCompany?.supportBusinessHours || 'Segunda a Sexta-feira das 08h00 às 18h00 e Sábados das 08h00 às 12h00');
+  const [compSupportChannelsText, setCompSupportChannelsText] = useState(currentCompany?.supportChannelsText || 'Mensagens (WhatsApp), Ligações telefônicas diretas e Reuniões online (Teams/Meet)');
+
+  // Base Plan & Modular Pricing Settings
+  const [basePlanFee, setBasePlanFee] = useState<number>(currentCompany?.basePlanFee ?? 199.90);
+  const [customNegotiatedDiscount, setCustomNegotiatedDiscount] = useState<number>(currentCompany?.customNegotiatedDiscount ?? 0.00);
+
+  // Default Optional Module Prices
+  const DEFAULT_OPTIONAL_MODULE_PRICES: { [key: string]: { label: string; defaultPrice: number; permKey: keyof UserPermissions } } = {
+    accessParts: { label: 'Gestão de Peças & Estoque Avançado', defaultPrice: 39.90, permKey: 'accessParts' },
+    accessQuotations: { label: 'Cotação de Preços & Fornecedores', defaultPrice: 29.90, permKey: 'accessQuotations' },
+    accessAccountsReceivable: { label: 'Gestão de Contas a Receber', defaultPrice: 29.90, permKey: 'accessAccountsReceivable' },
+    accessAccountsPayable: { label: 'Gestão de Contas a Pagar', defaultPrice: 29.90, permKey: 'accessAccountsPayable' },
+    accessFinancial: { label: 'Fluxo de Caixa Avançado & DRE', defaultPrice: 49.90, permKey: 'accessFinancial' },
+    accessFiscal: { label: 'Emissão Fiscal SEFAZ & Boletos', defaultPrice: 59.90, permKey: 'accessFiscal' },
+    accessReports: { label: 'Relatórios Gerenciais & Exportação', defaultPrice: 29.90, permKey: 'accessReports' },
+    accessQAPanel: { label: 'Painel QA & Conversor de Migração', defaultPrice: 49.90, permKey: 'accessQAPanel' },
+  };
+
+  const [optionalModulePrices, setOptionalModulePrices] = useState<{ [key: string]: number }>(() => {
+    return currentCompany?.optionalModulePrices || {
+      accessParts: 39.90,
+      accessQuotations: 29.90,
+      accessAccountsReceivable: 29.90,
+      accessAccountsPayable: 29.90,
+      accessFinancial: 49.90,
+      accessFiscal: 59.90,
+      accessReports: 29.90,
+      accessQAPanel: 49.90,
+    };
+  });
+
+  // Global Modules Toggles
+  const [companyGlobalModules, setCompanyGlobalModules] = useState<{ [key: string]: boolean }>(() => {
+    return currentCompany?.globalModules || {
+      accessDashboard: true,
+      accessClients: true,
+      accessVehicles: true,
+      accessServices: true,
+      accessBudgets: true,
+      accessServiceOrders: true,
+      accessHistory: true,
+      accessParts: true,
+      accessQuotations: true,
+      accessAccountsReceivable: true,
+      accessAccountsPayable: true,
+      accessFinancial: true,
+      accessFiscal: true,
+      accessReports: true,
+      accessUserManagement: true,
+      accessQAPanel: true,
+    };
+  });
+
+  // Contract Addendums List
+  const [contractAddendums, setContractAddendums] = useState<any[]>(currentCompany?.contractAddendums || []);
+
+  // Modal State for Addendum Generation
+  const [showAddendumModal, setShowAddendumModal] = useState(false);
+  const [selectedAddendumModules, setSelectedAddendumModules] = useState<string[]>([]);
+  const [addendumNotes, setAddendumNotes] = useState('');
 
   // Permissions by Level for the currently selected company
   const [levelPermissions, setLevelPermissions] = useState<{ [key in UserRole]: UserPermissions }>(() => {
@@ -431,9 +727,56 @@ export default function UserManagementView({
       setSubStatus(comp.subscriptionStatus || 'active');
       setSubStartDate(comp.startDate || '2026-01-01');
       setSubExpirationDate(comp.expirationDate || '2026-12-31');
-      setSubMonthlyFee(comp.monthlyFee || 299.90);
+      setSubMonthlyFee(comp.monthlyFee || 199.90);
       setSubPaymentStatus(comp.paymentStatus || 'paid');
       setSubNotes(comp.notes || '');
+
+      setCompSupportWhatsapp(comp.supportWhatsapp || '(11) 98765-4321');
+      setCompSupportBusinessHours(comp.supportBusinessHours || 'Segunda a Sexta-feira das 08h00 às 18h00 e Sábados das 08h00 às 12h00');
+      setCompSupportChannelsText(comp.supportChannelsText || 'Mensagens (WhatsApp), Ligações telefônicas e Reuniões online (Teams/Meet)');
+
+      setBasePlanFee(comp.basePlanFee !== undefined ? comp.basePlanFee : 199.90);
+      setCustomNegotiatedDiscount(comp.customNegotiatedDiscount || 0);
+
+      if (comp.optionalModulePrices) {
+        setOptionalModulePrices(comp.optionalModulePrices);
+      } else {
+        setOptionalModulePrices({
+          accessParts: 39.90,
+          accessQuotations: 29.90,
+          accessAccountsReceivable: 29.90,
+          accessAccountsPayable: 29.90,
+          accessFinancial: 49.90,
+          accessFiscal: 59.90,
+          accessReports: 29.90,
+          accessQAPanel: 49.90,
+        });
+      }
+
+      if (comp.globalModules) {
+        setCompanyGlobalModules(comp.globalModules);
+      } else {
+        setCompanyGlobalModules({
+          accessDashboard: true,
+          accessClients: true,
+          accessVehicles: true,
+          accessServices: true,
+          accessBudgets: true,
+          accessServiceOrders: true,
+          accessHistory: true,
+          accessParts: true,
+          accessQuotations: true,
+          accessAccountsReceivable: true,
+          accessAccountsPayable: true,
+          accessFinancial: true,
+          accessFiscal: true,
+          accessReports: true,
+          accessUserManagement: true,
+          accessQAPanel: true,
+        });
+      }
+
+      setContractAddendums(comp.contractAddendums || []);
 
       if (comp.levelPermissions) {
         setLevelPermissions(comp.levelPermissions as any);
@@ -495,6 +838,14 @@ export default function UserManagementView({
       monthlyFee: subMonthlyFee,
       paymentStatus: subPaymentStatus,
       notes: subNotes,
+      basePlanFee: basePlanFee,
+      customNegotiatedDiscount: customNegotiatedDiscount,
+      optionalModulePrices: optionalModulePrices,
+      globalModules: companyGlobalModules,
+      supportWhatsapp: compSupportWhatsapp,
+      supportBusinessHours: compSupportBusinessHours,
+      supportChannelsText: compSupportChannelsText,
+      contractAddendums: contractAddendums,
       levelPermissions: levelPermissions,
       registeredAt: currentCompany?.registeredAt || new Date().toISOString()
     };
@@ -1112,25 +1463,45 @@ export default function UserManagementView({
       {/* 1. SAAS SUBSCRIPTION & ACCESS LOCK MANAGEMENT VIEW */}
       {adminSubView === 'subscription' && (
         <div className="space-y-6 animate-fade-in" id="saas-subscription-panel">
+          {/* TOP CARD: VIGÊNCIA DA LICENÇA, VALIDADE E DOCUMENTOS CONTRATUAIS */}
           <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-xs space-y-6">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-4">
               <div>
                 <h3 className="text-base font-bold text-slate-800 font-display flex items-center gap-2">
                   <CreditCard className="w-5 h-5 text-indigo-600" />
-                  Controle de Licença, Validade e Bloqueio de Acesso SaaS
+                  Controle de Licença, Validade e Ações da Assinatura SaaS
                 </h3>
                 <p className="text-xs text-slate-500 mt-1">
-                  Configure o período negociado de início e término de uso para a empresa <strong className="text-slate-700">{compName}</strong>. 
-                  Em caso de não pagamento, o sistema bloqueia dinamicamente os módulos para esta empresa.
+                  Configure a vigência, emita o contrato principal, aditivos de novos módulos e controle o acesso da empresa <strong className="text-slate-700">{compName}</strong>.
                 </p>
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  id="btn-print-main-contract"
+                  onClick={handlePrintContract}
+                  className="px-3.5 py-2 bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs rounded-xl transition flex items-center gap-1.5 shadow-xs cursor-pointer"
+                  title="Imprimir ou baixar PDF do Contrato Principal de Prestação de Serviços"
+                >
+                  <Printer className="w-4 h-4 text-indigo-300" /> Contrato Principal (PDF)
+                </button>
+
+                <button
+                  type="button"
+                  id="btn-open-addendum-modal"
+                  onClick={() => setShowAddendumModal(true)}
+                  className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl transition flex items-center gap-1.5 shadow-xs cursor-pointer"
+                  title="Inclusão de novos módulos para o cliente e emissão de termo aditivo"
+                >
+                  <PlusCircle className="w-4 h-4 text-indigo-200" /> Emitir Aditivo de Módulo (PDF)
+                </button>
+
                 <button
                   type="button"
                   id="btn-renew-payment-30days"
                   onClick={handleRegisterPaymentAndRenew}
-                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl transition flex items-center gap-1.5 shadow-xs cursor-pointer"
+                  className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl transition flex items-center gap-1.5 shadow-xs cursor-pointer"
                   title="Registrar pagamento e prorrogar validade em +30 dias"
                 >
                   <DollarSign className="w-4 h-4" /> Registrar Pagamento (+30 Dias)
@@ -1145,7 +1516,7 @@ export default function UserManagementView({
                       setSubPaymentStatus('paid');
                       setHasUnsavedChanges(true);
                     }}
-                    className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl transition flex items-center gap-1.5 shadow-xs cursor-pointer"
+                    className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl transition flex items-center gap-1.5 shadow-xs cursor-pointer"
                   >
                     <Unlock className="w-4 h-4" /> Desbloquear Acesso
                   </button>
@@ -1154,7 +1525,7 @@ export default function UserManagementView({
                     type="button"
                     id="btn-block-access-overdue"
                     onClick={handleBlockCompanyAccess}
-                    className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-xl transition flex items-center gap-1.5 shadow-xs cursor-pointer"
+                    className="px-3.5 py-2 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-xl transition flex items-center gap-1.5 shadow-xs cursor-pointer"
                   >
                     <Lock className="w-4 h-4" /> Bloquear Acesso (Inadimplente)
                   </button>
@@ -1218,10 +1589,10 @@ export default function UserManagementView({
                 </div>
               </div>
 
-              {/* Status do Acesso e Faturamento */}
+              {/* Status do Acesso e Mensalidade Vigente */}
               <div className="bg-slate-50/70 p-4 rounded-xl border border-slate-200/80 space-y-4">
                 <h4 className="text-xs font-bold uppercase tracking-wider text-slate-600 flex items-center gap-1.5">
-                  <Lock className="w-4 h-4 text-indigo-600" /> Status de Acesso & Mensalidade
+                  <Lock className="w-4 h-4 text-indigo-600" /> Status de Acesso & Mensalidade Vigente
                 </h4>
 
                 <div className="space-y-1.5">
@@ -1249,8 +1620,9 @@ export default function UserManagementView({
                 </div>
 
                 <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-slate-700" htmlFor="sub-fee-input">
-                    Valor da Mensalidade (R$) *
+                  <label className="text-xs font-semibold text-slate-700 flex items-center justify-between" htmlFor="sub-fee-input">
+                    <span>Valor Vigente da Mensalidade (R$) *</span>
+                    <span className="text-[10px] text-indigo-600 font-bold">Acordo Oficial</span>
                   </label>
                   <input
                     id="sub-fee-input"
@@ -1262,7 +1634,7 @@ export default function UserManagementView({
                       setSubMonthlyFee(Number(e.target.value));
                       setHasUnsavedChanges(true);
                     }}
-                    className="w-full text-xs p-2.5 border border-slate-200 rounded-lg bg-white font-mono font-bold text-slate-800"
+                    className="w-full text-xs p-2.5 border border-slate-200 rounded-lg bg-white font-mono font-bold text-slate-900"
                   />
                 </div>
 
@@ -1299,7 +1671,7 @@ export default function UserManagementView({
                       setSubNotes(e.target.value);
                       setHasUnsavedChanges(true);
                     }}
-                    placeholder="Ex: Contrato fechado em 12 parcelas mensais via PIX. Liberado módulo estendido de estoque."
+                    placeholder="Ex: Contrato fechado em 12 parcelas mensais via PIX. Inclui módulo estendido de fiscal e estoque."
                     className="w-full text-xs p-2.5 border border-slate-200 rounded-lg bg-white"
                   />
                 </div>
@@ -1309,10 +1681,352 @@ export default function UserManagementView({
                   id="btn-save-subscription-settings"
                   className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl transition flex items-center justify-center gap-2 shadow-xs cursor-pointer mt-2"
                 >
-                  <Save className="w-4 h-4" /> Salvar Alterações de Assinatura
+                  <Save className="w-4 h-4" /> Salvar Parâmetros da Assinatura
                 </button>
               </div>
             </form>
+          </div>
+
+          {/* CARD 2: PRECIFICAÇÃO MODULAR & NEGOCIAÇÃO COM O CLIENTE */}
+          <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-xs space-y-6">
+            <div className="border-b border-slate-100 pb-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div>
+                <div className="flex items-center gap-2">
+                  <Layers className="w-5 h-5 text-indigo-600" />
+                  <h3 className="text-base font-bold text-slate-800 font-display">
+                    Precificação Modular & Composição de Valores — <span className="text-indigo-600">{compName}</span>
+                  </h3>
+                </div>
+                <p className="text-xs text-slate-500 mt-1">
+                  Defina o preço básico do sistema e ajuste o valor individual de cada módulo opcional conforme negociação com o cliente. A liberação de novos módulos aumenta a mensalidade.
+                </p>
+              </div>
+
+              {/* Box de Resumo da Calculadora */}
+              <div className="bg-indigo-50 border border-indigo-200 p-3 rounded-xl flex items-center gap-4 shrink-0">
+                <div>
+                  <span className="text-[10px] uppercase font-bold text-indigo-600 block">Mensalidade Calculada</span>
+                  <span className="text-lg font-extrabold text-indigo-900 font-mono">
+                    R$ {(() => {
+                      let tot = basePlanFee;
+                      Object.keys(DEFAULT_OPTIONAL_MODULE_PRICES).forEach(mKey => {
+                        if (companyGlobalModules[mKey]) {
+                          tot += (optionalModulePrices[mKey] !== undefined ? optionalModulePrices[mKey] : DEFAULT_OPTIONAL_MODULE_PRICES[mKey].defaultPrice);
+                        }
+                      });
+                      tot -= customNegotiatedDiscount;
+                      return Math.max(0, tot).toFixed(2);
+                    })()}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  id="btn-apply-calculated-fee"
+                  onClick={() => {
+                    let tot = basePlanFee;
+                    Object.keys(DEFAULT_OPTIONAL_MODULE_PRICES).forEach(mKey => {
+                      if (companyGlobalModules[mKey]) {
+                        tot += (optionalModulePrices[mKey] !== undefined ? optionalModulePrices[mKey] : DEFAULT_OPTIONAL_MODULE_PRICES[mKey].defaultPrice);
+                      }
+                    });
+                    tot -= customNegotiatedDiscount;
+                    const finalFee = Number(Math.max(0, tot).toFixed(2));
+                    setSubMonthlyFee(finalFee);
+                    setHasUnsavedChanges(true);
+                    alert(`Valor calculado (R$ ${finalFee.toFixed(2)}) aplicado à mensalidade oficial! Clique em "Salvar Parâmetros da Assinatura" para gravar.`);
+                  }}
+                  className="px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-lg transition shadow-xs cursor-pointer flex items-center gap-1"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" /> Sincronizar Valor
+                </button>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              {/* Coluna 1: Plano Básico e Desconto */}
+              <div className="space-y-4 bg-slate-50/70 p-4 rounded-xl border border-slate-200">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+                  <CheckCircle className="w-4 h-4 text-emerald-600" /> Plano Básico (Core Operacional)
+                </h4>
+                <p className="text-[11px] text-slate-500 leading-snug">
+                  Inclui as funcionalidades essenciais para o funcionamento básico da oficina: Dashboard, Clientes, Veículos, Tabela de Serviços, Orçamentos, Ordens de Serviço e Histórico do Veículo.
+                </p>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-slate-700" htmlFor="base-plan-fee-input">
+                    Preço Base do Plano Básico (R$)
+                  </label>
+                  <input
+                    id="base-plan-fee-input"
+                    type="number"
+                    step="0.01"
+                    value={basePlanFee}
+                    onChange={(e) => {
+                      setBasePlanFee(Number(e.target.value));
+                      setHasUnsavedChanges(true);
+                    }}
+                    className="w-full text-xs p-2.5 border border-slate-200 rounded-lg bg-white font-mono font-bold text-slate-800"
+                  />
+                  <p className="text-[10px] text-slate-400">Preço padrão negociado: R$ 199,90/mês.</p>
+                </div>
+
+                <div className="space-y-1.5 pt-2 border-t border-slate-200">
+                  <label className="text-xs font-semibold text-slate-700" htmlFor="negotiated-discount-input">
+                    Desconto Comercial Negociado (R$)
+                  </label>
+                  <input
+                    id="negotiated-discount-input"
+                    type="number"
+                    step="0.01"
+                    value={customNegotiatedDiscount}
+                    onChange={(e) => {
+                      setCustomNegotiatedDiscount(Number(e.target.value));
+                      setHasUnsavedChanges(true);
+                    }}
+                    className="w-full text-xs p-2.5 border border-slate-200 rounded-lg bg-white font-mono font-bold text-emerald-700"
+                  />
+                  <p className="text-[10px] text-slate-400">Abatimento especial de fidelidade ou negociação corporativa.</p>
+                </div>
+              </div>
+
+              {/* Coluna 2 e 3: Tabela de Módulos Opcionais com Preço e Toggle */}
+              <div className="lg:col-span-2 space-y-3">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center justify-between">
+                  <span className="flex items-center gap-1.5"><Sliders className="w-4 h-4 text-indigo-600" /> Módulos Opcionais que Elevam a Mensalidade</span>
+                  <span className="text-[11px] text-slate-400 font-normal">Preços por módulo personalizáveis por cliente</span>
+                </h4>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[360px] overflow-y-auto pr-1">
+                  {Object.keys(DEFAULT_OPTIONAL_MODULE_PRICES).map((modKey) => {
+                    const info = DEFAULT_OPTIONAL_MODULE_PRICES[modKey];
+                    const isEnabled = !!companyGlobalModules[modKey];
+                    const currentPrice = optionalModulePrices[modKey] !== undefined ? optionalModulePrices[modKey] : info.defaultPrice;
+
+                    return (
+                      <div 
+                        key={modKey}
+                        className={`p-3 rounded-xl border transition flex flex-col justify-between space-y-2 ${
+                          isEnabled 
+                            ? 'bg-indigo-50/50 border-indigo-200 shadow-2xs' 
+                            : 'bg-white border-slate-200 opacity-75'
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <label className="flex items-center gap-2 cursor-pointer font-semibold text-xs text-slate-800">
+                            <input
+                              type="checkbox"
+                              checked={isEnabled}
+                              onChange={(e) => {
+                                setCompanyGlobalModules({
+                                  ...companyGlobalModules,
+                                  [modKey]: e.target.checked
+                                });
+                                setHasUnsavedChanges(true);
+                              }}
+                              className="w-4 h-4 text-indigo-600 rounded-md border-slate-300 focus:ring-indigo-500 cursor-pointer"
+                            />
+                            <span>{info.label}</span>
+                          </label>
+
+                          <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase ${
+                            isEnabled ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' : 'bg-slate-100 text-slate-500'
+                          }`}>
+                            {isEnabled ? 'Liberado' : 'Não Contratado'}
+                          </span>
+                        </div>
+
+                        <div className="flex items-center justify-between pt-1 border-t border-slate-100 text-xs">
+                          <span className="text-[11px] text-slate-500">Valor Adicional Mês:</span>
+                          <div className="flex items-center gap-1">
+                            <span className="font-mono text-slate-400 text-[11px]">R$</span>
+                            <input
+                              type="number"
+                              step="0.01"
+                              value={currentPrice}
+                              onChange={(e) => {
+                                setOptionalModulePrices({
+                                  ...optionalModulePrices,
+                                  [modKey]: Number(e.target.value)
+                                });
+                                setHasUnsavedChanges(true);
+                              }}
+                              className="w-20 text-xs p-1 border border-slate-200 rounded-md bg-white font-mono font-bold text-slate-900 text-right"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* CARD 3: SUPORTE TÉCNICO & CANAIS NO CONTRATO */}
+          <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-xs space-y-6">
+            <div className="border-b border-slate-100 pb-3">
+              <h3 className="text-base font-bold text-slate-800 font-display flex items-center gap-2">
+                <Headphones className="w-5 h-5 text-indigo-600" />
+                Cláusula de Suporte Técnico & Canais de Atendimento
+              </h3>
+              <p className="text-xs text-slate-500 mt-1">
+                Defina o número do WhatsApp de suporte, horário comercial e canais garantidos que constarão no contrato e nos aditivos de prestação de serviços.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-slate-700 flex items-center gap-1" htmlFor="support-whatsapp-input">
+                  <MessageSquare className="w-3.5 h-3.5 text-emerald-600" /> WhatsApp de Suporte Técnico *
+                </label>
+                <input
+                  id="support-whatsapp-input"
+                  type="text"
+                  required
+                  value={compSupportWhatsapp}
+                  onChange={(e) => {
+                    setCompSupportWhatsapp(e.target.value);
+                    setHasUnsavedChanges(true);
+                  }}
+                  placeholder="(11) 98765-4321"
+                  className="w-full text-xs p-2.5 border border-slate-200 rounded-lg bg-white font-semibold text-slate-800"
+                />
+                <p className="text-[10px] text-slate-400">Inserido diretamente nas cláusulas do contrato em PDF.</p>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-slate-700 flex items-center gap-1" htmlFor="support-hours-input">
+                  <Clock className="w-3.5 h-3.5 text-indigo-600" /> Período Comercial de Atendimento *
+                </label>
+                <input
+                  id="support-hours-input"
+                  type="text"
+                  required
+                  value={compSupportBusinessHours}
+                  onChange={(e) => {
+                    setCompSupportBusinessHours(e.target.value);
+                    setHasUnsavedChanges(true);
+                  }}
+                  placeholder="Segunda a Sexta-feira das 08h00 às 18h00 e Sábados das 08h00 às 12h00"
+                  className="w-full text-xs p-2.5 border border-slate-200 rounded-lg bg-white font-semibold text-slate-800"
+                />
+                <p className="text-[10px] text-slate-400">Horário de funcionamento do atendimento técnico.</p>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-slate-700 flex items-center gap-1" htmlFor="support-channels-input">
+                  <Video className="w-3.5 h-3.5 text-purple-600" /> Canais Previstos no Contrato
+                </label>
+                <input
+                  id="support-channels-input"
+                  type="text"
+                  value={compSupportChannelsText}
+                  onChange={(e) => {
+                    setCompSupportChannelsText(e.target.value);
+                    setHasUnsavedChanges(true);
+                  }}
+                  placeholder="Mensagens (WhatsApp), Ligações telefônicas e Reuniões online (Teams/Meet)"
+                  className="w-full text-xs p-2.5 border border-slate-200 rounded-lg bg-white font-semibold text-slate-800"
+                />
+                <p className="text-[10px] text-slate-400">WhatsApp, telefone e reuniões por vídeo (Teams, Meet, Zoom).</p>
+              </div>
+            </div>
+
+            {/* Badges de Destaque dos Canais de Suporte */}
+            <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 flex flex-wrap items-center justify-around gap-4 text-xs font-semibold text-slate-700">
+              <div className="flex items-center gap-2">
+                <div className="p-2 bg-emerald-100 text-emerald-700 rounded-lg"><MessageSquare className="w-4 h-4" /></div>
+                <div>
+                  <span className="block text-slate-800 font-bold">Mensagens & Áudio</span>
+                  <span className="text-[10px] text-slate-500">Atendimento ágil via WhatsApp</span>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <div className="p-2 bg-indigo-100 text-indigo-700 rounded-lg"><Phone className="w-4 h-4" /></div>
+                <div>
+                  <span className="block text-slate-800 font-bold">Ligações Diretas</span>
+                  <span className="text-[10px] text-slate-500">Suporte por chamada de voz</span>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <div className="p-2 bg-purple-100 text-purple-700 rounded-lg"><Video className="w-4 h-4" /></div>
+                <div>
+                  <span className="block text-slate-800 font-bold">Reuniões de Vídeo</span>
+                  <span className="text-[10px] text-slate-500">Microsoft Teams / Google Meet</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* CARD 4: HISTÓRICO DE ADITIVOS CONTRATUAIS EMITIDOS */}
+          <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-xs space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div>
+                <h3 className="text-base font-bold text-slate-800 font-display flex items-center gap-2">
+                  <FileText className="w-5 h-5 text-indigo-600" />
+                  Histórico de Aditivos Contratuais de Módulos
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Termos aditivos gerados para inclusão de novos módulos para a empresa <strong className="text-slate-700">{compName}</strong>.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                id="btn-addendum-modal-trigger"
+                onClick={() => setShowAddendumModal(true)}
+                className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl transition flex items-center gap-1.5 shadow-xs cursor-pointer"
+              >
+                <Plus className="w-4 h-4" /> Novo Aditivo de Módulo
+              </button>
+            </div>
+
+            {contractAddendums.length === 0 ? (
+              <div className="p-6 text-center bg-slate-50 border border-dashed border-slate-200 rounded-xl">
+                <FileText className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+                <p className="text-xs text-slate-500 font-medium">Nenhum termo aditivo emitido até o momento para esta empresa.</p>
+                <p className="text-[11px] text-slate-400 mt-0.5">Quando o cliente solicitar novos módulos, clique em "Novo Aditivo de Módulo" para emitir o termo e readequar a mensalidade.</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto border border-slate-200 rounded-xl">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-slate-50 text-slate-600 uppercase text-[10px] font-bold border-b border-slate-200">
+                    <tr>
+                      <th className="p-3">Data</th>
+                      <th className="p-3">Módulos Incluídos</th>
+                      <th className="p-3">Mensalidade Anterior</th>
+                      <th className="p-3">Adicional Mês</th>
+                      <th className="p-3">Nova Mensalidade</th>
+                      <th className="p-3 text-right">Ação</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {contractAddendums.map((add) => (
+                      <tr key={add.id} className="hover:bg-slate-50/80 transition">
+                        <td className="p-3 font-mono font-bold text-slate-800">{add.date}</td>
+                        <td className="p-3 text-slate-700 font-medium">
+                          {(add.addedModuleNames || add.addedModules || []).join(', ')}
+                        </td>
+                        <td className="p-3 font-mono text-slate-500">R$ {Number(add.previousMonthlyFee || 0).toFixed(2)}</td>
+                        <td className="p-3 font-mono text-emerald-600 font-bold">+ R$ {Number(add.additionalMonthlyFee || 0).toFixed(2)}</td>
+                        <td className="p-3 font-mono text-indigo-900 font-extrabold">R$ {Number(add.newTotalMonthlyFee || 0).toFixed(2)}</td>
+                        <td className="p-3 text-right">
+                          <button
+                            type="button"
+                            onClick={() => handlePrintAddendum(add)}
+                            className="px-2.5 py-1.5 bg-slate-100 hover:bg-indigo-50 text-indigo-700 font-bold text-[11px] rounded-lg border border-slate-200 hover:border-indigo-200 transition flex items-center gap-1 ml-auto cursor-pointer"
+                          >
+                            <Printer className="w-3.5 h-3.5" /> Reenviar / PDF
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -2709,6 +3423,143 @@ export default function UserManagementView({
                   Fechar
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL EMISSÃO DE TERMO ADITIVO DE NOVO MÓDULO */}
+      {showAddendumModal && (
+        <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-xs z-50 flex items-center justify-center p-4 animate-fade-in" id="addendum-issuance-modal">
+          <div className="bg-white rounded-2xl max-w-2xl w-full p-6 shadow-2xl border border-slate-100 space-y-5 animate-scale-up max-h-[90vh] flex flex-col">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-indigo-100 text-indigo-700 rounded-xl">
+                  <PlusCircle className="w-6 h-6" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-800 font-display">
+                    Emitir Termo Aditivo de Inclusão de Módulo
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    Empresa: <strong className="text-slate-700">{compName}</strong> | Mensalidade Atual: <strong className="text-indigo-900 font-mono">R$ {subMonthlyFee.toFixed(2)}</strong>
+                  </p>
+                </div>
+              </div>
+              <button onClick={() => setShowAddendumModal(false)} className="text-slate-400 hover:text-slate-600 p-1 rounded-lg">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto space-y-4 pr-1">
+              <p className="text-xs text-slate-600">
+                Selecione abaixo os módulos que o cliente está contratando neste aditivo. O sistema ativará os módulos e reajustará automaticamente o valor da mensalidade no contrato.
+              </p>
+
+              <div className="space-y-2">
+                <label className="text-xs font-bold uppercase tracking-wider text-slate-700 block">
+                  Módulos Disponíveis para Inclusão:
+                </label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  {Object.keys(DEFAULT_OPTIONAL_MODULE_PRICES).map((mKey) => {
+                    const info = DEFAULT_OPTIONAL_MODULE_PRICES[mKey];
+                    const isAlreadyActive = !!companyGlobalModules[mKey];
+                    const isSelected = selectedAddendumModules.includes(mKey);
+                    const price = optionalModulePrices[mKey] !== undefined ? optionalModulePrices[mKey] : info.defaultPrice;
+
+                    return (
+                      <div
+                        key={mKey}
+                        onClick={() => {
+                          if (isAlreadyActive) return;
+                          if (isSelected) {
+                            setSelectedAddendumModules(selectedAddendumModules.filter(k => k !== mKey));
+                          } else {
+                            setSelectedAddendumModules([...selectedAddendumModules, mKey]);
+                          }
+                        }}
+                        className={`p-3 rounded-xl border transition cursor-pointer flex items-center justify-between ${
+                          isAlreadyActive
+                            ? 'bg-slate-100 border-slate-200 opacity-60 cursor-not-allowed'
+                            : isSelected
+                            ? 'bg-indigo-50 border-indigo-400 ring-2 ring-indigo-200 shadow-2xs'
+                            : 'bg-white border-slate-200 hover:border-slate-300'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="checkbox"
+                            checked={isAlreadyActive || isSelected}
+                            disabled={isAlreadyActive}
+                            onChange={() => {}}
+                            className="w-4 h-4 text-indigo-600 rounded-md border-slate-300 focus:ring-indigo-500 cursor-pointer"
+                          />
+                          <div>
+                            <span className="block text-xs font-bold text-slate-800">{info.label}</span>
+                            <span className="text-[10px] text-slate-500">
+                              {isAlreadyActive ? 'Módulo já ativo' : `+ R$ ${price.toFixed(2)}/mês`}
+                            </span>
+                          </div>
+                        </div>
+
+                        <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
+                          isAlreadyActive ? 'bg-slate-200 text-slate-600' : isSelected ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600'
+                        }`}>
+                          {isAlreadyActive ? 'Ativo' : isSelected ? 'Selecionado' : 'Adicionar'}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Resumo Financeiro do Aditivo */}
+              <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-2 text-xs">
+                <div className="flex justify-between text-slate-600">
+                  <span>Mensalidade Atual:</span>
+                  <span className="font-mono font-bold">R$ {subMonthlyFee.toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between text-emerald-700 font-semibold">
+                  <span>Adicional dos Novos Módulos ({selectedAddendumModules.length}):</span>
+                  <span className="font-mono font-bold">
+                    + R$ {selectedAddendumModules.reduce((acc, k) => acc + (optionalModulePrices[k] !== undefined ? optionalModulePrices[k] : DEFAULT_OPTIONAL_MODULE_PRICES[k].defaultPrice), 0).toFixed(2)}
+                  </span>
+                </div>
+                <div className="flex justify-between text-indigo-900 font-extrabold text-sm pt-2 border-t border-slate-200">
+                  <span>Nova Mensalidade Total:</span>
+                  <span className="font-mono">
+                    R$ {(
+                      subMonthlyFee + 
+                      selectedAddendumModules.reduce((acc, k) => acc + (optionalModulePrices[k] !== undefined ? optionalModulePrices[k] : DEFAULT_OPTIONAL_MODULE_PRICES[k].defaultPrice), 0)
+                    ).toFixed(2)}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowAddendumModal(false);
+                  setSelectedAddendumModules([]);
+                }}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs rounded-xl"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={selectedAddendumModules.length === 0}
+                onClick={() => {
+                  handleCreateAddendum();
+                  setShowAddendumModal(false);
+                  setSelectedAddendumModules([]);
+                }}
+                className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-bold text-xs rounded-xl flex items-center gap-1.5 cursor-pointer shadow-xs"
+              >
+                <Printer className="w-4 h-4" /> Gerar Aditivo & Atualizar Mensalidade
+              </button>
             </div>
           </div>
         </div>

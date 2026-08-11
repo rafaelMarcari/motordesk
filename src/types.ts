@@ -96,6 +96,30 @@ export interface CompanyInfo {
   signedContractDate?: string; // Data de Envio/Assinatura do Contrato Assinado
   contractStatus?: 'pending' | 'signed'; // Status do Contrato ('pending' | 'signed')
 
+  // Precificação Modular do Plano e Módulos Opcionais
+  basePlanFee?: number; // Preço Base do Plano Básico de Funcionamento (R$)
+  customNegotiatedDiscount?: number; // Desconto Negociado / Ajuste (R$)
+  optionalModulePrices?: { [key: string]: number }; // Tabela de Preços Personalizada por Módulo Opcional
+
+  // Suporte Técnico & Canais de Atendimento
+  supportWhatsapp?: string; // Número do WhatsApp do Suporte Técnico (com DDD)
+  supportBusinessHours?: string; // Período Comercial de Atendimento (ex: Seg a Sex 08h-18h, Sáb 08h-12h)
+  supportChannelsText?: string; // Descrição dos Canais (WhatsApp, Telefone, Teams, Meet)
+
+  // Histórico de Aditivos Contratuais (Inclusão/Alteração de Módulos)
+  contractAddendums?: Array<{
+    id: string;
+    date: string;
+    addedModules: string[]; // Lista de chaves dos módulos adicionados neste aditivo
+    addedModuleNames?: string[]; // Nomes dos módulos adicionados
+    previousMonthlyFee: number;
+    additionalMonthlyFee: number;
+    newTotalMonthlyFee: number;
+    notes?: string;
+    signedByClient?: boolean;
+    signedDate?: string;
+  }>;
+
   // Matriz de Liberação de Módulos por Perfil para esta Empresa
   levelPermissions?: { [key in UserRole]?: UserPermissions };
   // Liberação / Bloqueio Global de Módulos desta Empresa
