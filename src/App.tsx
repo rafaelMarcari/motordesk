@@ -115,6 +115,27 @@ type ViewID =
   | 'qa_panel'
   | 'data_migration';
 
+const VIEW_PERMISSION_MAP: Record<ViewID, keyof UserPermissions | null> = {
+  dashboard: 'accessDashboard',
+  clients: 'accessClients',
+  vehicles: 'accessVehicles',
+  parts: 'accessParts',
+  quotations: 'accessQuotations',
+  accounts_receivable: 'accessAccountsReceivable',
+  accounts_payable: 'accessAccountsPayable',
+  financial: 'accessFinancial',
+  fiscal: 'accessFiscal',
+  services: 'accessServices',
+  budgets: 'accessBudgets',
+  serviceOrders: 'accessServiceOrders',
+  history: 'accessHistory',
+  reports: 'accessReports',
+  users: 'accessUserManagement',
+  profile: null,
+  qa_panel: 'accessQAPanel',
+  data_migration: 'accessQAPanel'
+};
+
 export default function App() {
   // 1. Core DB State
   const [db, setDb] = useState<AppDatabase | null>(null);
@@ -422,6 +443,37 @@ export default function App() {
       }
     }
   }, [db?.budgets?.length, db?.parts?.length, db?.serviceOrders?.length]);
+
+  // Keep currentUser permissions in sync with db.users in real time
+  useEffect(() => {
+    if (db && currentUser) {
+      const freshUser = (db.users || []).find(
+        u => u.id === currentUser.id || (u.username && u.username.toLowerCase() === currentUser.username.toLowerCase())
+      );
+      if (freshUser) {
+        if (
+          JSON.stringify(freshUser.permissions) !== JSON.stringify(currentUser.permissions) ||
+          freshUser.role !== currentUser.role ||
+          freshUser.name !== currentUser.name
+        ) {
+          setCurrentUser(freshUser);
+        }
+      }
+    }
+  }, [db?.users, currentUser?.id]);
+
+  // Fallback activeView if current module permission is revoked
+  useEffect(() => {
+    if (!currentUser) return;
+    const requiredPerm = VIEW_PERMISSION_MAP[activeView];
+    if (requiredPerm !== null && requiredPerm !== undefined && !currentUser.permissions[requiredPerm]) {
+      const firstAllowed = (Object.keys(VIEW_PERMISSION_MAP) as ViewID[]).find(v => {
+        const perm = VIEW_PERMISSION_MAP[v];
+        return perm === null || Boolean(currentUser.permissions[perm]);
+      });
+      setActiveView(firstAllowed || 'profile');
+    }
+  }, [currentUser?.permissions, activeView]);
 
   const handleUpdateGlobalModules = (updatedModules: { [key: string]: boolean }) => {
     setGlobalModules(updatedModules);
@@ -1598,6 +1650,50 @@ export default function App() {
                   {(!isSidebarCollapsed || isSidebarHovered) && <span className="truncate">Criar Usuários / Níveis</span>}
                 </div>
                 {(!isSidebarCollapsed || isSidebarHovered) && globalModules.accessUserManagement === false && (
+                  <span className="text-[9px] bg-amber-500/10 text-amber-500 px-1 py-0.2 rounded border border-amber-500/20 font-mono">🔒</span>
+                )}
+              </button>
+            )}
+
+            {currentUser.permissions.accessQAPanel && (
+              <button 
+                id="menu-btn-qa-panel"
+                onClick={() => !isModuleLocked('accessQAPanel') && navigateToView('qa_panel')}
+                disabled={isModuleLocked('accessQAPanel')}
+                title="Painel de Testes QA"
+                className={`w-full flex items-center ${(!isSidebarCollapsed || isSidebarHovered) ? 'justify-between px-3' : 'justify-center px-2'} py-2.5 rounded-lg text-xs font-semibold tracking-wide transition ${
+                  isModuleLocked('accessQAPanel')
+                    ? 'opacity-40 cursor-not-allowed text-slate-500'
+                    : activeView === 'qa_panel' ? 'bg-indigo-600 text-white font-bold' : 'hover:bg-slate-800 text-slate-400 hover:text-slate-100'
+                }`}
+              >
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <Bug className="w-4 h-4 shrink-0 text-amber-400" />
+                  {(!isSidebarCollapsed || isSidebarHovered) && <span className="truncate">Painel de Testes QA</span>}
+                </div>
+                {(!isSidebarCollapsed || isSidebarHovered) && globalModules.accessQAPanel === false && (
+                  <span className="text-[9px] bg-amber-500/10 text-amber-500 px-1 py-0.2 rounded border border-amber-500/20 font-mono">🔒</span>
+                )}
+              </button>
+            )}
+
+            {currentUser.permissions.accessQAPanel && (
+              <button 
+                id="menu-btn-data-migration"
+                onClick={() => !isModuleLocked('accessQAPanel') && navigateToView('data_migration')}
+                disabled={isModuleLocked('accessQAPanel')}
+                title="Conversor de Migração"
+                className={`w-full flex items-center ${(!isSidebarCollapsed || isSidebarHovered) ? 'justify-between px-3' : 'justify-center px-2'} py-2.5 rounded-lg text-xs font-semibold tracking-wide transition ${
+                  isModuleLocked('accessQAPanel')
+                    ? 'opacity-40 cursor-not-allowed text-slate-500'
+                    : activeView === 'data_migration' ? 'bg-indigo-600 text-white font-bold' : 'hover:bg-slate-800 text-slate-400 hover:text-slate-100'
+                }`}
+              >
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <Database className="w-4 h-4 shrink-0 text-cyan-400" />
+                  {(!isSidebarCollapsed || isSidebarHovered) && <span className="truncate">Conversor de Migração</span>}
+                </div>
+                {(!isSidebarCollapsed || isSidebarHovered) && globalModules.accessQAPanel === false && (
                   <span className="text-[9px] bg-amber-500/10 text-amber-500 px-1 py-0.2 rounded border border-amber-500/20 font-mono">🔒</span>
                 )}
               </button>

@@ -4,8 +4,8 @@
  */
 
 import React, { useState } from 'react';
-import { Shield, Key, CheckCircle, AlertCircle, User as UserIcon } from 'lucide-react';
-import { User } from '../types';
+import { Shield, Key, CheckCircle, AlertCircle, User as UserIcon, Lock, Check, X } from 'lucide-react';
+import { User, UserPermissions } from '../types';
 import { AppDatabase } from '../data/mockData';
 
 interface ProfileViewProps {
@@ -191,6 +191,76 @@ export default function ProfileView({ currentUser, db, onSaveUsers, onAddHistory
               </button>
             </div>
           </form>
+        </div>
+      </div>
+
+      {/* Granted Permissions Overview */}
+      <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-xs space-y-4" id="profile-permissions-panel">
+        <div className="flex items-center gap-2 border-b border-slate-100 pb-3">
+          <Shield className="w-5 h-5 text-indigo-600" />
+          <div>
+            <h4 className="font-semibold text-slate-800 font-display text-sm uppercase tracking-wider">
+              Módulos & Liberações do Seu Perfil ({currentUser.role.toUpperCase()})
+            </h4>
+            <p className="text-xs text-slate-500">
+              Abaixo estão os módulos atualmente liberados ou restringidos para sua conta pelo administrador.
+            </p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pt-2">
+          {(() => {
+            const PERMISSION_LABEL_MAP: { [K in keyof UserPermissions]: string } = {
+              accessDashboard: "Dashboard Geral KPI",
+              accessClients: "Cadastro de Clientes",
+              accessVehicles: "Cadastro de Veículos",
+              accessParts: "Controle de Peças e Estoque",
+              accessQuotations: "Cotação & Fornecedores",
+              accessServices: "Tabela de Serviços",
+              accessBudgets: "Orçamentos Builder",
+              accessServiceOrders: "Ordens de Serviço (OS)",
+              accessHistory: "Histórico do Veículo",
+              accessReports: "Relatórios Financeiros",
+              accessUserManagement: "Controle de Colaboradores",
+              accessQAPanel: "Painel de Testes QA",
+              accessNotifications: "Notificações do Sistema",
+              accessAccountsReceivable: "Contas a Receber",
+              accessAccountsPayable: "Contas a Pagar",
+              accessFinancial: "DRE & Caixa Financeiro",
+              accessFiscal: "Módulo Fiscal, Boletos & SEFAZ",
+              canEditBudgets: "Editar Orçamentos Existentes",
+              canCustomizePdf: "Personalizar Layout do PDF",
+              canViewOtherStoresStock: "Estoque Outras Lojas",
+              canSellOtherStoresStock: "Vender Peças Outra Loja"
+            };
+
+            return Object.entries(PERMISSION_LABEL_MAP).map(([key, label]) => {
+              const permKey = key as keyof UserPermissions;
+              const isAllowed = Boolean(currentUser.permissions[permKey]);
+
+              return (
+                <div 
+                  key={key} 
+                  className={`p-3 rounded-lg border flex items-center justify-between text-xs font-medium transition ${
+                    isAllowed 
+                      ? 'bg-emerald-50/50 border-emerald-200/80 text-emerald-900' 
+                      : 'bg-slate-50 border-slate-200 text-slate-400 opacity-60'
+                  }`}
+                >
+                  <span className="truncate pr-2">{label}</span>
+                  {isAllowed ? (
+                    <span className="flex items-center gap-1 bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0">
+                      <Check className="w-3 h-3" /> Liberado
+                    </span>
+                  ) : (
+                    <span className="flex items-center gap-1 bg-slate-200 text-slate-600 text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0">
+                      <Lock className="w-3 h-3" /> Bloqueado
+                    </span>
+                  )}
+                </div>
+              );
+            });
+          })()}
         </div>
       </div>
     </div>
