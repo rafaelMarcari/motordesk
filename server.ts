@@ -73,9 +73,17 @@ const corsOptions: cors.CorsOptions = {
 
 // 1. REGISTER CORS MIDDLEWARE FIRST BEFORE ALL OTHER ROUTERS AND MIDDLEWARES
 app.use(cors(corsOptions));
-app.options("*", cors(corsOptions));
 
-// 2. Body Parser Middleware
+// 2. EXPLICITLY HANDLE ALL PREFLIGHT 'OPTIONS' REQUESTS BEFORE ANY OTHER ROUTE
+app.options("*", cors(corsOptions));
+app.use((req, res, next) => {
+  if (req.method === "OPTIONS") {
+    return res.sendStatus(200);
+  }
+  next();
+});
+
+// 3. Body Parser Middleware
 app.use(express.json({ limit: "50mb" }));
 
 // 3. Ensure JSON response header for API routes
