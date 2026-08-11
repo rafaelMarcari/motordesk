@@ -1,9 +1,8 @@
 import express from "express";
 import cors from "cors";
-import fs from "fs";
 import path from "path";
 import { createServer as createViteServer } from "vite";
-import { getDbInstance, checkDatabaseHealth } from "./src/db/index.js";
+import { getDbInstance, checkDatabaseHealth, ensureAppStoreTableExists } from "./src/db/index.js";
 import { appStore, clients as clientsTable, vehicles as vehiclesTable, parts as partsTable, serviceOrders as serviceOrdersTable } from "./src/db/schema.js";
 import { eq } from "drizzle-orm";
 import dotenv from "dotenv";
@@ -14,39 +13,75 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 
-// Configurable CORS for Production (Vercel frontend) and Local Dev
-const defaultOrigins = [
+// Default whitelisted origins for MotorDesk production & development
+const DEFAULT_ALLOWED_ORIGINS = [
   "https://motordesk.app.br",
   "https://www.motordesk.app.br",
-  "https://motordesk.ai.studio",
   "http://localhost:3000",
   "http://localhost:5173",
   "http://127.0.0.1:3000",
 ];
 
-if (process.env.CORS_ALLOWED_ORIGINS) {
-  process.env.CORS_ALLOWED_ORIGINS.split(",").forEach(origin => {
-    const trimmed = origin.trim();
-    if (trimmed && !defaultOrigins.includes(trimmed)) {
-      defaultOrigins.push(trimmed);
-    }
-  });
+// Parse and sanitize CORS_ALLOWED_ORIGINS environment variable
+function getWhitelistedOrigins(): string[] {
+  const originsSet = new Set<string>();
+
+  // Add default origins
+  DEFAULT_ALLOWED_ORIGINS.forEach((o) => originsSet.add(o.trim().replace(/\/+$/, "")));
+
+  const envOrigins = process.env.CORS_ALLOWED_ORIGINS;
+  if (envOrigins) {
+    // Sanitize: remove brackets, quotes, markdown links, parentheses
+    const cleaned = envOrigins
+      .replace(/[\[\]'"`\(\)]/g, "")
+      .replace(/\s+/g, " ");
+
+    cleaned.split(",").forEach((item) => {
+      const trimmed = item.trim().replace(/^['"]|['"]$/g, "").replace(/\/+$/, "");
+      if (trimmed && (trimmed.startsWith("http://") || trimmed.startsWith("https://"))) {
+        originsSet.add(trimmed);
+      }
+    });
+  }
+
+  return Array.from(originsSet);
 }
 
-app.use(cors({
+const whitelistedOrigins = getWhitelistedOrigins();
+
+// Express CORS options
+const corsOptions: cors.CorsOptions = {
   origin: (origin, callback) => {
-    // Allow requests from Vercel frontend (motordesk.app.br), local dev, and all valid clients
-    return callback(null, true);
+    // Non-browser requests (e.g. server-to-server, health checks) have no origin header
+    if (!origin) {
+      return callback(null, true);
+    }
+
+    const normalizedOrigin = origin.trim().replace(/\/+$/, "");
+    if (whitelistedOrigins.includes(normalizedOrigin)) {
+      return callback(null, true);
+    }
+
+    console.warn(`[CORS Blocked] Origin '${origin}' is not in allowed whitelist:`, whitelistedOrigins);
+    return callback(null, false);
   },
   credentials: true,
-}));
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With", "Accept"],
+  optionsSuccessStatus: 200,
+};
 
+// 1. REGISTER CORS MIDDLEWARE FIRST BEFORE ALL OTHER ROUTERS AND MIDDLEWARES
+app.use(cors(corsOptions));
+app.options("*", cors(corsOptions));
+
+// 2. Body Parser Middleware
 app.use(express.json({ limit: "50mb" }));
 
-// Ensure JSON response header for all API routes
+// 3. Ensure JSON response header for API routes
 app.use((req, res, next) => {
-  if (req.path.startsWith('/api') || req.path === '/health' || req.path === '/') {
-    res.setHeader('Content-Type', 'application/json');
+  if (req.path.startsWith("/api") || req.path === "/health" || req.path === "/") {
+    res.setHeader("Content-Type", "application/json");
   }
   next();
 });
@@ -57,11 +92,11 @@ app.get("/", (req, res) => {
     service: "MotorDesk REST API",
     status: "online",
     healthEndpoint: "/api/health",
-    version: "1.0.0"
+    version: "1.0.0",
   });
 });
 
-// Health Check API with real PostgreSQL connectivity test
+// Health Check API - Public/Unauthenticated JSON
 app.get(["/api/health", "/health"], async (req, res) => {
   const dbHealth = await checkDatabaseHealth();
   const status = dbHealth.connected ? "ok" : "degraded";
@@ -73,105 +108,63 @@ app.get(["/api/health", "/health"], async (req, res) => {
     databaseName: dbHealth.database || "cloud_sql_production_database",
     error: dbHealth.error || null,
     timestamp: new Date().toISOString(),
-    environment: process.env.NODE_ENV || "development"
+    environment: process.env.NODE_ENV || "development",
   });
 });
 
-// Server-side persistent file storage fallback
-const SERVER_STORE_FILE = path.join(process.cwd(), ".server_db_store.json");
-
-function getStoredDataFromFile() {
+// 4. ERP Database APIs - Cloud SQL PostgreSQL ONLY (No file backup, No fallback store)
+app.get("/api/db", requireAuth, async (req, res) => {
   try {
-    if (fs.existsSync(SERVER_STORE_FILE)) {
-      const content = fs.readFileSync(SERVER_STORE_FILE, "utf-8");
-      return JSON.parse(content);
-    }
-  } catch (e) {
-    console.error("Error reading server backup database file:", e);
-  }
-  return null;
-}
-
-function saveStoredDataToFile(data: any) {
-  try {
-    fs.writeFileSync(SERVER_STORE_FILE, JSON.stringify(data), "utf-8");
-  } catch (e) {
-    console.error("Error saving server backup database file:", e);
-  }
-}
-
-// ERP API Routes
-app.get("/api/db", async (req, res) => {
-  try {
+    await ensureAppStoreTableExists();
     const db = getDbInstance();
     if (db) {
-      try {
-        const records = await db.select().from(appStore).where(eq(appStore.id, "motordesk_main"));
-        if (records.length > 0 && records[0].data) {
-          // Keep server backup file updated
-          saveStoredDataToFile(records[0].data);
-          return res.json({ success: true, data: records[0].data, source: "cloud_sql" });
-        }
-      } catch (sqlErr: any) {
-        console.warn("Cloud SQL fetch warning, falling back to server file store:", sqlErr.message);
+      const records = await db.select().from(appStore).where(eq(appStore.id, "motordesk_main"));
+      if (records.length > 0 && records[0].data) {
+        return res.json({ success: true, data: records[0].data, source: "cloud_sql" });
       }
     }
-    
-    // Fallback to server backup file
-    const fileData = getStoredDataFromFile();
-    if (fileData) {
-      return res.json({ success: true, data: fileData, source: "server_file" });
-    }
-    
-    return res.json({ success: true, data: null });
+    return res.json({ success: true, data: null, source: "cloud_sql" });
   } catch (err: any) {
-    console.error("Error loading database state from backend:", err);
-    const fileData = getStoredDataFromFile();
-    return res.json({ success: true, data: fileData || null, source: "fallback_file" });
+    console.error("Error loading database state from PostgreSQL Cloud SQL:", err);
+    return res.status(500).json({ error: "Failed to load database from Cloud SQL", details: err.message });
   }
 });
 
-app.post("/api/db", async (req, res) => {
+app.post("/api/db", requireAuth, async (req, res) => {
   try {
     const appData = req.body;
     if (!appData) {
       return res.status(400).json({ success: false, error: "Dados para salvamento ausentes" });
     }
 
-    // Always save to server-side backup file first to guarantee multi-device access
-    saveStoredDataToFile(appData);
+    await ensureAppStoreTableExists();
+    const db = getDbInstance();
 
-    // Also attempt saving to PostgreSQL Cloud SQL
-    let cloudSqlSaved = false;
-    try {
-      const db = getDbInstance();
-      if (db) {
-        await db.insert(appStore)
-          .values({
-            id: "motordesk_main",
-            data: appData,
-            updatedAt: new Date()
-          })
-          .onConflictDoUpdate({
-            target: appStore.id,
-            set: {
-              data: appData,
-              updatedAt: new Date()
-            }
-          });
-        cloudSqlSaved = true;
-      }
-    } catch (sqlErr: any) {
-      console.warn("Cloud SQL save warning (persisted to server file instead):", sqlErr.message);
+    if (!db) {
+      return res.status(503).json({ success: false, error: "Conexão com PostgreSQL Cloud SQL indisponível" });
     }
+
+    await db.insert(appStore)
+      .values({
+        id: "motordesk_main",
+        data: appData,
+        updatedAt: new Date(),
+      })
+      .onConflictDoUpdate({
+        target: appStore.id,
+        set: {
+          data: appData,
+          updatedAt: new Date(),
+        },
+      });
 
     return res.json({
       success: true,
-      message: cloudSqlSaved ? "Database saved to PostgreSQL Cloud SQL and Server Backup" : "Database saved to Server Backend Storage",
-      cloudSqlSaved
+      message: "Database saved to PostgreSQL Cloud SQL",
+      source: "cloud_sql",
     });
   } catch (err: any) {
-    console.error("Error saving database state to backend:", err);
+    console.error("Error saving database state to PostgreSQL Cloud SQL:", err);
     return res.status(500).json({ error: "Failed to save database to Cloud SQL", details: err.message });
   }
 });
