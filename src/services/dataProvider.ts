@@ -31,7 +31,14 @@ export class LocalStorageProvider implements IDataProvider {
   }
 
   private getDefaultDb(): AppDatabase {
+    let cachedLanding: any;
+    try {
+      const saved = localStorage.getItem('motordesk_landing_content_v2');
+      if (saved) cachedLanding = JSON.parse(saved);
+    } catch (e) {}
+
     return {
+      landingContent: cachedLanding,
       globalModules: {
         accessDashboard: true,
         accessClients: true,

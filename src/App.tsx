@@ -89,6 +89,7 @@ import FiscalSefazView from './components/FiscalSefazView';
 import NotificationToastPopup from './components/NotificationToastPopup';
 import NotificationsModal from './components/NotificationsModal';
 import LandingPresentationView, { LandingContent } from './components/LandingPresentationView';
+import motordeskLogoImg from './assets/images/motordesk_logo_1786534067989.jpg';
 import FullDocumentationModal from './components/FullDocumentationModal';
 import { sweepExpiredBudgets, checkLowStockAlerts } from './utils/stockUtils';
 import { syncServiceOrdersWithBudgets } from './utils/serviceOrderUtils';
@@ -1137,25 +1138,44 @@ export default function App() {
 
   // LOGIN SCREEN WRAPPER (RF014)
   if (!currentUser) {
+    const loginPageData = db?.landingContent?.loginPage || {
+      title: 'Bem-vindo ao MotorDesk',
+      subtitle: 'Realize o login com o seu perfil funcional para iniciar suas atividades.',
+      leftBadge: 'Portfólio de Gestão & QA',
+      leftTitle: 'Plataforma integrada de Ordens de Serviço sob rigorosos testes de QA.',
+      leftSubtitle: 'Este sistema foi planejado para demonstrar a excelência técnica em engenharia de testes, rastreabilidade e validação de requisitos de oficina.',
+      buttonText: 'Entrar no Sistema',
+      logoUrl: motordeskLogoImg
+    };
+
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4 font-sans" id="login-view-container">
         <div className="w-full max-w-4xl grid grid-cols-1 md:grid-cols-12 bg-white rounded-2xl overflow-hidden shadow-xl border border-slate-100 animate-fade-in">
           {/* Left panel branding */}
           <div className="md:col-span-5 bg-slate-900 p-8 flex flex-col justify-between text-white relative">
-            <div className="space-y-2">
-              <div className="flex items-center gap-2">
-                <ToolIcon className="w-7 h-7 text-indigo-400" />
+            <div className="space-y-3">
+              <div className="flex items-center gap-3">
+                {loginPageData.logoUrl ? (
+                  <img
+                    src={loginPageData.logoUrl}
+                    alt="Logo MotorDesk"
+                    className="w-10 h-10 object-contain rounded-xl bg-slate-950/60 p-1 border border-slate-700/60 shadow-md"
+                    referrerPolicy="no-referrer"
+                  />
+                ) : (
+                  <ToolIcon className="w-7 h-7 text-indigo-400" />
+                )}
                 <span className="font-extrabold tracking-tight text-xl font-display">MotorDesk</span>
               </div>
-              <p className="text-slate-400 text-xs font-semibold uppercase tracking-wider">Portfólio de Gestão & QA</p>
+              <p className="text-slate-400 text-xs font-semibold uppercase tracking-wider">{loginPageData.leftBadge}</p>
             </div>
 
             <div className="my-8 space-y-4">
               <p className="text-lg font-bold tracking-tight text-slate-100 leading-tight">
-                Plataforma integrada de Ordens de Serviço sob rigorosos testes de QA.
+                {loginPageData.leftTitle}
               </p>
               <p className="text-xs text-slate-400 leading-relaxed">
-                Este sistema foi planejado para demonstrar a excelência técnica em engenharia de testes, rastreabilidade e validação de requisitos de oficina.
+                {loginPageData.leftSubtitle}
               </p>
 
               <button
@@ -1177,8 +1197,8 @@ export default function App() {
           {/* Right panel interactive form */}
           <div className="md:col-span-7 p-8 space-y-6">
             <div className="space-y-1.5">
-              <h1 className="text-xl font-bold text-slate-800 tracking-tight font-display">Bem-vindo ao MotorDesk</h1>
-              <p className="text-xs text-slate-500">Realize o login com o seu perfil funcional para iniciar suas atividades.</p>
+              <h1 className="text-xl font-bold text-slate-800 tracking-tight font-display">{loginPageData.title}</h1>
+              <p className="text-xs text-slate-500">{loginPageData.subtitle}</p>
             </div>
 
             {loginError && (
@@ -1249,7 +1269,7 @@ export default function App() {
                 type="submit" 
                 className="w-full bg-slate-900 hover:bg-slate-800 text-white font-semibold text-xs py-2.5 rounded-lg transition inline-flex items-center justify-center gap-2 cursor-pointer shadow-xs"
               >
-                <Lock className="w-4 h-4 text-indigo-400" /> Entrar no Sistema
+                <Lock className="w-4 h-4 text-indigo-400" /> {loginPageData.buttonText}
               </button>
             </form>
           </div>

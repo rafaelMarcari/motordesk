@@ -1870,6 +1870,16 @@ export function getDatabase(): AppDatabase {
       if (!db.xmlImportRecords) {
         db.xmlImportRecords = INITIAL_XML_IMPORT_RECORDS;
       }
+      if (!db.landingContent) {
+        try {
+          const saved = localStorage.getItem('motordesk_landing_content_v2');
+          if (saved) {
+            db.landingContent = JSON.parse(saved);
+          }
+        } catch (e) {
+          console.error("Failed to parse landingContent cache in mockData:", e);
+        }
+      }
     } catch (e) {
       console.error("Error reading database, resetting...", e);
       db = {

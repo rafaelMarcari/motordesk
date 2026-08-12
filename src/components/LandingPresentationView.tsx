@@ -5,6 +5,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
+import motordeskLogoImg from '../assets/images/motordesk_logo_1786534067989.jpg';
 import { 
   Sparkles, 
   ShieldCheck, 
@@ -74,6 +75,16 @@ export interface DifferentialItem {
   highlight: boolean;
 }
 
+export interface LoginPageContent {
+  title: string;
+  subtitle: string;
+  leftBadge: string;
+  leftTitle: string;
+  leftSubtitle: string;
+  buttonText: string;
+  logoUrl?: string;
+}
+
 export interface LandingContent {
   hero: {
     badgeText: string;
@@ -96,6 +107,7 @@ export interface LandingContent {
     developerName: string;
     description: string;
   };
+  loginPage?: LoginPageContent;
 }
 
 export const DEFAULT_LANDING_CONTENT: LandingContent = {
@@ -240,6 +252,15 @@ export const DEFAULT_LANDING_CONTENT: LandingContent = {
     linkedin: 'https://www.linkedin.com/in/rafael-marçari/',
     developerName: 'Rafael Marçari',
     description: 'Engenheiro de Software & QA especializado em arquiteturas web resilientes, automação e desenvolvimento de ERPs corporativos.'
+  },
+  loginPage: {
+    title: 'Bem-vindo ao MotorDesk',
+    subtitle: 'Realize o login com o seu perfil funcional para iniciar suas atividades.',
+    leftBadge: 'Portfólio de Gestão & QA',
+    leftTitle: 'Plataforma integrada de Ordens de Serviço sob rigorosos testes de QA.',
+    leftSubtitle: 'Este sistema foi planejado para demonstrar a excelência técnica em engenharia de testes, rastreabilidade e validação de requisitos de oficina.',
+    buttonText: 'Entrar no Sistema',
+    logoUrl: motordeskLogoImg
   }
 };
 
@@ -268,14 +289,18 @@ export default function LandingPresentationView({
     return DEFAULT_LANDING_CONTENT;
   });
 
-  // Keep state synchronized with database records from PostgreSQL
-  useEffect(() => {
-    if (dbLandingContent) {
-      setContent(dbLandingContent);
-    }
-  }, [dbLandingContent]);
+  const activeLoginPage = content.loginPage || DEFAULT_LANDING_CONTENT.loginPage!;
 
   const [isAdminPanelOpen, setIsAdminPanelOpen] = useState(false);
+
+  // Keep state synchronized with database records from PostgreSQL only when admin panel is closed
+  useEffect(() => {
+    if (dbLandingContent && !isAdminPanelOpen) {
+      if (JSON.stringify(dbLandingContent) !== JSON.stringify(content)) {
+        setContent(dbLandingContent);
+      }
+    }
+  }, [dbLandingContent, isAdminPanelOpen]);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(false);
   const [adminUsernameInput, setAdminUsernameInput] = useState('');
@@ -1313,6 +1338,153 @@ export default function LandingPresentationView({
                     value={content.hero.subtitle}
                     onChange={e => setContent({ ...content, hero: { ...content.hero, subtitle: e.target.value } })}
                     className="w-full bg-slate-900 border border-slate-700 rounded-xl p-2.5 text-white font-medium focus:border-amber-400 outline-hidden"
+                  />
+                </div>
+              </div>
+
+              {/* LOGIN PAGE EDITS */}
+              <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 space-y-4">
+                <h4 className="font-bold text-amber-400 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
+                  <Lock className="w-4 h-4 text-amber-400" />
+                  Textos e Logo da Tela de Login do Sistema
+                </h4>
+
+                {/* Logo input & upload */}
+                <div>
+                  <label className="block text-slate-400 font-medium mb-1">
+                    Logo da Tela de Login (URL ou Arquivo do PC)
+                  </label>
+                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                    <input
+                      type="text"
+                      value={activeLoginPage.logoUrl || ''}
+                      onChange={e => setContent({
+                        ...content,
+                        loginPage: { ...activeLoginPage, logoUrl: e.target.value }
+                      })}
+                      placeholder="URL da imagem da logo..."
+                      className="w-full bg-slate-900 border border-slate-700 rounded-xl p-2.5 text-white font-mono text-xs outline-hidden"
+                    />
+                    <label className="px-3 py-2 bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-300 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer shrink-0">
+                      <Upload className="w-3.5 h-3.5 text-amber-400" />
+                      <span>Escolher do PC</span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={e => handleImageFileUpload(e, (url) => {
+                          setContent({
+                            ...content,
+                            loginPage: { ...activeLoginPage, logoUrl: url }
+                          });
+                        })}
+                      />
+                    </label>
+                  </div>
+                  {activeLoginPage.logoUrl && (
+                    <div className="mt-2 flex items-center gap-2 text-xs text-slate-400">
+                      <span className="text-slate-500">Prévia da Logo:</span>
+                      <img
+                        src={activeLoginPage.logoUrl}
+                        alt="Prévia da Logo"
+                        className="h-10 w-10 object-contain rounded-lg bg-slate-900 border border-slate-700 p-1"
+                        referrerPolicy="no-referrer"
+                      />
+                    </div>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-slate-400 font-medium mb-1">
+                      Título do Form de Login (Lado Direito)
+                    </label>
+                    <input
+                      type="text"
+                      value={activeLoginPage.title}
+                      onChange={e => setContent({
+                        ...content,
+                        loginPage: { ...activeLoginPage, title: e.target.value }
+                      })}
+                      className="w-full bg-slate-900 border border-slate-700 rounded-xl p-2.5 text-white font-bold outline-hidden"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-slate-400 font-medium mb-1">
+                      Subtítulo do Form (Lado Direito)
+                    </label>
+                    <input
+                      type="text"
+                      value={activeLoginPage.subtitle}
+                      onChange={e => setContent({
+                        ...content,
+                        loginPage: { ...activeLoginPage, subtitle: e.target.value }
+                      })}
+                      className="w-full bg-slate-900 border border-slate-700 rounded-xl p-2.5 text-white font-medium outline-hidden"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-slate-400 font-medium mb-1">
+                      Tag/Badge do Painel Esquerdo
+                    </label>
+                    <input
+                      type="text"
+                      value={activeLoginPage.leftBadge}
+                      onChange={e => setContent({
+                        ...content,
+                        loginPage: { ...activeLoginPage, leftBadge: e.target.value }
+                      })}
+                      className="w-full bg-slate-900 border border-slate-700 rounded-xl p-2.5 text-white font-medium outline-hidden"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-slate-400 font-medium mb-1">
+                      Texto do Botão de Login
+                    </label>
+                    <input
+                      type="text"
+                      value={activeLoginPage.buttonText}
+                      onChange={e => setContent({
+                        ...content,
+                        loginPage: { ...activeLoginPage, buttonText: e.target.value }
+                      })}
+                      className="w-full bg-slate-900 border border-slate-700 rounded-xl p-2.5 text-white font-medium outline-hidden"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-slate-400 font-medium mb-1">
+                    Título Principal do Painel Esquerdo
+                  </label>
+                  <input
+                    type="text"
+                    value={activeLoginPage.leftTitle}
+                    onChange={e => setContent({
+                      ...content,
+                      loginPage: { ...activeLoginPage, leftTitle: e.target.value }
+                    })}
+                    className="w-full bg-slate-900 border border-slate-700 rounded-xl p-2.5 text-white font-medium outline-hidden"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-slate-400 font-medium mb-1">
+                    Descrição do Painel Esquerdo
+                  </label>
+                  <textarea
+                    rows={2}
+                    value={activeLoginPage.leftSubtitle}
+                    onChange={e => setContent({
+                      ...content,
+                      loginPage: { ...activeLoginPage, leftSubtitle: e.target.value }
+                    })}
+                    className="w-full bg-slate-900 border border-slate-700 rounded-xl p-2.5 text-white font-medium outline-hidden"
                   />
                 </div>
               </div>
