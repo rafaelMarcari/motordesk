@@ -91,6 +91,7 @@ import NotificationsModal from './components/NotificationsModal';
 import LandingPresentationView, { LandingContent } from './components/LandingPresentationView';
 import motordeskLogoImg from './assets/images/motordesk_logo_1786534067989.jpg';
 import FullDocumentationModal from './components/FullDocumentationModal';
+import PrivacyLgpdModal, { PrivacyLgpdFooter } from './components/PrivacyLgpdModal';
 import { sweepExpiredBudgets, checkLowStockAlerts } from './utils/stockUtils';
 import { syncServiceOrdersWithBudgets } from './utils/serviceOrderUtils';
 import { AccountReceivable, AccountPayable, FinancialTransaction, FiscalDocument, BoletoDocument, InterBranchSaleLogistics, SefazApiConfig } from './types';
@@ -149,6 +150,8 @@ export default function App() {
   const [loginError, setLoginError] = useState('');
   const [loginHistory, setLoginHistory] = useState<{username: string, name: string, role: string, lastAccess: string}[]>([]);
   const [loginTab, setLoginTab] = useState<'login' | 'register_company'>('login');
+  const [showPrivacyModal, setShowPrivacyModal] = useState(false);
+  const [hasAcceptedLoginLgpd, setHasAcceptedLoginLgpd] = useState(true);
 
   // Multi-tenant Company Registration States
   const [regCompName, setRegCompName] = useState('');
@@ -803,6 +806,11 @@ export default function App() {
     e.preventDefault();
     setLoginError('');
 
+    if (!hasAcceptedLoginLgpd) {
+      setLoginError('É necessário concordar com o Termo de Aceite de Privacidade e LGPD para realizar o login.');
+      return;
+    }
+
     if (!db) return;
 
     const cleanUsername = loginUsername.trim().toLowerCase();
@@ -1264,6 +1272,13 @@ export default function App() {
                 />
               </div>
 
+              <PrivacyLgpdFooter
+                onOpenModal={() => setShowPrivacyModal(true)}
+                mode="login"
+                isChecked={hasAcceptedLoginLgpd}
+                onToggleCheck={setHasAcceptedLoginLgpd}
+              />
+
               <button 
                 id="btn-login-submit"
                 type="submit" 
@@ -1274,6 +1289,13 @@ export default function App() {
             </form>
           </div>
         </div>
+
+        {/* Privacy and LGPD Modal */}
+        <PrivacyLgpdModal
+          isOpen={showPrivacyModal}
+          onClose={() => setShowPrivacyModal(false)}
+          companyName={db?.companyInfo?.name || 'MotorDesk'}
+        />
       </div>
     );
   }

@@ -20,7 +20,6 @@ export default function HistoryView({ db, currentUser, fullDb }: HistoryViewProp
   const [filterType, setFilterType] = useState<string>('all');
   const [selectedVehicleId, setSelectedVehicleId] = useState<string>('all');
   const [maintCategoryFilter, setMaintCategoryFilter] = useState<string>('all');
-  const [selectedCompanyFilter, setSelectedCompanyFilter] = useState<string>('all');
   const [selectedUserFilter, setSelectedUserFilter] = useState<string>('all');
 
   const databaseToUse = fullDb || db;
@@ -46,10 +45,58 @@ export default function HistoryView({ db, currentUser, fullDb }: HistoryViewProp
     return comp ? comp.name : (databaseToUse.companyInfo?.name || 'Oficina');
   };
 
+  // User & Multi-Tenant Company Isolation Context
+  const userCompanyId = currentUser?.companyId || databaseToUse.companyInfo?.id || 'comp-1';
+  const isSuperAdmin = currentUser?.role === 'admin';
+  const isClient = (currentUser?.role as string) === 'client';
+
+  // Check if current user has permission to view audit history of ALL companies
+  const userRoleKey = currentUser?.role;
+  const companyLevelPerms = userRoleKey ? databaseToUse.companyInfo?.levelPermissions?.[userRoleKey] : undefined;
+  const canViewAllCompaniesHistory = Boolean(
+    isSuperAdmin || 
+    currentUser?.permissions?.canViewAllCompaniesHistory || 
+    companyLevelPerms?.canViewAllCompaniesHistory
+  );
+
+  // Global Multi-Tenant Scope Toggle for Super-Admin (Disabled by default so audit shows ONLY user company by default)
+  const [isGlobalViewEnabled, setIsGlobalViewEnabled] = useState<boolean>(false);
+  const [selectedCompanyFilter, setSelectedCompanyFilter] = useState<string>(userCompanyId);
+
+  // Ensure selectedCompanyFilter stays aligned with userCompanyId when global view is off
+  React.useEffect(() => {
+    if (!isGlobalViewEnabled) {
+      setSelectedCompanyFilter(userCompanyId);
+    }
+  }, [userCompanyId, isGlobalViewEnabled]);
+
   // Filter history entries (ordered descending by date)
   const sortedHistory = [...(databaseToUse.history || [])].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
   const filteredHistory = sortedHistory.filter(entry => {
+    const entryCompanyId = entry.companyId || 'comp-1';
+
+    // 1. Store/Client isolation check:
+    if (isClient) {
+      if (entry.clientId && entry.clientId !== currentUser?.id) {
+        return false;
+      }
+      if (entryCompanyId !== userCompanyId) {
+        return false;
+      }
+    } else if (!canViewAllCompaniesHistory || !isGlobalViewEnabled) {
+      // Users without cross-company permission OR when global view is disabled (default) ONLY see logs of their own company
+      if (entryCompanyId !== userCompanyId) {
+        return false;
+      }
+    } else if (isGlobalViewEnabled && canViewAllCompaniesHistory) {
+      // Global view enabled by super-admin:
+      if (selectedCompanyFilter !== 'all' && entryCompanyId !== selectedCompanyFilter) {
+        return false;
+      }
+    }
+
+    // 2. Query, Type, Vehicle, User filters
     const vDesc = getVehicleDesc(entry.vehicleId).toLowerCase();
     const cName = getClientName(entry.clientId).toLowerCase();
     const userNameStr = (entry.userName || '').toLowerCase();
@@ -64,10 +111,9 @@ export default function HistoryView({ db, currentUser, fullDb }: HistoryViewProp
     
     const matchesType = filterType === 'all' || entry.type === filterType;
     const matchesVehicle = selectedVehicleId === 'all' || entry.vehicleId === selectedVehicleId;
-    const matchesCompany = selectedCompanyFilter === 'all' || (entry.companyId || 'comp-1') === selectedCompanyFilter;
     const matchesUser = selectedUserFilter === 'all' || entry.userName === selectedUserFilter;
 
-    return matchesQuery && matchesType && matchesVehicle && matchesCompany && matchesUser;
+    return matchesQuery && matchesType && matchesVehicle && matchesUser;
   });
 
   // Export audit logs as CSV
@@ -97,10 +143,29 @@ export default function HistoryView({ db, currentUser, fullDb }: HistoryViewProp
   };
 
   // Maintenance Logs
-  const maintenanceLogs = db.maintenanceLogs || [];
-  const sortedMaintLogs = [...maintenanceLogs].sort((a, b) => new Date(b.serviceDate).getTime() - new Date(a.serviceDate).getTime());
+  const maintenanceLogs = databaseToUse.maintenanceLogs || db.maintenanceLogs || [];
+  const sortedMaintLogs = [...maintenanceLogs].sort((a, b) => new Date(b.serviceDate || '').getTime() - new Date(a.serviceDate || '').getTime());
 
   const filteredMaintLogs = sortedMaintLogs.filter(log => {
+    const logCompanyId = log.companyId || 'comp-1';
+
+    if (isClient) {
+      if (log.clientId && log.clientId !== currentUser?.id) {
+        return false;
+      }
+      if (logCompanyId !== userCompanyId) {
+        return false;
+      }
+    } else if (!canViewAllCompaniesHistory || !isGlobalViewEnabled) {
+      if (logCompanyId !== userCompanyId) {
+        return false;
+      }
+    } else if (isGlobalViewEnabled && canViewAllCompaniesHistory) {
+      if (selectedCompanyFilter !== 'all' && logCompanyId !== selectedCompanyFilter) {
+        return false;
+      }
+    }
+
     const v = getVehicleObj(log.vehicleId);
     const vDesc = v ? `${v.brand} ${v.model} ${v.plate}`.toLowerCase() : '';
     const cName = getClientName(log.clientId).toLowerCase();
@@ -360,12 +425,19 @@ export default function HistoryView({ db, currentUser, fullDb }: HistoryViewProp
             <div className="flex items-center gap-3">
               <ShieldAlert className="w-6 h-6 text-indigo-400 flex-shrink-0 animate-pulse" />
               <div className="text-xs">
-                <div className="flex items-center gap-2">
-                  <span className="font-bold uppercase tracking-wider text-[10px] text-indigo-300">Garantia de Integridade de QA & Auditoria Multi-tenant (RN007)</span>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="font-bold uppercase tracking-wider text-[10px] text-indigo-300">Garantia de Integridade & Isolamento de Auditoria Multi-tenant</span>
                   {currentUser && (
-                    <span className="bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[10px] font-bold px-2 py-0.5 rounded flex items-center gap-1 font-mono">
-                      <CheckCircle className="w-3 h-3 text-emerald-400" />
-                      Liberado para {currentUser.name} ({currentUser.role.toUpperCase()})
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded flex items-center gap-1 font-mono ${
+                      canViewAllCompaniesHistory && isGlobalViewEnabled
+                        ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                        : 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/30'
+                    }`}>
+                      {canViewAllCompaniesHistory && isGlobalViewEnabled ? (
+                        <><CheckCircle className="w-3 h-3 text-emerald-400" /> Auditoria Global Ativa (Super-Admin) — {currentUser.name}</>
+                      ) : (
+                        <><Lock className="w-3 h-3 text-indigo-400" /> Visão Padrão: Loja {getCompanyName(userCompanyId)} — {currentUser.name}</>
+                      )}
                     </span>
                   )}
                 </div>
@@ -385,6 +457,69 @@ export default function HistoryView({ db, currentUser, fullDb }: HistoryViewProp
             </button>
           </div>
 
+          {/* Super-Admin Scope Selector Card */}
+          {canViewAllCompaniesHistory && (
+            <div className="p-4 bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 border border-indigo-800/80 rounded-xl shadow-xs text-white flex flex-col md:flex-row md:items-center justify-between gap-4" id="superadmin-scope-selector-card">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 bg-indigo-600/30 rounded-lg text-indigo-300 border border-indigo-500/30 shrink-0">
+                  <Building2 className="w-5 h-5 text-indigo-300" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-indigo-200 font-display">
+                      Seletor de Escopo de Auditoria (Super-Admin)
+                    </h4>
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded font-mono ${
+                      isGlobalViewEnabled ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : 'bg-slate-700 text-slate-300'
+                    }`}>
+                      {isGlobalViewEnabled ? '🌐 Visão Global Multi-Empresa Ativa' : '🏢 Filtrado por Empresa Logada (Padrão)'}
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-300 mt-0.5">
+                    Por padrão, a auditoria exibe apenas os registros da empresa do operador conectado (<strong>{getCompanyName(userCompanyId)}</strong>). Perfis com permissão super-admin podem alternar abaixo para a visão global.
+                  </p>
+                </div>
+              </div>
+
+              {/* Toggle selector buttons */}
+              <div className="flex items-center gap-1.5 shrink-0 bg-slate-950/80 p-1.5 rounded-lg border border-slate-800">
+                <button
+                  type="button"
+                  id="btn-scope-my-company"
+                  onClick={() => {
+                    setIsGlobalViewEnabled(false);
+                    setSelectedCompanyFilter(userCompanyId);
+                  }}
+                  className={`px-3 py-1.5 rounded-md text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                    !isGlobalViewEnabled
+                      ? 'bg-indigo-600 text-white shadow-xs'
+                      : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                  }`}
+                  title="Exibe logs apenas da empresa do usuário conectado (Comportamento Padrão)"
+                >
+                  <Building2 className="w-3.5 h-3.5" /> Apenas Minha Empresa
+                </button>
+
+                <button
+                  type="button"
+                  id="btn-scope-global"
+                  onClick={() => {
+                    setIsGlobalViewEnabled(true);
+                    setSelectedCompanyFilter('all');
+                  }}
+                  className={`px-3 py-1.5 rounded-md text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                    isGlobalViewEnabled
+                      ? 'bg-emerald-600 text-white shadow-xs'
+                      : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                  }`}
+                  title="Habilita a auditoria de todas as empresas cadastradas no sistema"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-emerald-300" /> Habilitar Visão Global (Super-Admin)
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Filters and Search panel (Divided by Company & User) */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 bg-slate-50 p-4 rounded-xl border border-slate-200" id="history-filters-panel">
             {/* Search */}
@@ -402,19 +537,34 @@ export default function HistoryView({ db, currentUser, fullDb }: HistoryViewProp
 
             {/* Filter Company (Multi-Tenant Division) */}
             <div className="relative">
-              <select
-                id="history-filter-company-select"
-                value={selectedCompanyFilter}
-                onChange={e => setSelectedCompanyFilter(e.target.value)}
-                className="w-full text-xs px-3 py-2 bg-white border border-slate-200 text-slate-800 font-medium rounded-lg focus:outline-hidden focus:border-indigo-500"
-              >
-                <option value="all">🏢 Todas as Empresas ({allCompaniesList.length})</option>
-                {allCompaniesList.map(comp => (
-                  <option key={comp.id} value={comp.id}>
-                    {comp.name} {comp.cnpj ? `(${comp.cnpj})` : ''}
-                  </option>
-                ))}
-              </select>
+              {!canViewAllCompaniesHistory || !isGlobalViewEnabled ? (
+                <div 
+                  className="w-full text-xs px-3 py-2 bg-slate-100 text-slate-700 border border-slate-200 font-semibold rounded-lg flex items-center justify-between gap-1 shadow-2xs" 
+                  title={canViewAllCompaniesHistory ? "Modo Padrão: Filtrado pela sua empresa. Habilite a Visão Global no seletor de Super-Admin acima para alternar entre lojas." : "Acesso liberado apenas para a sua própria empresa."}
+                >
+                  <span className="truncate flex items-center gap-1 font-bold text-slate-800">
+                    <Building2 className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+                    {getCompanyName(userCompanyId)}
+                  </span>
+                  <span className="text-[10px] bg-slate-200 text-slate-700 font-mono px-1.5 py-0.5 rounded shrink-0">
+                    Padrão
+                  </span>
+                </div>
+              ) : (
+                <select
+                  id="history-filter-company-select"
+                  value={selectedCompanyFilter}
+                  onChange={e => setSelectedCompanyFilter(e.target.value)}
+                  className="w-full text-xs px-3 py-2 bg-white border border-indigo-300 text-indigo-950 font-bold rounded-lg focus:outline-hidden focus:border-indigo-500 cursor-pointer shadow-2xs"
+                >
+                  <option value="all">🏢 Visão Global (Todas as {allCompaniesList.length} Lojas)</option>
+                  {allCompaniesList.map(comp => (
+                    <option key={comp.id} value={comp.id}>
+                      {comp.name} {comp.cnpj ? `(${comp.cnpj})` : ''}
+                    </option>
+                  ))}
+                </select>
+              )}
             </div>
 
             {/* Filter User */}
@@ -468,8 +618,8 @@ export default function HistoryView({ db, currentUser, fullDb }: HistoryViewProp
                 <Shield className="w-4 h-4 text-indigo-600" />
                 Registros Auditados ({filteredHistory.length} Eventos Encontrados)
               </span>
-              <span className="text-[11px] text-slate-400 font-mono">
-                Filtrado para: {selectedCompanyFilter === 'all' ? 'Todas as Empresas' : getCompanyName(selectedCompanyFilter)}
+              <span className="text-[11px] text-slate-500 font-mono">
+                Filtrado para: {!isGlobalViewEnabled || selectedCompanyFilter === userCompanyId ? `Minha Empresa (${getCompanyName(userCompanyId)})` : selectedCompanyFilter === 'all' ? 'Todas as Empresas (Visão Global)' : getCompanyName(selectedCompanyFilter)}
               </span>
             </div>
 

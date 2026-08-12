@@ -42,6 +42,7 @@ import {
 } from 'lucide-react';
 import { User, UserRole, UserPermissions, CompanyInfo } from '../types';
 import { AppDatabase } from '../data/mockData';
+import PrivacyLgpdModal, { PrivacyLgpdFooter } from './PrivacyLgpdModal';
 
 interface UserManagementViewProps {
   db: AppDatabase;
@@ -76,6 +77,7 @@ const DEFAULT_LEVEL_PERMISSIONS: { [key in UserRole]: UserPermissions } = {
     canCustomizePdf: true,
     canViewOtherStoresStock: true,
     canSellOtherStoresStock: true,
+    canViewAllCompaniesHistory: true,
   },
   atendente: {
     accessDashboard: true,
@@ -98,6 +100,7 @@ const DEFAULT_LEVEL_PERMISSIONS: { [key in UserRole]: UserPermissions } = {
     canCustomizePdf: true,
     canViewOtherStoresStock: true,
     canSellOtherStoresStock: false,
+    canViewAllCompaniesHistory: false,
   },
   mecanico: {
     accessDashboard: true,
@@ -120,6 +123,7 @@ const DEFAULT_LEVEL_PERMISSIONS: { [key in UserRole]: UserPermissions } = {
     canCustomizePdf: false,
     canViewOtherStoresStock: false,
     canSellOtherStoresStock: false,
+    canViewAllCompaniesHistory: false,
   },
   qa: {
     accessDashboard: true,
@@ -142,6 +146,7 @@ const DEFAULT_LEVEL_PERMISSIONS: { [key in UserRole]: UserPermissions } = {
     canCustomizePdf: true,
     canViewOtherStoresStock: true,
     canSellOtherStoresStock: true,
+    canViewAllCompaniesHistory: true,
   }
 };
 
@@ -166,7 +171,8 @@ const PERMISSION_LABEL_MAP: { [K in keyof UserPermissions]: string } = {
   canEditBudgets: "Editar Orçamentos Existentes (Adicionar/Alterar Itens e Dados)",
   canCustomizePdf: "Personalizar Layout e Campos do PDF / Relatório",
   canViewOtherStoresStock: "Visualizar Estoque de Outras Lojas/Filiais (Rede)",
-  canSellOtherStoresStock: "Realizar Venda / OS de Peças de Outras Lojas/Filiais"
+  canSellOtherStoresStock: "Realizar Venda / OS de Peças de Outras Lojas/Filiais",
+  canViewAllCompaniesHistory: "Visualizar Histórico e Auditoria de Todas as Empresas/Lojas (Rede)"
 };
 
 export default function UserManagementView({ 
@@ -201,6 +207,11 @@ export default function UserManagementView({
   const [showUnsavedChangesModal, setShowUnsavedChangesModal] = useState<boolean>(false);
   const [pendingTargetCompanyId, setPendingTargetCompanyId] = useState<string | null>(null);
 
+  // Privacy and LGPD States
+  const [showPrivacyModal, setShowPrivacyModal] = useState<boolean>(false);
+  const [hasAcceptedUserLgpd, setHasAcceptedUserLgpd] = useState<boolean>(true);
+  const [hasAcceptedCompanyLgpd, setHasAcceptedCompanyLgpd] = useState<boolean>(true);
+
   // New Company Creation Modal
   const [showNewCompanyModal, setShowNewCompanyModal] = useState<boolean>(false);
   const [newCompName, setNewCompName] = useState('');
@@ -214,6 +225,10 @@ export default function UserManagementView({
   const [newCompFee, setNewCompFee] = useState(299.90);
   const [newCompLegalRepName, setNewCompLegalRepName] = useState('');
   const [newCompLegalRepCpf, setNewCompLegalRepCpf] = useState('');
+  const [newCompLegalRepRg, setNewCompLegalRepRg] = useState('');
+  const [newCompLegalRepPhone, setNewCompLegalRepPhone] = useState('');
+  const [newCompLegalRepEmail, setNewCompLegalRepEmail] = useState('');
+  const [newCompLegalRepAddress, setNewCompLegalRepAddress] = useState('');
 
   // Local Form State for the selected company
   const [compName, setCompName] = useState(currentCompany?.name || 'MotorDesk Auto Center');
@@ -230,6 +245,10 @@ export default function UserManagementView({
   // Responsável Legal & Contrato de Prestação de Serviços (SaaS)
   const [compLegalRepName, setCompLegalRepName] = useState(currentCompany?.legalRepresentativeName || '');
   const [compLegalRepCpf, setCompLegalRepCpf] = useState(currentCompany?.legalRepresentativeCpf || '');
+  const [compLegalRepRg, setCompLegalRepRg] = useState(currentCompany?.legalRepresentativeRg || '');
+  const [compLegalRepPhone, setCompLegalRepPhone] = useState(currentCompany?.legalRepresentativePhone || '');
+  const [compLegalRepEmail, setCompLegalRepEmail] = useState(currentCompany?.legalRepresentativeEmail || '');
+  const [compLegalRepAddress, setCompLegalRepAddress] = useState(currentCompany?.legalRepresentativeAddress || '');
   const [compSignedContractUrl, setCompSignedContractUrl] = useState(currentCompany?.signedContractUrl || '');
   const [compSignedContractFileName, setCompSignedContractFileName] = useState(currentCompany?.signedContractFileName || '');
   const [compSignedContractDate, setCompSignedContractDate] = useState(currentCompany?.signedContractDate || '');
@@ -288,7 +307,7 @@ export default function UserManagementView({
 
             <div class="clause-title">1. DAS PARTES CONTRATANTES</div>
             <p><strong>CONTRATADA:</strong> <strong>MotorDesk Soluções em Tecnologia e Software LTDA</strong>, pessoa jurídica de direito privado, inscrita no CNPJ/MF sob o nº 12.345.678/0001-90, com sede na Av. das Nações Unidas, 1200 - Pinheiros, São Paulo - SP.</p>
-            <p><strong>CONTRATANTE:</strong> <strong>${compName || 'NÃO INFORMADA'}</strong>, inscrita no CNPJ/MF sob o nº <strong>${compCnpj || 'NÃO INFORMADO'}</strong>, estabelecida no endereço <strong>${compAddress || 'NÃO INFORMADO'}</strong>, representada neste ato por seu Responsável Legal <strong>${compLegalRepName || 'NÃO INFORMADO'}</strong>, portador(a) do CPF nº <strong>${compLegalRepCpf || 'NÃO INFORMADO'}</strong>.</p>
+            <p><strong>CONTRATANTE / PROPRIETÁRIO DO SISTEMA:</strong> <strong>${compName || 'NÃO INFORMADA'}</strong>, inscrita no CNPJ/MF sob o nº <strong>${compCnpj || 'NÃO INFORMADO'}</strong>, estabelecida no endereço <strong>${compAddress || 'NÃO INFORMADO'}</strong>, representada neste ato por seu Proprietário / Responsável Legal <strong>${compLegalRepName || 'NÃO INFORMADO'}</strong>, portador(a) do CPF nº <strong>${compLegalRepCpf || 'NÃO INFORMADO'}</strong>, RG nº <strong>${compLegalRepRg || 'NÃO INFORMADO'}</strong>, residente/domiciliado em <strong>${compLegalRepAddress || compAddress || 'NÃO INFORMADO'}</strong>, telefone <strong>${compLegalRepPhone || compWhatsapp || 'NÃO INFORMADO'}</strong>, e-mail <strong>${compLegalRepEmail || compEmail || 'NÃO INFORMADO'}</strong>.</p>
 
             <div class="clause-title">CLÁUSULA PRIMEIRA - DO OBJETO E LICENCIAMENTO SAAS</div>
             <p>1.1. O presente contrato tem por objeto o licenciamento de uso não exclusivo, temporário e intransferível do sistema de gestão de oficinas mecânicas <strong>MotorDesk</strong> no modelo SaaS (Software as a Service), englobando o Plano Básico e os módulos operacionais adicionais liberados para a CONTRATANTE.</p>
@@ -370,8 +389,9 @@ export default function UserManagementView({
               <div class="sig-box">
                 <div class="sig-line"></div>
                 <strong>${compName || 'CONTRATANTE'}</strong><br/>
-                Resp. Legal: ${compLegalRepName || '__________________________'}<br/>
-                CPF: ${compLegalRepCpf || '__________________________'} | CNPJ: ${compCnpj || '__________________________'}
+                Proprietário / Resp. Legal: ${compLegalRepName || '__________________________'}<br/>
+                CPF: ${compLegalRepCpf || '___________'} | RG: ${compLegalRepRg || '___________'}<br/>
+                CNPJ: ${compCnpj || '___________'} | Tel: ${compLegalRepPhone || compWhatsapp || '___________'}
               </div>
             </div>
 
@@ -434,8 +454,9 @@ export default function UserManagementView({
             <div class="addendum-box">
               <strong>IDENTIFICAÇÃO DAS PARTES CONTRATANTES:</strong><br/>
               <strong>CONTRATADA:</strong> MotorDesk Soluções em Tecnologia e Software LTDA (CNPJ: 12.345.678/0001-90)<br/>
-              <strong>CONTRATANTE:</strong> ${compName || 'NÃO INFORMADA'} (CNPJ: ${compCnpj || 'NÃO INFORMADO'})<br/>
-              <strong>RESPONSÁVEL LEGAL:</strong> ${compLegalRepName || 'NÃO INFORMADO'} (CPF: ${compLegalRepCpf || 'NÃO INFORMADO'})
+              <strong>CONTRATANTE / PROPRIETÁRIO:</strong> ${compName || 'NÃO INFORMADA'} (CNPJ: ${compCnpj || 'NÃO INFORMADO'})<br/>
+              <strong>PROPRIETÁRIO / RESPONSÁVEL LEGAL:</strong> ${compLegalRepName || 'NÃO INFORMADO'} (CPF: ${compLegalRepCpf || 'NÃO INFORMADO'} | RG: ${compLegalRepRg || 'NÃO INFORMADO'})<br/>
+              <strong>CONTATO DO RESPONSÁVEL:</strong> Tel: ${compLegalRepPhone || compWhatsapp || 'NÃO INFORMADO'} | E-mail: ${compLegalRepEmail || compEmail || 'NÃO INFORMADO'} | Endereço: ${compLegalRepAddress || compAddress || 'NÃO INFORMADO'}
             </div>
 
             <div class="clause-title">CLÁUSULA PRIMEIRA - DO OBJETO DO ADITIVO</div>
@@ -719,6 +740,10 @@ export default function UserManagementView({
 
       setCompLegalRepName(comp.legalRepresentativeName || '');
       setCompLegalRepCpf(comp.legalRepresentativeCpf || '');
+      setCompLegalRepRg(comp.legalRepresentativeRg || '');
+      setCompLegalRepPhone(comp.legalRepresentativePhone || '');
+      setCompLegalRepEmail(comp.legalRepresentativeEmail || '');
+      setCompLegalRepAddress(comp.legalRepresentativeAddress || '');
       setCompSignedContractUrl(comp.signedContractUrl || '');
       setCompSignedContractFileName(comp.signedContractFileName || '');
       setCompSignedContractDate(comp.signedContractDate || '');
@@ -828,6 +853,10 @@ export default function UserManagementView({
       logoUrl: compLogoUrl,
       legalRepresentativeName: compLegalRepName,
       legalRepresentativeCpf: compLegalRepCpf,
+      legalRepresentativeRg: compLegalRepRg,
+      legalRepresentativePhone: compLegalRepPhone,
+      legalRepresentativeEmail: compLegalRepEmail,
+      legalRepresentativeAddress: compLegalRepAddress,
       signedContractUrl: compSignedContractUrl,
       signedContractFileName: compSignedContractFileName,
       signedContractDate: compSignedContractDate,
@@ -892,6 +921,10 @@ export default function UserManagementView({
   // Register New Company Action
   const handleCreateNewCompany = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!hasAcceptedCompanyLgpd) {
+      alert('É necessário aceitar os Termos de Privacidade e LGPD para cadastrar uma nova empresa.');
+      return;
+    }
     if (!newCompName.trim() || !newCompCnpj.trim()) {
       alert('Nome e CNPJ da nova empresa são obrigatórios.');
       return;
@@ -923,6 +956,10 @@ export default function UserManagementView({
       lastPaymentDate: todayStr,
       legalRepresentativeName: newCompLegalRepName.trim(),
       legalRepresentativeCpf: newCompLegalRepCpf.trim(),
+      legalRepresentativeRg: newCompLegalRepRg.trim(),
+      legalRepresentativePhone: newCompLegalRepPhone.trim(),
+      legalRepresentativeEmail: newCompLegalRepEmail.trim(),
+      legalRepresentativeAddress: newCompLegalRepAddress.trim(),
       contractStatus: 'pending',
       levelPermissions: DEFAULT_LEVEL_PERMISSIONS
     };
@@ -1175,6 +1212,11 @@ export default function UserManagementView({
   const handleCreateUser = (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg('');
+
+    if (!hasAcceptedUserLgpd) {
+      setErrorMsg('É necessário concordar com os Termos de Privacidade e LGPD para cadastrar ou alterar o operador.');
+      return;
+    }
 
     if (!username.trim() || !name.trim()) {
       setErrorMsg('Nome completo e nome de usuário são obrigatórios.');
@@ -2093,7 +2135,8 @@ export default function UserManagementView({
                 { key: 'accessUserManagement', label: 'Controle de Colaboradores' },
                 { key: 'accessQAPanel', label: 'Painel de Testes QA' },
                 { key: 'canViewOtherStoresStock', label: 'Estoque Outras Lojas (Rede)' },
-                { key: 'canSellOtherStoresStock', label: 'Venda de Peças Outra Loja' }
+                { key: 'canSellOtherStoresStock', label: 'Venda de Peças Outra Loja' },
+                { key: 'canViewAllCompaniesHistory', label: 'Auditoria de Todas as Empresas' }
               ];
 
               return (
@@ -2273,6 +2316,13 @@ export default function UserManagementView({
                       })}
                     </div>
                   </div>
+
+                  <PrivacyLgpdFooter
+                    onOpenModal={() => setShowPrivacyModal(true)}
+                    mode="register"
+                    isChecked={hasAcceptedUserLgpd}
+                    onToggleCheck={setHasAcceptedUserLgpd}
+                  />
 
                   <div className="flex gap-3 justify-end pt-2">
                     <button 
@@ -2604,22 +2654,27 @@ export default function UserManagementView({
                 />
               </div>
 
-              {/* Responsável Legal Conforme Legislação */}
-              <div className="space-y-3 sm:col-span-2 bg-slate-50/80 p-4 rounded-xl border border-slate-200 mt-2">
-                <div className="flex items-center justify-between border-b border-slate-200/60 pb-2">
-                  <label className="text-xs font-bold text-slate-800 uppercase flex items-center gap-1.5">
-                    <UserCheck className="w-4 h-4 text-indigo-600" />
-                    Responsável Legal (Conforme Legislação Vigente)
-                  </label>
-                  <span className="text-[10px] bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded border border-indigo-200 font-semibold">
-                    Representante Legal / Sócio Administrador
+              {/* Informações do Proprietário / Dono do Sistema & Contrato de Prestação de Serviço */}
+              <div className="space-y-4 sm:col-span-2 bg-slate-50/90 p-5 rounded-xl border border-slate-200 mt-2 shadow-2xs">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-slate-200 pb-3 gap-2">
+                  <div>
+                    <label className="text-xs font-bold text-slate-800 uppercase flex items-center gap-1.5 font-display">
+                      <UserCheck className="w-4 h-4 text-indigo-600" />
+                      Informações do Proprietário / Dono do Sistema (Para o Contrato)
+                    </label>
+                    <p className="text-[11px] text-slate-500 mt-0.5">
+                      Estes dados pessoais serão utilizados para preencher automaticamente o contrato de prestação de serviços.
+                    </p>
+                  </div>
+                  <span className="text-[10px] bg-indigo-50 text-indigo-700 px-2.5 py-1 rounded-lg border border-indigo-200 font-bold shrink-0">
+                    Proprietário / Sócio Administrador
                   </span>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 pt-1">
                   <div className="space-y-1">
                     <label className="text-xs font-bold text-slate-700 uppercase" htmlFor="comp-legal-rep-name">
-                      Nome Completo do Responsável Legal *
+                      Nome Completo do Proprietário *
                     </label>
                     <input
                       id="comp-legal-rep-name"
@@ -2628,12 +2683,13 @@ export default function UserManagementView({
                       value={compLegalRepName}
                       onChange={e => { setCompLegalRepName(e.target.value); setHasUnsavedChanges(true); }}
                       className="w-full text-xs p-2.5 border border-slate-200 rounded-lg bg-white font-medium"
+                      required
                     />
                   </div>
 
                   <div className="space-y-1">
                     <label className="text-xs font-bold text-slate-700 uppercase" htmlFor="comp-legal-rep-cpf">
-                      CPF do Responsável Legal *
+                      CPF do Proprietário *
                     </label>
                     <input
                       id="comp-legal-rep-cpf"
@@ -2641,7 +2697,64 @@ export default function UserManagementView({
                       placeholder="000.000.000-00"
                       value={compLegalRepCpf}
                       onChange={e => { setCompLegalRepCpf(e.target.value); setHasUnsavedChanges(true); }}
+                      className="w-full text-xs p-2.5 border border-slate-200 rounded-lg bg-white font-mono font-medium"
+                      required
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-slate-700 uppercase" htmlFor="comp-legal-rep-rg">
+                      RG do Proprietário
+                    </label>
+                    <input
+                      id="comp-legal-rep-rg"
+                      type="text"
+                      placeholder="00.000.000-0 SP"
+                      value={compLegalRepRg}
+                      onChange={e => { setCompLegalRepRg(e.target.value); setHasUnsavedChanges(true); }}
                       className="w-full text-xs p-2.5 border border-slate-200 rounded-lg bg-white font-mono"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-slate-700 uppercase" htmlFor="comp-legal-rep-phone">
+                      Telefone / Celular do Proprietário
+                    </label>
+                    <input
+                      id="comp-legal-rep-phone"
+                      type="text"
+                      placeholder="(11) 98765-4321"
+                      value={compLegalRepPhone}
+                      onChange={e => { setCompLegalRepPhone(e.target.value); setHasUnsavedChanges(true); }}
+                      className="w-full text-xs p-2.5 border border-slate-200 rounded-lg bg-white font-mono"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-slate-700 uppercase" htmlFor="comp-legal-rep-email">
+                      E-mail Pessoal do Proprietário
+                    </label>
+                    <input
+                      id="comp-legal-rep-email"
+                      type="email"
+                      placeholder="proprietario@email.com"
+                      value={compLegalRepEmail}
+                      onChange={e => { setCompLegalRepEmail(e.target.value); setHasUnsavedChanges(true); }}
+                      className="w-full text-xs p-2.5 border border-slate-200 rounded-lg bg-white"
+                    />
+                  </div>
+
+                  <div className="space-y-1 lg:col-span-3 sm:col-span-2">
+                    <label className="text-xs font-bold text-slate-700 uppercase" htmlFor="comp-legal-rep-address">
+                      Endereço Residencial do Proprietário
+                    </label>
+                    <input
+                      id="comp-legal-rep-address"
+                      type="text"
+                      placeholder="Rua, Número, Bairro, Cidade - UF, CEP"
+                      value={compLegalRepAddress}
+                      onChange={e => { setCompLegalRepAddress(e.target.value); setHasUnsavedChanges(true); }}
+                      className="w-full text-xs p-2.5 border border-slate-200 rounded-lg bg-white"
                     />
                   </div>
                 </div>
@@ -3055,16 +3168,16 @@ export default function UserManagementView({
                 </div>
               </div>
 
-              {/* Responsável Legal da Nova Empresa */}
+              {/* Responsável Legal / Proprietário da Nova Empresa */}
               <div className="space-y-2 bg-slate-50 p-3 rounded-xl border border-slate-200">
                 <label className="text-xs font-bold text-slate-800 uppercase flex items-center gap-1.5">
                   <UserCheck className="w-4 h-4 text-indigo-600" />
-                  Responsável Legal (Conforme Legislação)
+                  Proprietário / Dono do Sistema (Para o Contrato)
                 </label>
                 <div className="grid grid-cols-2 gap-2">
                   <div className="space-y-1">
                     <label className="text-[10px] font-bold text-slate-600 uppercase" htmlFor="new-comp-legal-name">
-                      Nome do Responsável
+                      Nome Completo
                     </label>
                     <input
                       id="new-comp-legal-name"
@@ -3077,7 +3190,7 @@ export default function UserManagementView({
                   </div>
                   <div className="space-y-1">
                     <label className="text-[10px] font-bold text-slate-600 uppercase" htmlFor="new-comp-legal-cpf">
-                      CPF do Responsável
+                      CPF
                     </label>
                     <input
                       id="new-comp-legal-cpf"
@@ -3088,8 +3201,67 @@ export default function UserManagementView({
                       className="w-full text-xs p-2 border border-slate-200 rounded-lg bg-white font-mono"
                     />
                   </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-slate-600 uppercase" htmlFor="new-comp-legal-rg">
+                      RG
+                    </label>
+                    <input
+                      id="new-comp-legal-rg"
+                      type="text"
+                      placeholder="00.000.000-0 SP"
+                      value={newCompLegalRepRg}
+                      onChange={e => setNewCompLegalRepRg(e.target.value)}
+                      className="w-full text-xs p-2 border border-slate-200 rounded-lg bg-white font-mono"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-slate-600 uppercase" htmlFor="new-comp-legal-phone">
+                      Telefone / Celular
+                    </label>
+                    <input
+                      id="new-comp-legal-phone"
+                      type="text"
+                      placeholder="(11) 98765-4321"
+                      value={newCompLegalRepPhone}
+                      onChange={e => setNewCompLegalRepPhone(e.target.value)}
+                      className="w-full text-xs p-2 border border-slate-200 rounded-lg bg-white font-mono"
+                    />
+                  </div>
+                  <div className="space-y-1 col-span-2">
+                    <label className="text-[10px] font-bold text-slate-600 uppercase" htmlFor="new-comp-legal-email">
+                      E-mail Pessoal
+                    </label>
+                    <input
+                      id="new-comp-legal-email"
+                      type="email"
+                      placeholder="proprietario@email.com"
+                      value={newCompLegalRepEmail}
+                      onChange={e => setNewCompLegalRepEmail(e.target.value)}
+                      className="w-full text-xs p-2 border border-slate-200 rounded-lg bg-white"
+                    />
+                  </div>
+                  <div className="space-y-1 col-span-2">
+                    <label className="text-[10px] font-bold text-slate-600 uppercase" htmlFor="new-comp-legal-address">
+                      Endereço Residencial
+                    </label>
+                    <input
+                      id="new-comp-legal-address"
+                      type="text"
+                      placeholder="Rua, Número, Bairro, Cidade - UF, CEP"
+                      value={newCompLegalRepAddress}
+                      onChange={e => setNewCompLegalRepAddress(e.target.value)}
+                      className="w-full text-xs p-2 border border-slate-200 rounded-lg bg-white"
+                    />
+                  </div>
                 </div>
               </div>
+
+              <PrivacyLgpdFooter
+                onOpenModal={() => setShowPrivacyModal(true)}
+                mode="register"
+                isChecked={hasAcceptedCompanyLgpd}
+                onToggleCheck={setHasAcceptedCompanyLgpd}
+              />
 
               <div className="pt-3 flex justify-end gap-2">
                 <button
@@ -3238,7 +3410,7 @@ export default function UserManagementView({
                   <strong>CONTRATADA:</strong> <strong>MotorDesk Soluções em Tecnologia e Software LTDA</strong>, pessoa jurídica de direito privado, inscrita no CNPJ/MF sob o nº 12.345.678/0001-90, com sede na Av. das Nações Unidas, 1200 - Pinheiros, São Paulo - SP.
                 </p>
                 <p>
-                  <strong>CONTRATANTE:</strong> <strong>{compName || 'NÃO INFORMADA'}</strong>, inscrita no CNPJ/MF sob o nº <strong>{compCnpj || 'NÃO INFORMADO'}</strong>, com sede estabelecida no endereço <strong>{compAddress || 'NÃO INFORMADO'}</strong>, representada neste ato por seu Responsável Legal <strong>{compLegalRepName || 'NÃO INFORMADO'}</strong>, portador(a) do CPF nº <strong>{compLegalRepCpf || 'NÃO INFORMADO'}</strong>, doravante denominada simplesmente CONTRATANTE.
+                  <strong>CONTRATANTE / PROPRIETÁRIO DO SISTEMA:</strong> <strong>{compName || 'NÃO INFORMADA'}</strong>, inscrita no CNPJ/MF sob o nº <strong>{compCnpj || 'NÃO INFORMADO'}</strong>, com sede estabelecida no endereço <strong>{compAddress || 'NÃO INFORMADO'}</strong>, representada neste ato por seu Proprietário / Responsável Legal <strong>{compLegalRepName || 'NÃO INFORMADO'}</strong>, portador(a) do CPF nº <strong>{compLegalRepCpf || 'NÃO INFORMADO'}</strong>, RG nº <strong>{compLegalRepRg || 'NÃO INFORMADO'}</strong>, residente/domiciliado em <strong>{compLegalRepAddress || compAddress || 'NÃO INFORMADO'}</strong>, telefone <strong>{compLegalRepPhone || compWhatsapp || 'NÃO INFORMADO'}</strong> e e-mail <strong>{compLegalRepEmail || compEmail || 'NÃO INFORMADO'}</strong>.
                 </p>
               </div>
 
@@ -3321,10 +3493,13 @@ export default function UserManagementView({
                       <span className="font-bold text-slate-900 block">{compName || '__________________________'}</span>
                     </div>
                     <span className="text-[10px] text-slate-700 font-bold block">
-                      Responsável Legal: {compLegalRepName || '__________________________'}
+                      Proprietário / Resp. Legal: {compLegalRepName || '__________________________'}
                     </span>
                     <span className="text-[10px] font-mono text-slate-600 block">
-                      CPF: {compLegalRepCpf || '__________________________'} | CNPJ: {compCnpj || '__________________________'}
+                      CPF: {compLegalRepCpf || '___________'} | RG: {compLegalRepRg || '___________'}
+                    </span>
+                    <span className="text-[10px] text-slate-600 block">
+                      CNPJ: {compCnpj || '___________'} | Tel: {compLegalRepPhone || compWhatsapp || '___________'}
                     </span>
                     <span className="text-[10px] text-slate-500 font-semibold block">CONTRATANTE</span>
                   </div>
@@ -3564,6 +3739,13 @@ export default function UserManagementView({
           </div>
         </div>
       )}
+
+      {/* Privacy and LGPD Modal */}
+      <PrivacyLgpdModal
+        isOpen={showPrivacyModal}
+        onClose={() => setShowPrivacyModal(false)}
+        companyName={compName || 'MotorDesk'}
+      />
     </div>
   );
 }

@@ -89,8 +89,12 @@ export interface CompanyInfo {
   notes?: string; // Observações da Contratação
 
   // Responsável Legal & Contrato de Prestação de Serviços (SaaS)
-  legalRepresentativeName?: string; // Nome do Responsável Legal conforme legislação
-  legalRepresentativeCpf?: string; // CPF do Responsável Legal
+  legalRepresentativeName?: string; // Nome do Responsável Legal / Proprietário conforme legislação
+  legalRepresentativeCpf?: string; // CPF do Responsável Legal / Proprietário
+  legalRepresentativeRg?: string; // RG do Responsável Legal / Proprietário
+  legalRepresentativePhone?: string; // Telefone do Responsável Legal / Proprietário
+  legalRepresentativeEmail?: string; // E-mail do Responsável Legal / Proprietário
+  legalRepresentativeAddress?: string; // Endereço Completo do Responsável Legal / Proprietário
   signedContractUrl?: string; // Base64 ou URL do arquivo do Contrato Assinado
   signedContractFileName?: string; // Nome do Arquivo do Contrato Assinado
   signedContractDate?: string; // Data de Envio/Assinatura do Contrato Assinado
@@ -172,6 +176,7 @@ export interface UserPermissions {
   canCustomizePdf?: boolean; // Permissão para personalizar e editar layout de campos no PDF
   canViewOtherStoresStock?: boolean; // Permissão para visualizar estoque de outras lojas/filiais da rede
   canSellOtherStoresStock?: boolean; // Permissão para realizar venda / OS com peças do estoque de outras lojas/filiais
+  canViewAllCompaniesHistory?: boolean; // Permissão para visualizar histórico e auditoria de todas as empresas
 }
 
 export interface User {

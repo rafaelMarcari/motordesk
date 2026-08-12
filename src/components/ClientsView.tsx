@@ -7,6 +7,7 @@ import React, { useState, useEffect } from 'react';
 import { Plus, Search, Edit2, AlertCircle, CheckCircle, X } from 'lucide-react';
 import { Client } from '../types';
 import { AppDatabase } from '../data/mockData';
+import PrivacyLgpdModal, { PrivacyLgpdFooter } from './PrivacyLgpdModal';
 
 interface ClientsViewProps {
   db: AppDatabase;
@@ -37,6 +38,8 @@ export default function ClientsView({ db, onSaveClients, onAddHistoryLog, setUns
   
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
+  const [hasAcceptedLgpd, setHasAcceptedLgpd] = useState(true);
+  const [showPrivacyModal, setShowPrivacyModal] = useState(false);
 
   // Auto-format CPF (999.999.999-99)
   const formatCPF = (value: string) => {
@@ -122,6 +125,10 @@ export default function ClientsView({ db, onSaveClients, onAddHistoryLog, setUns
     const cpfExists = db.clients.some(c => c.cpf === activeCpf && (!activeEditingClient || c.id !== activeEditingClient.id));
     if (cpfExists) {
       return { success: false, message: 'Regra de Negócio Violada (RN001): Já existe um cliente cadastrado com este CPF.' };
+    }
+
+    if (!hasAcceptedLgpd) {
+      return { success: false, message: 'É necessário aceitar o Termo de Privacidade e LGPD para prosseguir com o cadastro do cliente.' };
     }
 
     const activeDepositPct = Number(depositPercentageOverride) || 30;
@@ -389,6 +396,15 @@ export default function ClientsView({ db, onSaveClients, onAddHistoryLog, setUns
               </p>
             </div>
 
+            <div className="col-span-1 md:col-span-2">
+              <PrivacyLgpdFooter
+                onOpenModal={() => setShowPrivacyModal(true)}
+                mode="register"
+                isChecked={hasAcceptedLgpd}
+                onToggleCheck={setHasAcceptedLgpd}
+              />
+            </div>
+
             <div className="pt-2 flex gap-3 col-span-1 md:col-span-2">
               <button 
                 id="btn-save-client"
@@ -520,6 +536,12 @@ export default function ClientsView({ db, onSaveClients, onAddHistoryLog, setUns
           )}
         </div>
       )}
+      {/* Privacy and LGPD Modal */}
+      <PrivacyLgpdModal
+        isOpen={showPrivacyModal}
+        onClose={() => setShowPrivacyModal(false)}
+        companyName={db.companyInfo?.name || 'MotorDesk'}
+      />
     </div>
   );
 }
