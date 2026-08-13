@@ -43,6 +43,7 @@ import {
 import { User, UserRole, UserPermissions, CompanyInfo } from '../types';
 import { AppDatabase } from '../data/mockData';
 import PrivacyLgpdModal, { PrivacyLgpdFooter } from './PrivacyLgpdModal';
+import OperationResultModal from './OperationResultModal';
 
 interface UserManagementViewProps {
   db: AppDatabase;
@@ -242,7 +243,7 @@ export default function UserManagementView({
   const [compWelcome, setCompWelcome] = useState(currentCompany?.welcomeMessage || 'Agradecemos a preferência!');
   const [compLogoUrl, setCompLogoUrl] = useState(currentCompany?.logoUrl || '');
 
-  // Responsável Legal & Contrato de Prestação de Serviços (SaaS)
+  // Responsável Legal & Contrato de Prestação de Serviços (SaaS) - CONTRATANTE
   const [compLegalRepName, setCompLegalRepName] = useState(currentCompany?.legalRepresentativeName || '');
   const [compLegalRepCpf, setCompLegalRepCpf] = useState(currentCompany?.legalRepresentativeCpf || '');
   const [compLegalRepRg, setCompLegalRepRg] = useState(currentCompany?.legalRepresentativeRg || '');
@@ -255,6 +256,30 @@ export default function UserManagementView({
   const [compContractStatus, setCompContractStatus] = useState<'pending' | 'signed'>(currentCompany?.contractStatus || (currentCompany?.signedContractUrl ? 'signed' : 'pending'));
   const [showContractModal, setShowContractModal] = useState(false);
   const [showSignedContractPreviewModal, setShowSignedContractPreviewModal] = useState(false);
+
+  // Dados da CONTRATADA (Fornecedor / Desenvolvedor do Sistema)
+  const [compProviderCompanyName, setCompProviderCompanyName] = useState(currentCompany?.providerCompanyName || 'MotorDesk Soluções em Tecnologia e Software LTDA');
+  const [compProviderCnpj, setCompProviderCnpj] = useState(currentCompany?.providerCnpj || '12.345.678/0001-90');
+  const [compProviderAddress, setCompProviderAddress] = useState(currentCompany?.providerAddress || 'Av. das Nações Unidas, 1200 - Pinheiros, São Paulo - SP');
+  const [compProviderLegalRepName, setCompProviderLegalRepName] = useState(currentCompany?.providerLegalRepName || 'Rafael Marcari');
+  const [compProviderLegalRepCpf, setCompProviderLegalRepCpf] = useState(currentCompany?.providerLegalRepCpf || '000.000.000-00');
+  const [compProviderLegalRepRg, setCompProviderLegalRepRg] = useState(currentCompany?.providerLegalRepRg || 'Desenvolvedor / Proprietário');
+  const [compProviderPhone, setCompProviderPhone] = useState(currentCompany?.providerPhone || '(11) 99999-9999');
+  const [compProviderEmail, setCompProviderEmail] = useState(currentCompany?.providerEmail || 'contato@motordesk.com.br');
+
+  // Modal de resultado das operações (Sucesso / Erro com botão OK)
+  const [resultModal, setResultModal] = useState<{
+    isOpen: boolean;
+    type: 'success' | 'error' | 'warning';
+    title: string;
+    message: string;
+  }>({
+    isOpen: false,
+    type: 'success',
+    title: '',
+    message: ''
+  });
+  const [invalidFields, setInvalidFields] = useState<{ [key: string]: boolean }>({});
 
   // Função para imprimir contrato em janela dedicada / popup ou suporte via browser iframe
   const handlePrintContract = () => {
@@ -306,7 +331,7 @@ export default function UserManagementView({
             </div>
 
             <div class="clause-title">1. DAS PARTES CONTRATANTES</div>
-            <p><strong>CONTRATADA:</strong> <strong>MotorDesk Soluções em Tecnologia e Software LTDA</strong>, pessoa jurídica de direito privado, inscrita no CNPJ/MF sob o nº 12.345.678/0001-90, com sede na Av. das Nações Unidas, 1200 - Pinheiros, São Paulo - SP.</p>
+            <p><strong>CONTRATADA (FORNECEDOR/DESENVOLVEDOR):</strong> <strong>${compProviderCompanyName || 'MotorDesk Soluções em Tecnologia e Software LTDA'}</strong>, inscrita no CNPJ/MF sob o nº <strong>${compProviderCnpj || '12.345.678/0001-90'}</strong>, estabelecida no endereço <strong>${compProviderAddress || 'Av. das Nações Unidas, 1200 - Pinheiros, São Paulo - SP'}</strong>, representada por seu Responsável Legal <strong>${compProviderLegalRepName || 'Rafael Marcari'}</strong>, CPF nº <strong>${compProviderLegalRepCpf || '000.000.000-00'}</strong>, RG/Cargo <strong>${compProviderLegalRepRg || 'Desenvolvedor / Proprietário'}</strong>, e-mail <strong>${compProviderEmail || 'contato@motordesk.com.br'}</strong>, telefone/WhatsApp <strong>${compProviderPhone || '(11) 99999-9999'}</strong>.</p>
             <p><strong>CONTRATANTE / PROPRIETÁRIO DO SISTEMA:</strong> <strong>${compName || 'NÃO INFORMADA'}</strong>, inscrita no CNPJ/MF sob o nº <strong>${compCnpj || 'NÃO INFORMADO'}</strong>, estabelecida no endereço <strong>${compAddress || 'NÃO INFORMADO'}</strong>, representada neste ato por seu Proprietário / Responsável Legal <strong>${compLegalRepName || 'NÃO INFORMADO'}</strong>, portador(a) do CPF nº <strong>${compLegalRepCpf || 'NÃO INFORMADO'}</strong>, RG nº <strong>${compLegalRepRg || 'NÃO INFORMADO'}</strong>, residente/domiciliado em <strong>${compLegalRepAddress || compAddress || 'NÃO INFORMADO'}</strong>, telefone <strong>${compLegalRepPhone || compWhatsapp || 'NÃO INFORMADO'}</strong>, e-mail <strong>${compLegalRepEmail || compEmail || 'NÃO INFORMADO'}</strong>.</p>
 
             <div class="clause-title">CLÁUSULA PRIMEIRA - DO OBJETO E LICENCIAMENTO SAAS</div>
@@ -383,8 +408,10 @@ export default function UserManagementView({
             <div class="signatures">
               <div class="sig-box">
                 <div class="sig-line"></div>
-                <strong>MotorDesk Soluções em Tecnologia LTDA</strong><br/>
-                CONTRATADA (CNPJ: 12.345.678/0001-90)
+                <strong>${compProviderCompanyName || 'MotorDesk Soluções em Tecnologia LTDA'}</strong><br/>
+                CONTRATADA (CNPJ: ${compProviderCnpj || '12.345.678/0001-90'})<br/>
+                Resp. Legal: ${compProviderLegalRepName || 'Rafael Marcari'}<br/>
+                CPF: ${compProviderLegalRepCpf || '000.000.000-00'} | Cargo: ${compProviderLegalRepRg || 'Desenvolvedor'}
               </div>
               <div class="sig-box">
                 <div class="sig-line"></div>
@@ -749,6 +776,15 @@ export default function UserManagementView({
       setCompSignedContractDate(comp.signedContractDate || '');
       setCompContractStatus(comp.contractStatus || (comp.signedContractUrl ? 'signed' : 'pending'));
 
+      setCompProviderCompanyName(comp.providerCompanyName || 'MotorDesk Soluções em Tecnologia e Software LTDA');
+      setCompProviderCnpj(comp.providerCnpj || '12.345.678/0001-90');
+      setCompProviderAddress(comp.providerAddress || 'Av. das Nações Unidas, 1200 - Pinheiros, São Paulo - SP');
+      setCompProviderLegalRepName(comp.providerLegalRepName || 'Rafael Marcari');
+      setCompProviderLegalRepCpf(comp.providerLegalRepCpf || '000.000.000-00');
+      setCompProviderLegalRepRg(comp.providerLegalRepRg || 'Desenvolvedor / Proprietário');
+      setCompProviderPhone(comp.providerPhone || '(11) 99999-9999');
+      setCompProviderEmail(comp.providerEmail || 'contato@motordesk.com.br');
+
       setSubStatus(comp.subscriptionStatus || 'active');
       setSubStartDate(comp.startDate || '2026-01-01');
       setSubExpirationDate(comp.expirationDate || '2026-12-31');
@@ -861,6 +897,14 @@ export default function UserManagementView({
       signedContractFileName: compSignedContractFileName,
       signedContractDate: compSignedContractDate,
       contractStatus: compContractStatus,
+      providerCompanyName: compProviderCompanyName,
+      providerCnpj: compProviderCnpj,
+      providerAddress: compProviderAddress,
+      providerLegalRepName: compProviderLegalRepName,
+      providerLegalRepCpf: compProviderLegalRepCpf,
+      providerLegalRepRg: compProviderLegalRepRg,
+      providerPhone: compProviderPhone,
+      providerEmail: compProviderEmail,
       subscriptionStatus: subStatus,
       startDate: subStartDate,
       expirationDate: subExpirationDate,
@@ -2466,13 +2510,68 @@ export default function UserManagementView({
             id="form-company-settings"
             onSubmit={(e) => {
               e.preventDefault();
+              const errors: { [key: string]: boolean } = {};
+              let firstErrorId = '';
+
+              if (!compName || !compName.trim()) {
+                errors['comp-name-input'] = true;
+                if (!firstErrorId) firstErrorId = 'comp-name-input';
+              }
+              if (!compCnpj || !compCnpj.trim()) {
+                errors['comp-cnpj-input'] = true;
+                if (!firstErrorId) firstErrorId = 'comp-cnpj-input';
+              }
+              if (!compWhatsapp || !compWhatsapp.trim()) {
+                errors['comp-whatsapp-input'] = true;
+                if (!firstErrorId) firstErrorId = 'comp-whatsapp-input';
+              }
+              if (!compEmail || !compEmail.trim()) {
+                errors['comp-email-input'] = true;
+                if (!firstErrorId) firstErrorId = 'comp-email-input';
+              }
+              if (!compLegalRepName || !compLegalRepName.trim()) {
+                errors['comp-legal-rep-name'] = true;
+                if (!firstErrorId) firstErrorId = 'comp-legal-rep-name';
+              }
+              if (!compLegalRepCpf || !compLegalRepCpf.trim()) {
+                errors['comp-legal-rep-cpf'] = true;
+                if (!firstErrorId) firstErrorId = 'comp-legal-rep-cpf';
+              }
+              if (!compProviderCompanyName || !compProviderCompanyName.trim()) {
+                errors['comp-provider-company-name'] = true;
+                if (!firstErrorId) firstErrorId = 'comp-provider-company-name';
+              }
+              if (!compProviderCnpj || !compProviderCnpj.trim()) {
+                errors['comp-provider-cnpj'] = true;
+                if (!firstErrorId) firstErrorId = 'comp-provider-cnpj';
+              }
+              if (!compProviderLegalRepName || !compProviderLegalRepName.trim()) {
+                errors['comp-provider-rep-name'] = true;
+                if (!firstErrorId) firstErrorId = 'comp-provider-rep-name';
+              }
+
+              if (firstErrorId) {
+                setInvalidFields(errors);
+                const el = document.getElementById(firstErrorId);
+                if (el) el.focus();
+                setResultModal({
+                  isOpen: true,
+                  type: 'error',
+                  title: 'Campo Obrigatório Não Preenchido',
+                  message: 'Existem campos obrigatórios não preenchidos nas configurações da empresa ou nos dados do contrato. Por favor, preencha os campos em vermelho para salvar.'
+                });
+                return;
+              }
+
+              setInvalidFields({});
               saveCurrentCompanyData();
-              setSaveModalData({
-                title: 'Dados da Empresa Salvos!',
-                message: `As configurações cadastrais da oficina "${compName}" foram salvas no sistema com sucesso.`,
-                targetType: 'company'
+              setHasUnsavedChanges(false);
+              setResultModal({
+                isOpen: true,
+                type: 'success',
+                title: 'Operação Realizada com Sucesso',
+                message: `As configurações cadastrais da empresa "${compName}" e os dados do Contrato de Prestação de Serviços (CONTRATANTE e CONTRATADA) foram salvos com sucesso!`
               });
-              setShowSaveConfirmationModal(true);
             }}
             className="space-y-4 max-w-2xl"
           >
@@ -2486,8 +2585,14 @@ export default function UserManagementView({
                   type="text"
                   required
                   value={compName}
-                  onChange={e => { setCompName(e.target.value); setHasUnsavedChanges(true); }}
-                  className="w-full text-xs p-2.5 border border-slate-200 rounded-lg bg-white font-medium"
+                  onChange={e => {
+                    setCompName(e.target.value);
+                    setHasUnsavedChanges(true);
+                    if (e.target.value.trim()) setInvalidFields(prev => ({ ...prev, 'comp-name-input': false }));
+                  }}
+                  className={`w-full text-xs p-2.5 border rounded-lg bg-white font-medium ${
+                    invalidFields['comp-name-input'] ? 'border-red-500 ring-2 ring-red-500/30 bg-red-50/50' : 'border-slate-200'
+                  }`}
                 />
               </div>
 
@@ -2500,8 +2605,14 @@ export default function UserManagementView({
                   type="text"
                   required
                   value={compCnpj}
-                  onChange={e => { setCompCnpj(e.target.value); setHasUnsavedChanges(true); }}
-                  className="w-full text-xs p-2.5 border border-slate-200 rounded-lg bg-white font-mono"
+                  onChange={e => {
+                    setCompCnpj(e.target.value);
+                    setHasUnsavedChanges(true);
+                    if (e.target.value.trim()) setInvalidFields(prev => ({ ...prev, 'comp-cnpj-input': false }));
+                  }}
+                  className={`w-full text-xs p-2.5 border rounded-lg bg-white font-mono ${
+                    invalidFields['comp-cnpj-input'] ? 'border-red-500 ring-2 ring-red-500/30 bg-red-50/50' : 'border-slate-200'
+                  }`}
                 />
               </div>
 
@@ -2681,8 +2792,14 @@ export default function UserManagementView({
                       type="text"
                       placeholder="Ex: Rafael Marcari"
                       value={compLegalRepName}
-                      onChange={e => { setCompLegalRepName(e.target.value); setHasUnsavedChanges(true); }}
-                      className="w-full text-xs p-2.5 border border-slate-200 rounded-lg bg-white font-medium"
+                      onChange={e => {
+                        setCompLegalRepName(e.target.value);
+                        setHasUnsavedChanges(true);
+                        if (e.target.value.trim()) setInvalidFields(prev => ({ ...prev, 'comp-legal-rep-name': false }));
+                      }}
+                      className={`w-full text-xs p-2.5 border rounded-lg bg-white font-medium ${
+                        invalidFields['comp-legal-rep-name'] ? 'border-red-500 ring-2 ring-red-500/30 bg-red-50/50' : 'border-slate-200'
+                      }`}
                       required
                     />
                   </div>
@@ -2696,8 +2813,14 @@ export default function UserManagementView({
                       type="text"
                       placeholder="000.000.000-00"
                       value={compLegalRepCpf}
-                      onChange={e => { setCompLegalRepCpf(e.target.value); setHasUnsavedChanges(true); }}
-                      className="w-full text-xs p-2.5 border border-slate-200 rounded-lg bg-white font-mono font-medium"
+                      onChange={e => {
+                        setCompLegalRepCpf(e.target.value);
+                        setHasUnsavedChanges(true);
+                        if (e.target.value.trim()) setInvalidFields(prev => ({ ...prev, 'comp-legal-rep-cpf': false }));
+                      }}
+                      className={`w-full text-xs p-2.5 border rounded-lg bg-white font-mono font-medium ${
+                        invalidFields['comp-legal-rep-cpf'] ? 'border-red-500 ring-2 ring-red-500/30 bg-red-50/50' : 'border-slate-200'
+                      }`}
                       required
                     />
                   </div>
@@ -2754,6 +2877,159 @@ export default function UserManagementView({
                       placeholder="Rua, Número, Bairro, Cidade - UF, CEP"
                       value={compLegalRepAddress}
                       onChange={e => { setCompLegalRepAddress(e.target.value); setHasUnsavedChanges(true); }}
+                      className="w-full text-xs p-2.5 border border-slate-200 rounded-lg bg-white"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Informações da CONTRATADA (Fornecedor / Desenvolvedor / Contratado) */}
+              <div className="space-y-4 sm:col-span-2 bg-indigo-50/70 p-5 rounded-xl border border-indigo-200 mt-2 shadow-2xs">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-indigo-200/80 pb-3 gap-2">
+                  <div>
+                    <label className="text-xs font-bold text-indigo-950 uppercase flex items-center gap-1.5 font-display">
+                      <Building2 className="w-4 h-4 text-indigo-600" />
+                      Informações da CONTRATADA (Fornecedor / Desenvolvedor do Sistema)
+                    </label>
+                    <p className="text-[11px] text-indigo-800/80 mt-0.5">
+                      Preencha os dados da sua empresa prestadora de serviços (fornecedor do software) para constar no contrato de prestação de serviços.
+                    </p>
+                  </div>
+                  <span className="text-[10px] bg-indigo-600 text-white px-2.5 py-1 rounded-lg font-bold shrink-0 shadow-2xs">
+                    CONTRATADA (Fornecedor/Eu)
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 pt-1">
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-slate-700 uppercase" htmlFor="comp-provider-company-name">
+                      Razão Social / Nome da Contratada *
+                    </label>
+                    <input
+                      id="comp-provider-company-name"
+                      type="text"
+                      placeholder="Ex: MotorDesk Soluções LTDA"
+                      value={compProviderCompanyName}
+                      onChange={e => {
+                        setCompProviderCompanyName(e.target.value);
+                        setHasUnsavedChanges(true);
+                        if (e.target.value.trim()) setInvalidFields(prev => ({ ...prev, 'comp-provider-company-name': false }));
+                      }}
+                      className={`w-full text-xs p-2.5 border rounded-lg bg-white font-medium ${
+                        invalidFields['comp-provider-company-name'] ? 'border-red-500 ring-2 ring-red-500/30 bg-red-50/50' : 'border-slate-200'
+                      }`}
+                      required
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-slate-700 uppercase" htmlFor="comp-provider-cnpj">
+                      CNPJ da Contratada *
+                    </label>
+                    <input
+                      id="comp-provider-cnpj"
+                      type="text"
+                      placeholder="00.000.000/0001-00"
+                      value={compProviderCnpj}
+                      onChange={e => {
+                        setCompProviderCnpj(e.target.value);
+                        setHasUnsavedChanges(true);
+                        if (e.target.value.trim()) setInvalidFields(prev => ({ ...prev, 'comp-provider-cnpj': false }));
+                      }}
+                      className={`w-full text-xs p-2.5 border rounded-lg bg-white font-mono font-medium ${
+                        invalidFields['comp-provider-cnpj'] ? 'border-red-500 ring-2 ring-red-500/30 bg-red-50/50' : 'border-slate-200'
+                      }`}
+                      required
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-slate-700 uppercase" htmlFor="comp-provider-rep-name">
+                      Nome do Responsável Legal (Contratada) *
+                    </label>
+                    <input
+                      id="comp-provider-rep-name"
+                      type="text"
+                      placeholder="Ex: Rafael Marcari"
+                      value={compProviderLegalRepName}
+                      onChange={e => {
+                        setCompProviderLegalRepName(e.target.value);
+                        setHasUnsavedChanges(true);
+                        if (e.target.value.trim()) setInvalidFields(prev => ({ ...prev, 'comp-provider-rep-name': false }));
+                      }}
+                      className={`w-full text-xs p-2.5 border rounded-lg bg-white font-medium ${
+                        invalidFields['comp-provider-rep-name'] ? 'border-red-500 ring-2 ring-red-500/30 bg-red-50/50' : 'border-slate-200'
+                      }`}
+                      required
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-slate-700 uppercase" htmlFor="comp-provider-rep-cpf">
+                      CPF do Responsável (Contratada)
+                    </label>
+                    <input
+                      id="comp-provider-rep-cpf"
+                      type="text"
+                      placeholder="000.000.000-00"
+                      value={compProviderLegalRepCpf}
+                      onChange={e => { setCompProviderLegalRepCpf(e.target.value); setHasUnsavedChanges(true); }}
+                      className="w-full text-xs p-2.5 border border-slate-200 rounded-lg bg-white font-mono font-medium"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-slate-700 uppercase" htmlFor="comp-provider-rep-rg">
+                      Cargo / RG do Responsável (Contratada)
+                    </label>
+                    <input
+                      id="comp-provider-rep-rg"
+                      type="text"
+                      placeholder="Ex: Desenvolvedor / Proprietário"
+                      value={compProviderLegalRepRg}
+                      onChange={e => { setCompProviderLegalRepRg(e.target.value); setHasUnsavedChanges(true); }}
+                      className="w-full text-xs p-2.5 border border-slate-200 rounded-lg bg-white"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-slate-700 uppercase" htmlFor="comp-provider-phone">
+                      Telefone / WhatsApp da Contratada
+                    </label>
+                    <input
+                      id="comp-provider-phone"
+                      type="text"
+                      placeholder="(11) 99999-9999"
+                      value={compProviderPhone}
+                      onChange={e => { setCompProviderPhone(e.target.value); setHasUnsavedChanges(true); }}
+                      className="w-full text-xs p-2.5 border border-slate-200 rounded-lg bg-white font-mono"
+                    />
+                  </div>
+
+                  <div className="space-y-1 lg:col-span-2">
+                    <label className="text-xs font-bold text-slate-700 uppercase" htmlFor="comp-provider-email">
+                      E-mail da Contratada
+                    </label>
+                    <input
+                      id="comp-provider-email"
+                      type="email"
+                      placeholder="contato@motordesk.com.br"
+                      value={compProviderEmail}
+                      onChange={e => { setCompProviderEmail(e.target.value); setHasUnsavedChanges(true); }}
+                      className="w-full text-xs p-2.5 border border-slate-200 rounded-lg bg-white"
+                    />
+                  </div>
+
+                  <div className="space-y-1 lg:col-span-3 sm:col-span-2">
+                    <label className="text-xs font-bold text-slate-700 uppercase" htmlFor="comp-provider-address">
+                      Endereço Comercial da Contratada
+                    </label>
+                    <input
+                      id="comp-provider-address"
+                      type="text"
+                      placeholder="Av. das Nações Unidas, 1200 - Pinheiros, São Paulo - SP"
+                      value={compProviderAddress}
+                      onChange={e => { setCompProviderAddress(e.target.value); setHasUnsavedChanges(true); }}
                       className="w-full text-xs p-2.5 border border-slate-200 rounded-lg bg-white"
                     />
                   </div>
@@ -3745,6 +4021,15 @@ export default function UserManagementView({
         isOpen={showPrivacyModal}
         onClose={() => setShowPrivacyModal(false)}
         companyName={compName || 'MotorDesk'}
+      />
+
+      {/* Operation Result Feedback Modal (Success / Error with OK button) */}
+      <OperationResultModal
+        isOpen={resultModal.isOpen}
+        type={resultModal.type}
+        title={resultModal.title}
+        message={resultModal.message}
+        onClose={() => setResultModal(prev => ({ ...prev, isOpen: false }))}
       />
     </div>
   );

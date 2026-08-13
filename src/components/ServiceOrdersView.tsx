@@ -47,6 +47,7 @@ import WarrantyAlertBanner from './WarrantyAlertBanner';
 import ShareDocumentModal from './ShareDocumentModal';
 import ManagerApprovalModal from './ManagerApprovalModal';
 import PreTransmissionReviewModal, { PreTransmissionDocData } from './PreTransmissionReviewModal';
+import OperationResultModal from './OperationResultModal';
 import { getPartStockDetails } from '../utils/stockUtils';
 import { syncServiceOrdersWithBudgets, checkVehicleWarrantyStatus } from '../utils/serviceOrderUtils';
 
@@ -106,6 +107,20 @@ export default function ServiceOrdersView({ db, currentUser, onSaveServiceOrders
   const [technicalRecommendations, setTechnicalRecommendations] = useState('');
   const [notes, setNotes] = useState('');
   const [isSuggesting, setIsSuggesting] = useState(false);
+  const [techRecsError, setTechRecsError] = useState(false);
+
+  // Operation Result Modal State
+  const [resultModal, setResultModal] = useState<{
+    isOpen: boolean;
+    type: 'success' | 'error' | 'warning';
+    title: string;
+    message: string;
+  }>({
+    isOpen: false,
+    type: 'success',
+    title: '',
+    message: ''
+  });
 
   // Service Periodicity & Revision Dates
   const [serviceDate, setServiceDate] = useState('');
@@ -321,6 +336,7 @@ export default function ServiceOrdersView({ db, currentUser, onSaveServiceOrders
     if (selectedOS) {
       setTechnicalRecommendations(selectedOS.technicalRecommendations || '');
       setNotes(selectedOS.notes || '');
+      setTechRecsError(false);
 
       const srvDate = selectedOS.serviceDate || new Date().toISOString().split('T')[0];
       setServiceDate(srvDate);
@@ -340,7 +356,7 @@ export default function ServiceOrdersView({ db, currentUser, onSaveServiceOrders
         setNextDueKm(veh?.currentKm ? veh.currentKm + 10000 : '');
       }
     }
-  }, [selectedOS, db.vehicles]);
+  }, [selectedOS?.id]);
 
   // Auto-sync Service Orders with linked Budgets
   useEffect(() => {
@@ -1267,11 +1283,33 @@ export default function ServiceOrdersView({ db, currentUser, onSaveServiceOrders
   };
 
   const handleSaveDetails = () => {
+    if (!technicalRecommendations || !technicalRecommendations.trim()) {
+      setTechRecsError(true);
+      const el = document.getElementById('tech-recs-input');
+      if (el) {
+        el.focus();
+      }
+      setResultModal({
+        isOpen: true,
+        type: 'error',
+        title: 'Campo Obrigatório Não Preenchido',
+        message: 'O campo "Recomendações técnicas para a entrega ao cliente *" é obrigatório. Por favor, digite as recomendações técnicas antes de salvar.'
+      });
+      return;
+    }
+
+    setTechRecsError(false);
     const res = executeSaveDetails();
     if (res.success) {
       setSuccessMsg('Recomendações técnicas e notas da OS salvas com sucesso!');
       setTimeout(() => setSuccessMsg(''), 3000);
       setUnsavedTask(null);
+      setResultModal({
+        isOpen: true,
+        type: 'success',
+        title: 'Operação Realizada com Sucesso',
+        message: `As recomendações técnicas (RF010) e datas de manutenção da Ordem de Serviço #${selectedOS?.id} foram salvas com sucesso!`
+      });
     }
   };
 
@@ -2312,10 +2350,17 @@ export default function ServiceOrdersView({ db, currentUser, onSaveServiceOrders
                     <textarea 
                       id="tech-recs-input"
                       value={technicalRecommendations}
-                      onChange={e => setTechnicalRecommendations(e.target.value)}
+                      onChange={e => {
+                        setTechnicalRecommendations(e.target.value);
+                        if (e.target.value.trim()) setTechRecsError(false);
+                      }}
                       placeholder="Ex: Identificado desgaste parcial na correia dentada, recomendável trocar preventivamente em até 10.000km. Freios dianteiros substituídos e regulados com sucesso."
                       rows={3.5}
-                      className="w-full text-xs px-3 py-2 border border-slate-200 rounded-lg bg-white"
+                      className={`w-full text-xs px-3 py-2 border rounded-lg bg-white transition ${
+                        techRecsError 
+                          ? 'border-red-500 ring-2 ring-red-500/30 bg-red-50/50 text-red-900 font-medium' 
+                          : 'border-slate-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20'
+                      }`}
                     />
                   </div>
 
@@ -3786,6 +3831,15 @@ export default function ServiceOrdersView({ db, currentUser, onSaveServiceOrders
           }}
         />
       )}
+
+      {/* OPERATION RESULT MODAL (SUCCESS / ERROR WITH OK BUTTON) */}
+      <OperationResultModal
+        isOpen={resultModal.isOpen}
+        type={resultModal.type}
+        title={resultModal.title}
+        message={resultModal.message}
+        onClose={() => setResultModal(prev => ({ ...prev, isOpen: false }))}
+      />
     </div>
   );
 }

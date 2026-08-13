@@ -88,7 +88,7 @@ export interface CompanyInfo {
   paymentStatus?: 'paid' | 'pending' | 'overdue'; // Status do Pagamento
   notes?: string; // Observações da Contratação
 
-  // Responsável Legal & Contrato de Prestação de Serviços (SaaS)
+  // Responsável Legal & Contrato de Prestação de Serviços (SaaS) - CONTRATANTE (Cliente/Tenant)
   legalRepresentativeName?: string; // Nome do Responsável Legal / Proprietário conforme legislação
   legalRepresentativeCpf?: string; // CPF do Responsável Legal / Proprietário
   legalRepresentativeRg?: string; // RG do Responsável Legal / Proprietário
@@ -99,6 +99,16 @@ export interface CompanyInfo {
   signedContractFileName?: string; // Nome do Arquivo do Contrato Assinado
   signedContractDate?: string; // Data de Envio/Assinatura do Contrato Assinado
   contractStatus?: 'pending' | 'signed'; // Status do Contrato ('pending' | 'signed')
+
+  // Dados da CONTRATADA (Fornecedor / Desenvolvedor / Contratado)
+  providerCompanyName?: string; // Razão Social / Nome da Contratada
+  providerCnpj?: string; // CNPJ da Contratada
+  providerAddress?: string; // Endereço Completo da Contratada
+  providerLegalRepName?: string; // Nome do Responsável Legal da Contratada
+  providerLegalRepCpf?: string; // CPF do Responsável Legal da Contratada
+  providerLegalRepRg?: string; // RG/Cargo do Responsável Legal da Contratada
+  providerEmail?: string; // E-mail da Contratada
+  providerPhone?: string; // Telefone/WhatsApp da Contratada
 
   // Precificação Modular do Plano e Módulos Opcionais
   basePlanFee?: number; // Preço Base do Plano Básico de Funcionamento (R$)
