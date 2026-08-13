@@ -38,9 +38,11 @@ import {
   Headphones,
   Clock,
   Video,
-  PlusCircle
+  PlusCircle,
+  ShoppingBag,
+  Wrench
 } from 'lucide-react';
-import { User, UserRole, UserPermissions, CompanyInfo } from '../types';
+import { User, UserRole, UserPermissions, CompanyInfo, BusinessType } from '../types';
 import { AppDatabase } from '../data/mockData';
 import PrivacyLgpdModal, { PrivacyLgpdFooter } from './PrivacyLgpdModal';
 import OperationResultModal from './OperationResultModal';
@@ -59,6 +61,7 @@ interface UserManagementViewProps {
 const DEFAULT_LEVEL_PERMISSIONS: { [key in UserRole]: UserPermissions } = {
   admin: {
     accessDashboard: true,
+    accessSales: true,
     accessClients: true,
     accessVehicles: true,
     accessParts: true,
@@ -82,6 +85,7 @@ const DEFAULT_LEVEL_PERMISSIONS: { [key in UserRole]: UserPermissions } = {
   },
   atendente: {
     accessDashboard: true,
+    accessSales: true,
     accessClients: true,
     accessVehicles: true,
     accessParts: false,
@@ -235,6 +239,7 @@ export default function UserManagementView({
   const [compName, setCompName] = useState(currentCompany?.name || 'MotorDesk Auto Center');
   const [compCnpj, setCompCnpj] = useState(currentCompany?.cnpj || '12.345.678/0001-90');
   const [compType, setCompType] = useState<'matriz' | 'filial'>(currentCompany?.companyType || 'matriz');
+  const [compBusinessType, setCompBusinessType] = useState<BusinessType>(currentCompany?.businessType || 'OFICINA');
   const [compParentMatrizId, setCompParentMatrizId] = useState<string>(currentCompany?.parentMatrizId || '');
   const [compWhatsapp, setCompWhatsapp] = useState(currentCompany?.whatsapp || '11987654321');
   const [compPhone, setCompPhone] = useState(currentCompany?.phone || '(11) 3344-5566');
@@ -757,6 +762,7 @@ export default function UserManagementView({
       setCompName(comp.name || '');
       setCompCnpj(comp.cnpj || '');
       setCompType(comp.companyType || 'matriz');
+      setCompBusinessType(comp.businessType || 'OFICINA');
       setCompParentMatrizId(comp.parentMatrizId || '');
       setCompWhatsapp(comp.whatsapp || '');
       setCompPhone(comp.phone || '');
@@ -880,6 +886,7 @@ export default function UserManagementView({
       name: compName,
       cnpj: compCnpj,
       companyType: compType,
+      businessType: compBusinessType,
       parentMatrizId: compType === 'filial' ? compParentMatrizId : undefined,
       phone: compPhone,
       whatsapp: compWhatsapp,
@@ -2708,6 +2715,108 @@ export default function UserManagementView({
                     )}
                   </div>
                 )}
+              </div>
+
+              {/* Segmento de Negocio (Multi-Segmento: Oficina x Comercio) */}
+              <div className="space-y-3 bg-slate-900 text-white p-4.5 rounded-xl border border-slate-800 sm:col-span-2 shadow-xs">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold uppercase tracking-wider text-indigo-300 flex items-center gap-1.5">
+                    <ShoppingBag className="w-4 h-4 text-emerald-400" />
+                    Tipo de Negócio / Segmento do Estabelecimento *
+                  </label>
+                  <span className="text-[10px] bg-indigo-500/20 text-indigo-300 px-2 py-0.5 rounded-full font-mono font-bold border border-indigo-500/30">
+                    Núcleo ERP Modular
+                  </span>
+                </div>
+                <p className="text-xs text-slate-300 leading-relaxed">
+                  Defina o ramo principal desta empresa para adaptar o menu de navegação e as funcionalidades operacionais sem duplicação de dados:
+                </p>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
+                  <label 
+                    className={`p-3.5 rounded-xl border-2 flex flex-col justify-between cursor-pointer transition ${
+                      compBusinessType === 'OFICINA' 
+                        ? 'bg-slate-800 border-indigo-500 ring-2 ring-indigo-500/30 shadow-md text-white' 
+                        : 'bg-slate-800/60 border-slate-700 text-slate-300 hover:border-slate-600'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 mb-2">
+                      <input 
+                        type="radio" 
+                        name="compBusinessTypeRadio" 
+                        value="OFICINA" 
+                        checked={compBusinessType === 'OFICINA'} 
+                        onChange={() => {
+                          setCompBusinessType('OFICINA');
+                          setHasUnsavedChanges(true);
+                        }}
+                        className="h-4 w-4 text-indigo-500 border-slate-600 focus:ring-indigo-500 cursor-pointer"
+                      />
+                      <span className="font-bold text-xs text-white flex items-center gap-1">
+                        <Wrench className="w-3.5 h-3.5 text-indigo-400" /> Oficina Mecânica
+                      </span>
+                    </div>
+                    <span className="text-[11px] text-slate-400 leading-normal">
+                      Foco em Ordens de Serviço, Veículos, Mecânicos, Checklist, Serviços e Peças.
+                    </span>
+                  </label>
+
+                  <label 
+                    className={`p-3.5 rounded-xl border-2 flex flex-col justify-between cursor-pointer transition ${
+                      compBusinessType === 'COMERCIO' 
+                        ? 'bg-slate-800 border-emerald-500 ring-2 ring-emerald-500/30 shadow-md text-white' 
+                        : 'bg-slate-800/60 border-slate-700 text-slate-300 hover:border-slate-600'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 mb-2">
+                      <input 
+                        type="radio" 
+                        name="compBusinessTypeRadio" 
+                        value="COMERCIO" 
+                        checked={compBusinessType === 'COMERCIO'} 
+                        onChange={() => {
+                          setCompBusinessType('COMERCIO');
+                          setHasUnsavedChanges(true);
+                        }}
+                        className="h-4 w-4 text-emerald-500 border-slate-600 focus:ring-emerald-500 cursor-pointer"
+                      />
+                      <span className="font-bold text-xs text-white flex items-center gap-1">
+                        <ShoppingBag className="w-3.5 h-3.5 text-emerald-400" /> Comércio & Vendas
+                      </span>
+                    </div>
+                    <span className="text-[11px] text-slate-400 leading-normal">
+                      Foco em Vendas de Balcão (PDV), Produtos/Estoque, Caixa, Contas a Pagar/Receber e Fiscal.
+                    </span>
+                  </label>
+
+                  <label 
+                    className={`p-3.5 rounded-xl border-2 flex flex-col justify-between cursor-pointer transition ${
+                      compBusinessType === 'OFICINA_COMERCIO' 
+                        ? 'bg-slate-800 border-amber-500 ring-2 ring-amber-500/30 shadow-md text-white' 
+                        : 'bg-slate-800/60 border-slate-700 text-slate-300 hover:border-slate-600'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 mb-2">
+                      <input 
+                        type="radio" 
+                        name="compBusinessTypeRadio" 
+                        value="OFICINA_COMERCIO" 
+                        checked={compBusinessType === 'OFICINA_COMERCIO'} 
+                        onChange={() => {
+                          setCompBusinessType('OFICINA_COMERCIO');
+                          setHasUnsavedChanges(true);
+                        }}
+                        className="h-4 w-4 text-amber-500 border-slate-600 focus:ring-amber-500 cursor-pointer"
+                      />
+                      <span className="font-bold text-xs text-white flex items-center gap-1">
+                        <Building2 className="w-3.5 h-3.5 text-amber-400" /> Oficina + Comércio
+                      </span>
+                    </div>
+                    <span className="text-[11px] text-slate-400 leading-normal">
+                      Estrutura Híbrida: Atende serviços automotivos (OS) e vendas diretas de peças no balcão.
+                    </span>
+                  </label>
+                </div>
               </div>
 
               <div className="space-y-1">

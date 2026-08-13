@@ -86,6 +86,7 @@ import AccountsReceivableView from './components/AccountsReceivableView';
 import AccountsPayableView from './components/AccountsPayableView';
 import FinancialView from './components/FinancialView';
 import FiscalSefazView from './components/FiscalSefazView';
+import { SalesView } from './components/SalesView';
 import NotificationToastPopup from './components/NotificationToastPopup';
 import NotificationsModal from './components/NotificationsModal';
 import LandingPresentationView, { LandingContent } from './components/LandingPresentationView';
@@ -99,6 +100,7 @@ import { Globe, FileText } from 'lucide-react';
 
 type ViewID = 
   | 'dashboard' 
+  | 'sales'
   | 'clients' 
   | 'vehicles' 
   | 'parts' 
@@ -119,6 +121,7 @@ type ViewID =
 
 const VIEW_PERMISSION_MAP: Record<ViewID, keyof UserPermissions | null> = {
   dashboard: 'accessDashboard',
+  sales: 'accessSales',
   clients: 'accessClients',
   vehicles: 'accessVehicles',
   parts: 'accessParts',
@@ -314,6 +317,7 @@ export default function App() {
 
     const viewPermissionMap: Record<ViewID, keyof UserPermissions | null> = {
       dashboard: 'accessDashboard',
+      sales: 'accessSales',
       clients: 'accessClients',
       vehicles: 'accessVehicles',
       parts: 'accessParts',
@@ -893,6 +897,7 @@ export default function App() {
       // Determine default accessible landing view based on user permissions
       const viewPermissionMap: Record<ViewID, keyof UserPermissions | null> = {
         dashboard: 'accessDashboard',
+        sales: 'accessSales',
         clients: 'accessClients',
         vehicles: 'accessVehicles',
         parts: 'accessParts',
@@ -1302,9 +1307,17 @@ export default function App() {
 
   const activeCompanyObj = (db?.registeredCompanies || []).find(c => c.id === activeCompanyId) || db?.companyInfo;
   const activeCompanyModules = activeCompanyObj?.globalModules || globalModules;
+  const activeBusinessType = activeCompanyObj?.businessType || 'OFICINA';
 
   const isModuleLocked = (permissionKey: string) => {
     if (permissionKey === 'accessUserManagement' || permissionKey === 'accessDashboard') return false;
+
+    // Segment lock rules
+    if (activeBusinessType === 'COMERCIO') {
+      const workshopOnlyModules = ['accessVehicles', 'accessServiceOrders', 'accessBudgets', 'accessServices'];
+      if (workshopOnlyModules.includes(permissionKey)) return true;
+    }
+
     return activeCompanyModules[permissionKey as keyof typeof activeCompanyModules] === false;
   };
 
@@ -1400,6 +1413,28 @@ export default function App() {
                   {(!isSidebarCollapsed || isSidebarHovered) && <span className="truncate">Dashboard KPI</span>}
                 </div>
                 {(!isSidebarCollapsed || isSidebarHovered) && activeCompanyModules.accessDashboard === false && (
+                  <span className="text-[9px] bg-amber-500/10 text-amber-500 px-1 py-0.2 rounded border border-amber-500/20 font-mono">🔒</span>
+                )}
+              </button>
+            )}
+
+            {(currentUser.permissions.accessSales ?? true) && (
+              <button 
+                id="menu-btn-sales"
+                onClick={() => !isModuleLocked('accessSales') && navigateToView('sales')}
+                disabled={isModuleLocked('accessSales')}
+                title="Vendas & Frente de Caixa"
+                className={`w-full flex items-center ${(!isSidebarCollapsed || isSidebarHovered) ? 'justify-between px-3' : 'justify-center px-2'} py-2.5 rounded-lg text-xs font-semibold tracking-wide transition ${
+                  isModuleLocked('accessSales')
+                    ? 'opacity-40 cursor-not-allowed text-slate-500'
+                    : activeView === 'sales' ? 'bg-emerald-600 text-white font-bold shadow-xs' : 'hover:bg-slate-800 text-slate-300 hover:text-slate-100'
+                }`}
+              >
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <ShoppingBag className="w-4 h-4 shrink-0 text-emerald-400" />
+                  {(!isSidebarCollapsed || isSidebarHovered) && <span className="truncate">Vendas & Balcão</span>}
+                </div>
+                {(!isSidebarCollapsed || isSidebarHovered) && activeCompanyModules.accessSales === false && (
                   <span className="text-[9px] bg-amber-500/10 text-amber-500 px-1 py-0.2 rounded border border-amber-500/20 font-mono">🔒</span>
                 )}
               </button>
@@ -1864,6 +1899,18 @@ export default function App() {
           {activeView === 'dashboard' && currentUser.permissions.accessDashboard && (
             isModuleLocked('accessDashboard') ? renderLockedScreen() : (
               <DashboardView db={scopedDb} onNavigate={(view: string) => navigateToView(view as ViewID)} />
+            )
+          )}
+
+          {activeView === 'sales' && (currentUser.permissions.accessSales ?? true) && (
+            isModuleLocked('accessSales') ? renderLockedScreen() : (
+              <SalesView 
+                db={db}
+                onUpdateDb={syncDb}
+                currentUser={currentUser}
+                currentCompany={activeCompanyObj || db.companyInfo}
+                isFiscalEnabled={activeCompanyObj?.globalModules?.accessFiscal !== false}
+              />
             )
           )}
 

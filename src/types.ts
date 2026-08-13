@@ -58,14 +58,55 @@ export interface AlertSettings {
 
 export type UserRole = 'admin' | 'atendente' | 'mecanico' | 'qa';
 
+export type BusinessType = "OFICINA" | "COMERCIO" | "OFICINA_COMERCIO" | "SERVICOS" | "OUTROS";
+
+export interface CompanyModules {
+  sales: boolean;
+  serviceOrders: boolean;
+  vehicles: boolean;
+  inventory: boolean;
+  financial: boolean;
+  fiscal: boolean;
+  billing: boolean;
+}
+
+export function getDefaultModulesForBusinessType(type: BusinessType = "OFICINA"): CompanyModules {
+  switch (type) {
+    case "COMERCIO":
+      return {
+        sales: true,
+        serviceOrders: false,
+        vehicles: false,
+        inventory: true,
+        financial: true,
+        fiscal: true,
+        billing: true
+      };
+    case "OFICINA":
+    case "OFICINA_COMERCIO":
+    default:
+      return {
+        sales: true,
+        serviceOrders: true,
+        vehicles: true,
+        inventory: true,
+        financial: true,
+        fiscal: true,
+        billing: true
+      };
+  }
+}
+
 /**
  * Interface para armazenar dados cadastrais da empresa/oficina contratante do MotorDesk.
  * Inclui canal oficial de WhatsApp, CNPJ e endereço para emissão de orçamentos e Ordens de Serviço.
  */
 export interface CompanyInfo {
   id: string;
-  name: string; // Nome Fantasia ou Razão Social da Oficina
-  tradeName?: string; // Nome Fantasia da Oficina
+  name: string; // Nome Fantasia ou Razão Social da Oficina/Empresa
+  tradeName?: string; // Nome Fantasia da Oficina/Empresa
+  businessType?: BusinessType; // Segmento de negócio da empresa ("OFICINA", "COMERCIO", etc.)
+  modules?: CompanyModules; // Módulos ativados/desativados para esta empresa
   cnpj: string; // CNPJ da Empresa
   phone: string; // Telefone Fixo de Contato
   whatsapp: string; // WhatsApp Oficial de Atendimento da Oficina (com DDD)
@@ -176,6 +217,7 @@ export interface UserPermissions {
   accessReports: boolean;
   accessUserManagement: boolean;
   accessQAPanel: boolean;
+  accessSales?: boolean;
   accessQuotations?: boolean;
   accessNotifications?: boolean;
   accessAccountsReceivable?: boolean;
@@ -966,5 +1008,41 @@ export interface SefazApiConfig {
   pfxCertificateUploadDate?: string;
   pfxCertificateSubjectCnpj?: string;
 }
+
+export interface CommercialSaleItem {
+  id: string;
+  partId: string;
+  partName: string;
+  partCode: string;
+  quantity: number;
+  unitPrice: number;
+  discount: number;
+  totalPrice: number;
+  unit?: string;
+  ncm?: string;
+}
+
+export interface CommercialSale {
+  id: string;
+  code: string; // Ex: VEN-2026-0001
+  clientId: string;
+  clientName: string;
+  clientCpfCnpj?: string;
+  companyId: string;
+  createdAt: string;
+  items: CommercialSaleItem[];
+  subtotal: number;
+  discount: number;
+  totalAmount: number;
+  paymentMethod: string; // Ex: "PIX", "Dinheiro", "Cartão de Crédito", "A Prazo"
+  paymentStatus: 'paid' | 'pending' | 'canceled';
+  installmentsCount?: number;
+  receivableId?: string;
+  fiscalDocumentId?: string;
+  fiscalAccessKey?: string;
+  notes?: string;
+  createdBy: string;
+}
+
 
 

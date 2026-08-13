@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { User, Client, Vehicle, Part, Service, Budget, ServiceOrder, HistoryEntry, TestCase, StockMovement, CompanyInfo, SystemNotification, AlertSettings, Supplier, SupplierPartPrice, Quotation, AccountReceivable, AccountPayable, FinancialTransaction, MaintenanceLog, PaymentMethodOption, FiscalDocument, BoletoDocument, InterBranchSaleLogistics, SefazApiConfig, TaxOperationNature, TaxRule, XmlImportRecord } from '../types';
+import { User, Client, Vehicle, Part, Service, Budget, ServiceOrder, HistoryEntry, TestCase, StockMovement, CompanyInfo, SystemNotification, AlertSettings, Supplier, SupplierPartPrice, Quotation, AccountReceivable, AccountPayable, FinancialTransaction, MaintenanceLog, PaymentMethodOption, FiscalDocument, BoletoDocument, InterBranchSaleLogistics, SefazApiConfig, TaxOperationNature, TaxRule, XmlImportRecord, CommercialSale, getDefaultModulesForBusinessType } from '../types';
 
 export const INITIAL_SEFAZ_CONFIG: SefazApiConfig = {
   environment: 'homologation',
@@ -440,6 +440,8 @@ export const INITIAL_COMPANY_INFO: CompanyInfo = {
   name: 'MotorDesk Auto Center - Matriz Pinheiros',
   cnpj: '12.345.678/0001-90',
   companyType: 'matriz',
+  businessType: 'OFICINA',
+  modules: getDefaultModulesForBusinessType('OFICINA'),
   phone: '(11) 3344-5566',
   whatsapp: '11987654321', // WhatsApp Oficial
   email: 'contato@motordesk.com.br',
@@ -465,6 +467,8 @@ export const INITIAL_COMPANIES: CompanyInfo[] = [
     name: 'MotorDesk Auto Center - Filial Vila Mariana',
     cnpj: '98.765.432/0001-10',
     companyType: 'filial',
+    businessType: 'OFICINA',
+    modules: getDefaultModulesForBusinessType('OFICINA'),
     parentMatrizId: 'comp-1',
     phone: '(11) 4567-8900',
     whatsapp: '11977778888',
@@ -488,6 +492,8 @@ export const INITIAL_COMPANIES: CompanyInfo[] = [
     name: 'Centro Automotivo Express Repair - Matriz RJ',
     cnpj: '45.123.890/0001-55',
     companyType: 'matriz',
+    businessType: 'OFICINA',
+    modules: getDefaultModulesForBusinessType('OFICINA'),
     phone: '(21) 2233-4455',
     whatsapp: '21988889999',
     email: 'contato@expressrepair.com.br',
@@ -501,6 +507,30 @@ export const INITIAL_COMPANIES: CompanyInfo[] = [
     paymentStatus: 'overdue',
     lastPaymentDate: '2026-05-30',
     notes: 'Acesso suspenso temporariamente por falta de pagamento da mensalidade de junho.'
+  },
+  {
+    id: 'comp-4',
+    name: 'MotorDesk Auto Peças & Distribuidora - Comércio SP',
+    cnpj: '77.888.999/0001-22',
+    companyType: 'matriz',
+    businessType: 'COMERCIO',
+    modules: getDefaultModulesForBusinessType('COMERCIO'),
+    phone: '(11) 3888-9900',
+    whatsapp: '11988887777',
+    email: 'vendas@motordeskpecas.com.br',
+    address: 'Rua Duque de Caxias, 450 - Centro, São Paulo - SP',
+    welcomeMessage: 'MotorDesk Auto Peças - Vendas diretas de balcão e peças para todo o Brasil.',
+    registeredAt: '2026-04-10T11:00:00Z',
+    subscriptionStatus: 'active',
+    startDate: '2026-04-10',
+    expirationDate: '2026-12-31',
+    monthlyFee: 299.90,
+    paymentStatus: 'paid',
+    lastPaymentDate: '2026-07-10',
+    legalRepresentativeName: 'Fernanda Lima Alencar',
+    legalRepresentativeCpf: '321.654.987-22',
+    contractStatus: 'signed',
+    notes: 'Empresa do segmento Comércio de Peças (Vendas Diretas / Balcão, Estoque e NF-e).'
   }
 ];
 
@@ -1733,6 +1763,81 @@ export const INITIAL_FINANCIAL_TRANSACTIONS: FinancialTransaction[] = [
   }
 ];
 
+export const INITIAL_SALES: CommercialSale[] = [
+  {
+    id: 'sale-1',
+    code: 'VEN-2026-0001',
+    clientId: 'cli-1',
+    clientName: 'João Silva',
+    clientCpfCnpj: '123.456.789-00',
+    companyId: 'comp-1',
+    createdAt: '2026-08-10T14:30:00Z',
+    items: [
+      {
+        id: 'sitem-1',
+        partId: 'part-1',
+        partName: 'Óleo Motor 5W30 Sintético',
+        partCode: 'MOB-5W30',
+        quantity: 4,
+        unitPrice: 45.00,
+        discount: 0,
+        totalPrice: 180.00,
+        unit: 'L',
+        ncm: '2710.19.32'
+      },
+      {
+        id: 'sitem-2',
+        partId: 'part-2',
+        partName: 'Filtro de Óleo Lubrificante',
+        partCode: 'FIL-1023',
+        quantity: 1,
+        unitPrice: 35.00,
+        discount: 5.00,
+        totalPrice: 30.00,
+        unit: 'UN',
+        ncm: '8421.23.00'
+      }
+    ],
+    subtotal: 215.00,
+    discount: 5.00,
+    totalAmount: 210.00,
+    paymentMethod: 'PIX',
+    paymentStatus: 'paid',
+    notes: 'Venda direta de balcão. Cliente retirou produtos na loja.',
+    createdBy: 'Carlos Santos (Atendente)'
+  },
+  {
+    id: 'sale-2',
+    code: 'VEN-2026-0002',
+    clientId: 'cli-2',
+    clientName: 'Maria Oliveira',
+    clientCpfCnpj: '987.654.321-11',
+    companyId: 'comp-1',
+    createdAt: '2026-08-12T10:15:00Z',
+    items: [
+      {
+        id: 'sitem-3',
+        partId: 'part-3',
+        partName: 'Jogo de Pastilhas de Freio Dianteira',
+        partCode: 'PST-9042',
+        quantity: 1,
+        unitPrice: 160.00,
+        discount: 10.00,
+        totalPrice: 150.00,
+        unit: 'JG',
+        ncm: '8708.30.90'
+      }
+    ],
+    subtotal: 160.00,
+    discount: 10.00,
+    totalAmount: 150.00,
+    paymentMethod: 'Cartão de Crédito',
+    paymentStatus: 'paid',
+    notes: 'Venda com desconto de fidelidade.',
+    createdBy: 'Carlos Santos (Atendente)'
+  }
+];
+
 // Complete Database load/save management
 export interface AppDatabase {
   landingContent?: any;
@@ -1745,6 +1850,7 @@ export interface AppDatabase {
   clients: Client[];
   vehicles: Vehicle[];
   parts: Part[];
+  sales?: CommercialSale[];
   stockMovements?: StockMovement[];
   services: Service[];
   budgets: Budget[];
@@ -1783,6 +1889,7 @@ export function getDatabase(): AppDatabase {
       clients: INITIAL_CLIENTS,
       vehicles: INITIAL_VEHICLES,
       parts: INITIAL_PARTS,
+      sales: INITIAL_SALES,
       stockMovements: INITIAL_STOCK_MOVEMENTS,
       services: INITIAL_SERVICES,
       budgets: INITIAL_BUDGETS,
@@ -1815,6 +1922,9 @@ export function getDatabase(): AppDatabase {
       }
       if (!db.registeredCompanies) {
         db.registeredCompanies = INITIAL_COMPANIES;
+      }
+      if (!db.sales) {
+        db.sales = INITIAL_SALES;
       }
       if (!db.stockMovements) {
         db.stockMovements = INITIAL_STOCK_MOVEMENTS;

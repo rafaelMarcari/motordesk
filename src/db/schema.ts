@@ -134,6 +134,57 @@ export const budgets = pgTable('budgets', {
   customerComplaint: text('customer_complaint'),
 });
 
+// Companies table
+export const companies = pgTable('companies', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  tradeName: text('trade_name'),
+  cnpj: text('cnpj').notNull(),
+  businessType: text('business_type').default('OFICINA'),
+  modules: jsonb('modules'),
+  companyType: text('company_type'),
+  parentMatrizId: text('parent_matriz_id'),
+  phone: text('phone'),
+  whatsapp: text('whatsapp'),
+  email: text('email'),
+  address: text('address'),
+  logoUrl: text('logo_url'),
+  welcomeMessage: text('welcome_message'),
+  registeredAt: text('registered_at'),
+  subscriptionStatus: text('subscription_status'),
+  startDate: text('start_date'),
+  expirationDate: text('expiration_date'),
+  monthlyFee: real('monthly_fee'),
+  paymentStatus: text('payment_status'),
+  lastPaymentDate: text('last_payment_date'),
+  legalRepresentativeName: text('legal_representative_name'),
+  legalRepresentativeCpf: text('legal_representative_cpf'),
+  notes: text('notes'),
+});
+
+// Sales table (Commercial sales)
+export const sales = pgTable('sales', {
+  id: text('id').primaryKey(),
+  code: text('code').notNull(),
+  clientId: text('client_id').notNull(),
+  clientName: text('client_name').notNull(),
+  clientCpfCnpj: text('client_cpf_cnpj'),
+  companyId: text('company_id').notNull(),
+  createdAt: text('created_at').notNull(),
+  items: jsonb('items').notNull(),
+  subtotal: real('subtotal').notNull(),
+  discount: real('discount').notNull(),
+  totalAmount: real('total_amount').notNull(),
+  paymentMethod: text('payment_method').notNull(),
+  paymentStatus: text('payment_status').notNull(),
+  installmentsCount: integer('installments_count'),
+  receivableId: text('receivable_id'),
+  fiscalDocumentId: text('fiscal_document_id'),
+  fiscalAccessKey: text('fiscal_access_key'),
+  notes: text('notes'),
+  createdBy: text('created_by'),
+});
+
 // Accounts Receivable table
 export const accountsReceivable = pgTable('accounts_receivable', {
   id: text('id').primaryKey(),
@@ -151,3 +202,4 @@ export const accountsReceivable = pgTable('accounts_receivable', {
   createdAt: text('created_at'),
   installments: jsonb('installments'),
 });
+
