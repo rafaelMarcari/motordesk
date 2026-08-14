@@ -249,7 +249,8 @@ function prepareElementForCapture(element: HTMLElement): () => void {
  */
 export async function generatePdfFromElement(
   elementId: string,
-  filename: string = 'documento.pdf'
+  filename: string = 'documento.pdf',
+  orientation: 'portrait' | 'landscape' = 'portrait'
 ): Promise<boolean> {
   const element = document.getElementById(elementId);
   if (!element) {
@@ -270,8 +271,10 @@ export async function generatePdfFromElement(
   element.style.overflow = 'visible';
   element.style.height = 'auto';
 
+  const isLandscape = orientation === 'landscape';
+
   try {
-    const width = Math.max(element.scrollWidth, element.offsetWidth, 800);
+    const width = Math.max(element.scrollWidth, element.offsetWidth, isLandscape ? 1100 : 800);
     const height = Math.max(element.scrollHeight, element.offsetHeight);
 
     let dataUrl = '';
@@ -310,10 +313,10 @@ export async function generatePdfFromElement(
     const imgWidth = img.width || width;
     const imgHeight = img.height || height;
 
-    // A4 document (210mm x 297mm)
-    const pdf = new jsPDF('p', 'mm', 'a4');
-    const pdfWidth = pdf.internal.pageSize.getWidth(); // 210mm
-    const pdfPageHeight = pdf.internal.pageSize.getHeight(); // 297mm
+    // A4 document (210mm x 297mm for portrait, 297mm x 210mm for landscape)
+    const pdf = new jsPDF(isLandscape ? 'l' : 'p', 'mm', 'a4');
+    const pdfWidth = pdf.internal.pageSize.getWidth(); // 210mm or 297mm
+    const pdfPageHeight = pdf.internal.pageSize.getHeight(); // 297mm or 210mm
 
     const margin = 5;
     const printWidth = pdfWidth - margin * 2;
@@ -337,7 +340,7 @@ export async function generatePdfFromElement(
     return true;
   } catch (err) {
     console.error('Error generating PDF:', err);
-    printElementInIframe(elementId, filename);
+    printElementInIframe(elementId, filename, orientation);
     return false;
   } finally {
     element.style.maxHeight = origMaxHeight;
@@ -352,7 +355,11 @@ export async function generatePdfFromElement(
 /**
  * Isolated iframe print fallback.
  */
-function printElementInIframe(elementId: string, title: string) {
+export function printElementInIframe(
+  elementId: string,
+  title: string = 'Documento',
+  orientation: 'portrait' | 'landscape' = 'portrait'
+) {
   const element = document.getElementById(elementId);
   if (!element) return;
 
@@ -379,9 +386,13 @@ function printElementInIframe(elementId: string, title: string) {
       <head>
         <title>${title}</title>
         <style>
-          body { font-family: system-ui, -apple-system, sans-serif; padding: 24px; color: #0f172a; background: #fff; }
-          table { width: 100%; border-collapse: collapse; margin-top: 16px; }
-          th, td { border: 1px solid #cbd5e1; padding: 10px; text-align: left; font-size: 12px; }
+          @page {
+            size: ${orientation};
+            margin: 5mm;
+          }
+          body { font-family: system-ui, -apple-system, sans-serif; padding: 12px; color: #0f172a; background: #fff; margin: 0; }
+          table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+          th, td { border: 1px solid #cbd5e1; padding: 6px 8px; text-align: left; font-size: 11px; }
           th { background-color: #f1f5f9; font-weight: bold; }
           .no-print { display: none !important; }
         </style>

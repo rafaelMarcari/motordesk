@@ -1314,8 +1314,13 @@ export default function App() {
 
     // Segment lock rules
     if (activeBusinessType === 'COMERCIO') {
-      const workshopOnlyModules = ['accessVehicles', 'accessServiceOrders', 'accessBudgets', 'accessServices'];
+      const workshopOnlyModules = ['accessVehicles', 'accessServiceOrders', 'accessBudgets', 'accessServices', 'accessQuotations'];
       if (workshopOnlyModules.includes(permissionKey)) return true;
+    }
+
+    if (activeBusinessType === 'OFICINA') {
+      const commerceOnlyModules = ['accessSales'];
+      if (commerceOnlyModules.includes(permissionKey)) return true;
     }
 
     return activeCompanyModules[permissionKey as keyof typeof activeCompanyModules] === false;
@@ -1418,7 +1423,7 @@ export default function App() {
               </button>
             )}
 
-            {(currentUser.permissions.accessSales ?? true) && (
+            {activeBusinessType !== 'OFICINA' && (currentUser.permissions.accessSales ?? true) && (
               <button 
                 id="menu-btn-sales"
                 onClick={() => !isModuleLocked('accessSales') && navigateToView('sales')}
@@ -1462,7 +1467,7 @@ export default function App() {
               </button>
             )}
 
-            {currentUser.permissions.accessVehicles && (
+            {activeBusinessType !== 'COMERCIO' && currentUser.permissions.accessVehicles && (
               <button 
                 id="menu-btn-vehicles"
                 onClick={() => !isModuleLocked('accessVehicles') && navigateToView('vehicles')}
@@ -1506,7 +1511,7 @@ export default function App() {
               </button>
             )}
 
-            {currentUser.permissions.accessQuotations && (
+            {activeBusinessType !== 'COMERCIO' && currentUser.permissions.accessQuotations && (
               <button 
                 id="menu-btn-quotations"
                 onClick={() => !isModuleLocked('accessQuotations') && navigateToView('quotations')}
@@ -1619,7 +1624,7 @@ export default function App() {
               </div>
             )}
 
-            {currentUser.permissions.accessServices && (
+            {activeBusinessType !== 'COMERCIO' && currentUser.permissions.accessServices && (
               <button 
                 id="menu-btn-services"
                 onClick={() => !isModuleLocked('accessServices') && navigateToView('services')}
@@ -1641,7 +1646,7 @@ export default function App() {
               </button>
             )}
 
-            {currentUser.permissions.accessBudgets && (
+            {activeBusinessType !== 'COMERCIO' && currentUser.permissions.accessBudgets && (
               <button 
                 id="menu-btn-budgets"
                 onClick={() => !isModuleLocked('accessBudgets') && navigateToView('budgets')}
@@ -1663,7 +1668,7 @@ export default function App() {
               </button>
             )}
 
-            {currentUser.permissions.accessServiceOrders && (
+            {activeBusinessType !== 'COMERCIO' && currentUser.permissions.accessServiceOrders && (
               <button 
                 id="menu-btn-service-orders"
                 onClick={() => !isModuleLocked('accessServiceOrders') && navigateToView('serviceOrders')}

@@ -180,6 +180,15 @@ export interface CompanyInfo {
   // Liberação / Bloqueio Global de Módulos desta Empresa
   globalModules?: { [key: string]: boolean };
 
+  // CONFIGURAÇÃO DE ORIENTAÇÃO DE IMPRESSÃO DE RELATÓRIOS (QA CONTROLLED)
+  reportPageOrientation?: 'portrait' | 'landscape_2ways'; // 'portrait' (Retrato 1 Via) ou 'landscape_2ways' (Paisagem 2 Vias Iguais na mesma página)
+  reportCustomOrientations?: {
+    budget?: 'portrait' | 'landscape_2ways';
+    service_order?: 'portrait' | 'landscape_2ways';
+    sale?: 'portrait' | 'landscape_2ways';
+    receipt?: 'portrait' | 'landscape_2ways';
+  };
+
   // DADOS FISCAIS DO EMITENTE (ARQUITETURA MOTOR DESK FISCAL)
   stateRegistration?: string; // Inscrição Estadual (IE)
   cityRegistration?: string;  // Inscrição Municipal (IM)
