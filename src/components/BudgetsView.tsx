@@ -28,7 +28,7 @@ import {
   AlertTriangle,
   Calendar
 } from 'lucide-react';
-import { Budget, BudgetItem, Client, Vehicle, Part, Service, ServiceOrder, OSItem, SystemNotification } from '../types';
+import { Budget, BudgetItem, Client, Vehicle, Part, Service, ServiceOrder, OSItem, SystemNotification, CompanyInfo } from '../types';
 import { AppDatabase } from '../data/mockData';
 import ShareDocumentModal from './ShareDocumentModal';
 import { getPartStockDetails, getReservingBudgetsForPart, ReservingBudgetInfo } from '../utils/stockUtils';
@@ -40,6 +40,7 @@ interface BudgetsViewProps {
   currentUser: any;
   onSaveBudgets: (budgets: Budget[]) => void;
   onSaveServiceOrders: (os: ServiceOrder[]) => void;
+  onSaveCompanyInfo?: (companyInfo: CompanyInfo) => void;
   onAddNotification?: (notification: SystemNotification) => void;
   onAddHistoryLog: (type: 'budget' | 'service_order' | 'payment' | 'user_activity' | 'system', title: string, description: string, clientId: string, vehicleId: string, metadata?: any) => void;
   setUnsavedTask: (task: {
@@ -49,7 +50,7 @@ interface BudgetsViewProps {
   } | null) => void;
 }
 
-export default function BudgetsView({ db, currentUser, onSaveBudgets, onSaveServiceOrders, onAddNotification, onAddHistoryLog, setUnsavedTask }: BudgetsViewProps) {
+export default function BudgetsView({ db, currentUser, onSaveBudgets, onSaveServiceOrders, onSaveCompanyInfo, onAddNotification, onAddHistoryLog, setUnsavedTask }: BudgetsViewProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingBudgetId, setEditingBudgetId] = useState<string | null>(null);
@@ -1839,6 +1840,19 @@ export default function BudgetsView({ db, currentUser, onSaveBudgets, onSaveServ
           notes={shareModalData.budget.notes}
           currentUserRole={currentUser?.role}
           canCustomizePdf={currentUser?.permissions?.canCustomizePdf ?? true}
+          onSaveCompanyOrientation={(orientation, docType) => {
+            if (currentUser?.role !== 'qa' && currentUser?.role !== 'admin') return;
+            if (!db.companyInfo) return;
+            const updatedCompany = {
+              ...db.companyInfo,
+              reportPageOrientation: orientation,
+              reportCustomOrientations: {
+                ...(db.companyInfo.reportCustomOrientations || {}),
+                [docType || 'budget']: orientation
+              }
+            };
+            onSaveCompanyInfo?.(updatedCompany);
+          }}
         />
       )}
 

@@ -97,6 +97,21 @@ import { sweepExpiredBudgets, checkLowStockAlerts } from './utils/stockUtils';
 import { syncServiceOrdersWithBudgets } from './utils/serviceOrderUtils';
 import { AccountReceivable, AccountPayable, FinancialTransaction, FiscalDocument, BoletoDocument, InterBranchSaleLogistics, SefazApiConfig } from './types';
 import { Globe, FileText } from 'lucide-react';
+import {
+  getBusinessType,
+  isWorkshopBusiness,
+  isCommerceBusiness,
+  isPureWorkshop,
+  isPureCommerce,
+  isHybridBusiness,
+  isViewAllowedForBusinessType,
+  isModuleAllowedForBusinessType,
+  getFallbackViewForBusinessType,
+  getAvailableViewsForBusinessType,
+  getSegmentMetadata,
+  normalizeUser,
+  normalizeUserPermissions
+} from './utils/businessSegmentation';
 
 type ViewID = 
   | 'dashboard' 
@@ -455,10 +470,11 @@ export default function App() {
   // Keep currentUser permissions in sync with db.users in real time
   useEffect(() => {
     if (db && currentUser) {
-      const freshUser = (db.users || []).find(
+      const rawUser = (db.users || []).find(
         u => u.id === currentUser.id || (u.username && u.username.toLowerCase() === currentUser.username.toLowerCase())
       );
-      if (freshUser) {
+      if (rawUser) {
+        const freshUser = normalizeUser(rawUser);
         if (
           JSON.stringify(freshUser.permissions) !== JSON.stringify(currentUser.permissions) ||
           freshUser.role !== currentUser.role ||
@@ -855,6 +871,9 @@ export default function App() {
         }));
       }
 
+      // Normalize user permissions for legacy database safety
+      matchedUser = normalizeUser(matchedUser);
+
       // Sync permissions with motordesk_level_permissions from localStorage if available
       const savedLevels = localStorage.getItem('motordesk_level_permissions');
       if (savedLevels) {
@@ -863,10 +882,13 @@ export default function App() {
           if (levelMap[matchedUser.role]) {
             matchedUser = {
               ...matchedUser,
-              permissions: {
-                ...levelMap[matchedUser.role],
-                ...matchedUser.permissions
-              }
+              permissions: normalizeUserPermissions(
+                {
+                  ...levelMap[matchedUser.role],
+                  ...matchedUser.permissions
+                },
+                matchedUser.role
+              )
             };
           }
         } catch (e) {
@@ -917,9 +939,11 @@ export default function App() {
         data_migration: 'accessQAPanel'
       };
 
+      const matchedCompanyBusinessType = getBusinessType(matchedComp);
       const firstAllowed = (Object.keys(viewPermissionMap) as ViewID[]).find(v => {
+        if (!isViewAllowedForBusinessType(v, matchedCompanyBusinessType)) return false;
         const perm = viewPermissionMap[v];
-        return perm === null || matchedUser!.permissions[perm];
+        return perm === null || (matchedUser!.permissions[perm] ?? true);
       });
       setActiveView(firstAllowed || 'profile');
       
@@ -947,13 +971,20 @@ export default function App() {
     setPendingTargetView(null);
   };
 
-  // Safe navigation checks for unsaved forms
+  // Safe navigation checks for unsaved forms with segmentation fallback
   const navigateToView = (view: ViewID) => {
+    const currentActiveComp = (db?.registeredCompanies || []).find(c => c.id === activeCompanyId) || db?.companyInfo;
+    const curBusinessType = getBusinessType(currentActiveComp);
+    
+    const targetView = isViewAllowedForBusinessType(view, curBusinessType)
+      ? view
+      : getFallbackViewForBusinessType(curBusinessType, currentUser?.permissions);
+
     if (unsavedTask) {
-      setPendingTargetView(view);
+      setPendingTargetView(targetView);
       setShowUnsavedModal(true);
     } else {
-      setActiveView(view);
+      setActiveView(targetView);
     }
   };
 
@@ -1307,20 +1338,24 @@ export default function App() {
 
   const activeCompanyObj = (db?.registeredCompanies || []).find(c => c.id === activeCompanyId) || db?.companyInfo;
   const activeCompanyModules = activeCompanyObj?.globalModules || globalModules;
-  const activeBusinessType = activeCompanyObj?.businessType || 'OFICINA';
+  const activeBusinessType = getBusinessType(activeCompanyObj);
+  const activeSegmentMeta = getSegmentMetadata(activeBusinessType);
+
+  // Auto-redirect if active view is not supported by current company business type
+  useEffect(() => {
+    if (!currentUser) return;
+    if (!isViewAllowedForBusinessType(activeView, activeBusinessType)) {
+      const fallback = getFallbackViewForBusinessType(activeBusinessType, currentUser.permissions);
+      setActiveView(fallback);
+    }
+  }, [activeCompanyId, activeBusinessType]);
 
   const isModuleLocked = (permissionKey: string) => {
     if (permissionKey === 'accessUserManagement' || permissionKey === 'accessDashboard') return false;
 
-    // Segment lock rules
-    if (activeBusinessType === 'COMERCIO') {
-      const workshopOnlyModules = ['accessVehicles', 'accessServiceOrders', 'accessBudgets', 'accessServices', 'accessQuotations'];
-      if (workshopOnlyModules.includes(permissionKey)) return true;
-    }
-
-    if (activeBusinessType === 'OFICINA') {
-      const commerceOnlyModules = ['accessSales'];
-      if (commerceOnlyModules.includes(permissionKey)) return true;
+    // Strict centralized segmentation check
+    if (!isModuleAllowedForBusinessType(permissionKey, activeBusinessType)) {
+      return true;
     }
 
     return activeCompanyModules[permissionKey as keyof typeof activeCompanyModules] === false;
@@ -1331,14 +1366,14 @@ export default function App() {
       <div className="w-14 h-14 bg-amber-50 border border-amber-200 text-amber-600 rounded-2xl flex items-center justify-center text-2xl mb-4 shadow-xs font-bold">
         🔒
       </div>
-      <h2 className="text-base font-bold text-slate-800 font-display">Módulo Não Contratado no Plano SaaS</h2>
+      <h2 className="text-base font-bold text-slate-800 font-display">Módulo Não Disponível para este Segmento / Plano SaaS</h2>
       <p className="text-xs text-slate-500 max-w-md mt-1 leading-relaxed">
-        Este módulo funcional não consta na relação de módulos liberados no contrato de prestação de serviços da empresa <strong className="text-slate-700">{activeCompanyObj?.name || 'sua empresa'}</strong>.
+        Este módulo funcional não está habilitado para o segmento <strong>{activeSegmentMeta.label}</strong> ou não consta na relação de módulos liberados no contrato da empresa <strong className="text-slate-700">{activeCompanyObj?.name || 'sua empresa'}</strong>.
       </p>
       <div className="mt-4 p-3.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-600 max-w-md text-left space-y-1">
-        <p className="font-bold text-slate-800">📄 Liberação do Módulo no Sistema e no Contrato:</p>
+        <p className="font-bold text-slate-800">📄 Liberação de Módulos e Segmento no Sistema:</p>
         <p className="text-[11px] text-slate-500">
-          Para ativar esta funcionalidade na aplicação, o responsável legal pode solicitar a inclusão do módulo ou, se você for administrador, acesse a tela de <strong>"Gestão Multi-Empresa & Módulos SaaS"</strong> para emitir o <strong>Termo Aditivo</strong> de contratação.
+          Para alterar o segmento de negócio ou incluir novos módulos na assinatura, acesse a tela de <strong>"Gestão Multi-Empresa & Módulos SaaS"</strong> para configurar o tipo de empresa ou emitir o <strong>Termo Aditivo</strong>.
         </p>
       </div>
       {currentUser?.role === 'admin' && (
@@ -1379,7 +1414,7 @@ export default function App() {
               {(!isSidebarCollapsed || isSidebarHovered) && (
                 <div className="truncate">
                   <span className="font-extrabold text-white text-base font-display tracking-tight block leading-none">MotorDesk</span>
-                  <p className="text-[9px] text-slate-500 font-semibold uppercase mt-0.5 font-mono">Gestão de Oficina</p>
+                  <p className="text-[9px] text-indigo-300 font-semibold uppercase mt-0.5 font-mono truncate">{activeSegmentMeta.label}</p>
                 </div>
               )}
             </div>
@@ -1399,9 +1434,9 @@ export default function App() {
             </button>
           </div>
 
-          {/* Dynamic Navigation Links (Based on Permissions) */}
+          {/* Dynamic Navigation Links (Based on Permissions & Segment) */}
           <nav className="flex-1 p-2 space-y-1 overflow-y-auto">
-            {currentUser.permissions.accessDashboard && (
+            {currentUser.permissions.accessDashboard && isViewAllowedForBusinessType('dashboard', activeBusinessType) && (
               <button 
                 id="menu-btn-dashboard"
                 onClick={() => !isModuleLocked('accessDashboard') && navigateToView('dashboard')}
@@ -1423,12 +1458,12 @@ export default function App() {
               </button>
             )}
 
-            {activeBusinessType !== 'OFICINA' && (currentUser.permissions.accessSales ?? true) && (
+            {currentUser.permissions.accessSales && isViewAllowedForBusinessType('sales', activeBusinessType) && (
               <button 
                 id="menu-btn-sales"
                 onClick={() => !isModuleLocked('accessSales') && navigateToView('sales')}
                 disabled={isModuleLocked('accessSales')}
-                title="Vendas & Frente de Caixa"
+                title="Vendas & Balcão (PDV / Comércio)"
                 className={`w-full flex items-center ${(!isSidebarCollapsed || isSidebarHovered) ? 'justify-between px-3' : 'justify-center px-2'} py-2.5 rounded-lg text-xs font-semibold tracking-wide transition ${
                   isModuleLocked('accessSales')
                     ? 'opacity-40 cursor-not-allowed text-slate-500'
@@ -1445,7 +1480,7 @@ export default function App() {
               </button>
             )}
 
-            {currentUser.permissions.accessClients && (
+            {currentUser.permissions.accessClients && isViewAllowedForBusinessType('clients', activeBusinessType) && (
               <button 
                 id="menu-btn-clients"
                 onClick={() => !isModuleLocked('accessClients') && navigateToView('clients')}
@@ -1467,7 +1502,7 @@ export default function App() {
               </button>
             )}
 
-            {activeBusinessType !== 'COMERCIO' && currentUser.permissions.accessVehicles && (
+            {currentUser.permissions.accessVehicles && isViewAllowedForBusinessType('vehicles', activeBusinessType) && (
               <button 
                 id="menu-btn-vehicles"
                 onClick={() => !isModuleLocked('accessVehicles') && navigateToView('vehicles')}
@@ -1489,7 +1524,7 @@ export default function App() {
               </button>
             )}
 
-            {currentUser.permissions.accessParts && (
+            {currentUser.permissions.accessParts && isViewAllowedForBusinessType('parts', activeBusinessType) && (
               <button 
                 id="menu-btn-parts"
                 onClick={() => !isModuleLocked('accessParts') && navigateToView('parts')}
@@ -1511,7 +1546,7 @@ export default function App() {
               </button>
             )}
 
-            {activeBusinessType !== 'COMERCIO' && currentUser.permissions.accessQuotations && (
+            {currentUser.permissions.accessQuotations && isViewAllowedForBusinessType('quotations', activeBusinessType) && (
               <button 
                 id="menu-btn-quotations"
                 onClick={() => !isModuleLocked('accessQuotations') && navigateToView('quotations')}
@@ -1534,7 +1569,7 @@ export default function App() {
             )}
 
             {/* MENU GRUPO FINANCEIRO COM SUBMENU AO PASSAR O MOUSE / HOVER */}
-            {(currentUser.permissions.accessFinancial || currentUser.permissions.accessAccountsReceivable || currentUser.permissions.accessAccountsPayable || (currentUser.permissions.accessFiscal ?? true)) && (
+            {(currentUser.permissions.accessFinancial || currentUser.permissions.accessAccountsReceivable || currentUser.permissions.accessAccountsPayable || (currentUser.permissions.accessFiscal ?? true)) && isViewAllowedForBusinessType('financial', activeBusinessType) && (
               <div 
                 className="relative space-y-1"
                 onMouseEnter={() => setIsFinSubmenuOpen(true)}
@@ -1624,7 +1659,7 @@ export default function App() {
               </div>
             )}
 
-            {activeBusinessType !== 'COMERCIO' && currentUser.permissions.accessServices && (
+            {currentUser.permissions.accessServices && isViewAllowedForBusinessType('services', activeBusinessType) && (
               <button 
                 id="menu-btn-services"
                 onClick={() => !isModuleLocked('accessServices') && navigateToView('services')}
@@ -1646,7 +1681,7 @@ export default function App() {
               </button>
             )}
 
-            {activeBusinessType !== 'COMERCIO' && currentUser.permissions.accessBudgets && (
+            {currentUser.permissions.accessBudgets && isViewAllowedForBusinessType('budgets', activeBusinessType) && (
               <button 
                 id="menu-btn-budgets"
                 onClick={() => !isModuleLocked('accessBudgets') && navigateToView('budgets')}
@@ -1668,7 +1703,7 @@ export default function App() {
               </button>
             )}
 
-            {activeBusinessType !== 'COMERCIO' && currentUser.permissions.accessServiceOrders && (
+            {currentUser.permissions.accessServiceOrders && isViewAllowedForBusinessType('serviceOrders', activeBusinessType) && (
               <button 
                 id="menu-btn-service-orders"
                 onClick={() => !isModuleLocked('accessServiceOrders') && navigateToView('serviceOrders')}
@@ -1690,7 +1725,7 @@ export default function App() {
               </button>
             )}
 
-            {currentUser.permissions.accessHistory && (
+            {currentUser.permissions.accessHistory && isViewAllowedForBusinessType('history', activeBusinessType) && (
               <button 
                 id="menu-btn-history"
                 onClick={() => !isModuleLocked('accessHistory') && navigateToView('history')}
@@ -1712,7 +1747,7 @@ export default function App() {
               </button>
             )}
 
-            {currentUser.permissions.accessReports && (
+            {currentUser.permissions.accessReports && isViewAllowedForBusinessType('reports', activeBusinessType) && (
               <button 
                 id="menu-btn-reports"
                 onClick={() => !isModuleLocked('accessReports') && navigateToView('reports')}
@@ -1734,7 +1769,7 @@ export default function App() {
               </button>
             )}
 
-            {currentUser.permissions.accessUserManagement && (
+            {currentUser.permissions.accessUserManagement && isViewAllowedForBusinessType('users', activeBusinessType) && (
               <button 
                 id="menu-btn-users"
                 onClick={() => !isModuleLocked('accessUserManagement') && navigateToView('users')}
@@ -1903,11 +1938,15 @@ export default function App() {
 
           {activeView === 'dashboard' && currentUser.permissions.accessDashboard && (
             isModuleLocked('accessDashboard') ? renderLockedScreen() : (
-              <DashboardView db={scopedDb} onNavigate={(view: string) => navigateToView(view as ViewID)} />
+              <DashboardView 
+                db={scopedDb} 
+                onNavigate={(view: string) => navigateToView(view as ViewID)} 
+                businessType={activeBusinessType}
+              />
             )
           )}
 
-          {activeView === 'sales' && (currentUser.permissions.accessSales ?? true) && (
+          {activeView === 'sales' && currentUser.permissions.accessSales && (
             isModuleLocked('accessSales') ? renderLockedScreen() : (
               <SalesView 
                 db={db}
@@ -1915,6 +1954,7 @@ export default function App() {
                 currentUser={currentUser}
                 currentCompany={activeCompanyObj || db.companyInfo}
                 isFiscalEnabled={activeCompanyObj?.globalModules?.accessFiscal !== false}
+                onSaveCompanyInfo={handleSaveCompanyInfo}
               />
             )
           )}
@@ -2042,6 +2082,7 @@ export default function App() {
                 currentUser={currentUser}
                 onSaveBudgets={handleSaveBudgets} 
                 onSaveServiceOrders={handleSaveServiceOrders}
+                onSaveCompanyInfo={handleSaveCompanyInfo}
                 onAddNotification={handleAddNotification}
                 onAddHistoryLog={handleAddHistoryLog}
                 setUnsavedTask={setUnsavedTask}
@@ -2057,6 +2098,7 @@ export default function App() {
                 onSaveServiceOrders={handleSaveServiceOrders}
                 onSaveParts={handleSaveParts}
                 onSaveMaintenanceLogs={handleSaveMaintenanceLogs}
+                onSaveCompanyInfo={handleSaveCompanyInfo}
                 onSaveReceivables={handleSaveReceivables}
                 onSaveFiscalDocuments={handleSaveFiscalDocuments}
                 onSaveBoletos={handleSaveBoletos}

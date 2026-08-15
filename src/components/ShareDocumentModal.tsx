@@ -70,7 +70,7 @@ export interface PaymentDetails {
 interface ShareDocumentModalProps {
   isOpen: boolean;
   onClose: () => void;
-  type: 'budget' | 'service_order' | 'quotation' | 'receipt';
+  type: 'budget' | 'service_order' | 'quotation' | 'receipt' | 'sale';
   docId: string;
   client?: Client;
   vehicle?: Vehicle;
@@ -81,6 +81,7 @@ interface ShareDocumentModalProps {
   currentUserRole?: string;
   canCustomizePdf?: boolean;
   paymentDetails?: PaymentDetails;
+  onSaveCompanyOrientation?: (orientation: 'portrait' | 'landscape_2ways', docType?: string) => void;
 }
 
 export default function ShareDocumentModal({
@@ -96,7 +97,8 @@ export default function ShareDocumentModal({
   notes: initialNotes,
   currentUserRole = 'admin',
   canCustomizePdf = true,
-  paymentDetails
+  paymentDetails,
+  onSaveCompanyOrientation
 }: ShareDocumentModalProps) {
   const [copied, setCopied] = useState(false);
   const [isCustomizerOpen, setIsCustomizerOpen] = useState(false);
@@ -111,6 +113,8 @@ export default function ShareDocumentModal({
     ? 'Ordem de Serviço' 
     : type === 'quotation' 
     ? 'Cotação' 
+    : type === 'sale'
+    ? 'Comprovante de Venda / Balcão'
     : 'Comprovante de Pagamento';
   
   const [customDocTitle, setCustomDocTitle] = useState(defaultDocTypeLabel);
@@ -123,16 +127,16 @@ export default function ShareDocumentModal({
   const [customWarrantyTerms, setCustomWarrantyTerms] = useState('Garantia legal de 90 dias para peças e serviços conforme o Artigo 26 do Código de Defesa do Consumidor. Proposta válida por 10 dias.');
   const [watermarkText, setWatermarkText] = useState('');
 
-  // Page Orientation Configuration (Persisted per company / document type)
+  // Page Orientation Configuration (Persisted in PostgreSQL Cloud SQL via companyInfo, with localStorage fallback)
   const orientationStorageKey = `motordesk_doc_orientation_${companyInfo?.id || 'default'}_${type}`;
   const [pageOrientation, setPageOrientation] = useState<'portrait' | 'landscape_2ways'>(() => {
-    const saved = localStorage.getItem(orientationStorageKey);
-    if (saved === 'portrait' || saved === 'landscape_2ways') return saved;
     if (companyInfo?.reportCustomOrientations?.[type]) {
       const compOrient = companyInfo.reportCustomOrientations[type];
       return compOrient === 'landscape_2ways' ? 'landscape_2ways' : 'portrait';
     }
     if (companyInfo?.reportPageOrientation === 'landscape_2ways') return 'landscape_2ways';
+    const saved = localStorage.getItem(orientationStorageKey);
+    if (saved === 'portrait' || saved === 'landscape_2ways') return saved;
     return 'portrait';
   });
 
@@ -141,6 +145,9 @@ export default function ShareDocumentModal({
     setPageOrientation(newOrientation);
     localStorage.setItem(orientationStorageKey, newOrientation);
     localStorage.setItem(`motordesk_doc_orientation_${companyInfo?.id || 'default'}`, newOrientation);
+    if (onSaveCompanyOrientation) {
+      onSaveCompanyOrientation(newOrientation, type);
+    }
   };
 
   // Toggles for Sections (Show/Hide)

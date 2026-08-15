@@ -31,6 +31,7 @@ import {
   User,
   FiscalDocument
 } from '../types';
+import ShareDocumentModal from './ShareDocumentModal';
 
 interface SalesViewProps {
   db: AppDatabase;
@@ -38,6 +39,7 @@ interface SalesViewProps {
   currentUser: User;
   currentCompany: CompanyInfo;
   isFiscalEnabled?: boolean;
+  onSaveCompanyInfo?: (company: CompanyInfo) => void;
 }
 
 export const SalesView: React.FC<SalesViewProps> = ({
@@ -45,7 +47,8 @@ export const SalesView: React.FC<SalesViewProps> = ({
   onUpdateDb,
   currentUser,
   currentCompany,
-  isFiscalEnabled = true
+  isFiscalEnabled = true,
+  onSaveCompanyInfo
 }) => {
   const [activeTab, setActiveTab] = useState<'nova_venda' | 'historico'>('nova_venda');
 
@@ -1059,114 +1062,64 @@ export const SalesView: React.FC<SalesViewProps> = ({
         </div>
       )}
 
-      {/* RECEIPT MODAL */}
+      {/* RECEIPT / SHARE DOCUMENT MODAL (OFFICIAL DOCUMENT & PRINT ENGINE) */}
       {showReceiptModal && selectedSaleForReceipt && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl overflow-hidden border border-slate-200 animate-scale-up">
-            <div className="p-4 bg-slate-900 text-white flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Receipt className="w-5 h-5 text-emerald-400" />
-                <span className="font-bold text-sm">Comprovante de Venda #{selectedSaleForReceipt.code}</span>
-              </div>
-              <button
-                onClick={() => setShowReceiptModal(false)}
-                className="p-1 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-white"
-              >
-                <XCircle className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="p-5 space-y-4 max-h-[70vh] overflow-y-auto font-mono text-xs text-slate-800">
-              <div className="text-center border-b border-dashed border-slate-300 pb-3 space-y-0.5">
-                <div className="font-bold text-sm text-slate-900">{currentCompany.name}</div>
-                <div className="text-[11px] text-slate-500">CNPJ: {currentCompany.cnpj}</div>
-                <div className="text-[10px] text-slate-400">{currentCompany.address}</div>
-              </div>
-
-              <div className="space-y-1 text-[11px] border-b border-dashed border-slate-300 pb-3">
-                <div className="flex justify-between">
-                  <span className="text-slate-500">Data/Hora:</span>
-                  <span>{new Date(selectedSaleForReceipt.createdAt).toLocaleString('pt-BR')}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-500">Cliente:</span>
-                  <span className="font-bold">{selectedSaleForReceipt.clientName}</span>
-                </div>
-                {selectedSaleForReceipt.clientCpfCnpj && (
-                  <div className="flex justify-between">
-                    <span className="text-slate-500">CPF/CNPJ:</span>
-                    <span>{selectedSaleForReceipt.clientCpfCnpj}</span>
-                  </div>
-                )}
-                <div className="flex justify-between">
-                  <span className="text-slate-500">Atendente:</span>
-                  <span>{selectedSaleForReceipt.createdBy}</span>
-                </div>
-              </div>
-
-              {/* Items */}
-              <div className="space-y-2 border-b border-dashed border-slate-300 pb-3">
-                <div className="font-bold uppercase text-[10px] text-slate-500">Itens Comprados:</div>
-                {selectedSaleForReceipt.items.map(i => (
-                  <div key={i.id} className="flex justify-between items-start text-[11px]">
-                    <div>
-                      <div className="font-bold text-slate-800">{i.partName}</div>
-                      <div className="text-[10px] text-slate-400">
-                        {i.quantity} x R$ {i.unitPrice.toFixed(2)}
-                      </div>
-                    </div>
-                    <div className="font-bold text-slate-800">R$ {i.totalPrice.toFixed(2)}</div>
-                  </div>
-                ))}
-              </div>
-
-              {/* Totals */}
-              <div className="space-y-1 text-xs">
-                <div className="flex justify-between text-slate-500">
-                  <span>Subtotal:</span>
-                  <span>R$ {selectedSaleForReceipt.subtotal.toFixed(2)}</span>
-                </div>
-                {selectedSaleForReceipt.discount > 0 && (
-                  <div className="flex justify-between text-red-600 font-semibold">
-                    <span>Desconto:</span>
-                    <span>- R$ {selectedSaleForReceipt.discount.toFixed(2)}</span>
-                  </div>
-                )}
-                <div className="flex justify-between text-sm font-bold pt-2 border-t border-slate-300 text-slate-900">
-                  <span>VALOR TOTAL:</span>
-                  <span className="text-emerald-700">R$ {selectedSaleForReceipt.totalAmount.toFixed(2)}</span>
-                </div>
-                <div className="flex justify-between text-[11px] text-slate-600 pt-1">
-                  <span>Forma Pagto:</span>
-                  <span>
-                    {selectedSaleForReceipt.paymentMethod}{' '}
-                    {selectedSaleForReceipt.installmentsCount && selectedSaleForReceipt.installmentsCount > 1
-                      ? `(${selectedSaleForReceipt.installmentsCount}x)`
-                      : ''}
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            <div className="p-4 bg-slate-50 border-t border-slate-100 flex items-center justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => setShowReceiptModal(false)}
-                className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-200 transition-all"
-              >
-                Fechar
-              </button>
-              <button
-                type="button"
-                onClick={() => handlePrintReceiptWindow(selectedSaleForReceipt)}
-                className="px-4 py-2 rounded-xl text-xs font-bold bg-emerald-600 text-white hover:bg-emerald-700 shadow-xs transition-all flex items-center gap-1.5"
-              >
-                <Printer className="w-4 h-4" />
-                Imprimir Comprovante
-              </button>
-            </div>
-          </div>
-        </div>
+        <ShareDocumentModal
+          isOpen={showReceiptModal}
+          onClose={() => setShowReceiptModal(false)}
+          type="sale"
+          docId={selectedSaleForReceipt.code || selectedSaleForReceipt.id}
+          client={
+            selectedSaleForReceipt.clientId && selectedSaleForReceipt.clientId !== 'walk-in'
+              ? db.clients.find(c => c.id === selectedSaleForReceipt.clientId)
+              : {
+                  id: 'walk-in',
+                  name: selectedSaleForReceipt.clientName || 'Consumidor Final',
+                  cpf: selectedSaleForReceipt.clientCpfCnpj || '000.000.000-00',
+                  cpfCnpj: selectedSaleForReceipt.clientCpfCnpj || '',
+                  phone: '',
+                  email: '',
+                  address: '',
+                  createdAt: selectedSaleForReceipt.createdAt || new Date().toISOString(),
+                  companyId: currentCompany.id
+                }
+          }
+          items={selectedSaleForReceipt.items.map(i => ({
+            name: i.partName,
+            quantity: i.quantity,
+            unitPrice: i.unitPrice,
+            totalPrice: i.totalPrice,
+            status: 'concluido'
+          }))}
+          totalValue={selectedSaleForReceipt.totalAmount}
+          companyInfo={currentCompany}
+          notes={selectedSaleForReceipt.notes}
+          currentUserRole={currentUser.role}
+          canCustomizePdf={currentUser.permissions.canCustomizePdf ?? true}
+          paymentDetails={{
+            paidAmount: selectedSaleForReceipt.totalAmount,
+            remainingAmount: 0,
+            paymentMethod: selectedSaleForReceipt.paymentMethod,
+            paymentDate: selectedSaleForReceipt.createdAt,
+            receiptCode: selectedSaleForReceipt.code,
+            notes: selectedSaleForReceipt.installmentsCount && selectedSaleForReceipt.installmentsCount > 1
+              ? `Parcelado em ${selectedSaleForReceipt.installmentsCount}x`
+              : undefined
+          }}
+          onSaveCompanyOrientation={(orientation, docType) => {
+            if (currentUser.role !== 'qa' && currentUser.role !== 'admin') return;
+            if (!currentCompany) return;
+            const updatedCompany: CompanyInfo = {
+              ...currentCompany,
+              reportPageOrientation: orientation,
+              reportCustomOrientations: {
+                ...(currentCompany.reportCustomOrientations || {}),
+                [docType || 'sale']: orientation
+              }
+            };
+            onSaveCompanyInfo?.(updatedCompany);
+          }}
+        />
       )}
     </div>
   );

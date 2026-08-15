@@ -109,6 +109,7 @@ const DEFAULT_LEVEL_PERMISSIONS: { [key in UserRole]: UserPermissions } = {
   },
   mecanico: {
     accessDashboard: true,
+    accessSales: false,
     accessClients: false,
     accessVehicles: false,
     accessParts: true,
@@ -132,6 +133,7 @@ const DEFAULT_LEVEL_PERMISSIONS: { [key in UserRole]: UserPermissions } = {
   },
   qa: {
     accessDashboard: true,
+    accessSales: true,
     accessClients: true,
     accessVehicles: true,
     accessParts: true,
@@ -157,6 +159,7 @@ const DEFAULT_LEVEL_PERMISSIONS: { [key in UserRole]: UserPermissions } = {
 
 const PERMISSION_LABEL_MAP: { [K in keyof UserPermissions]: string } = {
   accessDashboard: "Dashboard Geral KPI",
+  accessSales: "Vendas & Balcão (PDV / Comércio)",
   accessClients: "Cadastro de Clientes",
   accessVehicles: "Cadastro de Veículos",
   accessParts: "Controle de Peças e Estoque",
@@ -222,6 +225,7 @@ export default function UserManagementView({
   const [newCompName, setNewCompName] = useState('');
   const [newCompCnpj, setNewCompCnpj] = useState('');
   const [newCompType, setNewCompType] = useState<'matriz' | 'filial'>('matriz');
+  const [newCompBusinessType, setNewCompBusinessType] = useState<BusinessType>('OFICINA');
   const [newCompParentMatrizId, setNewCompParentMatrizId] = useState<string>('');
   const [newCompPhone, setNewCompPhone] = useState('');
   const [newCompWhatsapp, setNewCompWhatsapp] = useState('');
@@ -927,6 +931,8 @@ export default function UserManagementView({
       supportChannelsText: compSupportChannelsText,
       contractAddendums: contractAddendums,
       levelPermissions: levelPermissions,
+      reportPageOrientation: currentCompany?.reportPageOrientation,
+      reportCustomOrientations: currentCompany?.reportCustomOrientations,
       registeredAt: currentCompany?.registeredAt || new Date().toISOString()
     };
 
@@ -992,6 +998,7 @@ export default function UserManagementView({
       name: newCompName.trim(),
       cnpj: newCompCnpj.trim(),
       companyType: newCompType,
+      businessType: newCompBusinessType,
       parentMatrizId: newCompType === 'filial' ? newCompParentMatrizId : undefined,
       phone: newCompPhone.trim() || '(11) 3000-0000',
       whatsapp: newCompWhatsapp.trim() || '11900000000',
@@ -1063,6 +1070,7 @@ export default function UserManagementView({
     // Reset Form & Switch Combobox to New Company
     setNewCompName('');
     setNewCompCnpj('');
+    setNewCompBusinessType('OFICINA');
     setNewCompPhone('');
     setNewCompWhatsapp('');
     setNewCompEmail('');
@@ -3408,8 +3416,8 @@ export default function UserManagementView({
       {/* MODAL DE CADASTRO DE NOVA EMPRESA (TENANT) */}
       {showNewCompanyModal && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-4 animate-fade-in" id="new-company-modal">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-slate-100 space-y-5 animate-scale-up">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-slate-100 animate-scale-up max-h-[92vh] flex flex-col">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3 shrink-0">
               <h3 className="text-base font-bold text-slate-800 font-display flex items-center gap-2">
                 <Building2 className="w-5 h-5 text-indigo-600" />
                 Cadastrar Nova Empresa (Tenant SaaS)
@@ -3419,7 +3427,8 @@ export default function UserManagementView({
               </button>
             </div>
 
-            <form onSubmit={handleCreateNewCompany} className="space-y-4">
+            <form onSubmit={handleCreateNewCompany} className="flex-1 flex flex-col min-h-0 overflow-hidden pt-4">
+              <div className="flex-1 overflow-y-auto min-h-0 space-y-4 pr-1">
               <div className="space-y-1">
                 <label className="text-xs font-bold text-slate-700 uppercase" htmlFor="new-comp-name">
                   Razão Social / Nome Fantasia *
@@ -3521,6 +3530,59 @@ export default function UserManagementView({
                     </select>
                   </div>
                 )}
+              </div>
+
+              {/* Segmento de Negócio / Atuação */}
+              <div className="space-y-2 bg-slate-50 p-3 rounded-xl border border-slate-200">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-slate-800 uppercase tracking-wider block">
+                    Segmento de Atuação da Empresa *
+                  </label>
+                  <span className="text-[10px] text-slate-500 font-medium">Define os módulos e fluxos do sistema</span>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  <label className={`p-2.5 rounded-lg border flex flex-col gap-1 cursor-pointer text-xs transition ${newCompBusinessType === 'OFICINA' ? 'bg-indigo-50 border-indigo-600 text-indigo-950 font-bold shadow-xs' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}>
+                    <div className="flex items-center gap-2">
+                      <input 
+                        type="radio" 
+                        name="newCompBusinessTypeRadio" 
+                        value="OFICINA"
+                        checked={newCompBusinessType === 'OFICINA'} 
+                        onChange={() => setNewCompBusinessType('OFICINA')} 
+                      />
+                      <span>🔧 Oficina Mecânica</span>
+                    </div>
+                    <span className="text-[10px] text-slate-500 font-normal pl-5">OS, Mecânicos, Veículos e Checklists</span>
+                  </label>
+
+                  <label className={`p-2.5 rounded-lg border flex flex-col gap-1 cursor-pointer text-xs transition ${newCompBusinessType === 'COMERCIO' ? 'bg-emerald-50 border-emerald-600 text-emerald-950 font-bold shadow-xs' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}>
+                    <div className="flex items-center gap-2">
+                      <input 
+                        type="radio" 
+                        name="newCompBusinessTypeRadio" 
+                        value="COMERCIO"
+                        checked={newCompBusinessType === 'COMERCIO'} 
+                        onChange={() => setNewCompBusinessType('COMERCIO')} 
+                      />
+                      <span>🛍️ Comércio / Autopeças</span>
+                    </div>
+                    <span className="text-[10px] text-slate-500 font-normal pl-5">Vendas Balcão, PDV e Estoque de Peças</span>
+                  </label>
+
+                  <label className={`p-2.5 rounded-lg border flex flex-col gap-1 cursor-pointer text-xs transition ${newCompBusinessType === 'OFICINA_COMERCIO' ? 'bg-purple-50 border-purple-600 text-purple-950 font-bold shadow-xs' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}>
+                    <div className="flex items-center gap-2">
+                      <input 
+                        type="radio" 
+                        name="newCompBusinessTypeRadio" 
+                        value="OFICINA_COMERCIO"
+                        checked={newCompBusinessType === 'OFICINA_COMERCIO'} 
+                        onChange={() => setNewCompBusinessType('OFICINA_COMERCIO')} 
+                      />
+                      <span>⚡ Oficina + Comércio</span>
+                    </div>
+                    <span className="text-[10px] text-slate-500 font-normal pl-5">Híbrido completo: Serviços e Balcão</span>
+                  </label>
+                </div>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
@@ -3647,8 +3709,9 @@ export default function UserManagementView({
                 isChecked={hasAcceptedCompanyLgpd}
                 onToggleCheck={setHasAcceptedCompanyLgpd}
               />
+              </div>
 
-              <div className="pt-3 flex justify-end gap-2">
+              <div className="pt-3 flex justify-end gap-2 border-t border-slate-100 shrink-0">
                 <button
                   type="button"
                   onClick={() => setShowNewCompanyModal(false)}
@@ -3659,7 +3722,7 @@ export default function UserManagementView({
                 <button
                   type="submit"
                   id="btn-save-new-company-submit"
-                  className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl flex items-center gap-1.5"
+                  className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl flex items-center gap-1.5 cursor-pointer"
                 >
                   <Check className="w-4 h-4" /> Cadastrar Empresa
                 </button>

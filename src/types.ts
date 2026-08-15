@@ -60,6 +60,27 @@ export type UserRole = 'admin' | 'atendente' | 'mecanico' | 'qa';
 
 export type BusinessType = "OFICINA" | "COMERCIO" | "OFICINA_COMERCIO" | "SERVICOS" | "OUTROS";
 
+export type ViewID = 
+  | 'dashboard' 
+  | 'sales'
+  | 'clients' 
+  | 'vehicles' 
+  | 'parts' 
+  | 'quotations'
+  | 'accounts_receivable'
+  | 'accounts_payable'
+  | 'financial'
+  | 'fiscal'
+  | 'services' 
+  | 'budgets' 
+  | 'serviceOrders' 
+  | 'history' 
+  | 'reports' 
+  | 'users' 
+  | 'profile' 
+  | 'qa_panel'
+  | 'data_migration';
+
 export interface CompanyModules {
   sales: boolean;
   serviceOrders: boolean;

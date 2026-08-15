@@ -41,7 +41,7 @@ import {
   FileCheck2,
   ShieldAlert
 } from 'lucide-react';
-import { ServiceOrder, OSItem, Part, Service, SystemNotification, MaintenanceLog, AccountReceivable, AccountInstallment, FinancialTransaction, Client, PaymentMethodOption, WorkshopStatus, FiscalDocument, BoletoDocument } from '../types';
+import { ServiceOrder, OSItem, Part, Service, SystemNotification, MaintenanceLog, AccountReceivable, AccountInstallment, FinancialTransaction, Client, PaymentMethodOption, WorkshopStatus, FiscalDocument, BoletoDocument, CompanyInfo } from '../types';
 import { AppDatabase, INITIAL_PAYMENT_METHODS } from '../data/mockData';
 import WarrantyAlertBanner from './WarrantyAlertBanner';
 import ShareDocumentModal from './ShareDocumentModal';
@@ -57,6 +57,7 @@ interface ServiceOrdersViewProps {
   onSaveServiceOrders: (os: ServiceOrder[]) => void;
   onSaveParts: (parts: Part[]) => void;
   onSaveMaintenanceLogs?: (logs: MaintenanceLog[]) => void;
+  onSaveCompanyInfo?: (companyInfo: CompanyInfo) => void;
   onSaveReceivables?: (
     receivables: AccountReceivable[], 
     clients: Client[], 
@@ -75,7 +76,7 @@ interface ServiceOrdersViewProps {
   } | null) => void;
 }
 
-export default function ServiceOrdersView({ db, currentUser, onSaveServiceOrders, onSaveParts, onSaveMaintenanceLogs, onSaveReceivables, onSaveFiscalDocuments, onSaveBoletos, onAddNotification, onAddHistoryLog, setUnsavedTask }: ServiceOrdersViewProps) {
+export default function ServiceOrdersView({ db, currentUser, onSaveServiceOrders, onSaveParts, onSaveMaintenanceLogs, onSaveCompanyInfo, onSaveReceivables, onSaveFiscalDocuments, onSaveBoletos, onAddNotification, onAddHistoryLog, setUnsavedTask }: ServiceOrdersViewProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedOS, setSelectedOS] = useState<ServiceOrder | null>(null);
 
@@ -2521,6 +2522,19 @@ export default function ServiceOrdersView({ db, currentUser, onSaveServiceOrders
           notes={shareModalData.os.notes}
           currentUserRole={currentUser?.role}
           canCustomizePdf={currentUser?.permissions?.canCustomizePdf ?? true}
+          onSaveCompanyOrientation={(orientation, docType) => {
+            if (currentUser?.role !== 'qa' && currentUser?.role !== 'admin') return;
+            if (!db.companyInfo) return;
+            const updatedCompany = {
+              ...db.companyInfo,
+              reportPageOrientation: orientation,
+              reportCustomOrientations: {
+                ...(db.companyInfo.reportCustomOrientations || {}),
+                [docType || 'service_order']: orientation
+              }
+            };
+            onSaveCompanyInfo?.(updatedCompany);
+          }}
         />
       )}
 
