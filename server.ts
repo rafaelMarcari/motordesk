@@ -2,7 +2,7 @@ import express from "express";
 import cors from "cors";
 import path from "path";
 import { createServer as createViteServer } from "vite";
-import { getDbInstance, checkDatabaseHealth, ensureAppStoreTableExists, createPool } from "./src/db/index.js";
+import { getDbInstance, checkDatabaseHealth, ensureAppStoreTableExists, createPool, extractPgErrorDetails, resolveDatabaseConfig } from "./src/db/index.js";
 import { appStore, clients as clientsTable, vehicles as vehiclesTable, parts as partsTable, serviceOrders as serviceOrdersTable } from "./src/db/schema.js";
 import { eq } from "drizzle-orm";
 import dotenv from "dotenv";
@@ -114,6 +114,12 @@ app.get(["/api/health", "/health"], async (req, res) => {
     status,
     database: dbHealth.connected ? "connected" : "disconnected",
     databaseName: dbHealth.database || "cloud_sql_production_database",
+    databaseUser: dbHealth.databaseUser || "ai_studio_app_user",
+    databaseHost: dbHealth.databaseHost || "cloudsql",
+    appStoreTable: Boolean(dbHealth.appStoreTable),
+    appStoreRecord: Boolean(dbHealth.appStoreRecord),
+    appStoreDataSize: dbHealth.appStoreDataSize || 0,
+    appStoreUpdatedAt: dbHealth.appStoreUpdatedAt || null,
     error: dbHealth.error || null,
     timestamp: new Date().toISOString(),
     environment: process.env.NODE_ENV || "development",
@@ -122,16 +128,24 @@ app.get(["/api/health", "/health"], async (req, res) => {
 
 // 4. ERP Database APIs - Cloud SQL PostgreSQL ONLY (No file backup, No fallback store)
 app.get("/api/db", requireAuth, async (req, res) => {
+  const config = resolveDatabaseConfig();
   try {
     const db = getDbInstance();
     if (db) {
       try {
         const records = await db.select().from(appStore).where(eq(appStore.id, "motordesk_main"));
         if (records.length > 0 && records[0].data) {
-          return res.json({ success: true, data: records[0].data, source: "cloud_sql" });
+          return res.json({
+            success: true,
+            data: records[0].data,
+            source: "cloud_sql",
+            database: config.database,
+            updatedAt: records[0].updatedAt,
+          });
         }
       } catch (drizzleErr: any) {
-        console.warn("Drizzle select failed, falling back to direct pg query:", drizzleErr.message);
+        const pgErr = extractPgErrorDetails(drizzleErr);
+        console.warn("[MotorDesk /api/db GET] Drizzle select failed, attempting direct pg query:", pgErr);
       }
     }
 
@@ -139,17 +153,58 @@ app.get("/api/db", requireAuth, async (req, res) => {
     const pool = createPool();
     const result = await pool.query('SELECT id, data, updated_at FROM app_store WHERE id = $1', ['motordesk_main']);
     if (result.rows.length > 0 && result.rows[0].data) {
-      return res.json({ success: true, data: result.rows[0].data, source: "cloud_sql" });
+      return res.json({
+        success: true,
+        data: result.rows[0].data,
+        source: "cloud_sql",
+        database: config.database,
+        updatedAt: result.rows[0].updated_at,
+      });
     }
 
-    return res.json({ success: true, data: null, source: "cloud_sql" });
+    // If motordesk_main doesn't exist yet in primary DB, try fallback databases
+    const fallbackDbs = ["cloud_sql_production_database", "cloud_sql_development_database"].filter(d => d !== config.database);
+    for (const altDb of fallbackDbs) {
+      try {
+        const altPool = createPool(altDb);
+        const altRes = await altPool.query('SELECT id, data, updated_at FROM app_store WHERE id = $1', ['motordesk_main']);
+        if (altRes.rows.length > 0 && altRes.rows[0].data) {
+          console.log(`[MotorDesk /api/db GET] Found motordesk_main in alternate database: ${altDb}`);
+          return res.json({
+            success: true,
+            data: altRes.rows[0].data,
+            source: "cloud_sql",
+            database: altDb,
+            updatedAt: altRes.rows[0].updated_at,
+          });
+        }
+      } catch (altErr) {
+        // Continue
+      }
+    }
+
+    return res.json({ success: true, data: null, source: "cloud_sql", database: config.database });
   } catch (err: any) {
-    console.error("Error loading database state from PostgreSQL Cloud SQL:", err);
-    return res.status(500).json({ error: "Failed to load database from Cloud SQL", details: err.message });
+    const pgErr = extractPgErrorDetails(err);
+    console.error("[MotorDesk /api/db GET Error]", {
+      error: pgErr,
+      dbUser: config.user,
+      dbHost: config.host,
+      dbName: config.database,
+    });
+    return res.status(500).json({
+      error: "Failed to load database from Cloud SQL",
+      details: err.message,
+      pgError: pgErr,
+      database: config.database,
+      user: config.user,
+      host: config.host,
+    });
   }
 });
 
 app.post("/api/db", requireAuth, async (req, res) => {
+  const config = resolveDatabaseConfig();
   try {
     const appData = req.body;
     if (!appData) {
@@ -177,17 +232,21 @@ app.post("/api/db", requireAuth, async (req, res) => {
           success: true,
           message: "Database saved to PostgreSQL Cloud SQL",
           source: "cloud_sql",
+          database: config.database,
+          updatedAt: new Date().toISOString(),
         });
       } catch (drizzleErr: any) {
-        console.warn("Drizzle insert failed, falling back to direct pg query:", drizzleErr.message);
+        const pgErr = extractPgErrorDetails(drizzleErr);
+        console.warn("[MotorDesk /api/db POST] Drizzle insert failed, attempting direct pg query:", pgErr);
       }
     }
 
     // Direct pg query fallback
     const pool = createPool();
-    await pool.query(
+    const insertRes = await pool.query(
       `INSERT INTO app_store (id, data, updated_at) VALUES ($1, $2, NOW())
-       ON CONFLICT (id) DO UPDATE SET data = $2, updated_at = NOW()`,
+       ON CONFLICT (id) DO UPDATE SET data = $2, updated_at = NOW()
+       RETURNING id, updated_at`,
       ['motordesk_main', JSON.stringify(appData)]
     );
 
@@ -195,10 +254,25 @@ app.post("/api/db", requireAuth, async (req, res) => {
       success: true,
       message: "Database saved to PostgreSQL Cloud SQL",
       source: "cloud_sql",
+      database: config.database,
+      updatedAt: insertRes.rows[0]?.updated_at || new Date().toISOString(),
     });
   } catch (err: any) {
-    console.error("Error saving database state to PostgreSQL Cloud SQL:", err);
-    return res.status(500).json({ error: "Failed to save database to Cloud SQL", details: err.message });
+    const pgErr = extractPgErrorDetails(err);
+    console.error("[MotorDesk /api/db POST Error]", {
+      error: pgErr,
+      dbUser: config.user,
+      dbHost: config.host,
+      dbName: config.database,
+    });
+    return res.status(500).json({
+      error: "Failed to save database to Cloud SQL",
+      details: err.message,
+      pgError: pgErr,
+      database: config.database,
+      user: config.user,
+      host: config.host,
+    });
   }
 });
 
