@@ -2,7 +2,7 @@ import express from "express";
 import cors from "cors";
 import path from "path";
 import { createServer as createViteServer } from "vite";
-import { getDbInstance, checkDatabaseHealth, ensureAppStoreTableExists, createPool, extractPgErrorDetails, resolveDatabaseConfig } from "./src/db/index.js";
+import { getDbInstance, checkDatabaseHealth, ensureAppStoreTableExists, createPool, extractPgErrorDetails, resolveDatabaseConfig, executeSqlWithRetry } from "./src/db/index.js";
 import { appStore, clients as clientsTable, vehicles as vehiclesTable, parts as partsTable, serviceOrders as serviceOrdersTable } from "./src/db/schema.js";
 import { eq } from "drizzle-orm";
 import dotenv from "dotenv";
@@ -130,28 +130,13 @@ app.get(["/api/health", "/health"], async (req, res) => {
 app.get("/api/db", requireAuth, async (req, res) => {
   const config = resolveDatabaseConfig();
   try {
-    const db = getDbInstance();
-    if (db) {
-      try {
-        const records = await db.select().from(appStore).where(eq(appStore.id, "motordesk_main"));
-        if (records.length > 0 && records[0].data) {
-          return res.json({
-            success: true,
-            data: records[0].data,
-            source: "cloud_sql",
-            database: config.database,
-            updatedAt: records[0].updatedAt,
-          });
-        }
-      } catch (drizzleErr: any) {
-        const pgErr = extractPgErrorDetails(drizzleErr);
-        console.warn("[MotorDesk /api/db GET] Drizzle select failed, attempting direct pg query:", pgErr);
-      }
-    }
+    // 1. Query the configured/primary database using executeSqlWithRetry
+    const result = await executeSqlWithRetry(
+      'SELECT id, data, updated_at FROM app_store WHERE id = $1',
+      ['motordesk_main'],
+      config.database
+    );
 
-    // Direct pg query fallback
-    const pool = createPool();
-    const result = await pool.query('SELECT id, data, updated_at FROM app_store WHERE id = $1', ['motordesk_main']);
     if (result.rows.length > 0 && result.rows[0].data) {
       return res.json({
         success: true,
@@ -162,12 +147,15 @@ app.get("/api/db", requireAuth, async (req, res) => {
       });
     }
 
-    // If motordesk_main doesn't exist yet in primary DB, try fallback databases
+    // 2. If not found in primary DB, search the alternate database seamlessly
     const fallbackDbs = ["cloud_sql_production_database", "cloud_sql_development_database"].filter(d => d !== config.database);
     for (const altDb of fallbackDbs) {
       try {
-        const altPool = createPool(altDb);
-        const altRes = await altPool.query('SELECT id, data, updated_at FROM app_store WHERE id = $1', ['motordesk_main']);
+        const altRes = await executeSqlWithRetry(
+          'SELECT id, data, updated_at FROM app_store WHERE id = $1',
+          ['motordesk_main'],
+          altDb
+        );
         if (altRes.rows.length > 0 && altRes.rows[0].data) {
           console.log(`[MotorDesk /api/db GET] Found motordesk_main in alternate database: ${altDb}`);
           return res.json({
@@ -179,7 +167,7 @@ app.get("/api/db", requireAuth, async (req, res) => {
           });
         }
       } catch (altErr) {
-        // Continue
+        // Continue silently
       }
     }
 
@@ -211,43 +199,12 @@ app.post("/api/db", requireAuth, async (req, res) => {
       return res.status(400).json({ success: false, error: "Dados para salvamento ausentes" });
     }
 
-    const db = getDbInstance();
-    if (db) {
-      try {
-        await db.insert(appStore)
-          .values({
-            id: "motordesk_main",
-            data: appData,
-            updatedAt: new Date(),
-          })
-          .onConflictDoUpdate({
-            target: appStore.id,
-            set: {
-              data: appData,
-              updatedAt: new Date(),
-            },
-          });
-
-        return res.json({
-          success: true,
-          message: "Database saved to PostgreSQL Cloud SQL",
-          source: "cloud_sql",
-          database: config.database,
-          updatedAt: new Date().toISOString(),
-        });
-      } catch (drizzleErr: any) {
-        const pgErr = extractPgErrorDetails(drizzleErr);
-        console.warn("[MotorDesk /api/db POST] Drizzle insert failed, attempting direct pg query:", pgErr);
-      }
-    }
-
-    // Direct pg query fallback
-    const pool = createPool();
-    const insertRes = await pool.query(
+    const insertRes = await executeSqlWithRetry(
       `INSERT INTO app_store (id, data, updated_at) VALUES ($1, $2, NOW())
        ON CONFLICT (id) DO UPDATE SET data = $2, updated_at = NOW()
        RETURNING id, updated_at`,
-      ['motordesk_main', JSON.stringify(appData)]
+      ['motordesk_main', JSON.stringify(appData)],
+      config.database
     );
 
     return res.json({
