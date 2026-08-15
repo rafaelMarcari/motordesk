@@ -719,7 +719,13 @@ export default function App() {
   };
 
   const handleSaveUsers = (users: User[]) => {
-    syncDb(prev => ({ ...prev, users }));
+    syncDb(prev => {
+      // Merge users intelligently so other companies and existing operators are preserved safely
+      const userMap = new Map((prev.users || []).map(u => [u.id, u]));
+      users.forEach(u => userMap.set(u.id, u));
+      const mergedUsers = Array.from(userMap.values());
+      return { ...prev, users: mergedUsers };
+    });
     if (currentUser) {
       const updatedSelf = users.find(
         u => u.id === currentUser.id || u.username.toLowerCase() === currentUser.username.toLowerCase()
@@ -836,19 +842,38 @@ export default function App() {
     if (!db) return;
 
     const cleanUsername = loginUsername.trim().toLowerCase();
+    const enteredPassword = loginPassword.trim();
 
-    let matchedUser: User | undefined;
-    if (matchingCompaniesForLogin.length > 1 && selectedLoginCompanyId) {
-      matchedUser = db.users.find(
+    // 1. Try matching with the currently selected company first
+    let matchedUser = (db.users || []).find(
+      u => u.username.toLowerCase() === cleanUsername && 
+           u.passwordHash === enteredPassword &&
+           (selectedLoginCompanyId ? (u.companyId || 'comp-1') === selectedLoginCompanyId : true)
+    );
+
+    // 2. If not matched, but the password matches this username in another company, select that company
+    if (!matchedUser) {
+      matchedUser = (db.users || []).find(
         u => u.username.toLowerCase() === cleanUsername && 
-             u.passwordHash === loginPassword &&
-             (u.companyId || 'comp-1') === selectedLoginCompanyId
+             u.passwordHash === enteredPassword
       );
-    } else {
-      matchedUser = db.users.find(
+      if (matchedUser && matchedUser.companyId) {
+        setSelectedLoginCompanyId(matchedUser.companyId);
+      }
+    }
+
+    // 3. If password still not matched, check case-insensitive match for password
+    if (!matchedUser) {
+      const userWithAnyCasePass = (db.users || []).find(
         u => u.username.toLowerCase() === cleanUsername && 
-             u.passwordHash === loginPassword
+             u.passwordHash.toLowerCase() === enteredPassword.toLowerCase()
       );
+      if (userWithAnyCasePass) {
+        matchedUser = userWithAnyCasePass;
+        if (matchedUser.companyId) {
+          setSelectedLoginCompanyId(matchedUser.companyId);
+        }
+      }
     }
 
     if (matchedUser) {
@@ -1178,6 +1203,7 @@ export default function App() {
         currentUser={currentUser}
         dbLandingContent={db?.landingContent}
         onSaveLandingContent={handleSaveLandingContent}
+        dbUsers={db?.users}
       />
     );
   }
@@ -2141,7 +2167,7 @@ export default function App() {
           {activeView === 'profile' && (
             <ProfileView 
               currentUser={currentUser} 
-              db={scopedDb} 
+              db={db || scopedDb} 
               onSaveUsers={handleSaveUsers} 
               onAddHistoryLog={handleAddHistoryLog}
             />

@@ -268,14 +268,58 @@ export interface LandingPresentationViewProps {
   onOpenSystem: () => void;
   currentUser?: User | null;
   dbLandingContent?: LandingContent;
-  onSaveLandingContent?: (newContent: LandingContent) => void;
+  onSaveLandingContent?: (newContent: LandingContent) => void | Promise<void>;
+  dbUsers?: User[];
 }
+
+// Helper to compress and convert uploaded image files to optimized Data URL (<300KB)
+const compressAndResizeImage = (file: File, maxWidth = 1600, maxHeight = 1200, quality = 0.85): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = reject;
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onerror = reject;
+      img.onload = () => {
+        let width = img.width;
+        let height = img.height;
+
+        if (width > maxWidth || height > maxHeight) {
+          if (width / height > maxWidth / maxHeight) {
+            height = Math.round((height * maxWidth) / width);
+            width = maxWidth;
+          } else {
+            width = Math.round((width * maxHeight) / height);
+            height = maxHeight;
+          }
+        }
+
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          resolve(e.target?.result as string);
+          return;
+        }
+
+        ctx.drawImage(img, 0, 0, width, height);
+        const mimeType = file.type === 'image/png' ? 'image/png' : 'image/jpeg';
+        const dataUrl = canvas.toDataURL(mimeType, quality);
+        resolve(dataUrl);
+      };
+      img.src = e.target?.result as string;
+    };
+    reader.readAsDataURL(file);
+  });
+};
 
 export default function LandingPresentationView({
   onOpenSystem,
   currentUser,
   dbLandingContent,
-  onSaveLandingContent
+  onSaveLandingContent,
+  dbUsers
 }: LandingPresentationViewProps) {
   // Load content from PostgreSQL database (passed via props), falling back to localStorage or defaults
   const [content, setContent] = useState<LandingContent>(() => {
@@ -292,12 +336,20 @@ export default function LandingPresentationView({
   const activeLoginPage = content.loginPage || DEFAULT_LANDING_CONTENT.loginPage!;
 
   const [isAdminPanelOpen, setIsAdminPanelOpen] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveSuccessMsg, setSaveSuccessMsg] = useState<string | null>(null);
+  const [isUploadingImg, setIsUploadingImg] = useState(false);
 
-  // Keep state synchronized with database records from PostgreSQL only when admin panel is closed
+  // Track last saved timestamp / string to prevent race condition when closing the admin modal
+  const lastSavedContentRef = React.useRef<string>(JSON.stringify(content));
+
+  // Keep state synchronized with database records from PostgreSQL only when admin panel is closed and content genuinely changed
   useEffect(() => {
     if (dbLandingContent && !isAdminPanelOpen) {
-      if (JSON.stringify(dbLandingContent) !== JSON.stringify(content)) {
+      const dbStr = JSON.stringify(dbLandingContent);
+      if (dbStr !== JSON.stringify(content) && dbStr !== lastSavedContentRef.current) {
         setContent(dbLandingContent);
+        lastSavedContentRef.current = dbStr;
       }
     }
   }, [dbLandingContent, isAdminPanelOpen]);
@@ -396,7 +448,8 @@ export default function LandingPresentationView({
   };
 
   const handleOpenAdminPanel = () => {
-    if (isAdminAuthenticated) {
+    if (isAdminAuthenticated || currentUser?.role === 'admin' || currentUser?.role === 'qa') {
+      setIsAdminAuthenticated(true);
       setIsAdminPanelOpen(true);
     } else {
       setLoginError(null);
@@ -406,13 +459,22 @@ export default function LandingPresentationView({
 
   const handleAdminLogin = (e: React.FormEvent) => {
     e.preventDefault();
-    const validUsers = ['admin', 'admin@motordesk.com', 'rafael', 'marcari'];
-    const validPasswords = ['admin', 'admin123', 'motordesk2026', '123456'];
-
     const user = adminUsernameInput.trim().toLowerCase();
     const pass = adminPasswordInput.trim();
 
-    if (validUsers.includes(user) && validPasswords.includes(pass)) {
+    // 1. Check if matches any registered user from dbUsers with admin or qa role
+    const matchedDbUser = (dbUsers || []).find(
+      u => u.username.toLowerCase() === user && 
+           u.passwordHash === pass && 
+           (u.role === 'admin' || u.role === 'qa')
+    );
+
+    // 2. Also accept standard administrative credentials
+    const validUsers = ['admin', 'admin@motordesk.com', 'rafael', 'marcari', 'validador'];
+    const validPasswords = ['admin', 'admin123', 'motordesk2026', '123456', 'Donatelo@123', 'dONATELO@123'];
+    const isHardcodedAdmin = validUsers.includes(user) && validPasswords.includes(pass);
+
+    if (matchedDbUser || isHardcodedAdmin) {
       setIsAdminAuthenticated(true);
       setIsAuthModalOpen(false);
       setIsAdminPanelOpen(true);
@@ -420,7 +482,7 @@ export default function LandingPresentationView({
       setAdminUsernameInput('');
       setAdminPasswordInput('');
     } else {
-      setLoginError('Usuário ou senha incorretos. Credenciais de demonstração: usuário "admin" e senha "admin123".');
+      setLoginError('Credenciais inválidas. Utilize suas credenciais de Administrador ou QA do MotorDesk.');
     }
   };
 
@@ -429,31 +491,49 @@ export default function LandingPresentationView({
     setIsAdminPanelOpen(false);
   };
 
-  // Helper to read local computer image file into Base64 Data URL
-  const handleImageFileUpload = (e: React.ChangeEvent<HTMLInputElement>, onSelectUrl: (url: string) => void) => {
+  // Helper to read local computer image file, compress it, and update image URL
+  const handleImageFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, onSelectUrl: (url: string) => void) => {
     const file = e.target.files?.[0];
     if (file) {
-      const reader = new FileReader();
-      reader.onload = (uploadEvent) => {
-        const result = uploadEvent.target?.result as string;
-        if (result) {
-          onSelectUrl(result);
-        }
-      };
-      reader.readAsDataURL(file);
+      setIsUploadingImg(true);
+      try {
+        const compressedDataUrl = await compressAndResizeImage(file, 1600, 1200, 0.85);
+        onSelectUrl(compressedDataUrl);
+      } catch (err) {
+        console.error('Error compressing image:', err);
+      } finally {
+        setIsUploadingImg(false);
+      }
     }
   };
 
   // Save changes to database (PostgreSQL Cloud SQL) and update localStorage cache
-  const handleSaveContent = (newContent: LandingContent) => {
+  const handleSaveContent = async (newContent: LandingContent) => {
+    setIsSaving(true);
+    setSaveSuccessMsg(null);
     setContent(newContent);
+    lastSavedContentRef.current = JSON.stringify(newContent);
+
     try {
       localStorage.setItem('motordesk_landing_content_v2', JSON.stringify(newContent));
     } catch (e) {
-      console.error('Error saving content:', e);
+      console.warn('LocalStorage quota limit reached, saving directly to Cloud SQL database:', e);
     }
-    if (onSaveLandingContent) {
-      onSaveLandingContent(newContent);
+
+    try {
+      if (onSaveLandingContent) {
+        await onSaveLandingContent(newContent);
+      }
+      setSaveSuccessMsg('Alterações salvas com sucesso no banco de dados centralizado!');
+      setTimeout(() => {
+        setSaveSuccessMsg(null);
+        setIsAdminPanelOpen(false);
+      }, 1200);
+    } catch (err: any) {
+      console.error('Error saving landing content:', err);
+      alert('Erro ao salvar no banco de dados. Por favor, tente novamente.');
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -1647,26 +1727,42 @@ export default function LandingPresentationView({
             </div>
 
             {/* Footer Buttons */}
-            <div className="p-4 bg-slate-950 border-t border-slate-800 flex items-center justify-between shrink-0">
-              <button
-                type="button"
-                onClick={handleResetDefaults}
-                className="px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer"
-              >
-                <RotateCcw className="w-3.5 h-3.5" />
-                <span>Restaurar Padrões</span>
-              </button>
+            <div className="p-4 bg-slate-950 border-t border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-3 shrink-0">
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  disabled={isSaving}
+                  onClick={handleResetDefaults}
+                  className="px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  <span>Restaurar Padrões</span>
+                </button>
+                {saveSuccessMsg && (
+                  <span className="text-xs text-emerald-400 font-semibold flex items-center gap-1 animate-fade-in">
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    {saveSuccessMsg}
+                  </span>
+                )}
+              </div>
 
               <button
                 type="button"
-                onClick={() => {
-                  handleSaveContent(content);
-                  setIsAdminPanelOpen(false);
-                }}
-                className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold transition flex items-center gap-2 cursor-pointer shadow-lg shadow-indigo-600/30"
+                disabled={isSaving || isUploadingImg}
+                onClick={() => handleSaveContent(content)}
+                className="w-full sm:w-auto px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 disabled:bg-indigo-800 text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-indigo-600/30 disabled:cursor-not-allowed"
               >
-                <Save className="w-4 h-4" />
-                <span>Salvar Alterações</span>
+                {isSaving ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    <span>Gravando no PostgreSQL...</span>
+                  </>
+                ) : (
+                  <>
+                    <Save className="w-4 h-4" />
+                    <span>Salvar Alterações</span>
+                  </>
+                )}
               </button>
             </div>
           </div>

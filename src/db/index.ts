@@ -100,11 +100,11 @@ export const createPool = (targetDb?: string): pg.Pool => {
       user: config.user,
       password: config.password,
       database: config.database,
-      max: 5,
-      connectionTimeoutMillis: 10000,
-      idleTimeoutMillis: 15000,
+      max: 10,
+      connectionTimeoutMillis: 5000,
+      idleTimeoutMillis: 5000,
       keepAlive: true,
-      keepAliveInitialDelayMillis: 10000,
+      keepAliveInitialDelayMillis: 2000,
     };
 
     if (!config.isUnixSocket) {
@@ -122,6 +122,17 @@ export const createPool = (targetDb?: string): pg.Pool => {
 
   return existing;
 };
+
+export function purgePool(targetDb?: string): void {
+  const pools = global._postgresPoolsMap!;
+  const config = resolveDatabaseConfig(targetDb);
+  const poolKey = `${config.user}@${config.database}#${config.host}`;
+  const existing = pools.get(poolKey);
+  if (existing) {
+    pools.delete(poolKey);
+    existing.end().catch(() => {});
+  }
+}
 
 export const getDbInstance = (targetDb?: string) => {
   try {
@@ -156,7 +167,7 @@ export async function executeSqlWithRetry<T = any>(
   queryText: string,
   params: any[] = [],
   targetDb?: string,
-  maxRetries = 2
+  maxRetries = 4
 ): Promise<pg.QueryResult<T>> {
   let attempt = 0;
   while (attempt <= maxRetries) {
@@ -171,21 +182,30 @@ export async function executeSqlWithRetry<T = any>(
       const isBrokenSocket =
         err?.code === 'EPIPE' ||
         err?.code === 'ECONNRESET' ||
+        err?.code === 'ECONNREFUSED' ||
         err?.code === '57P01' ||
+        err?.code === 'ETIMEDOUT' ||
         String(err?.message || '').toLowerCase().includes('epipe') ||
+        String(err?.message || '').toLowerCase().includes('reset') ||
+        String(err?.message || '').toLowerCase().includes('socket') ||
+        String(err?.message || '').toLowerCase().includes('closed') ||
         String(err?.message || '').toLowerCase().includes('connection terminated');
 
       if (client) {
         try {
           // Passing true destroys the broken client so it is removed from pool
-          client.release(isBrokenSocket);
+          client.release(true);
         } catch (e) {}
         client = null;
       }
 
       if (isBrokenSocket && attempt <= maxRetries) {
-        console.warn(`[MotorDesk DB] Socket connection error (${err.code || err.message}), reconnecting attempt ${attempt}...`);
-        await new Promise((r) => setTimeout(r, 250 * attempt));
+        console.warn(`[MotorDesk DB] Socket connection error (${err.code || err.message}), reconnecting attempt ${attempt}/${maxRetries}...`);
+        if (attempt >= 2) {
+          // Purge stale pool to eliminate any other dead sockets in queue
+          purgePool(targetDb);
+        }
+        await new Promise((r) => setTimeout(r, 150 * attempt));
         continue;
       }
       throw err;

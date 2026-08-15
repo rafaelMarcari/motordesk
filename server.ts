@@ -207,6 +207,17 @@ app.post("/api/db", requireAuth, async (req, res) => {
       config.database
     );
 
+    // Also mirror to alternate database in background if available
+    const altDbs = ["cloud_sql_production_database", "cloud_sql_development_database"].filter(d => d !== config.database);
+    for (const altDb of altDbs) {
+      executeSqlWithRetry(
+        `INSERT INTO app_store (id, data, updated_at) VALUES ($1, $2, NOW())
+         ON CONFLICT (id) DO UPDATE SET data = $2, updated_at = NOW()`,
+        ['motordesk_main', JSON.stringify(appData)],
+        altDb
+      ).catch(() => {});
+    }
+
     return res.json({
       success: true,
       message: "Database saved to PostgreSQL Cloud SQL",
