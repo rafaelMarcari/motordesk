@@ -2,7 +2,7 @@ import express from "express";
 import cors from "cors";
 import path from "path";
 import { createServer as createViteServer } from "vite";
-import { getDbInstance, checkDatabaseHealth, ensureAppStoreTableExists } from "./src/db/index.js";
+import { getDbInstance, checkDatabaseHealth, ensureAppStoreTableExists, createPool } from "./src/db/index.js";
 import { appStore, clients as clientsTable, vehicles as vehiclesTable, parts as partsTable, serviceOrders as serviceOrdersTable } from "./src/db/schema.js";
 import { eq } from "drizzle-orm";
 import dotenv from "dotenv";
@@ -123,14 +123,25 @@ app.get(["/api/health", "/health"], async (req, res) => {
 // 4. ERP Database APIs - Cloud SQL PostgreSQL ONLY (No file backup, No fallback store)
 app.get("/api/db", requireAuth, async (req, res) => {
   try {
-    await ensureAppStoreTableExists();
     const db = getDbInstance();
     if (db) {
-      const records = await db.select().from(appStore).where(eq(appStore.id, "motordesk_main"));
-      if (records.length > 0 && records[0].data) {
-        return res.json({ success: true, data: records[0].data, source: "cloud_sql" });
+      try {
+        const records = await db.select().from(appStore).where(eq(appStore.id, "motordesk_main"));
+        if (records.length > 0 && records[0].data) {
+          return res.json({ success: true, data: records[0].data, source: "cloud_sql" });
+        }
+      } catch (drizzleErr: any) {
+        console.warn("Drizzle select failed, falling back to direct pg query:", drizzleErr.message);
       }
     }
+
+    // Direct pg query fallback
+    const pool = createPool();
+    const result = await pool.query('SELECT id, data, updated_at FROM app_store WHERE id = $1', ['motordesk_main']);
+    if (result.rows.length > 0 && result.rows[0].data) {
+      return res.json({ success: true, data: result.rows[0].data, source: "cloud_sql" });
+    }
+
     return res.json({ success: true, data: null, source: "cloud_sql" });
   } catch (err: any) {
     console.error("Error loading database state from PostgreSQL Cloud SQL:", err);
@@ -145,26 +156,40 @@ app.post("/api/db", requireAuth, async (req, res) => {
       return res.status(400).json({ success: false, error: "Dados para salvamento ausentes" });
     }
 
-    await ensureAppStoreTableExists();
     const db = getDbInstance();
+    if (db) {
+      try {
+        await db.insert(appStore)
+          .values({
+            id: "motordesk_main",
+            data: appData,
+            updatedAt: new Date(),
+          })
+          .onConflictDoUpdate({
+            target: appStore.id,
+            set: {
+              data: appData,
+              updatedAt: new Date(),
+            },
+          });
 
-    if (!db) {
-      return res.status(503).json({ success: false, error: "Conexão com PostgreSQL Cloud SQL indisponível" });
+        return res.json({
+          success: true,
+          message: "Database saved to PostgreSQL Cloud SQL",
+          source: "cloud_sql",
+        });
+      } catch (drizzleErr: any) {
+        console.warn("Drizzle insert failed, falling back to direct pg query:", drizzleErr.message);
+      }
     }
 
-    await db.insert(appStore)
-      .values({
-        id: "motordesk_main",
-        data: appData,
-        updatedAt: new Date(),
-      })
-      .onConflictDoUpdate({
-        target: appStore.id,
-        set: {
-          data: appData,
-          updatedAt: new Date(),
-        },
-      });
+    // Direct pg query fallback
+    const pool = createPool();
+    await pool.query(
+      `INSERT INTO app_store (id, data, updated_at) VALUES ($1, $2, NOW())
+       ON CONFLICT (id) DO UPDATE SET data = $2, updated_at = NOW()`,
+      ['motordesk_main', JSON.stringify(appData)]
+    );
 
     return res.json({
       success: true,

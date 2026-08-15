@@ -24,11 +24,15 @@ export const createPool = () => {
 
     const isUnixSocket = Boolean(host && host.startsWith('/'));
 
+    const user = process.env.SQL_USER || process.env.SQL_ADMIN_USER || 'ai_studio_app_user';
+    const password = process.env.SQL_PASSWORD || process.env.SQL_ADMIN_PASSWORD;
+    const database = process.env.SQL_DB_NAME || 'cloud_sql_production_database';
+
     const poolConfig: pg.PoolConfig = {
       host: host || 'localhost',
-      user: process.env.SQL_USER || 'ai_studio_admin',
-      password: process.env.SQL_PASSWORD,
-      database: process.env.SQL_DB_NAME || 'cloud_sql_production_database',
+      user,
+      password,
+      database,
       max: 10,
       connectionTimeoutMillis: 15000,
     };
@@ -59,6 +63,14 @@ export const getDbInstance = () => {
 export const ensureAppStoreTableExists = async (): Promise<boolean> => {
   try {
     const pool = createPool();
+    // First check if table exists to avoid permission denied on schema public for non-admin users
+    const checkRes = await pool.query(`
+      SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'app_store';
+    `);
+    if (checkRes.rows.length > 0) {
+      return true;
+    }
+    
     await pool.query(`
       CREATE TABLE IF NOT EXISTS app_store (
         id TEXT PRIMARY KEY,
@@ -68,7 +80,7 @@ export const ensureAppStoreTableExists = async (): Promise<boolean> => {
     `);
     return true;
   } catch (err: any) {
-    console.warn("Warning creating app_store table in Cloud SQL:", err.message);
+    console.warn("Warning checking/creating app_store table in Cloud SQL:", err.message);
     return false;
   }
 };

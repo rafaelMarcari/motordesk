@@ -383,7 +383,9 @@ export default function App() {
           const { updatedOrders, hasChanges } = syncServiceOrdersWithBudgets(loadedDb.serviceOrders, loadedDb.budgets);
           if (hasChanges) {
             loadedDb.serviceOrders = updatedOrders;
-            await dataProvider.saveDatabase(loadedDb);
+            dataProvider.saveDatabase(loadedDb).catch(err => {
+              console.warn('[MotorDesk] Aviso não-bloqueante ao sincronizar ordens de serviço no banco:', err);
+            });
           }
         }
         if (loadedDb.globalModules) {
