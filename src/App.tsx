@@ -415,7 +415,40 @@ export default function App() {
       try {
         const remoteDb = await dataProvider.getDatabase();
         if (remoteDb) {
-          setDb(remoteDb);
+          setDb(prev => {
+            if (!prev) return remoteDb;
+            // Intelligently preserve newly added companies & users to prevent any race condition or wipeout
+            const prevCompanies = prev.registeredCompanies || (prev.companyInfo ? [prev.companyInfo] : []);
+            const remoteCompanies = remoteDb.registeredCompanies || (remoteDb.companyInfo ? [remoteDb.companyInfo] : []);
+            const companyMap = new Map<string, CompanyInfo>();
+            // Remote companies first
+            remoteCompanies.forEach(c => { if (c && c.id) companyMap.set(c.id, c); });
+            // Preserve any local companies
+            prevCompanies.forEach(c => { if (c && c.id && !companyMap.has(c.id)) companyMap.set(c.id, c); });
+
+            const prevUsers = prev.users || [];
+            const remoteUsers = remoteDb.users || [];
+            const userMap = new Map<string, User>();
+            remoteUsers.forEach(u => { if (u && u.id) userMap.set(u.id, u); });
+            prevUsers.forEach(u => { if (u && u.id && !userMap.has(u.id)) userMap.set(u.id, u); });
+
+            const mergedRegisteredCompanies = Array.from(companyMap.values());
+            const mergedUsers = Array.from(userMap.values());
+
+            const updatedDb: AppDatabase = {
+              ...remoteDb,
+              registeredCompanies: mergedRegisteredCompanies,
+              users: mergedUsers,
+            };
+
+            // If local had more items, ensure server is also updated
+            if (mergedRegisteredCompanies.length > remoteCompanies.length || mergedUsers.length > remoteUsers.length) {
+              dataProvider.saveDatabase(updatedDb).catch(() => {});
+            }
+
+            return updatedDb;
+          });
+
           if (remoteDb.globalModules) setGlobalModules(remoteDb.globalModules);
           if (remoteDb.loginHistory) setLoginHistory(remoteDb.loginHistory);
         }
@@ -426,8 +459,8 @@ export default function App() {
 
     window.addEventListener('focus', syncWithServer);
     
-    // Background polling every 10 seconds to keep all open browsers & devices in sync
-    const pollInterval = setInterval(syncWithServer, 10000);
+    // Background polling every 20 seconds to keep all open browsers & devices in sync
+    const pollInterval = setInterval(syncWithServer, 20000);
 
     return () => {
       window.removeEventListener('focus', syncWithServer);
