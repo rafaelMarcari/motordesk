@@ -853,46 +853,36 @@ export default function App() {
     }));
   };
 
-  // List of all registered companies available in the multi-tenant system
-  const allAvailableCompanies = React.useMemo(() => {
-    if (!db) return [];
-    const list: CompanyInfo[] = [];
-    if (db.registeredCompanies && db.registeredCompanies.length > 0) {
-      list.push(...db.registeredCompanies);
-    } else if (db.companyInfo) {
-      list.push(db.companyInfo);
-    }
-    // Deduplicate by company ID
-    const uniqueMap = new Map<string, CompanyInfo>();
-    list.forEach(c => {
-      if (c && c.id && !uniqueMap.has(c.id)) {
-        uniqueMap.set(c.id, c);
-      }
-    });
-    return Array.from(uniqueMap.values());
-  }, [db]);
-
-  // Keep selectedLoginCompanyId valid
-  useEffect(() => {
-    if (allAvailableCompanies.length > 0) {
-      if (!selectedLoginCompanyId || !allAvailableCompanies.some(c => c.id === selectedLoginCompanyId)) {
-        setSelectedLoginCompanyId(allAvailableCompanies[0].id);
-      }
-    }
-  }, [allAvailableCompanies, selectedLoginCompanyId]);
-
-  // Auto-select company if typed username only exists in one specific company
-  useEffect(() => {
-    if (!db || !loginUsername.trim() || allAvailableCompanies.length === 0) return;
+  // Calculate matching companies for typed username
+  const matchingCompaniesForLogin = React.useMemo(() => {
+    if (!db || !loginUsername.trim()) return [];
     const cleanUsername = loginUsername.trim().toLowerCase();
+    
+    // Find all users matching this username
     const matchingUsers = (db.users || []).filter(u => u.username.toLowerCase() === cleanUsername);
-    if (matchingUsers.length === 1 && matchingUsers[0].companyId) {
-      const targetComp = allAvailableCompanies.find(c => c.id === matchingUsers[0].companyId);
-      if (targetComp && targetComp.id !== selectedLoginCompanyId) {
-        setSelectedLoginCompanyId(targetComp.id);
-      }
+    if (matchingUsers.length === 0) return [];
+
+    const allCompanies: CompanyInfo[] = [];
+    if (db.registeredCompanies && db.registeredCompanies.length > 0) {
+      allCompanies.push(...db.registeredCompanies);
+    } else if (db.companyInfo) {
+      allCompanies.push(db.companyInfo);
     }
-  }, [loginUsername, db, allAvailableCompanies]);
+
+    const companyIds = Array.from(new Set(matchingUsers.map(u => u.companyId || 'comp-1')));
+    return allCompanies.filter(c => companyIds.includes(c.id));
+  }, [db, loginUsername]);
+
+  // Synchronize selectedLoginCompanyId based on typed username and matching companies
+  useEffect(() => {
+    if (matchingCompaniesForLogin.length > 0) {
+      if (!selectedLoginCompanyId || !matchingCompaniesForLogin.some(c => c.id === selectedLoginCompanyId)) {
+        setSelectedLoginCompanyId(matchingCompaniesForLogin[0].id);
+      }
+    } else {
+      setSelectedLoginCompanyId('');
+    }
+  }, [matchingCompaniesForLogin, selectedLoginCompanyId]);
 
   // Login handler with strict multi-tenant company block check
   const handleLogin = (e: React.FormEvent) => {
@@ -908,9 +898,9 @@ export default function App() {
 
     const cleanUsername = loginUsername.trim().toLowerCase();
     const enteredPassword = loginPassword.trim();
-    const targetCompId = selectedLoginCompanyId || allAvailableCompanies[0]?.id || 'comp-1';
+    const targetCompId = selectedLoginCompanyId || matchingCompaniesForLogin[0]?.id || db.companyInfo?.id || 'comp-1';
 
-    // 1. Try matching with the currently selected company first
+    // 1. Try matching with the target company first
     let matchedUser = (db.users || []).find(
       u => u.username.toLowerCase() === cleanUsername && 
            u.passwordHash === enteredPassword &&
@@ -965,7 +955,6 @@ export default function App() {
       const userCompId = matchedUser.companyId || targetCompId || 'comp-1';
       const matchedComp = (db.registeredCompanies || []).find(c => c.id === userCompId) || 
                           (db.companyInfo?.id === userCompId ? db.companyInfo : null) ||
-                          allAvailableCompanies.find(c => c.id === userCompId) ||
                           db.companyInfo;
 
       if (matchedComp) {
@@ -1380,8 +1369,8 @@ export default function App() {
                 />
               </div>
 
-              {/* Multi-Company Selector Combobox - Always available when companies are registered */}
-              {allAvailableCompanies.length > 0 && (
+              {/* Multi-Company Selector Combobox - Only shown when the typed username is registered in MORE THAN 1 company */}
+              {matchingCompaniesForLogin.length > 1 && (
                 <div className="space-y-1.5 animate-fade-in p-3 bg-indigo-50/80 border border-indigo-200 rounded-xl" id="login-company-selector-container">
                   <label className="text-xs font-bold text-indigo-900 uppercase flex items-center justify-between" htmlFor="login-company-select">
                     <span className="flex items-center gap-1.5">
@@ -1389,7 +1378,7 @@ export default function App() {
                       Empresa / Unidade para Acesso
                     </span>
                     <span className="text-[10px] bg-indigo-200 text-indigo-900 px-2 py-0.5 rounded-full font-black font-mono">
-                      {allAvailableCompanies.length} {allAvailableCompanies.length === 1 ? 'Empresa' : 'Empresas'}
+                      {matchingCompaniesForLogin.length} Empresas
                     </span>
                   </label>
                   <select
@@ -1398,7 +1387,7 @@ export default function App() {
                     onChange={e => setSelectedLoginCompanyId(e.target.value)}
                     className="w-full text-xs px-3 py-2.5 bg-white border border-indigo-300 text-slate-900 font-bold rounded-lg focus:outline-hidden focus:ring-2 focus:ring-indigo-500 transition cursor-pointer shadow-xs"
                   >
-                    {allAvailableCompanies.map(comp => (
+                    {matchingCompaniesForLogin.map(comp => (
                       <option key={comp.id} value={comp.id}>
                         {comp.companyType === 'filial' ? '🏬 Filial: ' : '🏢 '}
                         {comp.name} {comp.cnpj ? `— CNPJ: ${comp.cnpj}` : ''}
@@ -1407,7 +1396,7 @@ export default function App() {
                     ))}
                   </select>
                   <p className="text-[10px] text-indigo-700 font-medium">
-                    Selecione a empresa ou unidade onde deseja acessar o sistema.
+                    Usuário cadastrado em mais de uma empresa. Selecione a unidade onde deseja fazer login.
                   </p>
                 </div>
               )}
