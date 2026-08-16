@@ -36,7 +36,7 @@ interface QAPortfolioViewProps {
   onUpdateTestCaseStatus: (id: string, status: TestCase['status'], comments?: string) => void;
   onResetTestCases: () => void;
   db?: AppDatabase;
-  onRegisterCompany?: (companyInfo: CompanyInfo) => void;
+  onRegisterCompany?: (companyInfo: CompanyInfo, adminUser?: User, qaUser?: User) => void;
   currentUser?: User | null;
   onOpenDocModal?: () => void;
 }
@@ -1262,6 +1262,7 @@ describe('MotorDesk Mechanical Workshop - QA Test Suite', () => {
                     companyId: companyId,
                     permissions: {
                       accessDashboard: true,
+                      accessSales: true,
                       accessClients: true,
                       accessVehicles: true,
                       accessParts: true,
@@ -1271,12 +1272,49 @@ describe('MotorDesk Mechanical Workshop - QA Test Suite', () => {
                       accessHistory: true,
                       accessReports: true,
                       accessUserManagement: true,
-                      accessQAPanel: true
+                      accessQAPanel: true,
+                      accessQuotations: true,
+                      accessNotifications: true,
+                      accessAccountsReceivable: true,
+                      accessAccountsPayable: true,
+                      accessFinancial: true,
+                      accessFiscal: true,
+                      canEditBudgets: true
+                    }
+                  };
+
+                  const newQAUser: User = {
+                    id: `usr-qa-${Date.now()}`,
+                    username: 'qa',
+                    name: `Analista de QA (${newCompany.name})`,
+                    role: 'qa',
+                    passwordHash: 'qa123',
+                    companyId: companyId,
+                    permissions: {
+                      accessDashboard: true,
+                      accessSales: true,
+                      accessClients: true,
+                      accessVehicles: true,
+                      accessParts: true,
+                      accessServices: true,
+                      accessBudgets: true,
+                      accessServiceOrders: true,
+                      accessHistory: true,
+                      accessReports: true,
+                      accessUserManagement: true,
+                      accessQAPanel: true,
+                      accessQuotations: true,
+                      accessNotifications: true,
+                      accessAccountsReceivable: true,
+                      accessAccountsPayable: true,
+                      accessFinancial: true,
+                      accessFiscal: true,
+                      canEditBudgets: true
                     }
                   };
 
                   if (onRegisterCompany) {
-                    onRegisterCompany(newCompany);
+                    onRegisterCompany(newCompany, newAdminUser, newQAUser);
                   }
 
                   setQaRegSuccess(`Empresa "${newCompany.name}" e Usuário Admin "@${newAdminUser.username}" cadastrados com sucesso!`);

@@ -52,7 +52,7 @@ interface UserManagementViewProps {
   currentUser: User;
   onSaveUsers: (users: User[]) => void;
   onSaveCompanyInfo?: (companyInfo: CompanyInfo) => void;
-  onSaveRegisteredCompanies?: (companies: CompanyInfo[], activeCompanyId?: string) => void;
+  onSaveRegisteredCompanies?: (companies: CompanyInfo[], activeCompanyId?: string, newUsers?: User[]) => void;
   onAddHistoryLog: (type: 'budget' | 'service_order' | 'payment' | 'user_activity' | 'system', title: string, description: string, clientId: string, vehicleId: string) => void;
   globalModules: { [key: string]: boolean };
   onUpdateGlobalModules: (modules: { [key: string]: boolean }) => void;
@@ -1023,11 +1023,8 @@ export default function UserManagementView({
     };
 
     const updatedList = [...registeredCompaniesList, newCompanyObj];
-    if (onSaveRegisteredCompanies) {
-      onSaveRegisteredCompanies(updatedList, newCompId);
-    }
 
-    // Automatically create default QA user with full permissions for system configuration
+    // Automatically create default QA and Admin users with full permissions for the new company
     const newQAUser: User = {
       id: `usr-qa-${Date.now()}`,
       username: 'qa',
@@ -1037,6 +1034,7 @@ export default function UserManagementView({
       companyId: newCompId,
       permissions: {
         accessDashboard: true,
+        accessSales: true,
         accessClients: true,
         accessVehicles: true,
         accessParts: true,
@@ -1052,17 +1050,54 @@ export default function UserManagementView({
         accessAccountsReceivable: true,
         accessAccountsPayable: true,
         accessFinancial: true,
+        accessFiscal: true,
         canEditBudgets: true,
       }
     };
 
-    const updatedUsersList = [...(db.users || []), newQAUser];
-    onSaveUsers(updatedUsersList);
+    const newAdminUser: User = {
+      id: `usr-adm-${Date.now()}`,
+      username: 'admin',
+      name: `Administrador (${newCompanyObj.name})`,
+      role: 'admin',
+      passwordHash: 'admin123',
+      companyId: newCompId,
+      permissions: {
+        accessDashboard: true,
+        accessSales: true,
+        accessClients: true,
+        accessVehicles: true,
+        accessParts: true,
+        accessServices: true,
+        accessBudgets: true,
+        accessServiceOrders: true,
+        accessHistory: true,
+        accessReports: true,
+        accessUserManagement: true,
+        accessQAPanel: true,
+        accessQuotations: true,
+        accessNotifications: true,
+        accessAccountsReceivable: true,
+        accessAccountsPayable: true,
+        accessFinancial: true,
+        accessFiscal: true,
+        canEditBudgets: true,
+      }
+    };
+
+    const initialCompanyUsers = [newQAUser, newAdminUser];
+
+    if (onSaveRegisteredCompanies) {
+      onSaveRegisteredCompanies(updatedList, newCompId, initialCompanyUsers);
+    } else {
+      const updatedUsersList = [...(db.users || []), ...initialCompanyUsers];
+      onSaveUsers(updatedUsersList);
+    }
 
     onAddHistoryLog(
       'system',
       `Nova Empresa Cadastrada: ${newCompanyObj.name}`,
-      `Nova empresa contratante "${newCompanyObj.name}" (CNPJ ${newCompanyObj.cnpj}) foi cadastrada. Usuário @qa criado com senha padrão 'qa123' e acesso total liberado.`,
+      `Nova empresa contratante "${newCompanyObj.name}" (CNPJ ${newCompanyObj.cnpj}) foi cadastrada. Usuários @admin (senha 'admin123') e @qa (senha 'qa123') criados com acesso master liberado.`,
       '',
       ''
     );
