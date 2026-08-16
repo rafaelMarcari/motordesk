@@ -135,26 +135,33 @@ export class ApiPostgresProvider implements IDataProvider {
   }
 
   async saveDatabase(db: AppDatabase): Promise<void> {
-    // REGRA 3: Gravação oficial diretamente no PostgreSQL Cloud SQL
-    try {
-      const res = await api.post('/api/db', db);
-      if (res.status === 200 && res.data?.success) {
-        // REGRA 3: O LocalStorage SOMENTE é atualizado DEPOIS que o servidor confirmar HTTP 200 e success: true
-        try {
-          localStorage.setItem(STORAGE_KEY, JSON.stringify(db));
-        } catch (e) {
-          console.warn("[ApiPostgresProvider] Não foi possível atualizar cache no LocalStorage após gravação:", e);
+    // REGRA 3: Gravação oficial diretamente no PostgreSQL Cloud SQL com retry de resiliência
+    let lastError: any = null;
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      try {
+        const res = await api.post('/api/db', db);
+        if (res.status === 200 && res.data?.success) {
+          // REGRA 3: O LocalStorage SOMENTE é atualizado DEPOIS que o servidor confirmar HTTP 200 e success: true
+          try {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(db));
+          } catch (e) {
+            console.warn("[ApiPostgresProvider] Não foi possível atualizar cache no LocalStorage após gravação:", e);
+          }
+          return;
         }
-        return;
+        throw new Error(res.data?.error || res.data?.message || 'Falha na confirmação de gravação no PostgreSQL Cloud SQL');
+      } catch (e: any) {
+        lastError = e;
+        if (attempt < 2) {
+          console.warn(`[ApiPostgresProvider] Tentativa ${attempt}/2 de salvar no Cloud SQL falhou, tentando novamente...`);
+          await new Promise((r) => setTimeout(r, 250));
+        }
       }
-      throw new Error(res.data?.error || res.data?.message || 'Falha na confirmação de gravação no PostgreSQL Cloud SQL');
-    } catch (e: any) {
-      console.error("[ApiPostgresProvider] Erro ao persistir dados no PostgreSQL Cloud SQL:", e?.response?.data || e.message);
-      // REGRA 3: Se o PostgreSQL falhar, NÃO atualizar LocalStorage!
-      // Lança o erro para que o chamador/usuário seja notificado de que os dados NÃO foram salvos.
-      const errMsg = e?.response?.data?.message || e?.response?.data?.error || e.message || 'Falha na gravação do PostgreSQL.';
-      throw new Error(`[Cloud SQL Error] Não foi possível salvar os dados no PostgreSQL: ${errMsg}`);
     }
+
+    console.error("[ApiPostgresProvider] Erro ao persistir dados no PostgreSQL Cloud SQL:", lastError?.response?.data || lastError?.message);
+    const errMsg = lastError?.response?.data?.message || lastError?.response?.data?.error || lastError?.message || 'Falha na gravação do PostgreSQL.';
+    throw new Error(`[Cloud SQL Error] Não foi possível salvar os dados no PostgreSQL: ${errMsg}`);
   }
 
   async syncLocalToCloud(): Promise<{ synced: boolean; count?: number }> {

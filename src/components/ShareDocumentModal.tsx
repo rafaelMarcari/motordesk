@@ -184,6 +184,8 @@ export default function ShareDocumentModal({
   const [newItemName, setNewItemName] = useState('');
   const [newItemQty, setNewItemQty] = useState(1);
   const [newItemPrice, setNewItemPrice] = useState(0);
+  const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
+  const [pdfSuccessToast, setPdfSuccessToast] = useState(false);
 
   // Recalculate total value based on items
   const calculatedTotalValue = printableItems.reduce((sum, item) => sum + (item.totalPrice || (item.quantity * item.unitPrice)), 0);
@@ -193,8 +195,6 @@ export default function ShareDocumentModal({
       setPrintableItems(initialItems);
     }
   }, [initialItems]);
-
-  if (!isOpen) return null;
 
   const handleAddCustomField = () => {
     if (!newFieldLabel.trim() || !newFieldValue.trim()) return;
@@ -345,9 +345,6 @@ _Relatório emitido via MotorDesk System._`;
     setCopied(true);
     setTimeout(() => setCopied(false), 3000);
   };
-
-  const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
-  const [pdfSuccessToast, setPdfSuccessToast] = useState(false);
 
   const handlePrintReport = async () => {
     setIsGeneratingPdf(true);
@@ -652,6 +649,8 @@ _Relatório emitido via MotorDesk System._`;
       </div>
     );
   };
+
+  if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-2 sm:p-4 animate-fade-in" id="share-document-modal-overlay">

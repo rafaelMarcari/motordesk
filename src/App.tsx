@@ -537,6 +537,19 @@ export default function App() {
 
   // Multi-tenant scoping helper: derive active company ID for current logged user
   const activeCompanyId = currentUser?.companyId || db?.companyInfo?.id || 'comp-1';
+  const activeCompanyObj = (db?.registeredCompanies || []).find(c => c.id === activeCompanyId) || db?.companyInfo;
+  const activeCompanyModules = activeCompanyObj?.globalModules || globalModules;
+  const activeBusinessType = getBusinessType(activeCompanyObj);
+  const activeSegmentMeta = getSegmentMetadata(activeBusinessType);
+
+  // Auto-redirect if active view is not supported by current company business type
+  useEffect(() => {
+    if (!currentUser) return;
+    if (!isViewAllowedForBusinessType(activeView, activeBusinessType)) {
+      const fallback = getFallbackViewForBusinessType(activeBusinessType, currentUser.permissions);
+      setActiveView(fallback);
+    }
+  }, [activeCompanyId, activeBusinessType, currentUser, activeView]);
 
   // Scoped database view providing strict multi-tenant isolation
   const scopedDb = React.useMemo<AppDatabase>(() => {
@@ -1363,20 +1376,6 @@ export default function App() {
       </div>
     );
   }
-
-  const activeCompanyObj = (db?.registeredCompanies || []).find(c => c.id === activeCompanyId) || db?.companyInfo;
-  const activeCompanyModules = activeCompanyObj?.globalModules || globalModules;
-  const activeBusinessType = getBusinessType(activeCompanyObj);
-  const activeSegmentMeta = getSegmentMetadata(activeBusinessType);
-
-  // Auto-redirect if active view is not supported by current company business type
-  useEffect(() => {
-    if (!currentUser) return;
-    if (!isViewAllowedForBusinessType(activeView, activeBusinessType)) {
-      const fallback = getFallbackViewForBusinessType(activeBusinessType, currentUser.permissions);
-      setActiveView(fallback);
-    }
-  }, [activeCompanyId, activeBusinessType]);
 
   const isModuleLocked = (permissionKey: string) => {
     if (permissionKey === 'accessUserManagement' || permissionKey === 'accessDashboard') return false;

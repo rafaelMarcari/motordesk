@@ -100,11 +100,12 @@ export const createPool = (targetDb?: string): pg.Pool => {
       user: config.user,
       password: config.password,
       database: config.database,
-      max: 10,
-      connectionTimeoutMillis: 5000,
-      idleTimeoutMillis: 5000,
+      max: 6,
+      connectionTimeoutMillis: 10000,
+      idleTimeoutMillis: 3000,
+      maxUses: 5000,
       keepAlive: true,
-      keepAliveInitialDelayMillis: 2000,
+      keepAliveInitialDelayMillis: 1000,
     };
 
     if (!config.isUnixSocket) {
@@ -115,6 +116,8 @@ export const createPool = (targetDb?: string): pg.Pool => {
 
     existing.on('error', (err: any) => {
       console.warn(`[MotorDesk Cloud SQL Pool Warning for ${config.database}]:`, err.message);
+      // Auto purge broken pool if idle client fails
+      purgePool(targetDb);
     });
 
     pools.set(poolKey, existing);
@@ -167,7 +170,7 @@ export async function executeSqlWithRetry<T = any>(
   queryText: string,
   params: any[] = [],
   targetDb?: string,
-  maxRetries = 4
+  maxRetries = 5
 ): Promise<pg.QueryResult<T>> {
   let attempt = 0;
   while (attempt <= maxRetries) {
@@ -200,12 +203,11 @@ export async function executeSqlWithRetry<T = any>(
       }
 
       if (isBrokenSocket && attempt <= maxRetries) {
-        console.warn(`[MotorDesk DB] Socket connection error (${err.code || err.message}), reconnecting attempt ${attempt}/${maxRetries}...`);
-        if (attempt >= 2) {
-          // Purge stale pool to eliminate any other dead sockets in queue
-          purgePool(targetDb);
-        }
-        await new Promise((r) => setTimeout(r, 150 * attempt));
+        // Purge pool immediately on broken socket to eliminate any dead socket descriptors
+        purgePool(targetDb);
+        const backoff = Math.min(200 * attempt, 1500);
+        console.warn(`[MotorDesk DB] Socket connection error (${err.code || err.message}), reconnecting attempt ${attempt}/${maxRetries} after ${backoff}ms...`);
+        await new Promise((r) => setTimeout(r, backoff));
         continue;
       }
       throw err;
