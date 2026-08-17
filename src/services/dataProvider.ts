@@ -16,18 +16,33 @@ export class ApiPostgresProvider implements IDataProvider {
   private pendingSaveDb: AppDatabase | null = null;
   private isSaving: boolean = false;
   private onDataMergedCallback?: (mergedDb: AppDatabase) => void;
+  private inFlightGetPromise: Promise<AppDatabase> | null = null;
 
   setDataMergedCallback(cb: (mergedDb: AppDatabase) => void) {
     this.onDataMergedCallback = cb;
   }
 
   async getDatabase(): Promise<AppDatabase> {
+    // In-flight deduplication: reuse active GET /api/db request if one is already in progress
+    if (this.inFlightGetPromise) {
+      return this.inFlightGetPromise;
+    }
+
+    this.inFlightGetPromise = this.fetchDatabaseInternal();
+    try {
+      return await this.inFlightGetPromise;
+    } finally {
+      this.inFlightGetPromise = null;
+    }
+  }
+
+  private async fetchDatabaseInternal(): Promise<AppDatabase> {
     const startTime = Date.now();
     console.log(`[TRACE-PERSISTENCE] GET /api/db START (time: ${new Date().toISOString()})`);
     let lastError: any = null;
 
     // 1. Tenta obter os dados oficiais diretamente do backend Cloud SQL
-    for (let attempt = 1; attempt <= 3; attempt++) {
+    for (let attempt = 1; attempt <= 2; attempt++) {
       try {
         const res = await api.get('/api/db');
         if (res.status === 200 && res.data) {
@@ -52,13 +67,13 @@ export class ApiPostgresProvider implements IDataProvider {
         }
       } catch (e: any) {
         lastError = e;
-        if (attempt < 3) {
-          await new Promise((r) => setTimeout(r, 150 * attempt));
+        if (attempt < 2) {
+          await new Promise((r) => setTimeout(r, 100 * attempt));
         }
       }
     }
 
-    console.warn(`[TRACE-PERSISTENCE] GET /api/db ERROR after 3 attempts: ${lastError?.message || 'Unknown'}`);
+    console.warn(`[TRACE-PERSISTENCE] GET /api/db ERROR after attempts: ${lastError?.message || 'Unknown'}`);
 
     // 2. Se a API Cloud SQL não respondeu, recupera do cache local persistente
     const cached = localStorage.getItem(STORAGE_KEY);

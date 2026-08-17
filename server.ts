@@ -213,11 +213,28 @@ export function mergeAppDatabase(existing: any, incoming: any): any {
   };
 }
 
+// Helper: Extract user and company identity context from request
+function extractUserContext(req: any): { userId: string; companyId: string; userRole: string } {
+  let userId = req.headers['x-user-id'] || req.user?.uid;
+  const authHeader = req.headers.authorization;
+  if (!userId && authHeader?.startsWith('Bearer motordesk_session_')) {
+    const raw = authHeader.replace('Bearer motordesk_session_', '');
+    const parts = raw.split('_');
+    userId = parts[0] || 'authenticated_user';
+  }
+  if (!userId) {
+    userId = req.user?.uid || (authHeader ? 'authenticated_user' : 'anonymous');
+  }
+  const companyId = req.headers['x-company-id'] || 'all';
+  const userRole = req.headers['x-user-role'] || req.user?.role || 'user';
+  return { userId, companyId, userRole };
+}
+
 // 4. ERP Database APIs - Cloud SQL PostgreSQL with seamless high-availability cache
 app.get("/api/db", requireAuth, async (req: any, res) => {
   const startTime = Date.now();
   const requestId = `req-get-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
-  const userId = req.user?.uid || req.headers?.authorization?.replace('Bearer ', '') || 'anonymous';
+  const { userId, companyId: reqCompanyId } = extractUserContext(req);
   const config = resolveDatabaseConfig();
 
   try {
@@ -237,7 +254,7 @@ app.get("/api/db", requireAuth, async (req: any, res) => {
       const clientes = (data.clients || []).length;
       const veiculos = (data.vehicles || []).length;
       const pecas = (data.parts || []).length;
-      const companyId = data.companyInfo?.id || 'all';
+      const companyId = reqCompanyId !== 'all' ? reqCompanyId : (data.companyInfo?.id || 'all');
       const payloadSize = Number(result.rows[0].size) || JSON.stringify(data).length;
       const updatedAt = result.rows[0].updated_at || new Date().toISOString();
 
@@ -343,7 +360,7 @@ app.get("/api/db", requireAuth, async (req: any, res) => {
 app.post("/api/db", requireAuth, async (req: any, res) => {
   const startTime = Date.now();
   const requestId = `req-post-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
-  const userId = req.user?.uid || req.headers?.authorization?.replace('Bearer ', '') || 'anonymous';
+  const { userId, companyId: reqCompanyId } = extractUserContext(req);
   const config = resolveDatabaseConfig();
 
   try {
@@ -358,7 +375,7 @@ app.post("/api/db", requireAuth, async (req: any, res) => {
     const inClientes = (incomingData.clients || []).length;
     const inVeiculos = (incomingData.vehicles || []).length;
     const inPecas = (incomingData.parts || []).length;
-    const inCompanyId = incomingData.companyInfo?.id || 'all';
+    const inCompanyId = reqCompanyId !== 'all' ? reqCompanyId : (incomingData.companyInfo?.id || 'all');
 
     console.log(`[DB-TRACE] POST /api/db\nrequestId=${requestId}\nuserId=${userId}\ncompanyId=${inCompanyId}\npayloadSize=${JSON.stringify(incomingData).length}\nempresas=${inEmpresas}\nusuários=${inUsuarios}\nclientes=${inClientes}\nveículos=${inVeiculos}\npeças=${inPecas}\nupdatedAt=${new Date().toISOString()}`);
 

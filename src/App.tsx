@@ -377,16 +377,27 @@ export default function App() {
   useEffect(() => {
     let isMounted = true;
     const loadDbAsync = async () => {
+      const bootStartTime = performance.now();
+      console.log(`[BOOT] AUTH_START timestamp=${new Date().toISOString()}`);
+      const authToken = localStorage.getItem('motordesk_auth_token');
+      console.log(`[BOOT] AUTH_SUCCESS timestamp=${new Date().toISOString()} hasToken=${Boolean(authToken)}`);
+
+      console.log(`[BOOT] DATABASE_LOAD_START timestamp=${new Date().toISOString()}`);
+      console.log(`[BOOT] DATABASE_GET_START timestamp=${new Date().toISOString()}`);
+      const getStart = performance.now();
+
       try {
         const loadedDb = await dataProvider.getDatabase();
+        const getEnd = performance.now();
+        console.log(`[BOOT] DATABASE_GET_SUCCESS latencyMs=${Math.round(getEnd - getStart)}`);
+        console.log(`[BOOT] DATABASE_GET_END timestamp=${new Date().toISOString()}`);
+
         if (!isMounted) return;
+
         if (loadedDb.serviceOrders && loadedDb.budgets) {
           const { updatedOrders, hasChanges } = syncServiceOrdersWithBudgets(loadedDb.serviceOrders, loadedDb.budgets);
           if (hasChanges) {
             loadedDb.serviceOrders = updatedOrders;
-            dataProvider.saveDatabase(loadedDb).catch(err => {
-              console.warn('[MotorDesk] Aviso não-bloqueante ao sincronizar ordens de serviço no banco:', err);
-            });
           }
         }
         if (loadedDb.globalModules) {
@@ -395,9 +406,14 @@ export default function App() {
         if (loadedDb.loginHistory) {
           setLoginHistory(loadedDb.loginHistory);
         }
+
+        const applyStart = performance.now();
         setDb(loadedDb);
+        const applyEnd = performance.now();
+        console.log(`[BOOT] DATABASE_STATE_APPLIED latencyMs=${Math.round(applyEnd - applyStart)}`);
+        console.log(`[BOOT] APP_READY totalLatencyMs=${Math.round(performance.now() - bootStartTime)}`);
       } catch (e: any) {
-        console.error('Falha ao inicializar banco de dados:', e);
+        console.error('[BOOT] Falha ao inicializar banco de dados:', e);
         if (isMounted) {
           setDb(getDatabase());
         }
@@ -426,7 +442,11 @@ export default function App() {
 
   // Auto-sync database state from PostgreSQL Cloud SQL / Server backend on window/tab focus, visibility change & periodic polling (5s)
   useEffect(() => {
+    let isSyncing = false;
+
     const syncWithServer = async () => {
+      if (isSyncing) return;
+      isSyncing = true;
       try {
         const remoteDb = await dataProvider.getDatabase();
         if (remoteDb) {
@@ -447,6 +467,8 @@ export default function App() {
         }
       } catch (e) {
         console.error('Error auto-syncing DB with server:', e);
+      } finally {
+        isSyncing = false;
       }
     };
 
@@ -1065,6 +1087,7 @@ export default function App() {
       setCurrentUser(matchedUser);
       const sessionToken = `motordesk_session_${matchedUser.id}_${Date.now()}`;
       localStorage.setItem('motordesk_auth_token', sessionToken);
+      localStorage.setItem('motordesk_active_user', JSON.stringify(matchedUser));
 
       // Determine default accessible landing view based on user permissions
       const viewPermissionMap: Record<ViewID, keyof UserPermissions | null> = {
@@ -1116,6 +1139,7 @@ export default function App() {
   const handleLogout = () => {
     setCurrentUser(null);
     localStorage.removeItem('motordesk_auth_token');
+    localStorage.removeItem('motordesk_active_user');
     setUnsavedTask(null);
     setShowUnsavedModal(false);
     setPendingTargetView(null);
@@ -1312,9 +1336,12 @@ export default function App() {
   if (!db) {
     return (
       <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center font-sans">
-        <div className="flex flex-col items-center gap-3 animate-pulse">
+        <div className="flex flex-col items-center gap-3">
           <ToolIcon className="w-10 h-10 text-indigo-600 animate-spin" />
-          <p className="text-slate-600 font-semibold">Carregando Banco de Dados local do MotorDesk...</p>
+          <div className="text-center">
+            <p className="text-slate-800 font-bold text-base">Conectando ao banco de dados...</p>
+            <p className="text-slate-500 text-xs mt-1">Sincronizando dados com o Cloud SQL PostgreSQL</p>
+          </div>
         </div>
       </div>
     );
