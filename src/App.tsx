@@ -818,12 +818,14 @@ export default function App() {
         mergedUsers = Array.from(userMap.values());
       }
 
-      return {
+      const nextDb = {
         ...prev,
         companyInfo: activeComp,
         registeredCompanies: companies,
         users: mergedUsers
       };
+      dataProvider.saveDatabaseImmediate(nextDb);
+      return nextDb;
     });
   };
 
@@ -1000,11 +1002,6 @@ export default function App() {
           setLoginError(`Acesso Bloqueado por Inadimplência: A empresa "${matchedComp.name}" está com a assinatura/licença suspensa ou pagamento pendente. Por favor, entre em contato com o suporte ou gestor financeiro.`);
           return;
         }
-
-        syncDb(prev => ({
-          ...prev,
-          companyInfo: matchedComp
-        }));
       }
 
       // Normalize user permissions for legacy database safety
@@ -1043,8 +1040,11 @@ export default function App() {
         ...loginHistory.filter(h => h.username.toLowerCase() !== matchedUser.username.toLowerCase())
       ].slice(0, 4);
       setLoginHistory(updatedHistory);
+
+      // Batch state update
       syncDb(prev => ({
         ...prev,
+        ...(matchedComp ? { companyInfo: matchedComp } : {}),
         loginHistory: updatedHistory
       }));
 
@@ -1265,7 +1265,9 @@ export default function App() {
       users: updatedUsers
     };
 
-    syncDb(updatedDb);
+    // Immediate flush to Cloud SQL
+    dataProvider.saveDatabaseImmediate(updatedDb);
+    setDb(updatedDb);
 
     // Auto Login as new admin
     setCurrentUser(newAdminUser);

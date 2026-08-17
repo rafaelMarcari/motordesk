@@ -25,32 +25,22 @@ export interface DbConfig {
 
 export function resolveDatabaseConfig(overrideDb?: string): DbConfig {
   const instanceName = process.env.INSTANCE_CONNECTION_NAME || 'centered-repeater-4x4wp:us-east1:ai-studio-482bfc36';
-  let host = process.env.SQL_HOST || '';
+  let rawHost = process.env.SQL_HOST || '';
   const port = process.env.SQL_PORT ? parseInt(process.env.SQL_PORT, 10) : 5432;
 
-  // Potential unix socket directories to search
-  const candidates: string[] = [];
+  // Search order for unix sockets on Cloud Run & AI Studio environments
+  const socketCandidates = [
+    `/cloudsql/${instanceName}`,      // Standard Google Cloud Run volume
+    `/app/cloudsql/${instanceName}`,  // AI Studio container mount
+    rawHost,
+    rawHost.replace('/app/cloudsql/', '/cloudsql/'),
+    rawHost.replace('/cloudsql/', '/app/cloudsql/'),
+  ].filter(Boolean);
 
-  if (host) {
-    candidates.push(host);
-    if (host.startsWith('/app/cloudsql/')) {
-      candidates.push(host.replace('/app/cloudsql/', '/cloudsql/'));
-    }
-    if (host.startsWith('/cloudsql/')) {
-      candidates.push(host.replace('/cloudsql/', '/app/cloudsql/'));
-    }
-  }
-
-  if (instanceName) {
-    candidates.push(`/cloudsql/${instanceName}`);
-    candidates.push(`/app/cloudsql/${instanceName}`);
-  }
-
-  let resolvedHost = host;
+  let resolvedHost = '';
   let isUnixSocket = false;
 
-  // Search existing socket paths on filesystem
-  for (const candidate of candidates) {
+  for (const candidate of socketCandidates) {
     if (candidate.startsWith('/')) {
       try {
         if (fs.existsSync(candidate)) {
@@ -62,13 +52,14 @@ export function resolveDatabaseConfig(overrideDb?: string): DbConfig {
     }
   }
 
-  if (!isUnixSocket) {
-    if (resolvedHost.startsWith('/')) {
-      // Default to standard Cloud Run socket mount path if no directory was matched on disk
+  if (!resolvedHost) {
+    if (rawHost && !rawHost.startsWith('/') && !rawHost.includes(':')) {
+      // TCP hostname / IP (e.g., 127.0.0.1 or localhost)
+      resolvedHost = rawHost;
+      isUnixSocket = false;
+    } else {
+      // Default to standard Cloud Run socket
       resolvedHost = `/cloudsql/${instanceName}`;
-      isUnixSocket = true;
-    } else if (resolvedHost.includes(':')) {
-      resolvedHost = `/cloudsql/${resolvedHost}`;
       isUnixSocket = true;
     }
   }
@@ -78,7 +69,7 @@ export function resolveDatabaseConfig(overrideDb?: string): DbConfig {
   const database = overrideDb || process.env.SQL_DB_NAME || 'cloud_sql_production_database';
 
   return {
-    host: resolvedHost || 'localhost',
+    host: resolvedHost,
     port,
     isUnixSocket,
     user,
@@ -100,12 +91,13 @@ export const createPool = (targetDb?: string): pg.Pool => {
       user: config.user,
       password: config.password,
       database: config.database,
-      max: 6,
-      connectionTimeoutMillis: 10000,
-      idleTimeoutMillis: 3000,
-      maxUses: 5000,
+      max: 10,
+      connectionTimeoutMillis: 6000,
+      idleTimeoutMillis: 10000,
+      maxUses: 10000,
       keepAlive: true,
       keepAliveInitialDelayMillis: 1000,
+      allowExitOnIdle: true,
     };
 
     if (!config.isUnixSocket) {
@@ -115,8 +107,7 @@ export const createPool = (targetDb?: string): pg.Pool => {
     existing = new Pool(poolConfig);
 
     existing.on('error', (err: any) => {
-      console.warn(`[MotorDesk Cloud SQL Pool Warning for ${config.database}]:`, err.message);
-      // Auto purge broken pool if idle client fails
+      console.warn(`[MotorDesk DB_POOL] Idle client error on ${config.database}: ${err.message} (${err.code || 'NO_CODE'})`);
       purgePool(targetDb);
     });
 
