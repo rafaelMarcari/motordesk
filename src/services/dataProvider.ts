@@ -8,15 +8,22 @@ export interface IDataProvider {
   saveDatabaseImmediate(db: AppDatabase): Promise<void>;
   getCompanies(): Promise<CompanyInfo[]>;
   syncLocalToCloud(): Promise<{ synced: boolean; count?: number }>;
+  setDataMergedCallback?(cb: (mergedDb: AppDatabase) => void): void;
 }
 
 export class ApiPostgresProvider implements IDataProvider {
   private pendingSaveTimer: any = null;
   private pendingSaveDb: AppDatabase | null = null;
   private isSaving: boolean = false;
+  private onDataMergedCallback?: (mergedDb: AppDatabase) => void;
+
+  setDataMergedCallback(cb: (mergedDb: AppDatabase) => void) {
+    this.onDataMergedCallback = cb;
+  }
 
   async getDatabase(): Promise<AppDatabase> {
     const startTime = Date.now();
+    console.log(`[TRACE-PERSISTENCE] GET /api/db START (time: ${new Date().toISOString()})`);
     let lastError: any = null;
 
     // 1. Tenta obter os dados oficiais diretamente do backend Cloud SQL
@@ -26,9 +33,15 @@ export class ApiPostgresProvider implements IDataProvider {
         if (res.status === 200 && res.data) {
           const body = res.data;
           if (body.success && body.data) {
-            const companyCount = (body.data.registeredCompanies || []).length;
-            const userCount = (body.data.users || []).length;
-            console.log(`[COMPANY_LOAD] Cloud SQL database loaded in ${Date.now() - startTime}ms (${companyCount} companies, ${userCount} users, source: ${body.source})`);
+            const empresas = (body.data.registeredCompanies || []).length;
+            const usuarios = (body.data.users || []).length;
+            const clientes = (body.data.clients || []).length;
+            const veiculos = (body.data.vehicles || []).length;
+            const pecas = (body.data.parts || []).length;
+            const companyId = body.data.companyInfo?.id || 'none';
+            const updatedAt = body.updatedAt || new Date().toISOString();
+
+            console.log(`[TRACE-PERSISTENCE] GET /api/db\ncompanyId=${companyId}\nempresas=${empresas}\nusuários=${usuarios}\nclientes=${clientes}\nveículos=${veiculos}\npeças=${pecas}\nupdatedAt=${updatedAt}\nsource=${body.source}\nlatencyMs=${Date.now() - startTime}`);
 
             try {
               localStorage.setItem(STORAGE_KEY, JSON.stringify(body.data));
@@ -45,31 +58,37 @@ export class ApiPostgresProvider implements IDataProvider {
       }
     }
 
+    console.warn(`[TRACE-PERSISTENCE] GET /api/db ERROR after 3 attempts: ${lastError?.message || 'Unknown'}`);
+
     // 2. Se a API Cloud SQL não respondeu, recupera do cache local persistente
     const cached = localStorage.getItem(STORAGE_KEY);
     if (cached) {
       try {
         const parsed = JSON.parse(cached);
         if (parsed && typeof parsed === 'object') {
-          console.warn(`[COMPANY_LOAD] Using local cache fallback after Cloud SQL timeout (${Date.now() - startTime}ms)`);
+          console.warn(`[TRACE-PERSISTENCE] Using local storage fallback after Cloud SQL timeout (${Date.now() - startTime}ms)`);
           return parsed;
         }
       } catch (err) {}
     }
 
-    console.warn(`[COMPANY_LOAD] Using initial default structure (${Date.now() - startTime}ms)`);
+    console.warn(`[TRACE-PERSISTENCE] Using initial default structure (${Date.now() - startTime}ms)`);
     return this.getDefaultDb();
   }
 
   async saveDatabase(db: AppDatabase): Promise<void> {
-    // 1. Gravação local instantânea para zero latência
+    const clientCount = (db.clients || []).length;
+    const companyCount = (db.registeredCompanies || []).length;
+    console.log(`[TRACE-PERSISTENCE] SAVE_DATABASE (debounced 300ms): clients=${clientCount}, companies=${companyCount}`);
+
+    // 1. Gravação local instantânea para resiliência temporária
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(db));
     } catch (e) {
-      console.warn("[ApiPostgresProvider] Erro ao salvar no LocalStorage:", e);
+      console.warn("[TRACE-PERSISTENCE] Erro ao salvar no LocalStorage:", e);
     }
 
-    // 2. Agendamento com debounce (300ms) para evitar saturação de requisições de 800KB
+    // 2. Agendamento com debounce (300ms)
     this.pendingSaveDb = db;
     if (this.pendingSaveTimer) {
       clearTimeout(this.pendingSaveTimer);
@@ -81,6 +100,10 @@ export class ApiPostgresProvider implements IDataProvider {
   }
 
   async saveDatabaseImmediate(db: AppDatabase): Promise<void> {
+    const clientCount = (db.clients || []).length;
+    const companyCount = (db.registeredCompanies || []).length;
+    console.log(`[TRACE-PERSISTENCE] SAVE_DATABASE_IMMEDIATE: clients=${clientCount}, companies=${companyCount}`);
+
     if (this.pendingSaveTimer) {
       clearTimeout(this.pendingSaveTimer);
       this.pendingSaveTimer = null;
@@ -96,18 +119,38 @@ export class ApiPostgresProvider implements IDataProvider {
     this.pendingSaveDb = null;
     this.isSaving = true;
     const startTime = Date.now();
+    const payloadSize = JSON.stringify(payload).length;
+    const empresas = (payload.registeredCompanies || []).length;
+    const usuarios = (payload.users || []).length;
+    const clientes = (payload.clients || []).length;
+    const veiculos = (payload.vehicles || []).length;
+    const pecas = (payload.parts || []).length;
+    const companyId = payload.companyInfo?.id || 'none';
+
+    console.log(`[TRACE-PERSISTENCE] POST /api/db\ncompanyId=${companyId}\npayloadSize=${payloadSize}\nempresas=${empresas}\nusuários=${usuarios}\nclientes=${clientes}\nveículos=${veiculos}\npeças=${pecas}\nupdatedAt=${new Date().toISOString()}`);
 
     try {
       for (let attempt = 1; attempt <= 3; attempt++) {
         try {
           const res = await api.post('/api/db', payload);
           if (res.status === 200 && res.data?.success) {
-            console.log(`[DB_POST] Successfully synced database with Cloud SQL in ${Date.now() - startTime}ms (source: ${res.data.source})`);
+            console.log(`[TRACE-PERSISTENCE] POST /api/db SUCCESS: database=${res.data.database}, source=${res.data.source}, updatedAt=${res.data.updatedAt}, duration=${Date.now() - startTime}ms`);
+            
+            // If server returned merged data, update cache and notify UI
+            if (res.data.data) {
+              try {
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(res.data.data));
+              } catch (e) {}
+              if (this.onDataMergedCallback) {
+                this.onDataMergedCallback(res.data.data);
+              }
+            }
             break;
           }
         } catch (err: any) {
+          console.warn(`[TRACE-PERSISTENCE] POST /api/db ERROR (attempt ${attempt}/3):`, err.message);
           if (attempt === 3) {
-            console.warn("[ApiPostgresProvider] Sincronização em segundo plano falhou após 3 tentativas:", err.message);
+            console.error("[TRACE-PERSISTENCE] POST /api/db FAILED permanently after 3 attempts:", err.message);
           } else {
             await new Promise((r) => setTimeout(r, 200 * attempt));
           }
@@ -115,7 +158,6 @@ export class ApiPostgresProvider implements IDataProvider {
       }
     } finally {
       this.isSaving = false;
-      // Se houver uma nova gravação enfileirada enquanto a anterior salvava, despacha
       if (this.pendingSaveDb) {
         this.flushPendingSave();
       }

@@ -136,6 +136,7 @@ export default function ClientsView({ db, onSaveClients, onAddHistoryLog, setUns
     let updatedClientsList: Client[] = [];
     if (activeEditingClient) {
       // Edit Client
+      console.log(`[TRACE-PERSISTENCE] CLIENT EDIT: id=${activeEditingClient.id}, name=${activeName}, cpf=${activeCpf}`);
       updatedClientsList = db.clients.map(c => 
         c.id === activeEditingClient.id 
           ? { 
@@ -169,6 +170,13 @@ export default function ClientsView({ db, onSaveClients, onAddHistoryLog, setUns
         createdAt: new Date().toISOString()
       };
       updatedClientsList = [...db.clients, newClient];
+      const empresas = (db.registeredCompanies || []).length || 1;
+      const usuarios = (db.users || []).length;
+      const clientes = updatedClientsList.length;
+      const veiculos = (db.vehicles || []).length;
+      const pecas = (db.parts || []).length;
+      const companyId = db.companyInfo?.id || 'comp-1';
+      console.log(`[TRACE-PERSISTENCE] CLIENT CREATE\nid=${newClient.id}\nname=${newClient.name}\ncpf=${newClient.cpf}\ncompanyId=${companyId}\nempresas=${empresas}\nusuários=${usuarios}\nclientes=${clientes}\nveículos=${veiculos}\npeças=${pecas}\nupdatedAt=${newClient.createdAt}`);
       onSaveClients(updatedClientsList);
       onAddHistoryLog('user_activity', 'Cliente Cadastrado', `Cliente ${activeName} cadastrado com sucesso sob CPF ${activeCpf} e limite de crédito R$ ${activeLimitNum.toFixed(2)}.`, newClient.id, '');
     }

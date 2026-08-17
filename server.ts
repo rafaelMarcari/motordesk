@@ -132,10 +132,94 @@ app.get(["/api/health", "/health"], async (req, res) => {
 // In-memory server-side cache for high availability and zero-data-loss resiliency
 let serverAppStoreCache: any = null;
 
+// Helper: Generic lossless entity merge by ID / secondary unique key
+function mergeEntityCollection<T extends Record<string, any>>(
+  existingArr: T[] | undefined,
+  incomingArr: T[] | undefined,
+  keyField: string = 'id',
+  altKeyField?: string
+): T[] {
+  const map = new Map<string, T>();
+
+  if (Array.isArray(existingArr)) {
+    for (const item of existingArr) {
+      if (!item) continue;
+      const key = item[keyField] || (altKeyField ? item[altKeyField] : null);
+      if (key) {
+        map.set(String(key).trim().toLowerCase(), item);
+      }
+    }
+  }
+
+  if (Array.isArray(incomingArr)) {
+    for (const item of incomingArr) {
+      if (!item) continue;
+      const key = item[keyField] || (altKeyField ? item[altKeyField] : null);
+      if (key) {
+        const normalizedKey = String(key).trim().toLowerCase();
+        const existing = map.get(normalizedKey);
+        if (existing) {
+          map.set(normalizedKey, { ...existing, ...item });
+        } else {
+          map.set(normalizedKey, item);
+        }
+      }
+    }
+  }
+
+  return Array.from(map.values());
+}
+
+// Server-side Intelligent Bidirectional Merge: protects against stale client overwrites
+export function mergeAppDatabase(existing: any, incoming: any): any {
+  if (!existing || typeof existing !== 'object') return incoming;
+  if (!incoming || typeof incoming !== 'object') return existing;
+
+  return {
+    ...existing,
+    ...incoming,
+    companyInfo: incoming.companyInfo || existing.companyInfo,
+    registeredCompanies: mergeEntityCollection(existing.registeredCompanies, incoming.registeredCompanies, 'id', 'cnpj'),
+    users: mergeEntityCollection(existing.users, incoming.users, 'id', 'username'),
+    clients: mergeEntityCollection(existing.clients, incoming.clients, 'id', 'cpf'),
+    vehicles: mergeEntityCollection(existing.vehicles, incoming.vehicles, 'id', 'plate'),
+    parts: mergeEntityCollection(existing.parts, incoming.parts, 'id', 'code'),
+    services: mergeEntityCollection(existing.services, incoming.services, 'id'),
+    budgets: mergeEntityCollection(existing.budgets, incoming.budgets, 'id'),
+    serviceOrders: mergeEntityCollection(existing.serviceOrders, incoming.serviceOrders, 'id'),
+    history: mergeEntityCollection(existing.history, incoming.history, 'id'),
+    suppliers: mergeEntityCollection(existing.suppliers, incoming.suppliers, 'id', 'cnpj'),
+    supplierPartPrices: mergeEntityCollection(existing.supplierPartPrices, incoming.supplierPartPrices, 'id'),
+    quotations: mergeEntityCollection(existing.quotations, incoming.quotations, 'id'),
+    accountsReceivable: mergeEntityCollection(existing.accountsReceivable, incoming.accountsReceivable, 'id'),
+    accountsPayable: mergeEntityCollection(existing.accountsPayable, incoming.accountsPayable, 'id'),
+    financialTransactions: mergeEntityCollection(existing.financialTransactions, incoming.financialTransactions, 'id'),
+    paymentMethods: mergeEntityCollection(existing.paymentMethods, incoming.paymentMethods, 'id', 'type'),
+    maintenanceLogs: mergeEntityCollection(existing.maintenanceLogs, incoming.maintenanceLogs, 'id'),
+    fiscalDocuments: mergeEntityCollection(existing.fiscalDocuments, incoming.fiscalDocuments, 'id'),
+    boletos: mergeEntityCollection(existing.boletos, incoming.boletos, 'id'),
+    interBranchSales: mergeEntityCollection(existing.interBranchSales, incoming.interBranchSales, 'id'),
+    stockMovements: mergeEntityCollection(existing.stockMovements, incoming.stockMovements, 'id'),
+    notifications: mergeEntityCollection(existing.notifications, incoming.notifications, 'id'),
+    testCases: mergeEntityCollection(existing.testCases, incoming.testCases, 'id'),
+    taxOperationNatures: mergeEntityCollection(existing.taxOperationNatures, incoming.taxOperationNatures, 'id', 'code'),
+    taxRules: mergeEntityCollection(existing.taxRules, incoming.taxRules, 'id'),
+    xmlImportRecords: mergeEntityCollection(existing.xmlImportRecords, incoming.xmlImportRecords, 'id'),
+    loginHistory: mergeEntityCollection(existing.loginHistory, incoming.loginHistory, 'username'),
+    globalModules: { ...(existing.globalModules || {}), ...(incoming.globalModules || {}) },
+    alertSettings: { ...(existing.alertSettings || {}), ...(incoming.alertSettings || {}) },
+    sefazConfig: { ...(existing.sefazConfig || {}), ...(incoming.sefazConfig || {}) },
+    landingContent: incoming.landingContent || existing.landingContent || null,
+  };
+}
+
 // 4. ERP Database APIs - Cloud SQL PostgreSQL with seamless high-availability cache
-app.get("/api/db", requireAuth, async (req, res) => {
+app.get("/api/db", requireAuth, async (req: any, res) => {
   const startTime = Date.now();
+  const requestId = `req-get-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+  const userId = req.user?.uid || req.headers?.authorization?.replace('Bearer ', '') || 'anonymous';
   const config = resolveDatabaseConfig();
+
   try {
     // 1. Query the configured/primary database using executeSqlWithRetry
     const result = await executeSqlWithRetry(
@@ -145,16 +229,27 @@ app.get("/api/db", requireAuth, async (req, res) => {
     );
 
     if (result.rows.length > 0 && result.rows[0].data) {
-      serverAppStoreCache = result.rows[0].data;
+      const data = result.rows[0].data;
+      serverAppStoreCache = data;
       const durationMs = Date.now() - startTime;
-      console.log(`[DB_GET] Loaded motordesk_main from ${config.database} in ${durationMs}ms (size: ${result.rows[0].size || 'N/A'} bytes)`);
+      const empresas = (data.registeredCompanies || []).length;
+      const usuarios = (data.users || []).length;
+      const clientes = (data.clients || []).length;
+      const veiculos = (data.vehicles || []).length;
+      const pecas = (data.parts || []).length;
+      const companyId = data.companyInfo?.id || 'all';
+      const payloadSize = Number(result.rows[0].size) || JSON.stringify(data).length;
+      const updatedAt = result.rows[0].updated_at || new Date().toISOString();
+
+      console.log(`[DB-TRACE] GET /api/db\nrequestId=${requestId}\nuserId=${userId}\ncompanyId=${companyId}\npayloadSize=${payloadSize}\nempresas=${empresas}\nusuários=${usuarios}\nclientes=${clientes}\nveículos=${veiculos}\npeças=${pecas}\nresult=SUCCESS\nupdatedAt=${updatedAt}\ndatabase=${config.database}\nsource=cloud_sql\nlatencyMs=${durationMs}`);
+
       return res.json({
         success: true,
-        data: result.rows[0].data,
+        data,
         source: "cloud_sql",
         database: config.database,
         durationMs,
-        updatedAt: result.rows[0].updated_at,
+        updatedAt,
       });
     }
 
@@ -168,16 +263,27 @@ app.get("/api/db", requireAuth, async (req, res) => {
           altDb
         );
         if (altRes.rows.length > 0 && altRes.rows[0].data) {
-          serverAppStoreCache = altRes.rows[0].data;
+          const data = altRes.rows[0].data;
+          serverAppStoreCache = data;
           const durationMs = Date.now() - startTime;
-          console.log(`[DB_GET] Found motordesk_main in alternate database ${altDb} in ${durationMs}ms`);
+          const empresas = (data.registeredCompanies || []).length;
+          const usuarios = (data.users || []).length;
+          const clientes = (data.clients || []).length;
+          const veiculos = (data.vehicles || []).length;
+          const pecas = (data.parts || []).length;
+          const companyId = data.companyInfo?.id || 'all';
+          const payloadSize = Number(altRes.rows[0].size) || JSON.stringify(data).length;
+          const updatedAt = altRes.rows[0].updated_at || new Date().toISOString();
+
+          console.log(`[DB-TRACE] GET /api/db\nrequestId=${requestId}\nuserId=${userId}\ncompanyId=${companyId}\npayloadSize=${payloadSize}\nempresas=${empresas}\nusuários=${usuarios}\nclientes=${clientes}\nveículos=${veiculos}\npeças=${pecas}\nresult=SUCCESS\nupdatedAt=${updatedAt}\ndatabase=${altDb}\nsource=cloud_sql_alt\nlatencyMs=${durationMs}`);
+
           return res.json({
             success: true,
-            data: altRes.rows[0].data,
+            data,
             source: "cloud_sql",
             database: altDb,
             durationMs,
-            updatedAt: altRes.rows[0].updated_at,
+            updatedAt,
           });
         }
       } catch (altErr) {
@@ -186,20 +292,32 @@ app.get("/api/db", requireAuth, async (req, res) => {
     }
 
     if (serverAppStoreCache) {
+      const empresas = (serverAppStoreCache.registeredCompanies || []).length;
+      const usuarios = (serverAppStoreCache.users || []).length;
+      const clientes = (serverAppStoreCache.clients || []).length;
+      const veiculos = (serverAppStoreCache.vehicles || []).length;
+      const pecas = (serverAppStoreCache.parts || []).length;
+      const companyId = serverAppStoreCache.companyInfo?.id || 'all';
+      const updatedAt = new Date().toISOString();
+
+      console.log(`[DB-TRACE] GET /api/db\nrequestId=${requestId}\nuserId=${userId}\ncompanyId=${companyId}\npayloadSize=${JSON.stringify(serverAppStoreCache).length}\nempresas=${empresas}\nusuários=${usuarios}\nclientes=${clientes}\nveículos=${veiculos}\npeças=${pecas}\nresult=SUCCESS\nupdatedAt=${updatedAt}\ndatabase=${config.database}\nsource=server_cache\nlatencyMs=${Date.now() - startTime}`);
+
       return res.json({
         success: true,
         data: serverAppStoreCache,
         source: "server_cache",
         database: config.database,
         durationMs: Date.now() - startTime,
-        updatedAt: new Date().toISOString(),
+        updatedAt,
       });
     }
+
+    console.log(`[DB-TRACE] GET /api/db\nrequestId=${requestId}\nuserId=${userId}\ncompanyId=none\npayloadSize=0\nempresas=0\nusuários=0\nclientes=0\nveículos=0\npeças=0\nresult=EMPTY\nupdatedAt=null\ndatabase=${config.database}\nsource=cloud_sql\nlatencyMs=${Date.now() - startTime}`);
 
     return res.json({ success: true, data: null, source: "cloud_sql", database: config.database, durationMs: Date.now() - startTime });
   } catch (err: any) {
     const pgErr = extractPgErrorDetails(err);
-    console.warn(`[DB_GET] Warning for ${config.database}: ${pgErr.message} (${Date.now() - startTime}ms)`);
+    console.warn(`[DB-TRACE] GET /api/db ERROR\nrequestId=${requestId}\nuserId=${userId}\nresult=ERROR\nerror=${pgErr.message}\nlatencyMs=${Date.now() - startTime}`);
     
     if (serverAppStoreCache) {
       return res.json({
@@ -222,23 +340,73 @@ app.get("/api/db", requireAuth, async (req, res) => {
   }
 });
 
-app.post("/api/db", requireAuth, async (req, res) => {
+app.post("/api/db", requireAuth, async (req: any, res) => {
   const startTime = Date.now();
+  const requestId = `req-post-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+  const userId = req.user?.uid || req.headers?.authorization?.replace('Bearer ', '') || 'anonymous';
   const config = resolveDatabaseConfig();
+
   try {
-    const appData = req.body;
-    if (!appData) {
+    const incomingData = req.body;
+    if (!incomingData) {
+      console.warn(`[DB-TRACE] POST /api/db\nrequestId=${requestId}\nuserId=${userId}\nresult=ERROR\nerror=Dados para salvamento ausentes`);
       return res.status(400).json({ success: false, error: "Dados para salvamento ausentes" });
     }
 
-    // Always update server-side memory cache immediately
-    serverAppStoreCache = appData;
+    const inEmpresas = (incomingData.registeredCompanies || []).length;
+    const inUsuarios = (incomingData.users || []).length;
+    const inClientes = (incomingData.clients || []).length;
+    const inVeiculos = (incomingData.vehicles || []).length;
+    const inPecas = (incomingData.parts || []).length;
+    const inCompanyId = incomingData.companyInfo?.id || 'all';
+
+    console.log(`[DB-TRACE] POST /api/db\nrequestId=${requestId}\nuserId=${userId}\ncompanyId=${inCompanyId}\npayloadSize=${JSON.stringify(incomingData).length}\nempresas=${inEmpresas}\nusuários=${inUsuarios}\nclientes=${inClientes}\nveículos=${inVeiculos}\npeças=${inPecas}\nupdatedAt=${new Date().toISOString()}`);
 
     try {
       await ensureAppStoreTableExists(config.database);
     } catch (e) {}
 
-    const payloadStr = JSON.stringify(appData);
+    // 1. Fetch current stored data from PostgreSQL for intelligent lossless merging
+    let currentStoredData: any = serverAppStoreCache;
+    let currentUpdatedAt: string = new Date().toISOString();
+    try {
+      const curRes = await executeSqlWithRetry(
+        'SELECT data, updated_at FROM app_store WHERE id = $1',
+        ['motordesk_main'],
+        config.database
+      );
+      if (curRes.rows.length > 0 && curRes.rows[0].data) {
+        currentStoredData = curRes.rows[0].data;
+        if (curRes.rows[0].updated_at) {
+          currentUpdatedAt = curRes.rows[0].updated_at;
+        }
+      }
+    } catch (readErr) {}
+
+    const curEmpresas = (currentStoredData?.registeredCompanies || []).length;
+    const curUsuarios = (currentStoredData?.users || []).length;
+    const curClientes = (currentStoredData?.clients || []).length;
+    const curVeiculos = (currentStoredData?.vehicles || []).length;
+    const curPecas = (currentStoredData?.parts || []).length;
+    const curCompanyId = currentStoredData?.companyInfo?.id || inCompanyId;
+
+    console.log(`[DB-TRACE] Cloud SQL BEFORE MERGE\nrequestId=${requestId}\ncompanyId=${curCompanyId}\nempresas=${curEmpresas}\nusuários=${curUsuarios}\nclientes=${curClientes}\nveículos=${curVeiculos}\npeças=${curPecas}\nupdatedAt=${currentUpdatedAt}`);
+
+    // 2. Perform intelligent bidirectional merge to protect multi-browser concurrency
+    const mergedData = mergeAppDatabase(currentStoredData, incomingData);
+
+    // Update in-memory server cache
+    serverAppStoreCache = mergedData;
+
+    const payloadStr = JSON.stringify(mergedData);
+    const payloadSize = payloadStr.length;
+    const mergedEmpresas = (mergedData.registeredCompanies || []).length;
+    const mergedUsuarios = (mergedData.users || []).length;
+    const mergedClientes = (mergedData.clients || []).length;
+    const mergedVeiculos = (mergedData.vehicles || []).length;
+    const mergedPecas = (mergedData.parts || []).length;
+
+    // 3. Persist merged data to PostgreSQL
     const insertRes = await executeSqlWithRetry(
       `INSERT INTO app_store (id, data, updated_at) VALUES ($1, $2, NOW())
        ON CONFLICT (id) DO UPDATE SET data = $2, updated_at = NOW()
@@ -248,7 +416,9 @@ app.post("/api/db", requireAuth, async (req, res) => {
     );
 
     const durationMs = Date.now() - startTime;
-    console.log(`[DB_POST] Saved motordesk_main to ${config.database} in ${durationMs}ms`);
+    const updatedAt = insertRes.rows[0]?.updated_at || new Date().toISOString();
+
+    console.log(`[DB-TRACE] Cloud SQL AFTER MERGE\nrequestId=${requestId}\ncompanyId=${inCompanyId}\npayloadSize=${payloadSize}\nempresas=${mergedEmpresas}\nusuários=${mergedUsuarios}\nclientes=${mergedClientes}\nveículos=${mergedVeiculos}\npeças=${mergedPecas}\nresult=SUCCESS\nupdatedAt=${updatedAt}\ndatabase=${config.database}\nsource=cloud_sql\nlatencyMs=${durationMs}`);
 
     // Also mirror to alternate database in background if available
     const altDbs = ["cloud_sql_production_database", "cloud_sql_development_database"].filter(d => d !== config.database);
@@ -263,20 +433,22 @@ app.post("/api/db", requireAuth, async (req, res) => {
 
     return res.json({
       success: true,
-      message: "Database saved to PostgreSQL Cloud SQL",
+      message: "Database saved and merged to PostgreSQL Cloud SQL",
+      data: mergedData,
       source: "cloud_sql",
       database: config.database,
       durationMs,
-      updatedAt: insertRes.rows[0]?.updated_at || new Date().toISOString(),
+      updatedAt,
     });
   } catch (err: any) {
     const pgErr = extractPgErrorDetails(err);
-    console.warn(`[DB_POST] Warning for ${config.database}: ${pgErr.message} (${Date.now() - startTime}ms)`);
+    console.warn(`[DB-TRACE] POST /api/db ERROR\nrequestId=${requestId}\nuserId=${userId}\nresult=ERROR\nerror=${pgErr.message}\nlatencyMs=${Date.now() - startTime}`);
     
     // Server cache holds the data safely even if Cloud SQL is transiently busy or disconnected
     return res.json({
       success: true,
       message: "Database saved and preserved in server cache",
+      data: serverAppStoreCache || req.body,
       source: "server_cache",
       database: config.database,
       durationMs: Date.now() - startTime,
@@ -288,21 +460,28 @@ app.post("/api/db", requireAuth, async (req, res) => {
 // List all registered companies endpoint
 app.get("/api/companies", async (req, res) => {
   const startTime = Date.now();
+  const requestId = `req-comp-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
   const config = resolveDatabaseConfig();
+
   try {
     const result = await executeSqlWithRetry(
-      'SELECT data->\'registeredCompanies\' as companies, data->\'companyInfo\' as main_company FROM app_store WHERE id = $1',
+      'SELECT data->\'registeredCompanies\' as companies, data->\'companyInfo\' as main_company, updated_at FROM app_store WHERE id = $1',
       ['motordesk_main'],
       config.database
     );
     if (result.rows.length > 0) {
       const companies = result.rows[0].companies || [result.rows[0].main_company];
+      const count = Array.isArray(companies) ? companies.length : 1;
+      console.log(`[DB-TRACE][GET /api/companies]\nrequestId=${requestId}\ncompanies=${count}\nresult=SUCCESS\nupdatedAt=${result.rows[0].updated_at}\ndatabase=${config.database}\nsource=cloud_sql\nlatencyMs=${Date.now() - startTime}`);
       return res.json({ success: true, companies, durationMs: Date.now() - startTime });
     }
     if (serverAppStoreCache) {
       const companies = serverAppStoreCache.registeredCompanies || [serverAppStoreCache.companyInfo];
+      const count = Array.isArray(companies) ? companies.length : 1;
+      console.log(`[DB-TRACE][GET /api/companies]\nrequestId=${requestId}\ncompanies=${count}\nresult=SUCCESS\nsource=server_cache\nlatencyMs=${Date.now() - startTime}`);
       return res.json({ success: true, companies, durationMs: Date.now() - startTime });
     }
+    console.log(`[DB-TRACE][GET /api/companies]\nrequestId=${requestId}\ncompanies=0\nresult=EMPTY\nlatencyMs=${Date.now() - startTime}`);
     return res.json({ success: true, companies: [], durationMs: Date.now() - startTime });
   } catch (err: any) {
     if (serverAppStoreCache) {

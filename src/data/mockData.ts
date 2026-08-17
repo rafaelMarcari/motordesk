@@ -1913,7 +1913,6 @@ export function getDatabase(): AppDatabase {
       taxRules: INITIAL_TAX_RULES,
       xmlImportRecords: INITIAL_XML_IMPORT_RECORDS,
     };
-    saveDatabase(db);
   } else {
     try {
       db = JSON.parse(raw);
@@ -2023,7 +2022,6 @@ export function getDatabase(): AppDatabase {
         taxRules: INITIAL_TAX_RULES,
         xmlImportRecords: INITIAL_XML_IMPORT_RECORDS,
       };
-      saveDatabase(db);
     }
   }
 

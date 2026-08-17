@@ -1087,6 +1087,8 @@ export default function UserManagementView({
 
     const initialCompanyUsers = [newQAUser, newAdminUser];
 
+    console.log(`[TRACE-PERSISTENCE] COMPANY CREATE: id=${newCompanyObj.id}, name=${newCompanyObj.name}, cnpj=${newCompanyObj.cnpj}, type=${newCompanyObj.companyType}`);
+
     if (onSaveRegisteredCompanies) {
       onSaveRegisteredCompanies(updatedList, newCompId, initialCompanyUsers);
     } else {

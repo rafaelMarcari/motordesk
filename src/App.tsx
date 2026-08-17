@@ -11,6 +11,7 @@ import {
   AppDatabase 
 } from './data/mockData';
 import { dataProvider } from './services/dataProvider';
+import { mergeDatabases } from './utils/dbSync';
 import { 
   User, 
   UserPermissions,
@@ -398,55 +399,47 @@ export default function App() {
       } catch (e: any) {
         console.error('Falha ao inicializar banco de dados:', e);
         if (isMounted) {
-          // Garante que o estado do banco nunca fique nulo bloqueando a renderização
           setDb(getDatabase());
         }
       }
     };
+
+    // Register callback for background data merge events from server
+    dataProvider.setDataMergedCallback((mergedDb: AppDatabase) => {
+      setDb(prev => {
+        const next = prev ? mergeDatabases(prev, mergedDb) : mergedDb;
+        const empresas = (next.registeredCompanies || []).length;
+        const usuarios = (next.users || []).length;
+        const clientes = (next.clients || []).length;
+        const veiculos = (next.vehicles || []).length;
+        const pecas = (next.parts || []).length;
+        const companyId = next.companyInfo?.id || 'none';
+        console.log(`[TRACE-PERSISTENCE] APPLY SERVER STATE\ncompanyId=${companyId}\nempresas=${empresas}\nusuários=${usuarios}\nclientes=${clientes}\nveículos=${veiculos}\npeças=${pecas}\nupdatedAt=${new Date().toISOString()}\nsource=callback_merge`);
+        return next;
+      });
+    });
 
     loadDbAsync();
 
     return () => { isMounted = false; };
   }, []);
 
-  // Auto-sync database state from PostgreSQL Cloud SQL / Server backend on window/tab focus & periodic polling
+  // Auto-sync database state from PostgreSQL Cloud SQL / Server backend on window/tab focus, visibility change & periodic polling (5s)
   useEffect(() => {
     const syncWithServer = async () => {
       try {
         const remoteDb = await dataProvider.getDatabase();
         if (remoteDb) {
           setDb(prev => {
-            if (!prev) return remoteDb;
-            // Intelligently preserve newly added companies & users to prevent any race condition or wipeout
-            const prevCompanies = prev.registeredCompanies || (prev.companyInfo ? [prev.companyInfo] : []);
-            const remoteCompanies = remoteDb.registeredCompanies || (remoteDb.companyInfo ? [remoteDb.companyInfo] : []);
-            const companyMap = new Map<string, CompanyInfo>();
-            // Remote companies first
-            remoteCompanies.forEach(c => { if (c && c.id) companyMap.set(c.id, c); });
-            // Preserve any local companies
-            prevCompanies.forEach(c => { if (c && c.id && !companyMap.has(c.id)) companyMap.set(c.id, c); });
-
-            const prevUsers = prev.users || [];
-            const remoteUsers = remoteDb.users || [];
-            const userMap = new Map<string, User>();
-            remoteUsers.forEach(u => { if (u && u.id) userMap.set(u.id, u); });
-            prevUsers.forEach(u => { if (u && u.id && !userMap.has(u.id)) userMap.set(u.id, u); });
-
-            const mergedRegisteredCompanies = Array.from(companyMap.values());
-            const mergedUsers = Array.from(userMap.values());
-
-            const updatedDb: AppDatabase = {
-              ...remoteDb,
-              registeredCompanies: mergedRegisteredCompanies,
-              users: mergedUsers,
-            };
-
-            // If local had more items, ensure server is also updated
-            if (mergedRegisteredCompanies.length > remoteCompanies.length || mergedUsers.length > remoteUsers.length) {
-              dataProvider.saveDatabase(updatedDb).catch(() => {});
-            }
-
-            return updatedDb;
+            const next = prev ? mergeDatabases(prev, remoteDb) : remoteDb;
+            const empresas = (next.registeredCompanies || []).length;
+            const usuarios = (next.users || []).length;
+            const clientes = (next.clients || []).length;
+            const veiculos = (next.vehicles || []).length;
+            const pecas = (next.parts || []).length;
+            const companyId = next.companyInfo?.id || 'none';
+            console.log(`[TRACE-PERSISTENCE] APPLY SERVER STATE\ncompanyId=${companyId}\nempresas=${empresas}\nusuários=${usuarios}\nclientes=${clientes}\nveículos=${veiculos}\npeças=${pecas}\nupdatedAt=${new Date().toISOString()}\nsource=polling_merge`);
+            return next;
           });
 
           if (remoteDb.globalModules) setGlobalModules(remoteDb.globalModules);
@@ -457,13 +450,21 @@ export default function App() {
       }
     };
 
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        syncWithServer();
+      }
+    };
+
     window.addEventListener('focus', syncWithServer);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
     
-    // Background polling every 20 seconds to keep all open browsers & devices in sync
-    const pollInterval = setInterval(syncWithServer, 20000);
+    // Background polling every 5 seconds to keep all open browsers & devices in sync in real time
+    const pollInterval = setInterval(syncWithServer, 5000);
 
     return () => {
       window.removeEventListener('focus', syncWithServer);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
       clearInterval(pollInterval);
     };
   }, []);
@@ -618,17 +619,23 @@ export default function App() {
   // State Updaters passed to Views (Preserving multi-tenant data for other companies)
   const handleSaveClients = (clients: Client[]) => {
     const formatted = clients.map(c => ({ ...c, companyId: c.companyId || activeCompanyId }));
-    syncDb(prev => {
+    setDb(prev => {
+      if (!prev) return prev;
       const other = (prev.clients || []).filter(item => (item.companyId || 'comp-1') !== activeCompanyId);
-      return { ...prev, clients: [...other, ...formatted] };
+      const nextDb = { ...prev, clients: [...other, ...formatted] };
+      dataProvider.saveDatabaseImmediate(nextDb);
+      return nextDb;
     });
   };
 
   const handleSaveVehicles = (vehicles: Vehicle[]) => {
     const formatted = vehicles.map(v => ({ ...v, companyId: v.companyId || activeCompanyId }));
-    syncDb(prev => {
+    setDb(prev => {
+      if (!prev) return prev;
       const other = (prev.vehicles || []).filter(item => (item.companyId || 'comp-1') !== activeCompanyId);
-      return { ...prev, vehicles: [...other, ...formatted] };
+      const nextDb = { ...prev, vehicles: [...other, ...formatted] };
+      dataProvider.saveDatabaseImmediate(nextDb);
+      return nextDb;
     });
   };
 
@@ -787,7 +794,8 @@ export default function App() {
   };
 
   const handleSaveCompanyInfo = (companyInfo: CompanyInfo) => {
-    syncDb(prev => {
+    setDb(prev => {
+      if (!prev) return prev;
       const currentList = prev.registeredCompanies && prev.registeredCompanies.length > 0 
         ? prev.registeredCompanies 
         : [prev.companyInfo || companyInfo];
@@ -797,16 +805,19 @@ export default function App() {
         updatedList.push(companyInfo);
       }
 
-      return { 
+      const nextDb = { 
         ...prev, 
         companyInfo,
         registeredCompanies: updatedList
       };
+      dataProvider.saveDatabaseImmediate(nextDb);
+      return nextDb;
     });
   };
 
   const handleSaveRegisteredCompanies = (companies: CompanyInfo[], activeCompanyId?: string, newUsers?: User[]) => {
-    syncDb(prev => {
+    setDb(prev => {
+      if (!prev) return prev;
       const activeComp = activeCompanyId 
         ? companies.find(c => c.id === activeCompanyId) || prev.companyInfo
         : prev.companyInfo;
@@ -830,7 +841,8 @@ export default function App() {
   };
 
   const handleRegisterCompanyFromQA = (companyInfo: CompanyInfo, adminUser?: User, qaUser?: User) => {
-    syncDb(prev => {
+    setDb(prev => {
+      if (!prev) return prev;
       const currentList = prev.registeredCompanies && prev.registeredCompanies.length > 0 
         ? prev.registeredCompanies 
         : [prev.companyInfo || companyInfo];
@@ -848,12 +860,14 @@ export default function App() {
         mergedUsers = Array.from(userMap.values());
       }
 
-      return { 
+      const nextDb = { 
         ...prev, 
         companyInfo,
         registeredCompanies: updatedList,
         users: mergedUsers
       };
+      dataProvider.saveDatabaseImmediate(nextDb);
+      return nextDb;
     });
   };
 
