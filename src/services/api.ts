@@ -1,6 +1,6 @@
 import axios from 'axios';
 import { getApiUrl } from '../lib/apiConfig';
-
+1
 // Centralized Axios Gateway configured with relative path or VITE_API_URL
 const API_URL = getApiUrl();
 
