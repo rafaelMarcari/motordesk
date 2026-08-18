@@ -25,6 +25,7 @@ import {
   HistoryEntry, 
   TestCase,
   CompanyInfo,
+  BusinessType,
   SystemNotification,
   AlertSettings,
   MaintenanceLog,
@@ -100,6 +101,7 @@ import { AccountReceivable, AccountPayable, FinancialTransaction, FiscalDocument
 import { Globe, FileText } from 'lucide-react';
 import {
   getBusinessType,
+  normalizeBusinessType,
   isWorkshopBusiness,
   isCommerceBusiness,
   isPureWorkshop,
@@ -175,6 +177,7 @@ export default function App() {
   // Multi-tenant Company Registration States
   const [regCompName, setRegCompName] = useState('');
   const [regCompCnpj, setRegCompCnpj] = useState('');
+  const [regCompBusinessType, setRegCompBusinessType] = useState<BusinessType>('OFICINA');
   const [regCompWhatsapp, setRegCompWhatsapp] = useState('');
   const [regCompPhone, setRegCompPhone] = useState('');
   const [regCompEmail, setRegCompEmail] = useState('');
@@ -863,15 +866,19 @@ export default function App() {
   };
 
   const handleRegisterCompanyFromQA = (companyInfo: CompanyInfo, adminUser?: User, qaUser?: User) => {
+    const normalizedCompany: CompanyInfo = {
+      ...companyInfo,
+      businessType: normalizeBusinessType(companyInfo.businessType),
+    };
     setDb(prev => {
       if (!prev) return prev;
       const currentList = prev.registeredCompanies && prev.registeredCompanies.length > 0 
         ? prev.registeredCompanies 
-        : [prev.companyInfo || companyInfo];
+        : [prev.companyInfo || normalizedCompany];
 
-      const updatedList = currentList.map(c => c.id === companyInfo.id ? companyInfo : c);
-      if (!updatedList.some(c => c.id === companyInfo.id)) {
-        updatedList.push(companyInfo);
+      const updatedList = currentList.map(c => c.id === normalizedCompany.id ? normalizedCompany : c);
+      if (!updatedList.some(c => c.id === normalizedCompany.id)) {
+        updatedList.push(normalizedCompany);
       }
 
       let mergedUsers = prev.users || [];
@@ -884,7 +891,7 @@ export default function App() {
 
       const nextDb = { 
         ...prev, 
-        companyInfo,
+        companyInfo: normalizedCompany,
         registeredCompanies: updatedList,
         users: mergedUsers
       };
@@ -1228,6 +1235,7 @@ export default function App() {
       id: companyId,
       name: regCompName.trim(),
       cnpj: regCompCnpj.trim(),
+      businessType: normalizeBusinessType(regCompBusinessType),
       phone: regCompPhone.trim() || regCompWhatsapp.trim(),
       whatsapp: regCompWhatsapp.trim(),
       email: regCompEmail.trim() || 'contato@oficina.com.br',

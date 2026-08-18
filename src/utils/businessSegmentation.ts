@@ -172,13 +172,40 @@ export function normalizeUser(user: User): User {
 }
 
 /**
- * Retorna o tipo de negócio oficial da empresa ativa, com fallback seguro para OFICINA
+ * Normaliza e padroniza qualquer valor recebido de tipo de negócio para o enum canônico BusinessType.
+ * Trata variações de maiúsculas/minúsculas, acentuação ("COMÉRCIO", "Comércio") e sinônimos.
+ */
+export function normalizeBusinessType(type?: string | null): BusinessType {
+  if (!type) return 'OFICINA';
+  const clean = String(type)
+    .trim()
+    .toUpperCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+
+  if (clean === 'COMERCIO' || clean === 'COMERCIO / AUTOPECAS' || clean === 'LOJA' || clean === 'BALCAO') {
+    return 'COMERCIO';
+  }
+  if (clean === 'OFICINA_COMERCIO' || clean === 'OFICINA + COMERCIO' || clean === 'HIBRIDO' || clean === 'OFICINA_E_COMERCIO') {
+    return 'OFICINA_COMERCIO';
+  }
+  if (clean === 'SERVICOS' || clean === 'SERVICO') {
+    return 'SERVICOS';
+  }
+  if (clean === 'OUTROS' || clean === 'OUTRO') {
+    return 'OUTROS';
+  }
+  return 'OFICINA';
+}
+
+/**
+ * Retorna o tipo de negócio oficial da empresa ativa, com normalização completa e retrocompatibilidade
  */
 export function getBusinessType(company?: CompanyInfo | null): BusinessType {
   if (!company || !company.businessType) {
     return 'OFICINA';
   }
-  return company.businessType;
+  return normalizeBusinessType(company.businessType);
 }
 
 /**
@@ -186,8 +213,8 @@ export function getBusinessType(company?: CompanyInfo | null): BusinessType {
  * Retorna true para 'OFICINA' e 'OFICINA_COMERCIO'
  */
 export function isWorkshopBusiness(businessType?: BusinessType | string | null): boolean {
-  if (!businessType) return true; // Default seguro
-  return businessType === 'OFICINA' || businessType === 'OFICINA_COMERCIO';
+  const norm = normalizeBusinessType(businessType);
+  return norm === 'OFICINA' || norm === 'OFICINA_COMERCIO';
 }
 
 /**
@@ -195,30 +222,32 @@ export function isWorkshopBusiness(businessType?: BusinessType | string | null):
  * Retorna true para 'COMERCIO' e 'OFICINA_COMERCIO'
  */
 export function isCommerceBusiness(businessType?: BusinessType | string | null): boolean {
-  if (!businessType) return false;
-  return businessType === 'COMERCIO' || businessType === 'OFICINA_COMERCIO';
+  const norm = normalizeBusinessType(businessType);
+  return norm === 'COMERCIO' || norm === 'OFICINA_COMERCIO';
 }
 
 /**
  * Verifica se é estritamente uma oficina mecânica tradicional (sem PDV de comércio puro)
  */
 export function isPureWorkshop(businessType?: BusinessType | string | null): boolean {
-  if (!businessType) return true;
-  return businessType === 'OFICINA';
+  const norm = normalizeBusinessType(businessType);
+  return norm === 'OFICINA';
 }
 
 /**
  * Verifica se é estritamente um comércio de autopeças/balcão (sem OS nem veículos)
  */
 export function isPureCommerce(businessType?: BusinessType | string | null): boolean {
-  return businessType === 'COMERCIO';
+  const norm = normalizeBusinessType(businessType);
+  return norm === 'COMERCIO';
 }
 
 /**
  * Verifica se é um modelo híbrido (Oficina Mecânica + Comércio Balcão)
  */
 export function isHybridBusiness(businessType?: BusinessType | string | null): boolean {
-  return businessType === 'OFICINA_COMERCIO';
+  const norm = normalizeBusinessType(businessType);
+  return norm === 'OFICINA_COMERCIO';
 }
 
 /**
@@ -228,7 +257,7 @@ export function isViewAllowedForBusinessType(
   viewId: ViewID,
   businessType?: BusinessType | string | null
 ): boolean {
-  const type = businessType || 'OFICINA';
+  const type = normalizeBusinessType(businessType);
 
   if (type === 'COMERCIO') {
     if (WORKSHOP_EXCLUSIVE_VIEWS.includes(viewId)) {

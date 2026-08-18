@@ -1,5 +1,6 @@
 import { AppDatabase } from '../data/mockData';
 import { CompanyInfo, User, Client, Vehicle, Part, Service, Budget, ServiceOrder, HistoryEntry, Supplier, SupplierPartPrice, Quotation, AccountReceivable, AccountPayable, FinancialTransaction, PaymentMethodOption, MaintenanceLog, FiscalDocument, BoletoDocument, InterBranchSaleLogistics, StockMovement, SystemNotification, TestCase, TaxOperationNature, TaxRule, XmlImportRecord } from '../types';
+import { normalizeBusinessType } from './businessSegmentation';
 
 function mergeList<T extends Record<string, any>>(
   existingList: T[] | undefined,
@@ -42,8 +43,15 @@ export function mergeDatabases(existing: AppDatabase, incoming: AppDatabase): Ap
   if (!existing) return incoming;
   if (!incoming) return existing;
 
-  const mergedRegisteredCompanies = mergeList<CompanyInfo>(existing.registeredCompanies, incoming.registeredCompanies, 'id', 'cnpj');
-  const activeCompany = incoming.companyInfo || existing.companyInfo || (mergedRegisteredCompanies.length > 0 ? mergedRegisteredCompanies[0] : undefined);
+  const mergedRegisteredCompanies = mergeList<CompanyInfo>(existing.registeredCompanies, incoming.registeredCompanies, 'id', 'cnpj').map(c => ({
+    ...c,
+    businessType: normalizeBusinessType(c.businessType)
+  }));
+  const rawActiveCompany = incoming.companyInfo || existing.companyInfo || (mergedRegisteredCompanies.length > 0 ? mergedRegisteredCompanies[0] : undefined);
+  const activeCompany = rawActiveCompany ? {
+    ...rawActiveCompany,
+    businessType: normalizeBusinessType(rawActiveCompany.businessType)
+  } : undefined;
 
   return {
     ...existing,

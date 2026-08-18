@@ -132,6 +132,15 @@ app.get(["/api/health", "/health"], async (req, res) => {
 // In-memory server-side cache for high availability and zero-data-loss resiliency
 let serverAppStoreCache: any = null;
 
+// Write mutex / sequential queue to prevent async race conditions during concurrent multi-browser writes
+let dbWriteQueue: Promise<any> = Promise.resolve();
+
+function enqueueDbWrite<T>(task: () => Promise<T>): Promise<T> {
+  const next = dbWriteQueue.then(() => task(), () => task());
+  dbWriteQueue = next.catch(() => {});
+  return next;
+}
+
 // Helper: Generic lossless entity merge by ID / secondary unique key
 function mergeEntityCollection<T extends Record<string, any>>(
   existingArr: T[] | undefined,
@@ -170,16 +179,41 @@ function mergeEntityCollection<T extends Record<string, any>>(
   return Array.from(map.values());
 }
 
+// Helper: Normalize businessType enum consistently on server
+function normalizeBusinessType(type: any): string {
+  if (!type) return 'OFICINA';
+  const clean = String(type).trim().toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  if (clean === 'COMERCIO' || clean === 'LOJA' || clean === 'BALCAO' || clean === 'AUTOPECAS' || clean === 'DISTRIBUIDORA') {
+    return 'COMERCIO';
+  }
+  if (clean === 'OFICINA_COMERCIO' || clean === 'AMBOS' || clean === 'HIBRIDO' || (clean.includes('OFICINA') && clean.includes('COMERCIO'))) {
+    return 'OFICINA_COMERCIO';
+  }
+  return 'OFICINA';
+}
+
 // Server-side Intelligent Bidirectional Merge: protects against stale client overwrites
 export function mergeAppDatabase(existing: any, incoming: any): any {
   if (!existing || typeof existing !== 'object') return incoming;
   if (!incoming || typeof incoming !== 'object') return existing;
 
+  const rawCompanies = mergeEntityCollection(existing.registeredCompanies, incoming.registeredCompanies, 'id', 'cnpj');
+  const normalizedCompanies = rawCompanies.map((c: any) => ({
+    ...c,
+    businessType: normalizeBusinessType(c?.businessType)
+  }));
+
+  const rawCompanyInfo = incoming.companyInfo || existing.companyInfo || (normalizedCompanies.length > 0 ? normalizedCompanies[0] : null);
+  const normalizedCompanyInfo = rawCompanyInfo ? {
+    ...rawCompanyInfo,
+    businessType: normalizeBusinessType(rawCompanyInfo?.businessType)
+  } : null;
+
   return {
     ...existing,
     ...incoming,
-    companyInfo: incoming.companyInfo || existing.companyInfo,
-    registeredCompanies: mergeEntityCollection(existing.registeredCompanies, incoming.registeredCompanies, 'id', 'cnpj'),
+    companyInfo: normalizedCompanyInfo,
+    registeredCompanies: normalizedCompanies,
     users: mergeEntityCollection(existing.users, incoming.users, 'id', 'username'),
     clients: mergeEntityCollection(existing.clients, incoming.clients, 'id', 'cpf'),
     vehicles: mergeEntityCollection(existing.vehicles, incoming.vehicles, 'id', 'plate'),
@@ -383,70 +417,79 @@ app.post("/api/db", requireAuth, async (req: any, res) => {
       await ensureAppStoreTableExists(config.database);
     } catch (e) {}
 
-    // 1. Fetch current stored data from PostgreSQL for intelligent lossless merging
-    let currentStoredData: any = serverAppStoreCache;
-    let currentUpdatedAt: string = new Date().toISOString();
-    try {
-      const curRes = await executeSqlWithRetry(
-        'SELECT data, updated_at FROM app_store WHERE id = $1',
-        ['motordesk_main'],
+    // Execute atomic serialized read-merge-write to guarantee zero race conditions on concurrent multi-device writes
+    const { mergedData, durationMs, updatedAt } = await enqueueDbWrite(async () => {
+      // 1. Fetch current stored data from PostgreSQL for intelligent lossless merging
+      let currentStoredData: any = serverAppStoreCache;
+      let currentUpdatedAt: string = new Date().toISOString();
+      try {
+        const curRes = await executeSqlWithRetry(
+          'SELECT data, updated_at FROM app_store WHERE id = $1',
+          ['motordesk_main'],
+          config.database
+        );
+        if (curRes.rows.length > 0 && curRes.rows[0].data) {
+          currentStoredData = curRes.rows[0].data;
+          if (curRes.rows[0].updated_at) {
+            currentUpdatedAt = curRes.rows[0].updated_at;
+          }
+        }
+      } catch (readErr) {}
+
+      const curEmpresas = (currentStoredData?.registeredCompanies || []).length;
+      const curUsuarios = (currentStoredData?.users || []).length;
+      const curClientes = (currentStoredData?.clients || []).length;
+      const curVeiculos = (currentStoredData?.vehicles || []).length;
+      const curPecas = (currentStoredData?.parts || []).length;
+      const curCompanyId = currentStoredData?.companyInfo?.id || inCompanyId;
+
+      console.log(`[DB-TRACE] Cloud SQL BEFORE MERGE\nrequestId=${requestId}\ncompanyId=${curCompanyId}\nempresas=${curEmpresas}\nusuários=${curUsuarios}\nclientes=${curClientes}\nveículos=${curVeiculos}\npeças=${curPecas}\nupdatedAt=${currentUpdatedAt}`);
+
+      // 2. Perform intelligent bidirectional merge to protect multi-browser concurrency
+      const merged = mergeAppDatabase(currentStoredData, incomingData);
+
+      // Update in-memory server cache atomically
+      serverAppStoreCache = merged;
+
+      const payloadStr = JSON.stringify(merged);
+      const payloadSize = payloadStr.length;
+      const mergedEmpresas = (merged.registeredCompanies || []).length;
+      const mergedUsuarios = (merged.users || []).length;
+      const mergedClientes = (merged.clients || []).length;
+      const mergedVeiculos = (merged.vehicles || []).length;
+      const mergedPecas = (merged.parts || []).length;
+
+      // 3. Persist merged data to PostgreSQL
+      const insertRes = await executeSqlWithRetry(
+        `INSERT INTO app_store (id, data, updated_at) VALUES ($1, $2, NOW())
+         ON CONFLICT (id) DO UPDATE SET data = $2, updated_at = NOW()
+         RETURNING id, updated_at`,
+        ['motordesk_main', payloadStr],
         config.database
       );
-      if (curRes.rows.length > 0 && curRes.rows[0].data) {
-        currentStoredData = curRes.rows[0].data;
-        if (curRes.rows[0].updated_at) {
-          currentUpdatedAt = curRes.rows[0].updated_at;
-        }
+
+      const opDurationMs = Date.now() - startTime;
+      const opUpdatedAt = insertRes.rows[0]?.updated_at || new Date().toISOString();
+
+      console.log(`[DB-TRACE] Cloud SQL AFTER MERGE\nrequestId=${requestId}\ncompanyId=${inCompanyId}\npayloadSize=${payloadSize}\nempresas=${mergedEmpresas}\nusuários=${mergedUsuarios}\nclientes=${mergedClientes}\nveículos=${mergedVeiculos}\npeças=${mergedPecas}\nresult=SUCCESS\nupdatedAt=${opUpdatedAt}\ndatabase=${config.database}\nsource=cloud_sql\nlatencyMs=${opDurationMs}`);
+
+      // Also mirror to alternate database in background if available
+      const altDbs = ["cloud_sql_production_database", "cloud_sql_development_database"].filter(d => d !== config.database);
+      for (const altDb of altDbs) {
+        executeSqlWithRetry(
+          `INSERT INTO app_store (id, data, updated_at) VALUES ($1, $2, NOW())
+           ON CONFLICT (id) DO UPDATE SET data = $2, updated_at = NOW()`,
+          ['motordesk_main', payloadStr],
+          altDb
+        ).catch(() => {});
       }
-    } catch (readErr) {}
 
-    const curEmpresas = (currentStoredData?.registeredCompanies || []).length;
-    const curUsuarios = (currentStoredData?.users || []).length;
-    const curClientes = (currentStoredData?.clients || []).length;
-    const curVeiculos = (currentStoredData?.vehicles || []).length;
-    const curPecas = (currentStoredData?.parts || []).length;
-    const curCompanyId = currentStoredData?.companyInfo?.id || inCompanyId;
-
-    console.log(`[DB-TRACE] Cloud SQL BEFORE MERGE\nrequestId=${requestId}\ncompanyId=${curCompanyId}\nempresas=${curEmpresas}\nusuários=${curUsuarios}\nclientes=${curClientes}\nveículos=${curVeiculos}\npeças=${curPecas}\nupdatedAt=${currentUpdatedAt}`);
-
-    // 2. Perform intelligent bidirectional merge to protect multi-browser concurrency
-    const mergedData = mergeAppDatabase(currentStoredData, incomingData);
-
-    // Update in-memory server cache
-    serverAppStoreCache = mergedData;
-
-    const payloadStr = JSON.stringify(mergedData);
-    const payloadSize = payloadStr.length;
-    const mergedEmpresas = (mergedData.registeredCompanies || []).length;
-    const mergedUsuarios = (mergedData.users || []).length;
-    const mergedClientes = (mergedData.clients || []).length;
-    const mergedVeiculos = (mergedData.vehicles || []).length;
-    const mergedPecas = (mergedData.parts || []).length;
-
-    // 3. Persist merged data to PostgreSQL
-    const insertRes = await executeSqlWithRetry(
-      `INSERT INTO app_store (id, data, updated_at) VALUES ($1, $2, NOW())
-       ON CONFLICT (id) DO UPDATE SET data = $2, updated_at = NOW()
-       RETURNING id, updated_at`,
-      ['motordesk_main', payloadStr],
-      config.database
-    );
-
-    const durationMs = Date.now() - startTime;
-    const updatedAt = insertRes.rows[0]?.updated_at || new Date().toISOString();
-
-    console.log(`[DB-TRACE] Cloud SQL AFTER MERGE\nrequestId=${requestId}\ncompanyId=${inCompanyId}\npayloadSize=${payloadSize}\nempresas=${mergedEmpresas}\nusuários=${mergedUsuarios}\nclientes=${mergedClientes}\nveículos=${mergedVeiculos}\npeças=${mergedPecas}\nresult=SUCCESS\nupdatedAt=${updatedAt}\ndatabase=${config.database}\nsource=cloud_sql\nlatencyMs=${durationMs}`);
-
-    // Also mirror to alternate database in background if available
-    const altDbs = ["cloud_sql_production_database", "cloud_sql_development_database"].filter(d => d !== config.database);
-    for (const altDb of altDbs) {
-      executeSqlWithRetry(
-        `INSERT INTO app_store (id, data, updated_at) VALUES ($1, $2, NOW())
-         ON CONFLICT (id) DO UPDATE SET data = $2, updated_at = NOW()`,
-        ['motordesk_main', payloadStr],
-        altDb
-      ).catch(() => {});
-    }
+      return {
+        mergedData: merged,
+        durationMs: opDurationMs,
+        updatedAt: opUpdatedAt,
+      };
+    });
 
     return res.json({
       success: true,

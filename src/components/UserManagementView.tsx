@@ -44,6 +44,7 @@ import {
 } from 'lucide-react';
 import { User, UserRole, UserPermissions, CompanyInfo, BusinessType } from '../types';
 import { AppDatabase } from '../data/mockData';
+import { normalizeBusinessType } from '../utils/businessSegmentation';
 import PrivacyLgpdModal, { PrivacyLgpdFooter } from './PrivacyLgpdModal';
 import OperationResultModal from './OperationResultModal';
 
@@ -890,7 +891,7 @@ export default function UserManagementView({
       name: compName,
       cnpj: compCnpj,
       companyType: compType,
-      businessType: compBusinessType,
+      businessType: normalizeBusinessType(compBusinessType),
       parentMatrizId: compType === 'filial' ? compParentMatrizId : undefined,
       phone: compPhone,
       whatsapp: compWhatsapp,
@@ -998,7 +999,7 @@ export default function UserManagementView({
       name: newCompName.trim(),
       cnpj: newCompCnpj.trim(),
       companyType: newCompType,
-      businessType: newCompBusinessType,
+      businessType: normalizeBusinessType(newCompBusinessType),
       parentMatrizId: newCompType === 'filial' ? newCompParentMatrizId : undefined,
       phone: newCompPhone.trim() || '(11) 3000-0000',
       whatsapp: newCompWhatsapp.trim() || '11900000000',

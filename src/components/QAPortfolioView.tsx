@@ -28,8 +28,9 @@ import {
   User as UserIcon,
   Download
 } from 'lucide-react';
-import { TestCase, CompanyInfo, User } from '../types';
+import { TestCase, CompanyInfo, User, BusinessType } from '../types';
 import { AppDatabase } from '../data/mockData';
+import { normalizeBusinessType } from '../utils/businessSegmentation';
 
 interface QAPortfolioViewProps {
   testCases: TestCase[];
@@ -61,6 +62,7 @@ export default function QAPortfolioView({ testCases = [], onUpdateTestCaseStatus
   // Company Registration State for QA User
   const [qaCompName, setQaCompName] = useState('');
   const [qaCompCnpj, setQaCompCnpj] = useState('');
+  const [qaCompBusinessType, setQaCompBusinessType] = useState<BusinessType>('OFICINA');
   const [qaCompWhatsapp, setQaCompWhatsapp] = useState('');
   const [qaCompPhone, setQaCompPhone] = useState('');
   const [qaCompEmail, setQaCompEmail] = useState('');
@@ -1245,6 +1247,7 @@ describe('MotorDesk Mechanical Workshop - QA Test Suite', () => {
                     id: companyId,
                     name: qaCompName.trim(),
                     cnpj: qaCompCnpj.trim(),
+                    businessType: normalizeBusinessType(qaCompBusinessType),
                     phone: qaCompPhone.trim() || qaCompWhatsapp.trim(),
                     whatsapp: qaCompWhatsapp.trim(),
                     email: qaCompEmail.trim() || 'contato@oficina.com.br',
@@ -1359,6 +1362,48 @@ describe('MotorDesk Mechanical Workshop - QA Test Suite', () => {
                       placeholder="00.000.000/0001-00"
                       className="w-full p-2.5 bg-white border border-slate-200 rounded-lg font-mono"
                     />
+                  </div>
+
+                  {/* Segmento de Atuação */}
+                  <div className="sm:col-span-2 space-y-1.5 bg-white p-3 rounded-lg border border-slate-200">
+                    <label className="font-bold text-slate-700 uppercase text-[11px] block">
+                      Tipo de Estabelecimento / Segmento *
+                    </label>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                      <label className={`p-2 rounded-lg border flex items-center gap-2 cursor-pointer transition ${qaCompBusinessType === 'OFICINA' ? 'bg-indigo-50 border-indigo-600 font-bold text-indigo-900 shadow-xs' : 'bg-slate-50 border-slate-200 text-slate-700'}`}>
+                        <input
+                          type="radio"
+                          name="qaCompBusinessTypeRadio"
+                          value="OFICINA"
+                          checked={qaCompBusinessType === 'OFICINA'}
+                          onChange={() => setQaCompBusinessType('OFICINA')}
+                          className="h-3.5 w-3.5 text-indigo-600"
+                        />
+                        <span>🔧 Oficina Mecânica</span>
+                      </label>
+                      <label className={`p-2 rounded-lg border flex items-center gap-2 cursor-pointer transition ${qaCompBusinessType === 'COMERCIO' ? 'bg-emerald-50 border-emerald-600 font-bold text-emerald-900 shadow-xs' : 'bg-slate-50 border-slate-200 text-slate-700'}`}>
+                        <input
+                          type="radio"
+                          name="qaCompBusinessTypeRadio"
+                          value="COMERCIO"
+                          checked={qaCompBusinessType === 'COMERCIO'}
+                          onChange={() => setQaCompBusinessType('COMERCIO')}
+                          className="h-3.5 w-3.5 text-emerald-600"
+                        />
+                        <span>🛍️ Comércio & Balcão</span>
+                      </label>
+                      <label className={`p-2 rounded-lg border flex items-center gap-2 cursor-pointer transition ${qaCompBusinessType === 'OFICINA_COMERCIO' ? 'bg-amber-50 border-amber-600 font-bold text-amber-900 shadow-xs' : 'bg-slate-50 border-slate-200 text-slate-700'}`}>
+                        <input
+                          type="radio"
+                          name="qaCompBusinessTypeRadio"
+                          value="OFICINA_COMERCIO"
+                          checked={qaCompBusinessType === 'OFICINA_COMERCIO'}
+                          onChange={() => setQaCompBusinessType('OFICINA_COMERCIO')}
+                          className="h-3.5 w-3.5 text-amber-600"
+                        />
+                        <span>⚡ Oficina + Comércio</span>
+                      </label>
+                    </div>
                   </div>
 
                   <div className="space-y-1">
