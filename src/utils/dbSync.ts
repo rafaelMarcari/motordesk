@@ -1,5 +1,5 @@
 import { AppDatabase } from '../data/mockData';
-import { CompanyInfo, User, Client, Vehicle, Part, Service, Budget, ServiceOrder, HistoryEntry, Supplier, SupplierPartPrice, Quotation, AccountReceivable, AccountPayable, FinancialTransaction, PaymentMethodOption, MaintenanceLog, FiscalDocument, BoletoDocument, InterBranchSaleLogistics, StockMovement, SystemNotification, TestCase, TaxOperationNature, TaxRule, XmlImportRecord } from '../types';
+import { CompanyInfo, User, Client, Vehicle, Part, Service, Budget, ServiceOrder, HistoryEntry, Supplier, SupplierPartPrice, Quotation, AccountReceivable, AccountPayable, FinancialTransaction, PaymentMethodOption, MaintenanceLog, FiscalDocument, BoletoDocument, InterBranchSaleLogistics, StockMovement, SystemNotification, TestCase, TaxOperationNature, TaxRule, XmlImportRecord, CommercialSale } from '../types';
 import { normalizeBusinessType } from './businessSegmentation';
 
 function mergeList<T extends Record<string, any>>(
@@ -76,6 +76,7 @@ export function mergeDatabases(existing: AppDatabase, incoming: AppDatabase): Ap
     maintenanceLogs: mergeList<MaintenanceLog>(existing.maintenanceLogs, incoming.maintenanceLogs, 'id'),
     fiscalDocuments: mergeList<FiscalDocument>(existing.fiscalDocuments, incoming.fiscalDocuments, 'id'),
     boletos: mergeList<BoletoDocument>(existing.boletos, incoming.boletos, 'id'),
+    sales: mergeList<CommercialSale>(existing.sales, incoming.sales, 'id'),
     interBranchSales: mergeList<InterBranchSaleLogistics>(existing.interBranchSales, incoming.interBranchSales, 'id'),
     stockMovements: mergeList<StockMovement>(existing.stockMovements, incoming.stockMovements, 'id'),
     notifications: mergeList<SystemNotification>(existing.notifications, incoming.notifications, 'id'),

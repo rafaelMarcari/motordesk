@@ -40,7 +40,8 @@ import {
   Video,
   PlusCircle,
   ShoppingBag,
-  Wrench
+  Wrench,
+  Zap
 } from 'lucide-react';
 import { User, UserRole, UserPermissions, CompanyInfo, BusinessType } from '../types';
 import { AppDatabase } from '../data/mockData';
@@ -57,6 +58,8 @@ interface UserManagementViewProps {
   onAddHistoryLog: (type: 'budget' | 'service_order' | 'payment' | 'user_activity' | 'system', title: string, description: string, clientId: string, vehicleId: string) => void;
   globalModules: { [key: string]: boolean };
   onUpdateGlobalModules: (modules: { [key: string]: boolean }) => void;
+  onSwitchActiveCompany?: (companyId: string) => void;
+  activeWorkspaceCompanyId?: string;
 }
 
 const DEFAULT_LEVEL_PERMISSIONS: { [key in UserRole]: UserPermissions } = {
@@ -192,7 +195,9 @@ export default function UserManagementView({
   onSaveRegisteredCompanies,
   onAddHistoryLog, 
   globalModules, 
-  onUpdateGlobalModules 
+  onUpdateGlobalModules,
+  onSwitchActiveCompany,
+  activeWorkspaceCompanyId
 }: UserManagementViewProps) {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
@@ -1115,7 +1120,10 @@ export default function UserManagementView({
     setNewCompAddress('');
     setShowNewCompanyModal(false);
     setSelectedCompanyId(newCompId);
-    setSuccessMsg(`Empresa "${newCompanyObj.name}" cadastrada e ativada com sucesso!`);
+    if (onSwitchActiveCompany) {
+      onSwitchActiveCompany(newCompId);
+    }
+    setSuccessMsg(`Empresa "${newCompanyObj.name}" cadastrada e ativada no workspace com sucesso!`);
     setTimeout(() => setSuccessMsg(''), 5000);
   };
 
@@ -1522,19 +1530,51 @@ export default function UserManagementView({
 
         {/* Selected Company Status Badge Summary */}
         <div className="pt-2 border-t border-indigo-900/60 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-300">
-          <div className="flex items-center gap-4">
+          <div className="flex flex-wrap items-center gap-4">
             <span className="flex items-center gap-1.5">
               <CreditCard className="w-3.5 h-3.5 text-indigo-400" />
               CNPJ: <strong className="text-white font-mono">{compCnpj || 'Não informado'}</strong>
             </span>
+            
+            {/* Segment Badge */}
+            <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase border flex items-center gap-1.5 ${
+              compBusinessType === 'COMERCIO' 
+                ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40' 
+                : compBusinessType === 'OFICINA_COMERCIO' 
+                  ? 'bg-amber-500/20 text-amber-300 border-amber-500/40' 
+                  : 'bg-indigo-500/20 text-indigo-300 border-indigo-500/40'
+            }`}>
+              {compBusinessType === 'COMERCIO' && <ShoppingBag className="w-3 h-3 text-emerald-400" />}
+              {compBusinessType === 'OFICINA_COMERCIO' && <Building2 className="w-3 h-3 text-amber-400" />}
+              {compBusinessType === 'OFICINA' && <Wrench className="w-3 h-3 text-indigo-400" />}
+              {compBusinessType === 'COMERCIO' ? 'Comércio & Autopeças' : compBusinessType === 'OFICINA_COMERCIO' ? 'Oficina + Comércio Híbrido' : 'Oficina Mecânica'}
+            </span>
+
             <span className="flex items-center gap-1.5">
               <Calendar className="w-3.5 h-3.5 text-indigo-400" />
-              Validade da Assinatura: <strong className="text-white font-mono">{subExpirationDate || 'Sem data'}</strong>
+              Validade: <strong className="text-white font-mono">{subExpirationDate || 'Sem data'}</strong>
             </span>
           </div>
 
           <div className="flex items-center gap-2">
-            <span className="text-[11px] font-bold text-slate-400">Status de Uso:</span>
+            {onSwitchActiveCompany && (
+              selectedCompanyId === activeWorkspaceCompanyId ? (
+                <span className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-500/40 flex items-center gap-1.5">
+                  <CheckCircle className="w-3.5 h-3.5 text-indigo-400" /> Workspace Ativo
+                </span>
+              ) : (
+                <button
+                  type="button"
+                  id="btn-activate-company-workspace"
+                  onClick={() => onSwitchActiveCompany(selectedCompanyId)}
+                  className="bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-bold px-3 py-1 rounded-lg flex items-center gap-1.5 transition cursor-pointer shadow-xs"
+                  title="Mudar o sistema para trabalhar com esta empresa"
+                >
+                  <Zap className="w-3.5 h-3.5" /> Alternar Workspace
+                </button>
+              )
+            )}
+
             {subStatus === 'blocked' || subPaymentStatus === 'overdue' ? (
               <span className="px-2.5 py-1 rounded-full text-[10px] font-bold uppercase bg-rose-500/20 text-rose-300 border border-rose-500/40 flex items-center gap-1">
                 <Lock className="w-3 h-3 text-rose-400" /> Bloqueado (Inadimplente)

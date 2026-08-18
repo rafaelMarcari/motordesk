@@ -610,6 +610,30 @@ export default function App() {
     }
   }, [activeCompanyId, activeBusinessType, currentUser, activeView]);
 
+  // Registered Companies List
+  const registeredCompaniesList: CompanyInfo[] = db?.registeredCompanies && db.registeredCompanies.length > 0
+    ? db.registeredCompanies
+    : [db?.companyInfo || { id: 'comp-1', name: 'MotorDesk', cnpj: '', phone: '', whatsapp: '', email: '', address: '', welcomeMessage: '', registeredAt: '' }];
+
+  // Switch Active Company Workspace (for Admin / QA users)
+  const handleSwitchCompanyWorkspace = (targetCompanyId: string) => {
+    if (!currentUser) return;
+    const targetComp = (db?.registeredCompanies || []).find(c => c.id === targetCompanyId) || db?.companyInfo;
+    const updatedUser: User = {
+      ...currentUser,
+      companyId: targetCompanyId,
+    };
+    setCurrentUser(updatedUser);
+    localStorage.setItem('motordesk_active_user', JSON.stringify(updatedUser));
+    
+    // Check if the current active view is allowed in the target company's business type
+    const newBusinessType = getBusinessType(targetComp);
+    if (!isViewAllowedForBusinessType(activeView, newBusinessType)) {
+      const fallback = getFallbackViewForBusinessType(newBusinessType, updatedUser.permissions);
+      setActiveView(fallback);
+    }
+  };
+
   // Scoped database view providing strict multi-tenant isolation
   const scopedDb = React.useMemo<AppDatabase>(() => {
     if (!db) {
@@ -621,6 +645,7 @@ export default function App() {
 
     return {
       ...db,
+      companyInfo: activeCompanyObj || db.companyInfo,
       clients: (db.clients || []).filter(item => (item.companyId || 'comp-1') === activeCompanyId),
       vehicles: (db.vehicles || []).filter(item => (item.companyId || 'comp-1') === activeCompanyId),
       parts: (db.parts || []).filter(item => (item.companyId || 'comp-1') === activeCompanyId),
@@ -638,8 +663,14 @@ export default function App() {
       stockMovements: (db.stockMovements || []).filter(item => (item.companyId || 'comp-1') === activeCompanyId),
       supplierPartPrices: (db.supplierPartPrices || []).filter(item => (item.companyId || 'comp-1') === activeCompanyId),
       maintenanceLogs: (db.maintenanceLogs || []).filter(item => (item.companyId || 'comp-1') === activeCompanyId),
+      sales: (db.sales || []).filter(item => (item.companyId || 'comp-1') === activeCompanyId),
+      fiscalDocuments: (db.fiscalDocuments || []).filter(item => (item.companyId || 'comp-1') === activeCompanyId),
+      boletos: (db.boletos || []).filter(item => (item.companyId || 'comp-1') === activeCompanyId),
+      taxOperationNatures: db.taxOperationNatures || [],
+      taxRules: db.taxRules || [],
+      xmlImportRecords: db.xmlImportRecords || [],
     };
-  }, [db, activeCompanyId]);
+  }, [db, activeCompanyId, activeCompanyObj]);
 
   // State Updaters passed to Views (Preserving multi-tenant data for other companies)
   const handleSaveClients = (clients: Client[]) => {
@@ -2085,9 +2116,46 @@ export default function App() {
             )}
 
             <span className="text-xs font-semibold text-slate-500 font-sans hidden sm:inline">Empresa:</span>
-            <span className="text-xs font-bold text-indigo-900 bg-indigo-50 border border-indigo-200 px-2.5 py-1 rounded-md flex items-center gap-1.5 font-sans">
-              <Building2 className="w-3.5 h-3.5 text-indigo-600" />
-              {db.companyInfo?.name || 'MotorDesk'}
+            {registeredCompaniesList.length > 1 && (currentUser.role === 'admin' || currentUser.role === 'qa') ? (
+              <div className="relative inline-flex items-center">
+                <select
+                  id="top-company-switcher-select"
+                  value={activeCompanyId}
+                  onChange={(e) => handleSwitchCompanyWorkspace(e.target.value)}
+                  className="bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-950 text-xs font-bold px-2.5 py-1 rounded-lg focus:ring-2 focus:ring-indigo-400 focus:outline-hidden cursor-pointer shadow-3xs appearance-none pr-7 transition"
+                  title="Alternar entre empresas contratantes cadastradas"
+                >
+                  {registeredCompaniesList.map((comp) => {
+                    const bType = getBusinessType(comp);
+                    const label = bType === 'COMERCIO' ? '🛒 Comércio' : bType === 'OFICINA_COMERCIO' ? '🏢 Híbrido' : '🔧 Oficina';
+                    return (
+                      <option key={comp.id} value={comp.id} className="bg-white text-slate-800">
+                        {comp.name || 'Empresa'} ({label})
+                      </option>
+                    );
+                  })}
+                </select>
+                <ChevronDown className="w-3.5 h-3.5 text-indigo-600 absolute right-2 pointer-events-none" />
+              </div>
+            ) : (
+              <span className="text-xs font-bold text-indigo-900 bg-indigo-50 border border-indigo-200 px-2.5 py-1 rounded-md flex items-center gap-1.5 font-sans">
+                <Building2 className="w-3.5 h-3.5 text-indigo-600" />
+                {activeCompanyObj?.name || db.companyInfo?.name || 'MotorDesk'}
+              </span>
+            )}
+
+            {/* Segment Indicator Pill */}
+            <span className={`text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-md border flex items-center gap-1 font-sans hidden sm:inline-flex ${
+              activeBusinessType === 'COMERCIO' 
+                ? 'bg-emerald-50 text-emerald-800 border-emerald-300' 
+                : activeBusinessType === 'OFICINA_COMERCIO' 
+                  ? 'bg-amber-50 text-amber-800 border-amber-300' 
+                  : 'bg-indigo-50 text-indigo-800 border-indigo-300'
+            }`}>
+              {activeBusinessType === 'COMERCIO' && <ShoppingBag className="w-3 h-3 text-emerald-600" />}
+              {activeBusinessType === 'OFICINA_COMERCIO' && <Building2 className="w-3 h-3 text-amber-600" />}
+              {activeBusinessType === 'OFICINA' && <Wrench className="w-3 h-3 text-indigo-600" />}
+              {activeBusinessType === 'COMERCIO' ? 'Comércio' : activeBusinessType === 'OFICINA_COMERCIO' ? 'Híbrido' : 'Oficina'}
             </span>
 
             <span className="text-xs font-semibold text-slate-500 font-sans hidden sm:inline">Sessão:</span>
@@ -2293,7 +2361,7 @@ export default function App() {
 
           {activeView === 'reports' && currentUser.permissions.accessReports && (
             isModuleLocked('accessReports') ? renderLockedScreen() : (
-              <ReportsView db={scopedDb} />
+              <ReportsView db={scopedDb} businessType={activeBusinessType} />
             )
           )}
 
@@ -2308,6 +2376,8 @@ export default function App() {
                 onAddHistoryLog={handleAddHistoryLog}
                 globalModules={globalModules}
                 onUpdateGlobalModules={handleUpdateGlobalModules}
+                onSwitchActiveCompany={handleSwitchCompanyWorkspace}
+                activeWorkspaceCompanyId={activeCompanyId}
               />
             )
           )}
