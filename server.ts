@@ -49,6 +49,24 @@ function getWhitelistedOrigins(): string[] {
 
 const whitelistedOrigins = getWhitelistedOrigins();
 
+// Allowed custom and standard headers for MotorDesk multi-tenant and authentication
+const ALLOWED_CORS_HEADERS = [
+  "Content-Type",
+  "Authorization",
+  "X-Requested-With",
+  "Accept",
+  "X-Company-Id",
+  "X-User-Id",
+  "X-User-Role",
+  "x-company-id",
+  "x-user-id",
+  "x-user-role",
+  "authorization",
+  "content-type",
+  "accept",
+  "x-requested-with"
+];
+
 // Express CORS options
 const corsOptions: cors.CorsOptions = {
   origin: (origin, callback) => {
@@ -58,7 +76,11 @@ const corsOptions: cors.CorsOptions = {
     }
 
     const normalizedOrigin = origin.trim().replace(/\/+$/, "");
-    if (whitelistedOrigins.includes(normalizedOrigin)) {
+    if (
+      whitelistedOrigins.includes(normalizedOrigin) ||
+      normalizedOrigin.endsWith(".run.app") ||
+      normalizedOrigin.endsWith("motordesk.app.br")
+    ) {
       return callback(null, true);
     }
 
@@ -67,7 +89,8 @@ const corsOptions: cors.CorsOptions = {
   },
   credentials: true,
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With", "Accept"],
+  allowedHeaders: ALLOWED_CORS_HEADERS,
+  exposedHeaders: ALLOWED_CORS_HEADERS,
   optionsSuccessStatus: 200,
 };
 
@@ -78,7 +101,25 @@ app.use(cors(corsOptions));
 app.options("*", cors(corsOptions));
 app.use((req, res, next) => {
   if (req.method === "OPTIONS") {
-    return res.sendStatus(200);
+    const origin = req.headers.origin;
+    if (origin) {
+      const normalizedOrigin = origin.trim().replace(/\/+$/, "");
+      if (
+        whitelistedOrigins.includes(normalizedOrigin) ||
+        normalizedOrigin.endsWith(".run.app") ||
+        normalizedOrigin.endsWith("motordesk.app.br")
+      ) {
+        res.setHeader("Access-Control-Allow-Origin", origin);
+        res.setHeader("Access-Control-Allow-Credentials", "true");
+      }
+    }
+    res.setHeader("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS");
+    res.setHeader(
+      "Access-Control-Allow-Headers",
+      "Content-Type, Authorization, X-Requested-With, Accept, X-Company-Id, X-User-Id, X-User-Role, x-company-id, x-user-id, x-user-role"
+    );
+    res.setHeader("Access-Control-Max-Age", "86400");
+    return res.status(200).end();
   }
   next();
 });
