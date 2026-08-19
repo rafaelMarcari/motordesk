@@ -18,6 +18,7 @@ export const WORKSHOP_EXCLUSIVE_VIEWS: ViewID[] = [
 
 export const COMMERCE_EXCLUSIVE_VIEWS: ViewID[] = [
   'sales',
+  'carriers',
 ];
 
 export const WORKSHOP_EXCLUSIVE_PERMISSIONS: (keyof UserPermissions | string)[] = [
@@ -30,6 +31,7 @@ export const WORKSHOP_EXCLUSIVE_PERMISSIONS: (keyof UserPermissions | string)[] 
 
 export const COMMERCE_EXCLUSIVE_PERMISSIONS: (keyof UserPermissions | string)[] = [
   'accessSales',
+  'accessCarriers',
 ];
 
 /**
@@ -44,6 +46,7 @@ export function normalizeUserPermissions(
 
   // Definições de fallback por perfil funcional
   let defaultAccessSales = true;
+  let defaultAccessCarriers = true;
   let defaultAccessBudgets = true;
   let defaultAccessServiceOrders = true;
   let defaultAccessClients = true;
@@ -62,6 +65,7 @@ export function normalizeUserPermissions(
   switch (normalizedRole) {
     case 'admin':
       defaultAccessSales = true;
+      defaultAccessCarriers = true;
       defaultAccessBudgets = true;
       defaultAccessServiceOrders = true;
       defaultAccessClients = true;
@@ -79,6 +83,7 @@ export function normalizeUserPermissions(
       break;
     case 'qa':
       defaultAccessSales = true;
+      defaultAccessCarriers = true;
       defaultAccessBudgets = true;
       defaultAccessServiceOrders = true;
       defaultAccessClients = true;
@@ -96,6 +101,7 @@ export function normalizeUserPermissions(
       break;
     case 'atendente':
       defaultAccessSales = true;
+      defaultAccessCarriers = true;
       defaultAccessBudgets = true;
       defaultAccessServiceOrders = false;
       defaultAccessClients = true;
@@ -113,6 +119,7 @@ export function normalizeUserPermissions(
       break;
     case 'mecanico':
       defaultAccessSales = false;
+      defaultAccessCarriers = false;
       defaultAccessBudgets = false;
       defaultAccessServiceOrders = true;
       defaultAccessClients = false;
@@ -130,12 +137,14 @@ export function normalizeUserPermissions(
       break;
     default:
       defaultAccessSales = true;
+      defaultAccessCarriers = true;
       break;
   }
 
   return {
     accessDashboard: permissions?.accessDashboard !== undefined ? Boolean(permissions.accessDashboard) : true,
     accessSales: permissions?.accessSales !== undefined ? Boolean(permissions.accessSales) : defaultAccessSales,
+    accessCarriers: permissions?.accessCarriers !== undefined ? Boolean(permissions.accessCarriers) : defaultAccessCarriers,
     accessClients: permissions?.accessClients !== undefined ? Boolean(permissions.accessClients) : defaultAccessClients,
     accessVehicles: permissions?.accessVehicles !== undefined ? Boolean(permissions.accessVehicles) : defaultAccessVehicles,
     accessParts: permissions?.accessParts !== undefined ? Boolean(permissions.accessParts) : defaultAccessParts,
@@ -308,6 +317,7 @@ export function getAvailableViewsForBusinessType(businessType?: BusinessType | s
   const allViews: ViewID[] = [
     'dashboard',
     'sales',
+    'carriers',
     'clients',
     'vehicles',
     'parts',

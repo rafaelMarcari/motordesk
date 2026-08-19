@@ -32,7 +32,8 @@ import {
   PaymentMethodOption,
   TaxOperationNature,
   TaxRule,
-  XmlImportRecord
+  XmlImportRecord,
+  Carrier
 } from './types';
 
 // Icons for navigation
@@ -55,17 +56,18 @@ import {
   LogOut, 
   Lock, 
   AlertTriangle, 
-  Building2,
-  CheckCircle,
-  Bell,
-  ShoppingBag,
-  DollarSign,
-  Wallet,
-  ArrowDownRight,
-  Receipt,
-  ChevronDown,
-  ChevronRight,
-  Sparkles,
+  Building2, 
+  CheckCircle, 
+  Bell, 
+  ShoppingBag, 
+  Truck,
+  DollarSign, 
+  Wallet, 
+  ArrowDownRight, 
+  Receipt, 
+  ChevronDown, 
+  ChevronRight, 
+  Sparkles, 
   Wrench as ToolIcon 
 } from 'lucide-react';
 
@@ -89,6 +91,7 @@ import AccountsPayableView from './components/AccountsPayableView';
 import FinancialView from './components/FinancialView';
 import FiscalSefazView from './components/FiscalSefazView';
 import { SalesView } from './components/SalesView';
+import CarriersView from './components/CarriersView';
 import NotificationToastPopup from './components/NotificationToastPopup';
 import NotificationsModal from './components/NotificationsModal';
 import LandingPresentationView, { LandingContent } from './components/LandingPresentationView';
@@ -119,6 +122,7 @@ import {
 type ViewID = 
   | 'dashboard' 
   | 'sales'
+  | 'carriers'
   | 'clients' 
   | 'vehicles' 
   | 'parts' 
@@ -140,6 +144,7 @@ type ViewID =
 const VIEW_PERMISSION_MAP: Record<ViewID, keyof UserPermissions | null> = {
   dashboard: 'accessDashboard',
   sales: 'accessSales',
+  carriers: 'accessCarriers',
   clients: 'accessClients',
   vehicles: 'accessVehicles',
   parts: 'accessParts',
@@ -337,6 +342,7 @@ export default function App() {
     const viewPermissionMap: Record<ViewID, keyof UserPermissions | null> = {
       dashboard: 'accessDashboard',
       sales: 'accessSales',
+      carriers: 'accessCarriers',
       clients: 'accessClients',
       vehicles: 'accessVehicles',
       parts: 'accessParts',
@@ -664,6 +670,7 @@ export default function App() {
       supplierPartPrices: (db.supplierPartPrices || []).filter(item => (item.companyId || 'comp-1') === activeCompanyId),
       maintenanceLogs: (db.maintenanceLogs || []).filter(item => (item.companyId || 'comp-1') === activeCompanyId),
       sales: (db.sales || []).filter(item => (item.companyId || 'comp-1') === activeCompanyId),
+      carriers: (db.carriers || []).filter(item => (item.companyId || 'comp-1') === activeCompanyId),
       fiscalDocuments: (db.fiscalDocuments || []).filter(item => (item.companyId || 'comp-1') === activeCompanyId),
       boletos: (db.boletos || []).filter(item => (item.companyId || 'comp-1') === activeCompanyId),
       taxOperationNatures: db.taxOperationNatures || [],
@@ -673,6 +680,16 @@ export default function App() {
   }, [db, activeCompanyId, activeCompanyObj]);
 
   // State Updaters passed to Views (Preserving multi-tenant data for other companies)
+  const handleSaveCarriers = (carriers: Carrier[]) => {
+    const formatted = carriers.map(c => ({ ...c, companyId: c.companyId || activeCompanyId }));
+    setDb(prev => {
+      if (!prev) return prev;
+      const other = (prev.carriers || []).filter(item => (item.companyId || 'comp-1') !== activeCompanyId);
+      const nextDb = { ...prev, carriers: [...other, ...formatted] };
+      dataProvider.saveDatabaseImmediate(nextDb);
+      return nextDb;
+    });
+  };
   const handleSaveClients = (clients: Client[]) => {
     const formatted = clients.map(c => ({ ...c, companyId: c.companyId || activeCompanyId }));
     setDb(prev => {
@@ -1131,6 +1148,7 @@ export default function App() {
       const viewPermissionMap: Record<ViewID, keyof UserPermissions | null> = {
         dashboard: 'accessDashboard',
         sales: 'accessSales',
+        carriers: 'accessCarriers',
         clients: 'accessClients',
         vehicles: 'accessVehicles',
         parts: 'accessParts',
@@ -1687,6 +1705,28 @@ export default function App() {
               </button>
             )}
 
+            {currentUser.permissions.accessCarriers && isViewAllowedForBusinessType('carriers', activeBusinessType) && (
+              <button 
+                id="menu-btn-carriers"
+                onClick={() => !isModuleLocked('accessCarriers') && navigateToView('carriers')}
+                disabled={isModuleLocked('accessCarriers')}
+                title="Transportadoras & Frete"
+                className={`w-full flex items-center ${(!isSidebarCollapsed || isSidebarHovered) ? 'justify-between px-3' : 'justify-center px-2'} py-2.5 rounded-lg text-xs font-semibold tracking-wide transition ${
+                  isModuleLocked('accessCarriers')
+                    ? 'opacity-40 cursor-not-allowed text-slate-500'
+                    : activeView === 'carriers' ? 'bg-blue-600 text-white font-bold shadow-xs' : 'hover:bg-slate-800 text-slate-300 hover:text-slate-100'
+                }`}
+              >
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <Truck className="w-4 h-4 shrink-0 text-blue-400" />
+                  {(!isSidebarCollapsed || isSidebarHovered) && <span className="truncate">Transportadoras</span>}
+                </div>
+                {(!isSidebarCollapsed || isSidebarHovered) && activeCompanyModules.accessCarriers === false && (
+                  <span className="text-[9px] bg-amber-500/10 text-amber-500 px-1 py-0.2 rounded border border-amber-500/20 font-mono">🔒</span>
+                )}
+              </button>
+            )}
+
             {currentUser.permissions.accessClients && isViewAllowedForBusinessType('clients', activeBusinessType) && (
               <button 
                 id="menu-btn-clients"
@@ -2199,6 +2239,17 @@ export default function App() {
                 currentCompany={activeCompanyObj || db.companyInfo}
                 isFiscalEnabled={activeCompanyObj?.globalModules?.accessFiscal !== false}
                 onSaveCompanyInfo={handleSaveCompanyInfo}
+              />
+            )
+          )}
+
+          {activeView === 'carriers' && currentUser.permissions.accessCarriers && (
+            isModuleLocked('accessCarriers') ? renderLockedScreen() : (
+              <CarriersView 
+                db={scopedDb}
+                currentUser={currentUser}
+                onSaveCarriers={handleSaveCarriers}
+                onAddHistoryLog={handleAddHistoryLog}
               />
             )
           )}

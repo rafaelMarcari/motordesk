@@ -19,7 +19,8 @@ import {
   Building2,
   ArrowRight,
   RefreshCw,
-  Ban
+  Ban,
+  Truck
 } from 'lucide-react';
 import { AppDatabase } from '../data/mockData';
 import {
@@ -29,7 +30,10 @@ import {
   Part,
   CompanyInfo,
   User,
-  FiscalDocument
+  FiscalDocument,
+  Carrier,
+  FreightType,
+  ShippingOperation
 } from '../types';
 import ShareDocumentModal from './ShareDocumentModal';
 
@@ -64,6 +68,14 @@ export const SalesView: React.FC<SalesViewProps> = ({
   const [saleNotes, setSaleNotes] = useState<string>('');
   const [autoEmitFiscal, setAutoEmitFiscal] = useState<boolean>(true);
 
+  // Logistics & Freight State
+  const [freightType, setFreightType] = useState<FreightType>('NONE');
+  const [carrierId, setCarrierId] = useState<string>('');
+  const [freightValue, setFreightValue] = useState<number>(0);
+  const [shippingOperation, setShippingOperation] = useState<ShippingOperation>('direct');
+  const [logisticsHub, setLogisticsHub] = useState<string>('');
+  const [redispersionCarrierId, setRedispersionCarrierId] = useState<string>('');
+
   // History Filter State
   const [historySearch, setHistorySearch] = useState<string>('');
   const [historyStatus, setHistoryStatus] = useState<string>('all');
@@ -96,10 +108,30 @@ export const SalesView: React.FC<SalesViewProps> = ({
     return db.clients.filter(c => !c.companyId || c.companyId === currentCompany.id);
   }, [db.clients, currentCompany.id]);
 
-  // Sales for Current Company
+  // Carriers
+  const availableCarriers = useMemo(() => {
+    return (db.carriers || []).filter(c => (!c.companyId || c.companyId === currentCompany.id) && c.status === 'active');
+  }, [db.carriers, currentCompany.id]);
+
+  // Sales for Current Company (with seller permission restriction support)
+  const isRestrictedToOwnSales = Boolean(currentUser.permissions?.restrictToOwnSales);
+
   const companySales = useMemo(() => {
-    return (db.sales || []).filter(s => s.companyId === currentCompany.id);
-  }, [db.sales, currentCompany.id]);
+    const allCompanySales = (db.sales || []).filter(s => s.companyId === currentCompany.id);
+    if (!isRestrictedToOwnSales) {
+      return allCompanySales;
+    }
+    const currentName = (currentUser.name || '').trim().toLowerCase();
+    const currentUsername = (currentUser.username || '').trim().toLowerCase();
+    return allCompanySales.filter(s => {
+      if (!s.createdBy) return false;
+      const createdByLower = s.createdBy.toLowerCase();
+      return (
+        (currentName && createdByLower.includes(currentName)) ||
+        (currentUsername && createdByLower.includes(currentUsername))
+      );
+    });
+  }, [db.sales, currentCompany.id, isRestrictedToOwnSales, currentUser.name, currentUser.username]);
 
   const filteredHistory = useMemo(() => {
     return companySales.filter(sale => {
@@ -117,9 +149,10 @@ export const SalesView: React.FC<SalesViewProps> = ({
   }, [cart]);
 
   const cartTotalAmount = useMemo(() => {
-    const total = cartSubtotal - saleDiscount;
+    const freight = (freightType === 'CIF' || freightType === 'FOB') ? (freightValue || 0) : 0;
+    const total = cartSubtotal - saleDiscount + freight;
     return total > 0 ? total : 0;
-  }, [cartSubtotal, saleDiscount]);
+  }, [cartSubtotal, saleDiscount, freightType, freightValue]);
 
   // Add Item to Cart
   const handleAddToCart = (part: Part) => {
@@ -230,6 +263,9 @@ export const SalesView: React.FC<SalesViewProps> = ({
     const saleId = 'sale-' + Date.now();
     const nowIso = new Date().toISOString();
 
+    const selectedCarrierObj = availableCarriers.find(c => c.id === carrierId);
+    const selectedRedispersionCarrierObj = availableCarriers.find(c => c.id === redispersionCarrierId);
+
     const newSale: CommercialSale = {
       id: saleId,
       code: saleCode,
@@ -246,7 +282,17 @@ export const SalesView: React.FC<SalesViewProps> = ({
       paymentStatus: 'paid',
       installmentsCount: installments,
       notes: saleNotes,
-      createdBy: `${currentUser.name} (${currentUser.role})`
+      createdBy: `${currentUser.name} (${currentUser.role})`,
+      freightType,
+      carrierId: carrierId || undefined,
+      carrierName: selectedCarrierObj ? (selectedCarrierObj.corporateName || selectedCarrierObj.tradeName) : undefined,
+      freightValue: freightValue > 0 ? freightValue : undefined,
+      shippingOperation: freightType !== 'NONE' ? shippingOperation : undefined,
+      logisticsHub: (freightType !== 'NONE' && shippingOperation === 'redespacho') ? logisticsHub : undefined,
+      redispersionCarrierId: (freightType !== 'NONE' && shippingOperation === 'redespacho') ? redispersionCarrierId : undefined,
+      redispersionCarrierName: (freightType !== 'NONE' && shippingOperation === 'redespacho' && selectedRedispersionCarrierObj)
+        ? (selectedRedispersionCarrierObj.corporateName || selectedRedispersionCarrierObj.tradeName)
+        : undefined
     };
 
     onUpdateDb(prev => {
@@ -350,6 +396,12 @@ export const SalesView: React.FC<SalesViewProps> = ({
     setSelectedClientId('walk-in');
     setCustomClientName('');
     setCustomClientCpf('');
+    setFreightType('NONE');
+    setCarrierId('');
+    setFreightValue(0);
+    setShippingOperation('direct');
+    setLogisticsHub('');
+    setRedispersionCarrierId('');
 
     // Open Receipt for the new sale
     setSelectedSaleForReceipt(newSale);
@@ -491,6 +543,18 @@ export const SalesView: React.FC<SalesViewProps> = ({
                   <span>Desconto:</span>
                   <span>- R$ ${sale.discount.toFixed(2)}</span>
                 </div>
+              `
+                  : ''
+              }
+              ${
+                sale.freightType && sale.freightType !== 'NONE'
+                  ? `
+                <div style="display: flex; justify-content: space-between; color: #2563eb;">
+                  <span>Frete (${sale.freightType}):</span>
+                  <span>${sale.freightValue ? `R$ ${sale.freightValue.toFixed(2)}` : 'Incluso'}</span>
+                </div>
+                ${sale.carrierName ? `<div style="font-size: 10px; font-weight: normal; color: #475569;">Transportadora: ${sale.carrierName}</div>` : ''}
+                ${sale.shippingOperation === 'redespacho' ? `<div style="font-size: 9px; font-weight: normal; color: #475569;">Redespacho: ${sale.redispersionCarrierName || 'Sim'} (Hub: ${sale.logisticsHub || 'N/A'})</div>` : ''}
               `
                   : ''
               }
@@ -820,6 +884,118 @@ export const SalesView: React.FC<SalesViewProps> = ({
                 )}
               </div>
 
+              {/* Transporte, Logística & Frete */}
+              <div className="space-y-3 pt-2 border-t border-slate-100">
+                <label className="text-xs font-bold text-slate-700 uppercase flex items-center justify-between">
+                  <span className="flex items-center gap-1.5">
+                    <Truck className="w-3.5 h-3.5 text-blue-600" />
+                    Transporte & Logística
+                  </span>
+                  <span className="text-[10px] text-slate-400 font-normal lowercase">opcional</span>
+                </label>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-[10px] text-slate-500 font-semibold block mb-1">Tipo de Frete</label>
+                    <select
+                      value={freightType}
+                      onChange={e => setFreightType(e.target.value as FreightType)}
+                      className="w-full text-xs p-2 border border-slate-200 rounded-xl bg-white font-medium"
+                    >
+                      <option value="NONE">Sem Frete (Retirada Balcão)</option>
+                      <option value="CIF">CIF (Frete por Conta do Emitente / Loja)</option>
+                      <option value="FOB">FOB (Frete por Conta do Destinatário / Cliente)</option>
+                      <option value="THIRD_PARTY">Terceiros (Conta de Terceiros)</option>
+                    </select>
+                  </div>
+
+                  {freightType !== 'NONE' && (
+                    <div>
+                      <label className="text-[10px] text-slate-500 font-semibold block mb-1">Valor do Frete (R$)</label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        value={freightValue || ''}
+                        onChange={e => setFreightValue(parseFloat(e.target.value) || 0)}
+                        placeholder="0,00"
+                        className="w-full text-xs p-2 border border-slate-200 rounded-xl bg-white font-medium font-mono"
+                      />
+                    </div>
+                  )}
+                </div>
+
+                {freightType !== 'NONE' && (
+                  <div className="space-y-2 bg-blue-50/50 p-3 rounded-xl border border-blue-100 animate-fade-in">
+                    <div>
+                      <label className="text-[10px] text-slate-600 font-bold block mb-1">Transportadora Principal</label>
+                      <select
+                        value={carrierId}
+                        onChange={e => setCarrierId(e.target.value)}
+                        className="w-full text-xs p-2 border border-blue-200 rounded-lg bg-white font-medium"
+                      >
+                        <option value="">Selecione uma transportadora cadastrada...</option>
+                        {availableCarriers.map(c => (
+                          <option key={c.id} value={c.id}>
+                            {c.corporateName} {c.tradeName ? `(${c.tradeName})` : ''} - {c.city}/{c.state}
+                          </option>
+                        ))}
+                      </select>
+                      {availableCarriers.length === 0 && (
+                        <p className="text-[10px] text-amber-600 mt-1">
+                          Nenhuma transportadora cadastrada no menu lateral "Transportadoras".
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+                      <div>
+                        <label className="text-[10px] text-slate-600 font-bold block mb-1">Operação Logística</label>
+                        <select
+                          value={shippingOperation}
+                          onChange={e => setShippingOperation(e.target.value as ShippingOperation)}
+                          className="w-full text-xs p-1.5 border border-blue-200 rounded-lg bg-white font-medium"
+                        >
+                          <option value="direct">Transporte Normal / Direto</option>
+                          <option value="redespacho">Redespacho (Troca de Transportadora)</option>
+                        </select>
+                      </div>
+
+                      {shippingOperation === 'redespacho' && (
+                        <div>
+                          <label className="text-[10px] text-slate-600 font-bold block mb-1">Ponto / Hub Logístico</label>
+                          <input
+                            type="text"
+                            placeholder="Ex: CD São Paulo / Hub Barueri"
+                            value={logisticsHub}
+                            onChange={e => setLogisticsHub(e.target.value)}
+                            className="w-full text-xs p-1.5 border border-blue-200 rounded-lg bg-white"
+                          />
+                        </div>
+                      )}
+                    </div>
+
+                    {shippingOperation === 'redespacho' && (
+                      <div className="pt-1">
+                        <label className="text-[10px] text-slate-600 font-bold block mb-1">Transportadora de Redespacho</label>
+                        <select
+                          value={redispersionCarrierId}
+                          onChange={e => setRedispersionCarrierId(e.target.value)}
+                          className="w-full text-xs p-2 border border-blue-200 rounded-lg bg-white font-medium"
+                        >
+                          <option value="">Selecione a transportadora de redespacho...</option>
+                          {availableCarriers.map(c => (
+                            <option key={c.id} value={c.id}>
+                              {c.corporateName} {c.tradeName ? `(${c.tradeName})` : ''} - {c.city}/{c.state}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
               {/* Payment Details */}
               <div className="space-y-3 pt-2 border-t border-slate-100">
                 <label className="text-xs font-bold text-slate-700 uppercase flex items-center gap-1.5">
@@ -904,6 +1080,12 @@ export const SalesView: React.FC<SalesViewProps> = ({
                     <span>- R$ {saleDiscount.toFixed(2)}</span>
                   </div>
                 )}
+                {freightType !== 'NONE' && freightValue > 0 && (
+                  <div className="flex justify-between text-xs text-blue-400">
+                    <span>Frete ({freightType}):</span>
+                    <span>+ R$ {freightValue.toFixed(2)}</span>
+                  </div>
+                )}
                 <div className="flex justify-between text-base font-bold pt-2 border-t border-slate-800">
                   <span>TOTAL A PAGAR:</span>
                   <span className="text-emerald-400 font-display">R$ {cartTotalAmount.toFixed(2)}</span>
@@ -932,10 +1114,21 @@ export const SalesView: React.FC<SalesViewProps> = ({
       {activeTab === 'historico' && (
         <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-3 border-b border-slate-100">
-            <h2 className="text-sm font-bold text-slate-800 font-display flex items-center gap-2">
-              <Receipt className="w-4 h-4 text-emerald-600" />
-              Histórico de Vendas Comercial ({filteredHistory.length})
-            </h2>
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="text-sm font-bold text-slate-800 font-display flex items-center gap-2">
+                <Receipt className="w-4 h-4 text-emerald-600" />
+                Histórico de Vendas Comercial ({filteredHistory.length})
+              </h2>
+              {isRestrictedToOwnSales ? (
+                <span className="text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-300 px-2 py-0.5 rounded-full flex items-center gap-1 shadow-3xs" title="Restrição ativa no perfil do operador">
+                  🔒 Somente Meus Pedidos ({currentUser.name})
+                </span>
+              ) : (
+                <span className="text-[10px] font-bold bg-slate-100 text-slate-600 border border-slate-200 px-2 py-0.5 rounded-full flex items-center gap-1" title="Acesso completo a todas as vendas da empresa">
+                  🏢 Todas as Vendas da Empresa
+                </span>
+              )}
+            </div>
 
             {/* Filters */}
             <div className="flex items-center gap-2">

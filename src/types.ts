@@ -63,6 +63,7 @@ export type BusinessType = "OFICINA" | "COMERCIO" | "OFICINA_COMERCIO" | "SERVIC
 export type ViewID = 
   | 'dashboard' 
   | 'sales'
+  | 'carriers'
   | 'clients' 
   | 'vehicles' 
   | 'parts' 
@@ -248,6 +249,7 @@ export interface UserPermissions {
   accessUserManagement: boolean;
   accessQAPanel: boolean;
   accessSales?: boolean;
+  accessCarriers?: boolean;
   accessQuotations?: boolean;
   accessNotifications?: boolean;
   accessAccountsReceivable?: boolean;
@@ -259,6 +261,7 @@ export interface UserPermissions {
   canViewOtherStoresStock?: boolean; // Permissão para visualizar estoque de outras lojas/filiais da rede
   canSellOtherStoresStock?: boolean; // Permissão para realizar venda / OS com peças do estoque de outras lojas/filiais
   canViewAllCompaniesHistory?: boolean; // Permissão para visualizar histórico e auditoria de todas as empresas
+  restrictToOwnSales?: boolean; // Se ativo (true), o vendedor/usuário só visualiza seus próprios pedidos de venda. Se inativo (false), visualiza todos os pedidos da empresa.
 }
 
 export interface User {
@@ -731,6 +734,42 @@ export interface DataMigrationReport {
   sampleBeforeAfter: MigrationSampleDiff[];
 }
 
+export type FreightType = 'cif' | 'fob' | 'none' | 'CIF' | 'FOB' | 'NONE' | 'THIRD_PARTY' | 'terceiros';
+export type ShippingOperation = 'normal' | 'direct' | 'redespacho';
+
+export interface Carrier {
+  id: string;
+  companyId: string;
+  corporateName: string; // Razão Social
+  tradeName?: string; // Nome Fantasia
+  cnpj: string; // CNPJ ou CPF
+  stateRegistration?: string; // Inscrição Estadual (IE)
+  rntrc?: string; // Registro Nacional de Transportadores Rodoviários de Cargas (ANTT)
+  phone: string; // Telefone Fixo
+  cellphone?: string; // Telefone Celular
+  whatsapp?: string; // WhatsApp
+  email: string; // E-mail
+  contactName?: string; // Nome do Contato / Responsável
+  cep: string; // CEP
+  street: string; // Logradouro
+  number: string; // Número
+  complement?: string; // Complemento
+  neighborhood: string; // Bairro
+  city: string; // Cidade
+  state: string; // UF
+  internalCode?: string; // Código Interno (Ex: TR-001)
+  notes?: string; // Observações gerais
+  active: boolean; // Ativo / Inativo
+  status?: 'active' | 'inactive'; // Status auxiliar
+  supportsRedispersion?: boolean; // Suporta operação de redespacho
+  shippingOperations?: Array<'normal' | 'redespacho' | 'direct'>; // Tipos de operação suportados
+  defaultFreightType?: FreightType; // Modalidade padrão de frete
+  logisticsHub?: string; // Ponto / Hub de apoio logístico
+  trackingUrl?: string; // URL / Portal de Rastreamento de Cargas
+  createdAt: string;
+  updatedAt?: string;
+}
+
 export interface Supplier {
   id: string;
   name: string; // Nome / Razão Social
@@ -795,6 +834,15 @@ export interface Quotation {
   deliveryDays?: number;
   notes?: string;
   createdBy: string; // Nome do usuário solicitante
+  // Logística & Transporte de Frete
+  freightType?: FreightType;
+  carrierId?: string;
+  carrierName?: string;
+  freightValue?: number;
+  shippingOperation?: ShippingOperation;
+  logisticsHub?: string;
+  redispersionCarrierId?: string;
+  redispersionCarrierName?: string;
 }
 
 export interface PaymentMethodOption {
@@ -1072,6 +1120,15 @@ export interface CommercialSale {
   fiscalAccessKey?: string;
   notes?: string;
   createdBy: string;
+  // Logística & Transporte de Frete
+  freightType?: FreightType;
+  carrierId?: string;
+  carrierName?: string;
+  freightValue?: number;
+  shippingOperation?: ShippingOperation;
+  logisticsHub?: string;
+  redispersionCarrierId?: string;
+  redispersionCarrierName?: string;
 }
 
 

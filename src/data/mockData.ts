@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { User, Client, Vehicle, Part, Service, Budget, ServiceOrder, HistoryEntry, TestCase, StockMovement, CompanyInfo, SystemNotification, AlertSettings, Supplier, SupplierPartPrice, Quotation, AccountReceivable, AccountPayable, FinancialTransaction, MaintenanceLog, PaymentMethodOption, FiscalDocument, BoletoDocument, InterBranchSaleLogistics, SefazApiConfig, TaxOperationNature, TaxRule, XmlImportRecord, CommercialSale, getDefaultModulesForBusinessType } from '../types';
+import { User, Client, Vehicle, Part, Service, Budget, ServiceOrder, HistoryEntry, TestCase, StockMovement, CompanyInfo, SystemNotification, AlertSettings, Supplier, SupplierPartPrice, Quotation, AccountReceivable, AccountPayable, FinancialTransaction, MaintenanceLog, PaymentMethodOption, FiscalDocument, BoletoDocument, InterBranchSaleLogistics, SefazApiConfig, TaxOperationNature, TaxRule, XmlImportRecord, CommercialSale, Carrier, getDefaultModulesForBusinessType } from '../types';
 
 export const INITIAL_SEFAZ_CONFIG: SefazApiConfig = {
   environment: 'homologation',
@@ -1838,6 +1838,74 @@ export const INITIAL_SALES: CommercialSale[] = [
   }
 ];
 
+export const INITIAL_CARRIERS: Carrier[] = [
+  {
+    id: 'car-1',
+    companyId: 'comp-1',
+    corporateName: 'Braspress Transportes Urgentes Ltda',
+    tradeName: 'Braspress Logística',
+    cnpj: '48.740.351/0001-65',
+    stateRegistration: '112.445.890.115',
+    phone: '(11) 3429-5000',
+    whatsapp: '(11) 98765-4321',
+    email: 'atendimento@braspress.com.br',
+    cep: '02050-010',
+    street: 'Av. Presidente Castelo Branco',
+    number: '3900',
+    complement: 'Galpão 4 - Portaria B',
+    neighborhood: 'Pari',
+    city: 'São Paulo',
+    state: 'SP',
+    internalCode: 'TR-001',
+    notes: 'Transportadora padrão para entregas interestaduais e redespacho com seguro de carga.',
+    active: true,
+    createdAt: '2026-08-01T08:00:00Z'
+  },
+  {
+    id: 'car-2',
+    companyId: 'comp-1',
+    corporateName: 'Jadlog Logística S/A',
+    tradeName: 'Jadlog Express',
+    cnpj: '04.884.082/0001-35',
+    stateRegistration: '116.890.123.118',
+    phone: '(11) 3563-2000',
+    whatsapp: '(11) 99123-4567',
+    email: 'comercial@jadlog.com.br',
+    cep: '05318-000',
+    street: 'Av. Gastão Vidigal',
+    number: '1132',
+    complement: 'Bloco C',
+    neighborhood: 'Vila Leopoldina',
+    city: 'São Paulo',
+    state: 'SP',
+    internalCode: 'TR-002',
+    notes: 'Entregas expressas de encomendas leves e autopeças para balcão.',
+    active: true,
+    createdAt: '2026-08-05T09:30:00Z'
+  },
+  {
+    id: 'car-3',
+    companyId: 'comp-1',
+    corporateName: 'Rodonaves Transportes e Encomendas Ltda',
+    tradeName: 'RTE Rodonaves',
+    cnpj: '44.914.992/0001-38',
+    stateRegistration: '582.012.345.110',
+    phone: '(16) 2101-9000',
+    whatsapp: '(16) 99876-1234',
+    email: 'contato@rodonaves.com.br',
+    cep: '14075-500',
+    street: 'Rua General Câmara',
+    number: '1255',
+    neighborhood: 'Ipiranga',
+    city: 'Ribeirão Preto',
+    state: 'SP',
+    internalCode: 'TR-003',
+    notes: 'Especialista em cargas fracionadas no interior de SP, MG e PR.',
+    active: true,
+    createdAt: '2026-08-10T14:00:00Z'
+  }
+];
+
 // Complete Database load/save management
 export interface AppDatabase {
   landingContent?: any;
@@ -1851,6 +1919,7 @@ export interface AppDatabase {
   vehicles: Vehicle[];
   parts: Part[];
   sales?: CommercialSale[];
+  carriers?: Carrier[];
   stockMovements?: StockMovement[];
   services: Service[];
   budgets: Budget[];
@@ -1890,6 +1959,7 @@ export function getDatabase(): AppDatabase {
       vehicles: INITIAL_VEHICLES,
       parts: INITIAL_PARTS,
       sales: INITIAL_SALES,
+      carriers: INITIAL_CARRIERS,
       stockMovements: INITIAL_STOCK_MOVEMENTS,
       services: INITIAL_SERVICES,
       budgets: INITIAL_BUDGETS,
@@ -1924,6 +1994,9 @@ export function getDatabase(): AppDatabase {
       }
       if (!db.sales) {
         db.sales = INITIAL_SALES;
+      }
+      if (!db.carriers) {
+        db.carriers = INITIAL_CARRIERS;
       }
       if (!db.stockMovements) {
         db.stockMovements = INITIAL_STOCK_MOVEMENTS;
@@ -1998,6 +2071,8 @@ export function getDatabase(): AppDatabase {
         clients: INITIAL_CLIENTS,
         vehicles: INITIAL_VEHICLES,
         parts: INITIAL_PARTS,
+        sales: INITIAL_SALES,
+        carriers: INITIAL_CARRIERS,
         stockMovements: INITIAL_STOCK_MOVEMENTS,
         services: INITIAL_SERVICES,
         budgets: INITIAL_BUDGETS,

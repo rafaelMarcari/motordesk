@@ -66,6 +66,7 @@ const DEFAULT_LEVEL_PERMISSIONS: { [key in UserRole]: UserPermissions } = {
   admin: {
     accessDashboard: true,
     accessSales: true,
+    accessCarriers: true,
     accessClients: true,
     accessVehicles: true,
     accessParts: true,
@@ -86,10 +87,12 @@ const DEFAULT_LEVEL_PERMISSIONS: { [key in UserRole]: UserPermissions } = {
     canViewOtherStoresStock: true,
     canSellOtherStoresStock: true,
     canViewAllCompaniesHistory: true,
+    restrictToOwnSales: false,
   },
   atendente: {
     accessDashboard: true,
     accessSales: true,
+    accessCarriers: true,
     accessClients: true,
     accessVehicles: true,
     accessParts: false,
@@ -110,10 +113,12 @@ const DEFAULT_LEVEL_PERMISSIONS: { [key in UserRole]: UserPermissions } = {
     canViewOtherStoresStock: true,
     canSellOtherStoresStock: false,
     canViewAllCompaniesHistory: false,
+    restrictToOwnSales: false,
   },
   mecanico: {
     accessDashboard: true,
     accessSales: false,
+    accessCarriers: false,
     accessClients: false,
     accessVehicles: false,
     accessParts: true,
@@ -134,10 +139,12 @@ const DEFAULT_LEVEL_PERMISSIONS: { [key in UserRole]: UserPermissions } = {
     canViewOtherStoresStock: false,
     canSellOtherStoresStock: false,
     canViewAllCompaniesHistory: false,
+    restrictToOwnSales: false,
   },
   qa: {
     accessDashboard: true,
     accessSales: true,
+    accessCarriers: true,
     accessClients: true,
     accessVehicles: true,
     accessParts: true,
@@ -158,12 +165,15 @@ const DEFAULT_LEVEL_PERMISSIONS: { [key in UserRole]: UserPermissions } = {
     canViewOtherStoresStock: true,
     canSellOtherStoresStock: true,
     canViewAllCompaniesHistory: true,
+    restrictToOwnSales: false,
   }
 };
 
 const PERMISSION_LABEL_MAP: { [K in keyof UserPermissions]: string } = {
   accessDashboard: "Dashboard Geral KPI",
   accessSales: "Vendas & Balcão (PDV / Comércio)",
+  accessCarriers: "Cadastro de Transportadoras & Frete",
+  restrictToOwnSales: "Restringir aos Próprios Pedidos de Venda (Vendedores)",
   accessClients: "Cadastro de Clientes",
   accessVehicles: "Cadastro de Veículos",
   accessParts: "Controle de Peças e Estoque",
@@ -2256,6 +2266,9 @@ export default function UserManagementView({
 
               const permissionList: { key: keyof UserPermissions; label: string }[] = [
                 { key: 'accessDashboard', label: 'Painel Geral / KPIs' },
+                { key: 'accessSales', label: 'Vendas & Balcão (PDV)' },
+                { key: 'restrictToOwnSales', label: 'Restringir aos Próprios Pedidos de Venda' },
+                { key: 'accessCarriers', label: 'Cadastro de Transportadoras & Fretes' },
                 { key: 'accessClients', label: 'Cadastro de Clientes' },
                 { key: 'accessVehicles', label: 'Cadastro de Veículos' },
                 { key: 'accessParts', label: 'Catálogo de Peças' },

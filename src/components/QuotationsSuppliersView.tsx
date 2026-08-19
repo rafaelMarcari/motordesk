@@ -35,7 +35,8 @@ import {
   Filter,
   Copy,
   ExternalLink,
-  Loader2
+  Loader2,
+  Truck
 } from 'lucide-react';
 import { generatePdfFromElement } from '../utils/pdfGenerator';
 import { 
@@ -45,7 +46,10 @@ import {
   QuotationItem, 
   Part, 
   User, 
-  StockMovement 
+  StockMovement,
+  Carrier,
+  FreightType,
+  ShippingOperation
 } from '../types';
 import { AppDatabase, saveDatabase } from '../data/mockData';
 
@@ -69,6 +73,12 @@ export default function QuotationsSuppliersView({
   onAddHistoryLog
 }: QuotationsSuppliersViewProps) {
   const [activeTab, setActiveTab] = useState<'quotations' | 'suppliers' | 'conversions'>('quotations');
+
+  // Multi-tenant Active Company Scope & Carriers
+  const activeCompanyId = db.companyInfo?.id;
+  const availableCarriers: Carrier[] = (db.carriers || []).filter(
+    c => (!c.companyId || !activeCompanyId || c.companyId === activeCompanyId) && (c.status === 'active' || c.active !== false)
+  );
 
   // Suppliers State
   const suppliers = db.suppliers || [];
@@ -111,11 +121,20 @@ export default function QuotationsSuppliersView({
 
   // Quotation Create/Edit Modal State
   const [showQuotationModal, setShowQuotationModal] = useState(false);
+  const [editingQuotation, setEditingQuotation] = useState<Quotation | null>(null);
   const [selectedSupplierId, setSelectedSupplierId] = useState('');
   const [quotationPaymentTerms, setQuotationPaymentTerms] = useState('');
   const [quotationDeliveryDays, setQuotationDeliveryDays] = useState<number>(2);
   const [quotationNotes, setQuotationNotes] = useState('');
   const [quotationItems, setQuotationItems] = useState<QuotationItem[]>([]);
+
+  // Logistics & Freight State for Quotations
+  const [quotationFreightType, setQuotationFreightType] = useState<FreightType>('NONE');
+  const [quotationCarrierId, setQuotationCarrierId] = useState<string>('');
+  const [quotationFreightValue, setQuotationFreightValue] = useState<number>(0);
+  const [quotationShippingOperation, setQuotationShippingOperation] = useState<ShippingOperation>('direct');
+  const [quotationLogisticsHub, setQuotationLogisticsHub] = useState<string>('');
+  const [quotationRedispersionCarrierId, setQuotationRedispersionCarrierId] = useState<string>('');
   
   // Custom Part Selection State inside Quotation Modal
   const [selectedPartIdToAdd, setSelectedPartIdToAdd] = useState('');
@@ -244,11 +263,42 @@ export default function QuotationsSuppliersView({
 
   // --- QUOTATION HANDLERS & SMART SUGGESTIONS ---
   const handleOpenNewQuotation = () => {
+    setEditingQuotation(null);
     setSelectedSupplierId('');
     setQuotationPaymentTerms('');
     setQuotationDeliveryDays(2);
     setQuotationNotes('');
     setQuotationItems([]);
+    setQuotationFreightType('NONE');
+    setQuotationCarrierId('');
+    setQuotationFreightValue(0);
+    setQuotationShippingOperation('direct');
+    setQuotationLogisticsHub('');
+    setQuotationRedispersionCarrierId('');
+    setShowQuotationModal(true);
+  };
+
+  const handleOpenEditQuotation = (cot: Quotation) => {
+    setEditingQuotation(cot);
+    setSelectedSupplierId(cot.supplierId);
+    setQuotationPaymentTerms(cot.paymentTerms || '');
+    setQuotationDeliveryDays(cot.deliveryDays || 2);
+    setQuotationNotes(cot.notes || '');
+    setQuotationItems(cot.items || []);
+    
+    // Normalize freight type if stored in different casing
+    const rawFt = cot.freightType ? String(cot.freightType).toUpperCase() : 'NONE';
+    const normFt: FreightType = (rawFt === 'CIF' || rawFt === 'FOB' || rawFt === 'THIRD_PARTY' || rawFt === 'TERCEIROS')
+      ? (rawFt === 'TERCEIROS' ? 'THIRD_PARTY' : rawFt as FreightType)
+      : 'NONE';
+
+    setQuotationFreightType(normFt);
+    setQuotationCarrierId(cot.carrierId || '');
+    setQuotationFreightValue(cot.freightValue || 0);
+    setQuotationShippingOperation(cot.shippingOperation || 'direct');
+    setQuotationLogisticsHub(cot.logisticsHub || '');
+    setQuotationRedispersionCarrierId(cot.redispersionCarrierId || '');
+    setShowDetailModal(false);
     setShowQuotationModal(true);
   };
 
@@ -404,32 +454,53 @@ export default function QuotationsSuppliersView({
     const sup = suppliers.find(s => s.id === selectedSupplierId);
     const totalVal = quotationItems.reduce((acc, item) => acc + (item.totalCost || 0), 0);
 
-    const newCotCode = `COT-2026-${String(quotations.length + 1).padStart(3, '0')}`;
+    const isFreightActive = quotationFreightType !== 'NONE' && quotationFreightType !== 'none';
+    const isRedespacho = isFreightActive && quotationShippingOperation === 'redespacho';
+    const selectedCarrier = availableCarriers.find(c => c.id === quotationCarrierId);
+    const selectedRedispCarrier = availableCarriers.find(c => c.id === quotationRedispersionCarrierId);
+
+    const newCotCode = editingQuotation ? editingQuotation.code : `COT-2026-${String(quotations.length + 1).padStart(3, '0')}`;
     const newQuotation: Quotation = {
-      id: `cot-${Date.now()}`,
+      id: editingQuotation ? editingQuotation.id : `cot-${Date.now()}`,
       code: newCotCode,
       supplierId: selectedSupplierId,
-      supplierName: sup ? sup.name : 'Fornecedor Desconhecido',
-      createdAt: new Date().toISOString(),
-      validUntil: new Date(Date.now() + 15 * 24 * 60 * 60 * 1000).toISOString(),
+      supplierName: sup ? sup.name : (editingQuotation?.supplierName || 'Fornecedor Desconhecido'),
+      companyId: activeCompanyId,
+      createdAt: editingQuotation ? editingQuotation.createdAt : new Date().toISOString(),
+      validUntil: editingQuotation ? editingQuotation.validUntil : new Date(Date.now() + 15 * 24 * 60 * 60 * 1000).toISOString(),
       status: status,
       items: quotationItems,
       totalValue: totalVal,
       paymentTerms: quotationPaymentTerms,
       deliveryDays: quotationDeliveryDays,
       notes: quotationNotes,
-      createdBy: currentUser.name
+      createdBy: editingQuotation ? editingQuotation.createdBy : currentUser.name,
+      // Logística & Transporte de Frete
+      freightType: quotationFreightType,
+      carrierId: isFreightActive && quotationCarrierId ? quotationCarrierId : undefined,
+      carrierName: isFreightActive && quotationCarrierId ? (selectedCarrier?.corporateName || selectedCarrier?.tradeName || undefined) : undefined,
+      freightValue: isFreightActive ? (Number(quotationFreightValue) || 0) : 0,
+      shippingOperation: isFreightActive ? quotationShippingOperation : undefined,
+      logisticsHub: isRedespacho && quotationLogisticsHub ? quotationLogisticsHub.trim() : undefined,
+      redispersionCarrierId: isRedespacho && quotationRedispersionCarrierId ? quotationRedispersionCarrierId : undefined,
+      redispersionCarrierName: isRedespacho && quotationRedispersionCarrierId ? (selectedRedispCarrier?.corporateName || selectedRedispCarrier?.tradeName || undefined) : undefined,
     };
 
-    const updatedQuotations = [newQuotation, ...quotations];
+    let updatedQuotations: Quotation[];
+    if (editingQuotation) {
+      updatedQuotations = quotations.map(q => q.id === editingQuotation.id ? newQuotation : q);
+    } else {
+      updatedQuotations = [newQuotation, ...quotations];
+    }
+
     const updatedDb = { ...db, quotations: updatedQuotations };
     onUpdateDb(updatedDb);
     saveDatabase(updatedDb);
 
     onAddHistoryLog(
       'user_activity',
-      'Nova Cotação de Preço Criada',
-      `Solicitação de Cotação ${newCotCode} para "${newQuotation.supplierName}" criada por ${currentUser.name} (Total: R$ ${totalVal.toFixed(2)}).`,
+      editingQuotation ? 'Cotação de Preço Atualizada' : 'Nova Cotação de Preço Criada',
+      `Solicitação de Cotação ${newCotCode} para "${newQuotation.supplierName}" ${editingQuotation ? 'atualizada' : 'criada'} por ${currentUser.name} (Total: R$ ${totalVal.toFixed(2)}).`,
       '',
       ''
     );
@@ -625,6 +696,14 @@ export default function QuotationsSuppliersView({
     if (cot.deliveryDays) {
       msg += `Prazo Limite para Resposta: ${cot.deliveryDays} dia(s)\n`;
     }
+    if (cot.freightType && cot.freightType !== 'NONE' && cot.freightType !== 'none') {
+      msg += `Modalidade de Frete: ${cot.freightType === 'CIF' || cot.freightType === 'cif' ? 'CIF (Conta do Fornecedor)' : cot.freightType === 'FOB' || cot.freightType === 'fob' ? 'FOB (Conta do Comprador)' : 'Terceiros'}\n`;
+      if (cot.carrierName) msg += `Transportadora Indicada: ${cot.carrierName}\n`;
+      if (cot.freightValue && cot.freightValue > 0) msg += `Valor do Frete Estimado: R$ ${cot.freightValue.toFixed(2)}\n`;
+      if (cot.shippingOperation === 'redespacho') {
+        msg += `Operação: Redespacho (Hub: ${cot.logisticsHub || 'A definir'}${cot.redispersionCarrierName ? `, Transp. Redespacho: ${cot.redispersionCarrierName}` : ''})\n`;
+      }
+    }
     if (cot.notes) {
       msg += `Observações: ${cot.notes}\n`;
     }
@@ -652,6 +731,15 @@ export default function QuotationsSuppliersView({
 
     if (cot.paymentTerms) {
       msg += `\nCondição de Pagamento Pretendida: ${cot.paymentTerms}\n`;
+    }
+    if (cot.freightType && cot.freightType !== 'NONE' && cot.freightType !== 'none') {
+      msg += `Frete: *${cot.freightType === 'CIF' || cot.freightType === 'cif' ? 'CIF' : cot.freightType === 'FOB' || cot.freightType === 'fob' ? 'FOB' : 'Terceiros'}*`;
+      if (cot.carrierName) msg += ` | Transportadora: *${cot.carrierName}*`;
+      if (cot.freightValue && cot.freightValue > 0) msg += ` (R$ ${cot.freightValue.toFixed(2)})`;
+      msg += `\n`;
+      if (cot.shippingOperation === 'redespacho') {
+        msg += `Operação: *Redespacho* (Hub: ${cot.logisticsHub || 'N/D'})\n`;
+      }
     }
     if (cot.notes) {
       msg += `Observações: ${cot.notes}\n`;
@@ -921,6 +1009,16 @@ export default function QuotationsSuppliersView({
                           >
                             <FileText className="w-3.5 h-3.5" /> Detalhes
                           </button>
+
+                          {cot.status !== 'converted' && (
+                            <button
+                              onClick={() => handleOpenEditQuotation(cot)}
+                              title="Editar dados da cotação / frete"
+                              className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-lg transition inline-flex items-center gap-1 cursor-pointer text-xs"
+                            >
+                              <Edit className="w-3.5 h-3.5 text-slate-600" /> Editar
+                            </button>
+                          )}
 
                           {/* WhatsApp Action Button */}
                           <button
@@ -1486,11 +1584,165 @@ export default function QuotationsSuppliersView({
                 </div>
 
                 {/* Total Summary */}
-                <div className="flex items-center justify-between p-3.5 bg-slate-900 text-white rounded-xl font-mono">
-                  <span className="text-xs uppercase font-bold text-slate-400">Valor Total Estimado da Cotação:</span>
-                  <span className="text-base font-black text-emerald-400">
-                    R$ {quotationItems.reduce((acc, i) => acc + (i.totalCost || 0), 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                  </span>
+                {(() => {
+                  const itemsSubtotal = quotationItems.reduce((acc, i) => acc + (i.totalCost || 0), 0);
+                  const isFreightActive = quotationFreightType !== 'NONE' && quotationFreightType !== 'none';
+                  const effectiveFreight = isFreightActive ? (Number(quotationFreightValue) || 0) : 0;
+                  const grandTotal = itemsSubtotal + effectiveFreight;
+
+                  return (
+                    <div className="p-3.5 bg-slate-900 text-white rounded-xl font-mono space-y-1.5">
+                      <div className="flex items-center justify-between text-xs text-slate-300">
+                        <span>Subtotal Itens:</span>
+                        <span className="font-bold">R$ {itemsSubtotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                      </div>
+                      {isFreightActive && effectiveFreight > 0 && (
+                        <div className="flex items-center justify-between text-xs text-amber-300">
+                          <span>Frete ({quotationFreightType}):</span>
+                          <span className="font-bold">+ R$ {effectiveFreight.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                        </div>
+                      )}
+                      <div className="flex items-center justify-between pt-1.5 border-t border-slate-700">
+                        <span className="text-xs uppercase font-bold text-slate-400">Total Estimado do Pedido:</span>
+                        <span className="text-base font-black text-emerald-400">
+                          R$ {grandTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
+
+              {/* Step 3: Logistics & Freight Section */}
+              <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
+                <div className="flex items-center justify-between border-b border-slate-200/80 pb-2">
+                  <h3 className="font-bold text-slate-800 text-xs uppercase flex items-center gap-1.5">
+                    <Truck className="w-4 h-4 text-indigo-600" />
+                    3. Logística & Transporte (Frete)
+                  </h3>
+                  <span className="text-[10px] text-slate-500 font-medium">Controle de transporte e redespacho</span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                  {/* Tipo de Frete */}
+                  <div className="space-y-1">
+                    <label className="font-bold text-slate-700 uppercase text-[10px]">
+                      Tipo de Frete *
+                    </label>
+                    <select
+                      value={quotationFreightType}
+                      onChange={e => {
+                        const val = e.target.value as FreightType;
+                        setQuotationFreightType(val);
+                        if (val === 'NONE' || val === 'none') {
+                          setQuotationCarrierId('');
+                          setQuotationFreightValue(0);
+                          setQuotationShippingOperation('direct');
+                          setQuotationLogisticsHub('');
+                          setQuotationRedispersionCarrierId('');
+                        }
+                      }}
+                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-800 focus:outline-hidden focus:border-indigo-500"
+                    >
+                      <option value="NONE">Sem Frete / Retirada no Balcão</option>
+                      <option value="CIF">CIF (Conta do Fornecedor / Remetente)</option>
+                      <option value="FOB">FOB (Conta do Comprador / Destinatário)</option>
+                      <option value="THIRD_PARTY">Terceiros (Conta de Terceiros)</option>
+                    </select>
+                  </div>
+
+                  {/* Transportadora (Conditional) */}
+                  {quotationFreightType !== 'NONE' && quotationFreightType !== 'none' && (
+                    <>
+                      <div className="space-y-1">
+                        <label className="font-bold text-slate-700 uppercase text-[10px]">
+                          Transportadora
+                        </label>
+                        <select
+                          value={quotationCarrierId}
+                          onChange={e => setQuotationCarrierId(e.target.value)}
+                          className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs font-medium text-slate-800 focus:outline-hidden focus:border-indigo-500"
+                        >
+                          <option value="">-- Selecione a Transportadora --</option>
+                          {availableCarriers.map(c => (
+                            <option key={c.id} value={c.id}>
+                              {c.corporateName || c.tradeName} {c.cnpj ? `(${c.cnpj})` : ''} {c.city ? `- ${c.city}/${c.state || ''}` : ''}
+                            </option>
+                          ))}
+                        </select>
+                        {availableCarriers.length === 0 && (
+                          <span className="text-[10px] text-amber-600 block">Nenhuma transportadora ativa cadastrada para a empresa.</span>
+                        )}
+                      </div>
+
+                      {/* Valor do Frete */}
+                      <div className="space-y-1">
+                        <label className="font-bold text-slate-700 uppercase text-[10px]">
+                          Valor do Frete (R$)
+                        </label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          min={0}
+                          value={quotationFreightValue === 0 ? '' : quotationFreightValue}
+                          onChange={e => setQuotationFreightValue(parseFloat(e.target.value) || 0)}
+                          placeholder="0,00"
+                          className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs font-mono font-bold text-slate-900 focus:outline-hidden focus:border-indigo-500"
+                        />
+                      </div>
+
+                      {/* Operação Logística */}
+                      <div className="space-y-1">
+                        <label className="font-bold text-slate-700 uppercase text-[10px]">
+                          Operação Logística
+                        </label>
+                        <select
+                          value={quotationShippingOperation}
+                          onChange={e => setQuotationShippingOperation(e.target.value as ShippingOperation)}
+                          className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-800 focus:outline-hidden focus:border-indigo-500"
+                        >
+                          <option value="direct">Transporte Direto</option>
+                          <option value="redespacho">Redespacho</option>
+                        </select>
+                      </div>
+
+                      {/* Redespacho Subfields */}
+                      {quotationShippingOperation === 'redespacho' && (
+                        <>
+                          <div className="space-y-1">
+                            <label className="font-bold text-slate-700 uppercase text-[10px]">
+                              Local / Hub Logístico
+                            </label>
+                            <input
+                              type="text"
+                              value={quotationLogisticsHub}
+                              onChange={e => setQuotationLogisticsHub(e.target.value)}
+                              placeholder="Ex: Hub Campinas / CD São Paulo"
+                              className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs focus:outline-hidden focus:border-indigo-500"
+                            />
+                          </div>
+
+                          <div className="space-y-1">
+                            <label className="font-bold text-slate-700 uppercase text-[10px]">
+                              Transportadora de Redespacho
+                            </label>
+                            <select
+                              value={quotationRedispersionCarrierId}
+                              onChange={e => setQuotationRedispersionCarrierId(e.target.value)}
+                              className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs font-medium text-slate-800 focus:outline-hidden focus:border-indigo-500"
+                            >
+                              <option value="">-- Selecione a Transp. de Redespacho --</option>
+                              {availableCarriers.map(c => (
+                                <option key={c.id} value={c.id}>
+                                  {c.corporateName || c.tradeName} {c.cnpj ? `(${c.cnpj})` : ''} {c.city ? `- ${c.city}/${c.state || ''}` : ''}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        </>
+                      )}
+                    </>
+                  )}
                 </div>
               </div>
 
@@ -1570,6 +1822,16 @@ export default function QuotationsSuppliersView({
                 <span className="text-slate-400 text-xs font-sans">({selectedQuotation.supplierName})</span>
               </div>
               <div className="flex items-center gap-2">
+                {selectedQuotation.status !== 'converted' && (
+                  <button
+                    type="button"
+                    onClick={() => handleOpenEditQuotation(selectedQuotation)}
+                    className="bg-slate-700 hover:bg-slate-600 text-white font-semibold text-xs px-3 py-1.5 rounded-lg transition inline-flex items-center gap-1.5 cursor-pointer"
+                    title="Editar dados da cotação e frete"
+                  >
+                    <Edit className="w-3.5 h-3.5 text-indigo-300" /> Editar
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={handlePrintQuotationPdf}
@@ -1680,6 +1942,117 @@ export default function QuotationsSuppliersView({
                 </table>
               </div>
 
+              {/* Totais & Resumo Financeiro da Cotação / Pedido */}
+              {(() => {
+                const itemsSubtotal = selectedQuotation.items.reduce((acc, i) => acc + (i.totalCost || 0), 0);
+                const isFreightActive = selectedQuotation.freightType && selectedQuotation.freightType !== 'NONE' && selectedQuotation.freightType !== 'none';
+                const freightVal = isFreightActive ? (Number(selectedQuotation.freightValue) || 0) : 0;
+                const grandTotal = itemsSubtotal + freightVal;
+
+                return (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* Logística & Frete Detalhado */}
+                    <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-2.5">
+                      <div className="flex items-center justify-between border-b border-slate-200 pb-2">
+                        <span className="font-bold text-slate-800 text-xs uppercase flex items-center gap-1.5">
+                          <Truck className="w-4 h-4 text-indigo-600" />
+                          Transporte & Frete
+                        </span>
+                        <span className="font-bold text-[10px] px-2 py-0.5 rounded-full bg-slate-200 text-slate-800 uppercase font-mono">
+                          {selectedQuotation.freightType === 'CIF' || selectedQuotation.freightType === 'cif'
+                            ? 'CIF'
+                            : selectedQuotation.freightType === 'FOB' || selectedQuotation.freightType === 'fob'
+                            ? 'FOB'
+                            : selectedQuotation.freightType === 'THIRD_PARTY' || selectedQuotation.freightType === 'terceiros'
+                            ? 'Terceiros'
+                            : 'Sem Frete'}
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2 text-xs">
+                        <div>
+                          <span className="text-[10px] text-slate-400 font-bold block uppercase">Tipo de Frete:</span>
+                          <span className="font-semibold text-slate-800">
+                            {selectedQuotation.freightType === 'CIF' || selectedQuotation.freightType === 'cif'
+                              ? 'CIF (Por conta do Fornecedor)'
+                              : selectedQuotation.freightType === 'FOB' || selectedQuotation.freightType === 'fob'
+                              ? 'FOB (Por conta do Comprador)'
+                              : selectedQuotation.freightType === 'THIRD_PARTY' || selectedQuotation.freightType === 'terceiros'
+                              ? 'Terceiros (Conta de Terceiros)'
+                              : 'Sem Frete / Retirada no Balcão'}
+                          </span>
+                        </div>
+
+                        <div>
+                          <span className="text-[10px] text-slate-400 font-bold block uppercase">Transportadora:</span>
+                          <span className="font-semibold text-slate-800">
+                            {selectedQuotation.carrierName || 'Não informada / Própria'}
+                          </span>
+                        </div>
+
+                        <div>
+                          <span className="text-[10px] text-slate-400 font-bold block uppercase">Valor do Frete:</span>
+                          <span className="font-semibold font-mono text-slate-800">
+                            {freightVal > 0
+                              ? `R$ ${freightVal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`
+                              : 'R$ 0,00'}
+                          </span>
+                        </div>
+
+                        <div>
+                          <span className="text-[10px] text-slate-400 font-bold block uppercase">Operação:</span>
+                          <span className="font-semibold text-slate-800">
+                            {selectedQuotation.shippingOperation === 'redespacho' ? 'Redespacho' : 'Transporte Direto'}
+                          </span>
+                        </div>
+
+                        {selectedQuotation.shippingOperation === 'redespacho' && (
+                          <>
+                            <div>
+                              <span className="text-[10px] text-slate-400 font-bold block uppercase">Hub Logístico:</span>
+                              <span className="font-semibold text-slate-800">
+                                {selectedQuotation.logisticsHub || 'Não informado'}
+                              </span>
+                            </div>
+
+                            <div>
+                              <span className="text-[10px] text-slate-400 font-bold block uppercase">Transp. Redespacho:</span>
+                              <span className="font-semibold text-slate-800">
+                                {selectedQuotation.redispersionCarrierName || 'Não informada'}
+                              </span>
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Resumo Financeiro */}
+                    <div className="p-4 bg-slate-900 text-white rounded-xl font-mono flex flex-col justify-between space-y-2">
+                      <div className="space-y-1.5">
+                        <span className="text-[10px] uppercase font-bold text-slate-400 block tracking-wider">Resumo Financeiro:</span>
+                        <div className="flex items-center justify-between text-xs text-slate-300">
+                          <span>Subtotal Itens:</span>
+                          <span className="font-bold">R$ {itemsSubtotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                        </div>
+                        {freightVal > 0 && (
+                          <div className="flex items-center justify-between text-xs text-amber-300">
+                            <span>Frete ({selectedQuotation.freightType}):</span>
+                            <span className="font-bold">+ R$ {freightVal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="flex items-center justify-between pt-2 border-t border-slate-700">
+                        <span className="text-xs uppercase font-bold text-slate-400">Total Geral:</span>
+                        <span className="text-base font-black text-emerald-400">
+                          R$ {grandTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+
               {/* Dispatch / Send Options Panel */}
               {(() => {
                 const sup = suppliers.find(s => s.id === selectedQuotation.supplierId);
@@ -1687,7 +2060,7 @@ export default function QuotationsSuppliersView({
                 const hasEmail = Boolean(sup?.email && sup.email.trim().length > 0);
 
                 return (
-                  <div className="p-4 bg-slate-50 border border-slate-200/80 rounded-xl space-y-3">
+                  <div className="p-4 bg-slate-50 border border-slate-200/80 rounded-xl space-y-3" data-html2canvas-ignore="true">
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200 pb-3">
                       <div>
                         <h4 className="font-bold text-slate-900 text-xs flex items-center gap-1.5">

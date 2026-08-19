@@ -212,6 +212,9 @@ export default function ProfileView({ currentUser, db, onSaveUsers, onAddHistory
           {(() => {
             const PERMISSION_LABEL_MAP: { [K in keyof UserPermissions]: string } = {
               accessDashboard: "Dashboard Geral KPI",
+              accessSales: "Vendas & Balcão (PDV)",
+              accessCarriers: "Transportadoras & Fretes",
+              restrictToOwnSales: "Restringir aos Próprios Pedidos de Venda",
               accessClients: "Cadastro de Clientes",
               accessVehicles: "Cadastro de Veículos",
               accessParts: "Controle de Peças e Estoque",
@@ -231,7 +234,8 @@ export default function ProfileView({ currentUser, db, onSaveUsers, onAddHistory
               canEditBudgets: "Editar Orçamentos Existentes",
               canCustomizePdf: "Personalizar Layout do PDF",
               canViewOtherStoresStock: "Estoque Outras Lojas",
-              canSellOtherStoresStock: "Vender Peças Outra Loja"
+              canSellOtherStoresStock: "Vender Peças Outra Loja",
+              canViewAllCompaniesHistory: "Auditoria de Todas as Empresas"
             };
 
             return Object.entries(PERMISSION_LABEL_MAP).map(([key, label]) => {
