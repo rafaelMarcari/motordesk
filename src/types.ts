@@ -216,6 +216,7 @@ export interface CompanyInfo {
   cityRegistration?: string;  // Inscrição Municipal (IM)
   cnaeCode?: string;         // CNAE Principal (Ex: 4520-0/01 Oficina Mecânica)
   crt?: '1' | '2' | '3';      // CRT: 1-Simples Nacional, 2-Simples Excesso, 3-Lucro Presumido/Real
+  taxRegime?: 'simples_nacional' | 'lucro_presumido' | 'lucro_real';
   taxRegimeLabel?: string;    // Rótulo amigável do regime tributário
   ibgeCityCode?: string;     // Código do Município IBGE (Ex: 3550308)
   uf?: string;               // Sigla do Estado (Ex: SP, RJ, MG)
@@ -234,6 +235,9 @@ export interface CompanyInfo {
   nextNfseNumber?: number;
   nfceSeries?: string;
   nextNfceNumber?: number;
+
+  // Configuração Fiscal Isolada por Empresa
+  sefazConfig?: SefazApiConfig;
 }
 
 export interface UserPermissions {
@@ -734,8 +738,8 @@ export interface DataMigrationReport {
   sampleBeforeAfter: MigrationSampleDiff[];
 }
 
-export type FreightType = 'cif' | 'fob' | 'none' | 'CIF' | 'FOB' | 'NONE' | 'THIRD_PARTY' | 'terceiros';
-export type ShippingOperation = 'normal' | 'direct' | 'redespacho';
+export type FreightType = 'cif' | 'fob' | 'none' | 'CIF' | 'FOB' | 'NONE' | 'THIRD_PARTY' | 'terceiros' | 'SEM_FRETE' | 'DESTINATARIO_FOB' | 'EMITENTE_CIF' | 'PROPRIO_EMITENTE' | 'PROPRIO_DESTINATARIO' | 'SEM_OCORRENCIA';
+export type ShippingOperation = 'normal' | 'direct' | 'redespacho' | 'DIRETA' | 'REDESPACHO';
 
 export interface Carrier {
   id: string;
@@ -969,8 +973,8 @@ export interface FiscalDocumentItem {
 export interface FiscalDocument {
   id: string;
   code: string; // Ex: NFE-000104
-  type: 'nfe_product' | 'nfse_service' | 'nfe_transfer' | 'nfe_order_delivery';
-  status: 'draft' | 'transmitting' | 'authorized' | 'rejected' | 'canceled' | 'cce_issued';
+  type: 'nfe_product' | 'nfse_service' | 'nfe_transfer' | 'nfe_order_delivery' | 'nfce_retail';
+  status: 'draft' | 'transmitting' | 'authorized' | 'rejected' | 'canceled' | 'cce_issued' | 'error' | 'denied';
   accessKey: string; // Chave de acesso SEFAZ (44 dígitos)
   protocolNumber?: string; // Protocolo de autorização SEFAZ
   issueDate: string; // YYYY-MM-DD
@@ -984,14 +988,26 @@ export interface FiscalDocument {
   clientId?: string;
   clientName?: string;
   clientCpfCnpj?: string;
+  clientAddress?: string;
+  clientUf?: string;
+  clientCity?: string;
   serviceOrderId?: string;
   budgetId?: string;
+  saleId?: string;
+  saleCode?: string;
   receivableId?: string;
   receivableCode?: string;
   cfop: string; // Ex: '5.102' (Venda), '5.152' (Transferência de mercadoria), '5.923' (Remessa)
   totalProducts: number;
   totalServices: number;
   totalTaxes: number;
+  
+  // Detalhamento de impostos
+  icmsBase?: number;
+  icmsAmount?: number;
+  pisAmount?: number;
+  cofinsAmount?: number;
+  issAmount?: number;
   
   // Totais da Reforma Tributária 2026
   totalIbs?: number;        // R$ Total IBS
@@ -1002,8 +1018,37 @@ export interface FiscalDocument {
   items: FiscalDocumentItem[];
   cceNotes?: string; // Carta de Correção Eletrônica
   sefazStatusMessage: string; // Ex: "100 - Autorizado o uso da NF-e"
+  rejectionCode?: string;     // Ex: "208", "778"
+  rejectionReason?: string;   // Mensagem detalhada de rejeição
   xmlContent?: string;
+  xmlSent?: string;           // XML de Envio assinado
+  xmlAuthorized?: string;     // XML de Distribuição com protocolo
+  
+  // Dados de Modelo e Emissão
+  docModel?: '55' | '65' | 'NFS-e'; // 55 = NF-e, 65 = NFC-e
+  nfeNumber?: number;
+  series?: string;
+  qrCodeUrl?: string;         // URL QR Code NFC-e
+  qrCodePayload?: string;     // Payload QR Code
+  
+  // Cancelamento
+  cancellationProtocol?: string;
+  cancellationJustification?: string;
+  cancellationDate?: string;
+  
+  // Transportadora & Frete
+  carrierId?: string;
+  carrierName?: string;
+  carrierCnpjCpf?: string;
+  freightType?: FreightType;
+  freightValue?: number;
+  shippingOperation?: ShippingOperation;
+  logisticsHub?: string;
+  redispersionCarrierName?: string;
+  
+  // Auditoria e Ambiente
   environment: 'homologation' | 'production';
+  securityLog?: string[];
   logisticsOption?: 'WAIT_TRANSFER_AT_BUYSTORE' | 'PAY_BUYSTORE_PICKUP_STOCKSTORE';
   transferNfeId?: string;
   salesNfeId?: string;
@@ -1055,10 +1100,10 @@ export interface InterBranchSaleLogistics {
 export interface SefazApiConfig {
   environment: 'homologation' | 'production';
   uf: string;
-  certificateStatus: 'A1_ACTIVE' | 'EXPIRED' | 'NOT_CONFIGURED';
-  certificateName: string;
-  certificateExpirationDate: string;
-  autoTransmit: boolean;
+  certificateStatus: 'A1_ACTIVE' | 'EXPIRED' | 'NOT_CONFIGURED' | 'VALID_ACTIVE';
+  certificateName?: string;
+  certificateExpirationDate?: string;
+  autoTransmit?: boolean;
   taxRegime?: 'simples_nacional' | 'lucro_presumido' | 'lucro_real';
   stateRegistration?: string; // Inscrição Estadual (IE)
   cityRegistration?: string;  // Inscrição Municipal (IM)
@@ -1067,6 +1112,10 @@ export interface SefazApiConfig {
   nextNfeNumber?: number;
   nfseSeries?: string;
   nextNfseNumber?: number;
+  nfceSeries?: string;
+  nextNfceNumber?: number;
+  cscTokenId?: string;
+  cscSecretKey?: string;
   defaultProductCfop?: string;
   defaultServiceCfop?: string;
   defaultIssRatePercent?: number;

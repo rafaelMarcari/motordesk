@@ -20,7 +20,8 @@ import {
   ArrowRight,
   RefreshCw,
   Ban,
-  Truck
+  Truck,
+  ShieldCheck
 } from 'lucide-react';
 import { AppDatabase } from '../data/mockData';
 import {
@@ -33,9 +34,12 @@ import {
   FiscalDocument,
   Carrier,
   FreightType,
-  ShippingOperation
+  ShippingOperation,
+  SefazApiConfig
 } from '../types';
 import ShareDocumentModal from './ShareDocumentModal';
+import FiscalConferenceModal from './FiscalConferenceModal';
+import { FiscalEmissionResult } from '../services/fiscalProvider';
 
 interface SalesViewProps {
   db: AppDatabase;
@@ -83,6 +87,10 @@ export const SalesView: React.FC<SalesViewProps> = ({
   // Receipt Modal State
   const [selectedSaleForReceipt, setSelectedSaleForReceipt] = useState<CommercialSale | null>(null);
   const [showReceiptModal, setShowReceiptModal] = useState<boolean>(false);
+
+  // Fiscal Conference & Emission Modal State (Phase 2)
+  const [selectedSaleForFiscal, setSelectedSaleForFiscal] = useState<CommercialSale | null>(null);
+  const [showFiscalModal, setShowFiscalModal] = useState<boolean>(false);
 
   // Success Notification Banner / Modal
   const [saleSuccessMessage, setSaleSuccessMessage] = useState<string | null>(null);
@@ -1188,6 +1196,11 @@ export const SalesView: React.FC<SalesViewProps> = ({
                               minute: '2-digit'
                             })}
                           </div>
+                          {sale.createdBy && (
+                            <div className="text-[10px] text-slate-500 font-medium truncate max-w-[160px]" title={`Vendedor: ${sale.createdBy}`}>
+                              👤 {sale.createdBy}
+                            </div>
+                          )}
                         </td>
                         <td className="p-3">
                           <div className="font-semibold text-slate-800">{sale.clientName}</div>
@@ -1233,6 +1246,21 @@ export const SalesView: React.FC<SalesViewProps> = ({
                             <Printer className="w-3.5 h-3.5" />
                             Comprovante
                           </button>
+
+                          {!isCanceled && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectedSaleForFiscal(sale);
+                                setShowFiscalModal(true);
+                              }}
+                              className="px-2.5 py-1.5 rounded-lg text-xs font-bold bg-indigo-50 text-indigo-700 hover:bg-indigo-100 transition-all inline-flex items-center gap-1"
+                              title="Emitir Nota Fiscal (NF-e / NFC-e em Homologação)"
+                            >
+                              <ShieldCheck className="w-3.5 h-3.5 text-indigo-600" />
+                              Emitir NF-e
+                            </button>
+                          )}
 
                           {!isCanceled && (
                             <button
@@ -1311,6 +1339,112 @@ export const SalesView: React.FC<SalesViewProps> = ({
               }
             };
             onSaveCompanyInfo?.(updatedCompany);
+          }}
+        />
+      )}
+
+      {/* FISCAL CONFERENCE & TRANSMISSION MODAL (PHASE 2 HOMOLOGATION) */}
+      {showFiscalModal && selectedSaleForFiscal && (
+        <FiscalConferenceModal
+          isOpen={showFiscalModal}
+          onClose={() => {
+            setShowFiscalModal(false);
+            setSelectedSaleForFiscal(null);
+          }}
+          company={currentCompany}
+          client={
+            selectedSaleForFiscal.clientId && selectedSaleForFiscal.clientId !== 'walk-in'
+              ? db.clients.find(c => c.id === selectedSaleForFiscal.clientId)
+              : null
+          }
+          clientName={selectedSaleForFiscal.clientName}
+          clientCpfCnpj={selectedSaleForFiscal.clientCpfCnpj}
+          saleId={selectedSaleForFiscal.id}
+          saleCode={selectedSaleForFiscal.code}
+          paymentMethod={selectedSaleForFiscal.paymentMethod}
+          installmentsCount={selectedSaleForFiscal.installmentsCount}
+          freightType={selectedSaleForFiscal.freightType || 'SEM_FRETE'}
+          carrierId={selectedSaleForFiscal.carrierId}
+          carrierName={selectedSaleForFiscal.carrierName}
+          freightValue={selectedSaleForFiscal.freightValue || 0}
+          shippingOperation={selectedSaleForFiscal.shippingOperation || 'DIRETA'}
+          logisticsHub={selectedSaleForFiscal.logisticsHub}
+          redispersionCarrierName={selectedSaleForFiscal.redispersionCarrierName}
+          notes={selectedSaleForFiscal.notes}
+          items={selectedSaleForFiscal.items.map(i => {
+            const foundPart = db.parts.find(p => p.id === i.partId);
+            return {
+              id: i.partId || `part-${Date.now()}`,
+              code: i.partCode || foundPart?.code || 'P-01',
+              name: i.partName || foundPart?.name || 'Peça Automotiva',
+              quantity: i.quantity,
+              unitPrice: i.unitPrice,
+              totalPrice: i.totalPrice,
+              ncm: foundPart?.ncm || '8708.29.99',
+              cest: foundPart?.cest || '',
+              type: 'part' as const
+            };
+          })}
+          sefazConfig={db.sefazConfig || {
+            environment: 'homologation',
+            certificateStatus: 'VALID_ACTIVE',
+            certificateName: 'Certificado A1 Homologação e-CNPJ',
+            certificateExpirationDate: '2027-12-31',
+            nextNfeNumber: 101,
+            nextNfceNumber: 501,
+            nextNfseNumber: 201,
+            nfeSeries: '1',
+            cscTokenId: '000001',
+            cscSecretKey: 'TESTE-HOMOLOGACAO-CSC-TOKEN',
+            uf: currentCompany.uf || 'SP'
+          }}
+          taxRules={db.taxRules || []}
+          carriers={db.carriers || []}
+          onEmissionComplete={(res) => {
+            onUpdateDb(prev => {
+              const existingFiscDocs = prev.fiscalDocuments || [];
+              const docIndex = existingFiscDocs.findIndex(d => d.id === res.fiscalDocument.id || d.accessKey === res.accessKey);
+              let updatedFiscDocs: FiscalDocument[];
+              if (docIndex >= 0) {
+                updatedFiscDocs = [...existingFiscDocs];
+                updatedFiscDocs[docIndex] = res.fiscalDocument;
+              } else {
+                updatedFiscDocs = [res.fiscalDocument, ...existingFiscDocs];
+              }
+
+              // Update sale with fiscal reference
+              const updatedSales = (prev.sales || []).map(s => {
+                if (s.id === selectedSaleForFiscal.id) {
+                  return {
+                    ...s,
+                    fiscalDocumentId: res.fiscalDocument.id,
+                    fiscalAccessKey: res.accessKey
+                  };
+                }
+                return s;
+              });
+
+              // Increment next nfe number in config
+              const updatedSefazConfig: SefazApiConfig = {
+                ...(prev.sefazConfig || {
+                  environment: 'homologation',
+                  certificateStatus: 'VALID_ACTIVE',
+                  uf: currentCompany.uf || 'SP'
+                }),
+                nextNfeNumber: (prev.sefazConfig?.nextNfeNumber || 101) + 1
+              };
+
+              return {
+                ...prev,
+                fiscalDocuments: updatedFiscDocs,
+                sales: updatedSales,
+                sefazConfig: updatedSefazConfig
+              };
+            });
+
+            if (res.success) {
+              setSaleSuccessMessage(`✅ NF-e emitida com sucesso em Homologação! Chave: ${res.accessKey} | Protocolo: ${res.protocolNumber || 'N/A'}`);
+            }
           }}
         />
       )}

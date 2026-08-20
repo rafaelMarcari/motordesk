@@ -652,6 +652,7 @@ export default function App() {
     return {
       ...db,
       companyInfo: activeCompanyObj || db.companyInfo,
+      sefazConfig: activeCompanyObj?.sefazConfig || db.sefazConfig,
       clients: (db.clients || []).filter(item => (item.companyId || 'comp-1') === activeCompanyId),
       vehicles: (db.vehicles || []).filter(item => (item.companyId || 'comp-1') === activeCompanyId),
       parts: (db.parts || []).filter(item => (item.companyId || 'comp-1') === activeCompanyId),
@@ -829,7 +830,27 @@ export default function App() {
   };
 
   const handleSaveSefazConfig = (sefazConfig: SefazApiConfig) => {
-    syncDb(prev => ({ ...prev, sefazConfig }));
+    setDb(prev => {
+      if (!prev) return prev;
+      const currentList = prev.registeredCompanies && prev.registeredCompanies.length > 0 
+        ? prev.registeredCompanies 
+        : [prev.companyInfo || { id: activeCompanyId, name: '', cnpj: '', phone: '', whatsapp: '', email: '', address: '', welcomeMessage: '', registeredAt: '' }];
+
+      const updatedList = currentList.map(c => c.id === activeCompanyId ? { ...c, sefazConfig } : c);
+      
+      const updatedActiveComp = (prev.companyInfo?.id === activeCompanyId) 
+        ? { ...prev.companyInfo, sefazConfig } 
+        : prev.companyInfo;
+
+      const nextDb: AppDatabase = { 
+        ...prev, 
+        sefazConfig, // Global / current active fallback
+        companyInfo: updatedActiveComp,
+        registeredCompanies: updatedList
+      };
+      dataProvider.saveDatabaseImmediate(nextDb);
+      return nextDb;
+    });
   };
 
   const handleSaveTaxOperationNatures = (taxOperationNatures: TaxOperationNature[]) => {

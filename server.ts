@@ -7,6 +7,7 @@ import { appStore, clients as clientsTable, vehicles as vehiclesTable, parts as 
 import { eq } from "drizzle-orm";
 import dotenv from "dotenv";
 import { requireAuth } from "./src/middleware/auth.js";
+import { fiscalBackendService } from "./server/fiscalProviderService.js";
 
 dotenv.config();
 
@@ -641,6 +642,137 @@ app.get("/api/service-orders", requireAuth, async (req, res) => {
       return res.json(list);
     }
     return res.json([]);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// =========================================================================
+// ISOLATED FISCAL INTEGRATION API ROUTES (/api/fiscal/*)
+// Provedor Oficial: Focus NFe / Nuvem Fiscal (Homologação e Produção)
+// =========================================================================
+
+// Status geral e configuração do provedor fiscal
+app.get("/api/fiscal/config-status", async (req, res) => {
+  try {
+    const status = fiscalBackendService.getSystemStatus();
+    res.json(status);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Consulta de disponibilidade SEFAZ
+app.get("/api/fiscal/status-servico", async (req, res) => {
+  try {
+    const uf = (req.query.uf as string) || "SP";
+    const env = (req.query.env as "homologation" | "production") || undefined;
+    const result = await fiscalBackendService.checkSefazStatus(uf, env);
+    res.json(result);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Upload seguro de Certificado Digital A1 para o cofre do provedor
+app.post("/api/fiscal/certificate/upload", requireAuth, async (req, res) => {
+  try {
+    const { companyCnpj, certBase64, certPassword, companyData, environment } = req.body;
+    if (!companyCnpj || !certBase64 || !certPassword) {
+      return res.status(400).json({ error: "Dados obrigatórios: companyCnpj, certBase64, certPassword" });
+    }
+    const result = await fiscalBackendService.uploadCertificate(
+      companyCnpj,
+      certBase64,
+      certPassword,
+      companyData || {},
+      environment
+    );
+    res.json(result);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Emissão de NF-e (Modelo 55 - Produtos / Vendas)
+app.post("/api/fiscal/nfe/emit", requireAuth, async (req, res) => {
+  try {
+    const { payload, refId, environment } = req.body;
+    if (!payload || !refId) {
+      return res.status(400).json({ error: "Payload e refId são obrigatórios." });
+    }
+    const result = await fiscalBackendService.emitNFe(payload, refId, environment);
+    res.json(result);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Emissão de NFC-e (Modelo 65 - Consumidor Final / Balcão)
+app.post("/api/fiscal/nfce/emit", requireAuth, async (req, res) => {
+  try {
+    const { payload, refId, environment } = req.body;
+    if (!payload || !refId) {
+      return res.status(400).json({ error: "Payload e refId são obrigatórios." });
+    }
+    const result = await fiscalBackendService.emitNFCe(payload, refId, environment);
+    res.json(result);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Emissão de NFS-e (Serviços / Ordens de Serviço Oficina)
+app.post("/api/fiscal/nfse/emit", requireAuth, async (req, res) => {
+  try {
+    const { payload, refId, environment } = req.body;
+    if (!payload || !refId) {
+      return res.status(400).json({ error: "Payload e refId são obrigatórios." });
+    }
+    const result = await fiscalBackendService.emitNFSe(payload, refId, environment);
+    res.json(result);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Cancelamento de Documento Fiscal (NF-e / NFC-e / NFS-e)
+app.post("/api/fiscal/cancel", requireAuth, async (req, res) => {
+  try {
+    const { docType, refId, justificativa, environment } = req.body;
+    if (!docType || !refId || !justificativa) {
+      return res.status(400).json({ error: "docType, refId e justificativa são obrigatórios." });
+    }
+    const result = await fiscalBackendService.cancelDocument(docType, refId, justificativa, environment);
+    res.json(result);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Carta de Correção Eletrônica (CC-e)
+app.post("/api/fiscal/cce", requireAuth, async (req, res) => {
+  try {
+    const { refId, correcao, environment } = req.body;
+    if (!refId || !correcao) {
+      return res.status(400).json({ error: "refId e correcao são obrigatórios." });
+    }
+    const result = await fiscalBackendService.sendCce(refId, correcao, environment);
+    res.json(result);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Inutilização de Numeração Fiscal
+app.post("/api/fiscal/inutilize", requireAuth, async (req, res) => {
+  try {
+    const { payload, environment } = req.body;
+    if (!payload || !payload.cnpj || !payload.serie || !payload.numero_inicial || !payload.numero_final || !payload.justificativa) {
+      return res.status(400).json({ error: "Campos obrigatórios de inutilização não fornecidos." });
+    }
+    const result = await fiscalBackendService.inutilizeNumber(payload, environment);
+    res.json(result);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
