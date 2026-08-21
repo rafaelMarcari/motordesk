@@ -994,6 +994,11 @@ export interface FiscalDocumentItem {
   code: string;
   name: string;
   ncm?: string;
+  cest?: string;
+  unit?: string;
+  cstCsosn?: string;
+  pisCst?: string;
+  cofinsCst?: string;
   quantity: number;
   unitPrice: number;
   totalPrice: number;
@@ -1019,9 +1024,13 @@ export interface FiscalDocument {
   protocolNumber?: string; // Protocolo de autorização SEFAZ
   issueDate: string; // YYYY-MM-DD
   issuedAt: string; // YYYY-MM-DD HH:mm:ss
+  createdAt?: string;
   companyId: string;
   companyName: string;
   companyCnpj: string;
+  operationNature?: string; // Natureza da Operação (ex: "VENDA DE MERCADORIA ADQ. DE TERCEIROS")
+  additionalNotes?: string; // Informações Complementares de interesse do contribuinte
+  paymentMethod?: string; // Meio de Pagamento (PIX, Dinheiro, Cartão)
   targetBranchId?: string;
   targetBranchName?: string;
   targetBranchCnpj?: string;
@@ -1053,6 +1062,8 @@ export interface FiscalDocument {
   totalIbs?: number;        // R$ Total IBS
   totalCbs?: number;        // R$ Total CBS
   totalIbsCbs?: number;     // R$ Total IBS + CBS (Alíquota Teste 1,0%)
+  ibsTaxValue?: number;
+  cbsTaxValue?: number;
   
   totalAmount: number;
   items: FiscalDocumentItem[];

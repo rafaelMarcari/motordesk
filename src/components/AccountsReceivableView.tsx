@@ -14,6 +14,7 @@ import { AccountReceivable, AccountInstallment, Client, User, SystemNotification
 import { AppDatabase, INITIAL_PAYMENT_METHODS } from '../data/mockData';
 import ShareDocumentModal from './ShareDocumentModal';
 import PreTransmissionReviewModal, { PreTransmissionDocData } from './PreTransmissionReviewModal';
+import FiscalDocumentPrintModal from './FiscalDocumentPrintModal';
 
 interface AccountsReceivableViewProps {
   db: AppDatabase;
@@ -2064,120 +2065,15 @@ export default function AccountsReceivableView({
         </div>
       )}
 
-      {/* DANFE / NF-e VISUALIZER MODAL */}
-      {selectedDocForDanfe && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-4 animate-fade-in" id="modal-danfe-view">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-3xl w-full p-6 border border-slate-200 overflow-hidden flex flex-col max-h-[90vh]">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3 mb-4">
-              <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold text-base border border-indigo-100">
-                  🧾
-                </div>
-                <div>
-                  <h3 className="font-bold text-slate-800 text-base">
-                    Documento Auxiliar da Nota Fiscal Eletrônica (DANFE)
-                  </h3>
-                  <p className="text-xs text-slate-500 font-mono">
-                    {selectedDocForDanfe.code} • Status: {selectedDocForDanfe.status === 'authorized' ? 'Autorizada pela SEFAZ' : selectedDocForDanfe.status}
-                  </p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setSelectedDocForDanfe(null)}
-                className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-100 transition cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="overflow-y-auto flex-1 space-y-4 pr-1 text-xs">
-              {/* SEFAZ Protocol & Access Key */}
-              <div className="p-3 bg-indigo-50/70 rounded-xl border border-indigo-200 space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="font-bold text-indigo-900">Protocolo de Autorização SEFAZ</span>
-                  <span className="font-mono font-bold text-indigo-700 bg-white px-2 py-0.5 rounded border border-indigo-200">
-                    {selectedDocForDanfe.protocolNumber || '135260012345678'}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-[10px] text-indigo-600 uppercase font-bold block mb-0.5">Chave de Acesso (44 dígitos)</span>
-                  <div className="flex items-center justify-between bg-white p-2 rounded-lg border border-indigo-200">
-                    <span className="font-mono text-xs text-slate-800 font-bold break-all">
-                      {selectedDocForDanfe.accessKey}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => handleCopyText(selectedDocForDanfe.accessKey, 'danfeKey')}
-                      className="ml-2 px-2 py-1 bg-indigo-100 hover:bg-indigo-200 text-indigo-800 rounded text-[11px] font-bold shrink-0 transition flex items-center gap-1 cursor-pointer"
-                    >
-                      <Copy className="w-3 h-3" />
-                      {copiedText === 'danfeKey' ? 'Copiado!' : 'Copiar'}
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              {/* Emitente & Destinatário */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
-                  <span className="text-[10px] uppercase font-bold text-slate-400 block mb-1">Emitente</span>
-                  <p className="font-bold text-slate-800">{selectedDocForDanfe.companyName}</p>
-                  <p className="font-mono text-slate-500 text-[11px]">CNPJ: {selectedDocForDanfe.companyCnpj}</p>
-                </div>
-                <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
-                  <span className="text-[10px] uppercase font-bold text-slate-400 block mb-1">Destinatário / Consumidor</span>
-                  <p className="font-bold text-slate-800">{selectedDocForDanfe.clientName || 'Consumidor Final'}</p>
-                  <p className="font-mono text-slate-500 text-[11px]">CPF/CNPJ: {selectedDocForDanfe.clientCpfCnpj || 'Não Informado'}</p>
-                </div>
-              </div>
-
-              {/* Totais */}
-              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 flex justify-between items-center">
-                <div>
-                  <span className="text-[10px] text-slate-500 uppercase font-bold block">Tributos Totais Aprox.</span>
-                  <span className="font-mono font-semibold text-slate-700">R$ {(selectedDocForDanfe.totalTaxes || 0).toFixed(2)}</span>
-                </div>
-                <div className="text-right">
-                  <span className="text-[10px] text-slate-500 uppercase font-bold block">Valor Total da NF-e</span>
-                  <span className="font-mono font-black text-slate-900 text-lg">
-                    R$ {selectedDocForDanfe.totalAmount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            <div className="border-t border-slate-100 pt-3 mt-3 flex justify-between items-center">
-              <span className="text-[11px] text-slate-400">
-                Ambiente: {selectedDocForDanfe.environment === 'production' ? 'Produção Nacional' : 'Homologação (Sem Valor Fiscal)'}
-              </span>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => handleDownloadXml(selectedDocForDanfe)}
-                  className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition flex items-center gap-1 cursor-pointer"
-                >
-                  <FileText className="w-3.5 h-3.5" /> Baixar XML
-                </button>
-                <button
-                  type="button"
-                  onClick={() => window.print()}
-                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-xs"
-                >
-                  <Printer className="w-4 h-4" /> Imprimir DANFE
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setSelectedDocForDanfe(null)}
-                  className="px-4 py-2 bg-slate-100 text-slate-700 rounded-xl text-xs font-semibold hover:bg-slate-200 transition cursor-pointer"
-                >
-                  Fechar
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* DANFE / NF-E / NFC-E / NFS-E OFFICIAL PRINT VISUALIZER MODAL */}
+      <FiscalDocumentPrintModal
+        isOpen={!!selectedDocForDanfe}
+        onClose={() => setSelectedDocForDanfe(null)}
+        doc={selectedDocForDanfe}
+        companyInfo={db.companyInfo}
+        sefazConfig={db.sefazConfig}
+        onDownloadXml={handleDownloadXml}
+      />
 
       {/* SHARE / PRINT PDF RECEIPT MODAL */}
       {shareModalData.isOpen && (

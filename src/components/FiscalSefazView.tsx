@@ -70,6 +70,7 @@ import {
 } from '../types';
 import { AppDatabase } from '../data/mockData';
 import PreTransmissionReviewModal, { PreTransmissionDocData } from './PreTransmissionReviewModal';
+import FiscalDocumentPrintModal from './FiscalDocumentPrintModal';
 import { 
   OFFICIAL_NCMS, 
   OFFICIAL_CESTS, 
@@ -567,6 +568,76 @@ export default function FiscalSefazView({
     setXmlRawText('');
     setParsedXmlResult(null);
     setTimeout(() => setXmlImportSuccessMsg(''), 6000);
+  };
+
+  // Download XML Handler
+  const handleDownloadXml = (doc: FiscalDocument) => {
+    const xmlContent = `<?xml version="1.0" encoding="UTF-8"?>
+<NFe xmlns="http://www.portalfiscal.inf.br/nfe">
+  <infNFe Id="NFe${doc.accessKey}" versao="4.00">
+    <ide>
+      <cUF>35</cUF>
+      <cNF>${Math.floor(10000000 + Math.random() * 90000000)}</cNF>
+      <natOp>${doc.operationNature || 'VENDA DE MERCADORIAS E SERVICOS'}</natOp>
+      <mod>${doc.type === 'nfce_retail' ? '65' : '55'}</mod>
+      <serie>1</serie>
+      <nNF>${doc.code.replace(/\D/g, '') || '101'}</nNF>
+      <dhEmi>${doc.issuedAt || new Date().toISOString()}</dhEmi>
+      <tpNF>1</tpNF>
+      <idDest>1</idDest>
+      <cMunFG>3550308</cMunFG>
+      <tpImp>1</tpImp>
+      <tpEmis>1</tpEmis>
+      <tpAmb>${doc.environment === 'production' ? '1' : '2'}</tpAmb>
+      <finNFe>1</finNFe>
+      <indFinal>1</indFinal>
+      <indPres>1</indPres>
+      <procEmi>0</procEmi>
+      <verProc>MotorDesk ERP 4.0</verProc>
+    </ide>
+    <emit>
+      <CNPJ>${(doc.companyCnpj || db.companyInfo?.cnpj || '00000000000100').replace(/\D/g, '')}</CNPJ>
+      <xNome>${doc.companyName || db.companyInfo?.name || 'MotorDesk Auto Center'}</xNome>
+      <xFant>${db.companyInfo?.tradeName || doc.companyName}</xFant>
+      <IE>123456789</IE>
+      <CRT>1</CRT>
+    </emit>
+    <dest>
+      <CPF>${(doc.clientCpfCnpj || '00000000000').replace(/\D/g, '')}</CPF>
+      <xNome>${doc.clientName || 'Consumidor Final'}</xNome>
+      <indIEDest>9</indIEDest>
+    </dest>
+    <total>
+      <ICMSTot>
+        <vBC>${(doc.totalProducts || doc.totalAmount).toFixed(2)}</vBC>
+        <vICMS>${((doc.totalProducts || doc.totalAmount) * 0.18).toFixed(2)}</vICMS>
+        <vProd>${(doc.totalProducts || doc.totalAmount).toFixed(2)}</vProd>
+        <vNF>${doc.totalAmount.toFixed(2)}</vNF>
+      </ICMSTot>
+    </total>
+    <protNFe versao="4.00">
+      <infProt>
+        <tpAmb>${doc.environment === 'production' ? '1' : '2'}</tpAmb>
+        <verAplic>SP_NFE_PL_009</verAplic>
+        <chNFe>${doc.accessKey}</chNFe>
+        <dhRecbto>${doc.issuedAt || new Date().toISOString()}</dhRecbto>
+        <nProt>${doc.protocolNumber || '135260012345678'}</nProt>
+        <digVal>z87aB3x69uQW2e01nMK89j2=</digVal>
+        <cStat>100</cStat>
+        <xMotivo>Autorizado o uso da NF-e</xMotivo>
+      </infProt>
+    </protNFe>
+  </infNFe>
+</NFe>`;
+    const blob = new Blob([xmlContent], { type: 'application/xml' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `NFe-${doc.accessKey}.xml`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   };
 
   // Boleto Modal States
@@ -4921,117 +4992,15 @@ export default function FiscalSefazView({
         </div>
       )}
 
-      {/* MODAL: VER DANFE */}
-      {showDanfeModal && selectedDoc && (
-        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl max-w-3xl w-full p-6 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto text-slate-900 border border-slate-200">
-            <div className="flex items-center justify-between border-b pb-3">
-              <h3 className="font-bold text-base flex items-center gap-2">
-                <Printer className="w-5 h-5 text-indigo-600" /> DANFE - Documento Auxiliar da Nota Fiscal Eletrônica
-              </h3>
-              <button onClick={() => setShowDanfeModal(false)} className="text-slate-400 hover:text-slate-600 cursor-pointer">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            {/* DANFE Visual Box */}
-            <div className="border-2 border-slate-900 p-4 space-y-4 text-xs font-sans">
-              <div className="grid grid-cols-12 gap-2 border-b-2 border-slate-900 pb-3">
-                <div className="col-span-6 space-y-1">
-                  <h4 className="font-black text-sm uppercase">{selectedDoc.companyName}</h4>
-                  <p className="text-[10px] text-slate-600">CNPJ: {selectedDoc.companyCnpj}</p>
-                  <p className="text-[10px] text-slate-600">IE: 123.456.789.110 - Isento</p>
-                </div>
-                <div className="col-span-6 text-right space-y-1">
-                  <span className="font-extrabold text-base border-2 border-slate-900 px-3 py-1 inline-block">
-                    DANFE NF-e Nº {selectedDoc.code}
-                  </span>
-                  <p className="font-mono text-[10px] font-bold mt-1">CHAVE: {selectedDoc.accessKey}</p>
-                </div>
-              </div>
-
-              <div className="space-y-1">
-                <p className="font-bold">DESTINATÁRIO / REMETENTE:</p>
-                <div className="grid grid-cols-2 bg-slate-100 p-2 border border-slate-300 rounded text-[11px]">
-                  <div>NOME: <strong>{selectedDoc.clientName}</strong></div>
-                  <div>CPF/CNPJ: <strong>{selectedDoc.clientCpfCnpj}</strong></div>
-                </div>
-              </div>
-
-              <div className="space-y-1">
-                <p className="font-bold">DADOS DOS PRODUTOS / SERVIÇOS:</p>
-                <table className="w-full text-left text-[11px] border border-slate-300">
-                  <thead className="bg-slate-200 text-slate-800">
-                    <tr>
-                      <th className="p-1 border">CÓDIGO</th>
-                      <th className="p-1 border">DESCRIÇÃO</th>
-                      <th className="p-1 border">NCM</th>
-                      <th className="p-1 border">CFOP</th>
-                      <th className="p-1 border">QTD</th>
-                      <th className="p-1 border">V.UNIT</th>
-                      <th className="p-1 border">V.TOTAL</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {selectedDoc.items.map((it, i) => (
-                      <tr key={i} className="border-t">
-                        <td className="p-1 border font-mono">{it.code}</td>
-                        <td className="p-1 border font-semibold">{it.name}</td>
-                        <td className="p-1 border font-mono">{it.ncm || '-'}</td>
-                        <td className="p-1 border">{it.cfop || selectedDoc.cfop}</td>
-                        <td className="p-1 border">{it.quantity}</td>
-                        <td className="p-1 border">R$ {it.unitPrice.toFixed(2)}</td>
-                        <td className="p-1 border font-bold">R$ {it.totalPrice.toFixed(2)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-
-              {/* QUADRO DE TRIBUTOS TRADICIONAIS E REFORMA TRIBUTÁRIA 2026 */}
-              <div className="space-y-1">
-                <p className="font-bold text-[11px] text-slate-800">CÁLCULO DO IMPOSTO & REFORMA TRIBUTÁRIA 2026 (IBS / CBS - EC 132/2023):</p>
-                <div className="grid grid-cols-5 bg-slate-50 p-2 border border-slate-300 text-[10px] font-mono gap-1 text-center">
-                  <div className="border-r pr-1">
-                    <span className="text-slate-500 block text-[9px]">BASE CÁLC. ICMS</span>
-                    <span className="font-bold">R$ {selectedDoc.totalProducts.toFixed(2)}</span>
-                  </div>
-                  <div className="border-r pr-1">
-                    <span className="text-slate-500 block text-[9px]">VALOR DO ICMS</span>
-                    <span className="font-bold">R$ {(selectedDoc.totalProducts * 0.18).toFixed(2)}</span>
-                  </div>
-                  <div className="border-r pr-1 bg-cyan-50/60">
-                    <span className="text-cyan-800 font-bold block text-[9px]">IBS (0,1% EC 132)</span>
-                    <span className="font-bold text-cyan-900">R$ {(selectedDoc.totalAmount * 0.001).toFixed(2)}</span>
-                  </div>
-                  <div className="border-r pr-1 bg-indigo-50/60">
-                    <span className="text-indigo-800 font-bold block text-[9px]">CBS (0,9% EC 132)</span>
-                    <span className="font-bold text-indigo-900">R$ {(selectedDoc.totalAmount * 0.009).toFixed(2)}</span>
-                  </div>
-                  <div className="bg-emerald-50/60">
-                    <span className="text-emerald-800 font-bold block text-[9px]">TOTAL IBS+CBS (1%)</span>
-                    <span className="font-bold text-emerald-900">R$ {(selectedDoc.totalAmount * 0.010).toFixed(2)}</span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex justify-between items-center bg-slate-100 p-2 border-2 border-slate-900 font-bold text-sm">
-                <span>VALOR TOTAL DA NOTA FISCAL:</span>
-                <span>R$ {selectedDoc.totalAmount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
-              </div>
-            </div>
-
-            <div className="flex justify-end gap-2 pt-2">
-              <button
-                onClick={() => window.print()}
-                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl shadow-md cursor-pointer flex items-center gap-1.5"
-              >
-                <Printer className="w-4 h-4" /> Imprimir DANFE
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* MODAL: VER DANFE / IMPRESSÃO OFICIAL (A4 RETRATO, 40 COLUNAS & NFS-E) */}
+      <FiscalDocumentPrintModal
+        isOpen={showDanfeModal}
+        onClose={() => setShowDanfeModal(false)}
+        doc={selectedDoc}
+        companyInfo={db.companyInfo}
+        sefazConfig={sefazConfig}
+        onDownloadXml={handleDownloadXml}
+      />
 
       {/* MODAL: CARTA DE CORREÇÃO (CC-E) */}
       {showCceModal && selectedDoc && (

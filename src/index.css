@@ -33,17 +33,51 @@ section[id] {
 
 /* Print Isolation Styles */
 @media print {
+  @page {
+    size: A4 portrait;
+    margin: 5mm;
+  }
+
+  html, body {
+    background: #ffffff !important;
+    color: #000000 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
   .no-print,
   button:not(.print-keep),
   header:not(.print-keep),
   aside,
-  nav {
+  nav,
+  #app-sidebar,
+  #app-topbar {
     display: none !important;
   }
 
-  body {
-    background: #ffffff !important;
-    color: #000000 !important;
+  /* Ensure fiscal document print takes full paper width */
+  #print-danfe-a4,
+  #print-nfse-a4 {
+    width: 100% !important;
+    max-width: 210mm !important;
+    min-height: 290mm !important;
+    margin: 0 auto !important;
+    padding: 6mm !important;
+    box-shadow: none !important;
+    border: none !important;
+    page-break-inside: avoid !important;
+  }
+
+  #print-nfce-40col {
+    width: 80mm !important;
+    max-width: 80mm !important;
+    margin: 0 auto !important;
+    padding: 3mm !important;
+    box-shadow: none !important;
+    border: none !important;
+    page-break-inside: avoid !important;
   }
 
   /* Prevent scrollbar clipping or overflow issues when printing */
