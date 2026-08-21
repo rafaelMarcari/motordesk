@@ -211,6 +211,10 @@ export interface CompanyInfo {
     receipt?: 'portrait' | 'landscape_2ways';
   };
 
+  // CONFIGURAÇÃO BANCÁRIA, BOLETOS E PIX
+  bankBoletoConfig?: BankBoletoConfig;
+  pixConfig?: PixConfig;
+
   // DADOS FISCAIS DO EMITENTE (ARQUITETURA MOTOR DESK FISCAL)
   stateRegistration?: string; // Inscrição Estadual (IE)
   cityRegistration?: string;  // Inscrição Municipal (IM)
@@ -260,6 +264,38 @@ export interface UserPermissions {
   accessAccountsPayable?: boolean;
   accessFinancial?: boolean;
   accessFiscal?: boolean;
+  accessBoletos?: boolean;
+  accessSefaz?: boolean;
+
+  // Permissões Granulares - Módulo Fiscal
+  fiscalView?: boolean;
+  fiscalEmit?: boolean;
+  fiscalCancel?: boolean;
+  fiscalConfig?: boolean;
+  fiscalReprint?: boolean;
+  fiscalXml?: boolean;
+
+  // Permissões Granulares - Módulo Boletos
+  boletoView?: boolean;
+  boletoGenerate?: boolean;
+  boletoReprint?: boolean;
+  boletoConfig?: boolean;
+
+  // Permissões Granulares - Módulo PIX
+  pixView?: boolean;
+  pixConfig?: boolean;
+  pixGenerate?: boolean;
+
+  // Permissões Granulares - Módulo SEFAZ / Certificado A1
+  sefazView?: boolean;
+  sefazTest?: boolean;
+  sefazConfig?: boolean;
+
+  // Permissões Granulares - Módulo Financeiro
+  financialView?: boolean;
+  financialEntry?: boolean;
+  financialConfig?: boolean;
+
   canEditBudgets?: boolean; // Permissão para editar orçamentos existentes (adicionar itens e alterar dados)
   canCustomizePdf?: boolean; // Permissão para personalizar e editar layout de campos no PDF
   canViewOtherStoresStock?: boolean; // Permissão para visualizar estoque de outras lojas/filiais da rede
@@ -902,17 +938,21 @@ export interface AccountReceivable {
     notes?: string;
   };
   notes?: string;
-  // Linkages to NF-e and Boleto
+  // Linkages to NF-e, Boleto and Sale
+  saleId?: string;
+  saleCode?: string;
   billingType?: 'immediate' | 'monthly_batch';
   billingMonth?: string; // Ex: "2026-07"
   nfeId?: string;
   nfeCode?: string;
-  nfeStatus?: 'authorized' | 'draft' | 'transmitting' | 'rejected' | 'canceled';
+  nfeStatus?: 'authorized' | 'draft' | 'transmitting' | 'rejected' | 'canceled' | 'pending';
   nfeAccessKey?: string;
+  nfeRejectionReason?: string;
   boletoId?: string;
   boletoCode?: string;
   boletoStatus?: 'registered' | 'paid' | 'overdue' | 'canceled';
   boletoBarcode?: string;
+  boletoNossoNumero?: string;
 }
 
 export interface AccountPayable {
@@ -1054,6 +1094,44 @@ export interface FiscalDocument {
   salesNfeId?: string;
 }
 
+export interface BankBoletoConfig {
+  bankCode: string; // Ex: '001', '341', '237', '104', '033', '756' (Sicoob), '748' (Sicredi), '077' (Inter), '260' (Nubank)
+  bankName: string;
+  agencyNumber: string;
+  agencyDigit?: string;
+  accountNumber: string;
+  accountDigit: string;
+  wallet: string; // Carteira (ex: '09', '17', '109', '112')
+  agreementNumber?: string; // Convênio / Código do Cedente / Beneficiário
+  nextNossoNumero: number; // Sequencial do nosso número
+  documentType?: 'DM' | 'DS' | 'RC' | 'NP'; // Espécie do Documento
+  modality?: string; // 'com_registro' | 'sem_registro'
+  acceptance?: 'A' | 'N'; // Aceite (A - Sim, N - Não)
+  interestRateMonthlyPercent?: number; // Juros de mora % ao mês
+  finePercent?: number; // Multa por atraso %
+  discountDays?: number; // Dias de desconto por antecipação
+  discountPercent?: number; // Desconto por antecipação %
+  protestDays?: number; // Dias para protesto/baixa
+  instructionsText?: string; // Instruções impressas no boleto
+  environment: 'homologation' | 'production';
+  apiClientId?: string;
+  apiClientSecret?: string;
+  apiScope?: string;
+  certificateFileName?: string;
+  active: boolean;
+}
+
+export interface PixConfig {
+  institutionName: string;
+  pixKey: string;
+  keyType: 'cnpj' | 'cpf' | 'email' | 'phone' | 'evp';
+  environment: 'homologation' | 'production';
+  apiClientId?: string;
+  apiClientSecret?: string;
+  accountIdentifier?: string;
+  active: boolean;
+}
+
 export interface BoletoDocument {
   id: string;
   code: string; // Ex: BOL-2026-001
@@ -1072,6 +1150,16 @@ export interface BoletoDocument {
   serviceOrderId?: string;
   receivableId?: string;
   nfeAccessKey?: string;
+  nossoNumero?: string;
+  wallet?: string;
+  agency?: string;
+  account?: string;
+  saleId?: string;
+  saleCode?: string;
+  instructions?: string;
+  interestRate?: number;
+  fineRate?: number;
+  environment?: 'homologation' | 'production';
 }
 
 export interface InterBranchSaleLogistics {
@@ -1134,6 +1222,78 @@ export interface SefazApiConfig {
   pfxCertificatePassword?: string;
   pfxCertificateUploadDate?: string;
   pfxCertificateSubjectCnpj?: string;
+
+  // Checklist de Homologação & Ativação de Produção
+  homologationStatus?: 'not_configured' | 'homologating' | 'homologated' | 'error';
+  homologationChecklist?: {
+    companyConfigured?: boolean;
+    cnpjValidated?: boolean;
+    ieValidated?: boolean;
+    imConfigured?: boolean;
+    taxRegimeConfigured?: boolean;
+    certA1Valid?: boolean;
+    fiscalProviderConnected?: boolean;
+    sefazStatusOk?: boolean;
+    nfeTested?: boolean;
+    nfceTested?: boolean;
+    nfseTested?: boolean;
+    cancelTested?: boolean;
+    rejectionTested?: boolean;
+    danfeTested?: boolean;
+    xmlTested?: boolean;
+    boletoTested?: boolean;
+    pixTested?: boolean;
+    permissionsReviewed?: boolean;
+  };
+  productionRequested?: boolean;
+  productionApprovedAt?: string;
+  productionApprovedBy?: string;
+  productionCredentialsConfigured?: boolean;
+
+  // Modo de Comunicação e WebServices Oficiais Diretos
+  communicationMode?: 'direct_sefaz_sp' | 'custom_gateway';
+  
+  // Endpoints Oficiais SEFAZ SP (NF-e 4.00 e NFC-e 4.00)
+  directSefazSpConfig?: {
+    // NF-e Homologação SP
+    nfeAutorizacaoHml?: string;
+    nfeRetAutorizacaoHml?: string;
+    nfeStatusServicoHml?: string;
+    nfeRecepcaoEventoHml?: string;
+    nfeInutilizacaoHml?: string;
+    // NF-e Produção SP
+    nfeAutorizacaoProd?: string;
+    nfeRetAutorizacaoProd?: string;
+    nfeStatusServicoProd?: string;
+    nfeRecepcaoEventoProd?: string;
+    nfeInutilizacaoProd?: string;
+    // NFC-e Homologação SP
+    nfceAutorizacaoHml?: string;
+    nfceStatusServicoHml?: string;
+    nfceQrCodeHml?: string;
+    // NFC-e Produção SP
+    nfceAutorizacaoProd?: string;
+    nfceStatusServicoProd?: string;
+    nfceQrCodeProd?: string;
+  };
+
+  // Endpoints Oficiais NFS-e Municipal (São Paulo / ADN Nacional / ABRASF)
+  municipalNfseConfig?: {
+    standard?: 'sp_capital' | 'adn_nacional' | 'abrasf_v2' | 'ginfes' | 'custom';
+    homologationUrl?: string;
+    productionUrl?: string;
+    cityHallName?: string;
+    customHeaders?: string;
+  };
+
+  // Gateway de API Particular (Focus NFe / Nuvem Fiscal / PlugNotas)
+  customGatewayConfig?: {
+    enabled?: boolean;
+    provider?: 'focus_nfe' | 'nuvem_fiscal' | 'plug_notas' | 'speed_gov' | 'generic_rest';
+    apiUrl?: string;
+    apiKey?: string;
+    environment?: 'homologation' | 'production';
+  };
 }
 
 export interface CommercialSaleItem {
@@ -1167,6 +1327,14 @@ export interface CommercialSale {
   receivableId?: string;
   fiscalDocumentId?: string;
   fiscalAccessKey?: string;
+  fiscalStatus?: 'pending' | 'authorized' | 'rejected' | 'canceled';
+  fiscalRejectionReason?: string;
+  nfeNumber?: string;
+  nfeSeries?: string;
+  boletoId?: string;
+  boletoCode?: string;
+  boletoStatus?: 'registered' | 'paid' | 'overdue' | 'canceled';
+  boletoBarcode?: string;
   notes?: string;
   createdBy: string;
   // Logística & Transporte de Frete

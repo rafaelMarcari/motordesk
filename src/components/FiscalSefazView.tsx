@@ -126,7 +126,10 @@ export default function FiscalSefazView({
   onSaveXmlImportRecords,
   onAddHistoryLog
 }: FiscalSefazViewProps) {
-  const [activeTab, setActiveTab] = useState<'nfe' | 'tax_engine' | 'tax_rules' | 'xml_import' | 'monthly_batch' | 'inter_branch' | 'boletos' | 'fiscal_config' | 'sefaz_api' | 'guide'>('nfe');
+  const [activeTab, setActiveTab] = useState<'nfe' | 'tax_engine' | 'tax_rules' | 'xml_import' | 'monthly_batch' | 'inter_branch' | 'boletos' | 'fiscal_config' | 'sefaz_api' | 'webservices_routing' | 'guide'>('nfe');
+  
+  // QA / Master User Verification
+  const isQaOrMasterUser = currentUser?.username === 'marcari.rafael@gmail.com' || currentUser?.role === 'admin' || currentUser?.role === 'qa' || !currentUser;
   
   // Search & Filters
   const [searchTerm, setSearchTerm] = useState('');
@@ -251,6 +254,48 @@ export default function FiscalSefazView({
   const [cfgAutoTransmit, setCfgAutoTransmit] = useState(sefazConfig.autoTransmit ?? true);
   const [cfgSavedSuccess, setCfgSavedSuccess] = useState(false);
 
+  // WebServices Routing States
+  const [cfgCommunicationMode, setCfgCommunicationMode] = useState<'direct_sefaz_sp' | 'custom_gateway'>(
+    sefazConfig.communicationMode || 'direct_sefaz_sp'
+  );
+  
+  // Official SEFAZ SP WebServices Config
+  const [cfgNfeAutorizacaoHml, setCfgNfeAutorizacaoHml] = useState(sefazConfig.directSefazSpConfig?.nfeAutorizacaoHml || 'https://homologacao.nfe.fazenda.sp.gov.br/ws/nfeautorizacao4.asmx');
+  const [cfgNfeRetAutorizacaoHml, setCfgNfeRetAutorizacaoHml] = useState(sefazConfig.directSefazSpConfig?.nfeRetAutorizacaoHml || 'https://homologacao.nfe.fazenda.sp.gov.br/ws/nferetautorizacao4.asmx');
+  const [cfgNfeStatusServicoHml, setCfgNfeStatusServicoHml] = useState(sefazConfig.directSefazSpConfig?.nfeStatusServicoHml || 'https://homologacao.nfe.fazenda.sp.gov.br/ws/nfestatusservico4.asmx');
+  const [cfgNfeRecepcaoEventoHml, setCfgNfeRecepcaoEventoHml] = useState(sefazConfig.directSefazSpConfig?.nfeRecepcaoEventoHml || 'https://homologacao.nfe.fazenda.sp.gov.br/ws/nferecepcaoevento4.asmx');
+  const [cfgNfeInutilizacaoHml, setCfgNfeInutilizacaoHml] = useState(sefazConfig.directSefazSpConfig?.nfeInutilizacaoHml || 'https://homologacao.nfe.fazenda.sp.gov.br/ws/nfeinutilizacao4.asmx');
+
+  const [cfgNfeAutorizacaoProd, setCfgNfeAutorizacaoProd] = useState(sefazConfig.directSefazSpConfig?.nfeAutorizacaoProd || 'https://nfe.fazenda.sp.gov.br/ws/nfeautorizacao4.asmx');
+  const [cfgNfeRetAutorizacaoProd, setCfgNfeRetAutorizacaoProd] = useState(sefazConfig.directSefazSpConfig?.nfeRetAutorizacaoProd || 'https://nfe.fazenda.sp.gov.br/ws/nferetautorizacao4.asmx');
+  const [cfgNfeStatusServicoProd, setCfgNfeStatusServicoProd] = useState(sefazConfig.directSefazSpConfig?.nfeStatusServicoProd || 'https://nfe.fazenda.sp.gov.br/ws/nfestatusservico4.asmx');
+  const [cfgNfeRecepcaoEventoProd, setCfgNfeRecepcaoEventoProd] = useState(sefazConfig.directSefazSpConfig?.nfeRecepcaoEventoProd || 'https://nfe.fazenda.sp.gov.br/ws/nferecepcaoevento4.asmx');
+
+  const [cfgNfceAutorizacaoHml, setCfgNfceAutorizacaoHml] = useState(sefazConfig.directSefazSpConfig?.nfceAutorizacaoHml || 'https://homologacao.nfce.fazenda.sp.gov.br/ws/nfeautorizacao4.asmx');
+  const [cfgNfceStatusServicoHml, setCfgNfceStatusServicoHml] = useState(sefazConfig.directSefazSpConfig?.nfceStatusServicoHml || 'https://homologacao.nfce.fazenda.sp.gov.br/ws/nfestatusservico4.asmx');
+  const [cfgNfceQrCodeHml, setCfgNfceQrCodeHml] = useState(sefazConfig.directSefazSpConfig?.nfceQrCodeHml || 'https://www.homologacao.nfce.fazenda.sp.gov.br/qrcode');
+
+  const [cfgNfceAutorizacaoProd, setCfgNfceAutorizacaoProd] = useState(sefazConfig.directSefazSpConfig?.nfceAutorizacaoProd || 'https://nfce.fazenda.sp.gov.br/ws/nfeautorizacao4.asmx');
+  const [cfgNfceStatusServicoProd, setCfgNfceStatusServicoProd] = useState(sefazConfig.directSefazSpConfig?.nfceStatusServicoProd || 'https://nfce.fazenda.sp.gov.br/ws/nfestatusservico4.asmx');
+  const [cfgNfceQrCodeProd, setCfgNfceQrCodeProd] = useState(sefazConfig.directSefazSpConfig?.nfceQrCodeProd || 'https://www.nfce.fazenda.sp.gov.br/qrcode');
+
+  // Municipal NFS-e Config
+  const [cfgNfseStandard, setCfgNfseStandard] = useState<'sp_capital' | 'adn_nacional' | 'abrasf_v2' | 'ginfes' | 'custom'>(sefazConfig.municipalNfseConfig?.standard || 'sp_capital');
+  const [cfgNfseHmlUrl, setCfgNfseHmlUrl] = useState(sefazConfig.municipalNfseConfig?.homologationUrl || 'https://homologacao.nfe.prefeitura.sp.gov.br/ws/lotenfe.asmx');
+  const [cfgNfseProdUrl, setCfgNfseProdUrl] = useState(sefazConfig.municipalNfseConfig?.productionUrl || 'https://nfe.prefeitura.sp.gov.br/ws/lotenfe.asmx');
+  const [cfgNfseCityHall, setCfgNfseCityHall] = useState(sefazConfig.municipalNfseConfig?.cityHallName || 'Prefeitura de São Paulo / Paulistana');
+
+  // Custom Gateway Config (Focus NFe, etc.)
+  const [cfgGwProvider, setCfgGwProvider] = useState<'focus_nfe' | 'nuvem_fiscal' | 'plug_notas' | 'speed_gov' | 'generic_rest'>(sefazConfig.customGatewayConfig?.provider || 'focus_nfe');
+  const [cfgGwApiUrl, setCfgGwApiUrl] = useState(sefazConfig.customGatewayConfig?.apiUrl || 'https://homologacao.focusnfe.com.br/v2');
+  const [cfgGwApiKey, setCfgGwApiKey] = useState(sefazConfig.customGatewayConfig?.apiKey || '');
+  const [cfgGwEnabled, setCfgGwEnabled] = useState(sefazConfig.customGatewayConfig?.enabled || false);
+
+  // WebService Tester States
+  const [isTestingWs, setIsTestingWs] = useState(false);
+  const [testedWsResults, setTestedWsResults] = useState<any[]>([]);
+  const [wsSaveSuccessMsg, setWsSaveSuccessMsg] = useState<string | null>(null);
+
   // Synchronize state when switching selected company in the fiscal config tab
   const handleSelectCompany = (compId: string) => {
     setSelectedCompanyId(compId);
@@ -286,6 +331,38 @@ export default function FiscalSefazView({
     setUploadedCertFileName(targetConfig.pfxCertificateFileName || null);
     setTokenTestSuccess(null);
     setCertValidationMsg(null);
+
+    // WebServices routing sync
+    setCfgCommunicationMode(targetConfig.communicationMode || 'direct_sefaz_sp');
+    if (targetConfig.directSefazSpConfig) {
+      setCfgNfeAutorizacaoHml(targetConfig.directSefazSpConfig.nfeAutorizacaoHml || 'https://homologacao.nfe.fazenda.sp.gov.br/ws/nfeautorizacao4.asmx');
+      setCfgNfeRetAutorizacaoHml(targetConfig.directSefazSpConfig.nfeRetAutorizacaoHml || 'https://homologacao.nfe.fazenda.sp.gov.br/ws/nferetautorizacao4.asmx');
+      setCfgNfeStatusServicoHml(targetConfig.directSefazSpConfig.nfeStatusServicoHml || 'https://homologacao.nfe.fazenda.sp.gov.br/ws/nfestatusservico4.asmx');
+      setCfgNfeRecepcaoEventoHml(targetConfig.directSefazSpConfig.nfeRecepcaoEventoHml || 'https://homologacao.nfe.fazenda.sp.gov.br/ws/nferecepcaoevento4.asmx');
+      setCfgNfeInutilizacaoHml(targetConfig.directSefazSpConfig.nfeInutilizacaoHml || 'https://homologacao.nfe.fazenda.sp.gov.br/ws/nfeinutilizacao4.asmx');
+      setCfgNfeAutorizacaoProd(targetConfig.directSefazSpConfig.nfeAutorizacaoProd || 'https://nfe.fazenda.sp.gov.br/ws/nfeautorizacao4.asmx');
+      setCfgNfeRetAutorizacaoProd(targetConfig.directSefazSpConfig.nfeRetAutorizacaoProd || 'https://nfe.fazenda.sp.gov.br/ws/nferetautorizacao4.asmx');
+      setCfgNfeStatusServicoProd(targetConfig.directSefazSpConfig.nfeStatusServicoProd || 'https://nfe.fazenda.sp.gov.br/ws/nfestatusservico4.asmx');
+      setCfgNfeRecepcaoEventoProd(targetConfig.directSefazSpConfig.nfeRecepcaoEventoProd || 'https://nfe.fazenda.sp.gov.br/ws/nferecepcaoevento4.asmx');
+      setCfgNfceAutorizacaoHml(targetConfig.directSefazSpConfig.nfceAutorizacaoHml || 'https://homologacao.nfce.fazenda.sp.gov.br/ws/nfeautorizacao4.asmx');
+      setCfgNfceStatusServicoHml(targetConfig.directSefazSpConfig.nfceStatusServicoHml || 'https://homologacao.nfce.fazenda.sp.gov.br/ws/nfestatusservico4.asmx');
+      setCfgNfceQrCodeHml(targetConfig.directSefazSpConfig.nfceQrCodeHml || 'https://www.homologacao.nfce.fazenda.sp.gov.br/qrcode');
+      setCfgNfceAutorizacaoProd(targetConfig.directSefazSpConfig.nfceAutorizacaoProd || 'https://nfce.fazenda.sp.gov.br/ws/nfeautorizacao4.asmx');
+      setCfgNfceStatusServicoProd(targetConfig.directSefazSpConfig.nfceStatusServicoProd || 'https://nfce.fazenda.sp.gov.br/ws/nfestatusservico4.asmx');
+      setCfgNfceQrCodeProd(targetConfig.directSefazSpConfig.nfceQrCodeProd || 'https://www.nfce.fazenda.sp.gov.br/qrcode');
+    }
+    if (targetConfig.municipalNfseConfig) {
+      setCfgNfseStandard(targetConfig.municipalNfseConfig.standard || 'sp_capital');
+      setCfgNfseHmlUrl(targetConfig.municipalNfseConfig.homologationUrl || 'https://homologacao.nfe.prefeitura.sp.gov.br/ws/lotenfe.asmx');
+      setCfgNfseProdUrl(targetConfig.municipalNfseConfig.productionUrl || 'https://nfe.prefeitura.sp.gov.br/ws/lotenfe.asmx');
+      setCfgNfseCityHall(targetConfig.municipalNfseConfig.cityHallName || 'Prefeitura de São Paulo / Paulistana');
+    }
+    if (targetConfig.customGatewayConfig) {
+      setCfgGwProvider(targetConfig.customGatewayConfig.provider || 'focus_nfe');
+      setCfgGwApiUrl(targetConfig.customGatewayConfig.apiUrl || 'https://homologacao.focusnfe.com.br/v2');
+      setCfgGwApiKey(targetConfig.customGatewayConfig.apiKey || '');
+      setCfgGwEnabled(targetConfig.customGatewayConfig.enabled || false);
+    }
   };
 
   // Monthly Batch Billing States
@@ -645,6 +722,135 @@ export default function FiscalSefazView({
 
     setCfgSavedSuccess(true);
     setTimeout(() => setCfgSavedSuccess(false), 4000);
+  };
+
+  // Test All Official SEFAZ SP WebServices and Municipal NFS-e Endpoints
+  const handleTestOfficialWebservices = async () => {
+    setIsTestingWs(true);
+    try {
+      const response = await fetch('/api/fiscal/test-webservices', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ environment: cfgEnvironment })
+      });
+      const data = await response.json();
+      if (data.results) {
+        setTestedWsResults(data.results);
+      }
+    } catch (err: any) {
+      console.error('Erro ao testar webservices:', err);
+    } finally {
+      setIsTestingWs(false);
+    }
+  };
+
+  // Save WebServices Routing & Communication Mode (Restricted to QA / Master)
+  const handleSaveWebservicesRouting = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!isQaOrMasterUser) {
+      alert('Acesso Restrito: Apenas o usuário de QA / Administrador Master tem permissão para alterar as configurações avançadas de WebService e Gateway Fiscal.');
+      return;
+    }
+
+    const updatedDirectConfig = {
+      nfeAutorizacaoHml: cfgNfeAutorizacaoHml,
+      nfeRetAutorizacaoHml: cfgNfeRetAutorizacaoHml,
+      nfeStatusServicoHml: cfgNfeStatusServicoHml,
+      nfeRecepcaoEventoHml: cfgNfeRecepcaoEventoHml,
+      nfeInutilizacaoHml: cfgNfeInutilizacaoHml,
+      nfeAutorizacaoProd: cfgNfeAutorizacaoProd,
+      nfeRetAutorizacaoProd: cfgNfeRetAutorizacaoProd,
+      nfeStatusServicoProd: cfgNfeStatusServicoProd,
+      nfeRecepcaoEventoProd: cfgNfeRecepcaoEventoProd,
+      nfceAutorizacaoHml: cfgNfceAutorizacaoHml,
+      nfceStatusServicoHml: cfgNfceStatusServicoHml,
+      nfceQrCodeHml: cfgNfceQrCodeHml,
+      nfceAutorizacaoProd: cfgNfceAutorizacaoProd,
+      nfceStatusServicoProd: cfgNfceStatusServicoProd,
+      nfceQrCodeProd: cfgNfceQrCodeProd
+    };
+
+    const updatedMunicipalConfig = {
+      standard: cfgNfseStandard,
+      homologationUrl: cfgNfseHmlUrl,
+      productionUrl: cfgNfseProdUrl,
+      cityHallName: cfgNfseCityHall
+    };
+
+    const updatedGwConfig = {
+      provider: cfgGwProvider,
+      apiUrl: cfgGwApiUrl,
+      apiKey: cfgGwApiKey,
+      enabled: cfgGwEnabled
+    };
+
+    const updatedSefazCfg: SefazApiConfig = {
+      ...sefazConfig,
+      communicationMode: cfgCommunicationMode,
+      directSefazSpConfig: updatedDirectConfig,
+      municipalNfseConfig: updatedMunicipalConfig,
+      customGatewayConfig: updatedGwConfig
+    };
+
+    setSefazConfig(updatedSefazCfg);
+    onSaveSefazConfig(updatedSefazCfg);
+
+    // Save to server endpoint as well
+    try {
+      await fetch('/api/fiscal/set-communication-mode', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          mode: cfgCommunicationMode,
+          directConfig: updatedDirectConfig,
+          municipalConfig: updatedMunicipalConfig,
+          customGatewayConfig: updatedGwConfig
+        })
+      });
+    } catch (err) {
+      console.warn('Backend fiscal mode save warning:', err);
+    }
+
+    if (onAddHistoryLog) {
+      onAddHistoryLog('system', 'Roteamento Fiscal Atualizado', `Modo de comunicação fiscal atualizado para: ${cfgCommunicationMode === 'direct_sefaz_sp' ? 'Conexão Direta WebService SEFAZ SP (Oficial)' : 'Gateway Particular / API Privada'} pelo usuário de QA.`, 'system', 'system');
+    }
+
+    setWsSaveSuccessMsg('Configurações de WebServices e Roteamento Fiscal salvas com sucesso!');
+    setTimeout(() => setWsSaveSuccessMsg(null), 4000);
+  };
+
+  // Restore Official SEFAZ SP Defaults (According to Official Documentation)
+  const handleResetToOfficialSefazSpDefaults = () => {
+    if (!isQaOrMasterUser) {
+      alert('Ação restrita ao usuário de QA / Master.');
+      return;
+    }
+    setCfgNfeAutorizacaoHml('https://homologacao.nfe.fazenda.sp.gov.br/ws/nfeautorizacao4.asmx');
+    setCfgNfeRetAutorizacaoHml('https://homologacao.nfe.fazenda.sp.gov.br/ws/nferetautorizacao4.asmx');
+    setCfgNfeStatusServicoHml('https://homologacao.nfe.fazenda.sp.gov.br/ws/nfestatusservico4.asmx');
+    setCfgNfeRecepcaoEventoHml('https://homologacao.nfe.fazenda.sp.gov.br/ws/nferecepcaoevento4.asmx');
+    setCfgNfeInutilizacaoHml('https://homologacao.nfe.fazenda.sp.gov.br/ws/nfeinutilizacao4.asmx');
+
+    setCfgNfeAutorizacaoProd('https://nfe.fazenda.sp.gov.br/ws/nfeautorizacao4.asmx');
+    setCfgNfeRetAutorizacaoProd('https://nfe.fazenda.sp.gov.br/ws/nferetautorizacao4.asmx');
+    setCfgNfeStatusServicoProd('https://nfe.fazenda.sp.gov.br/ws/nfestatusservico4.asmx');
+    setCfgNfeRecepcaoEventoProd('https://nfe.fazenda.sp.gov.br/ws/nferecepcaoevento4.asmx');
+
+    setCfgNfceAutorizacaoHml('https://homologacao.nfce.fazenda.sp.gov.br/ws/nfeautorizacao4.asmx');
+    setCfgNfceStatusServicoHml('https://homologacao.nfce.fazenda.sp.gov.br/ws/nfestatusservico4.asmx');
+    setCfgNfceQrCodeHml('https://www.homologacao.nfce.fazenda.sp.gov.br/qrcode');
+
+    setCfgNfceAutorizacaoProd('https://nfce.fazenda.sp.gov.br/ws/nfeautorizacao4.asmx');
+    setCfgNfceStatusServicoProd('https://nfce.fazenda.sp.gov.br/ws/nfestatusservico4.asmx');
+    setCfgNfceQrCodeProd('https://www.nfce.fazenda.sp.gov.br/qrcode');
+
+    setCfgNfseStandard('sp_capital');
+    setCfgNfseHmlUrl('https://homologacao.nfe.prefeitura.sp.gov.br/ws/lotenfe.asmx');
+    setCfgNfseProdUrl('https://nfe.prefeitura.sp.gov.br/ws/lotenfe.asmx');
+    setCfgNfseCityHall('Prefeitura de São Paulo / Paulistana');
+
+    setWsSaveSuccessMsg('URLs restauradas para os padrões oficiais do Portal da Fazenda SP!');
+    setTimeout(() => setWsSaveSuccessMsg(null), 3000);
   };
 
   // Process Batch Billing Handler with Pre-Transmission Review
@@ -1701,6 +1907,17 @@ export default function FiscalSefazView({
           }`}
         >
           <Code className="w-4 h-4" /> Monitor & Testes API SEFAZ
+        </button>
+
+        <button
+          onClick={() => setActiveTab('webservices_routing')}
+          className={`px-4 py-2.5 font-bold text-xs rounded-xl transition flex items-center gap-2 whitespace-nowrap cursor-pointer ${
+            activeTab === 'webservices_routing'
+              ? 'bg-amber-600 text-white shadow-md'
+              : 'bg-slate-100 dark:bg-slate-800/60 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800'
+          }`}
+        >
+          <Wifi className="w-4 h-4 text-amber-300" /> 🌐 WebServices Oficiais SEFAZ SP & NFS-e
         </button>
 
         <button
@@ -3637,6 +3854,542 @@ export default function FiscalSefazView({
               </div>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* TAB: WEBSERVICES OFICIAIS SEFAZ SP & ROTEAMENTO FISCAL (RESTRIÇÃO QA / MASTER) */}
+      {activeTab === 'webservices_routing' && (
+        <div className="space-y-6">
+          {/* Header Banner with Official SEFAZ SP Reference & QA Access Badge */}
+          <div className="bg-slate-900 text-white p-6 rounded-2xl border border-slate-800 shadow-md flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+            <div className="space-y-1.5 max-w-3xl">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 font-extrabold text-[11px] border border-amber-500/30 flex items-center gap-1">
+                  <Wifi className="w-3.5 h-3.5" /> SEFAZ SP + PREFEITURA OFICIAL
+                </span>
+                {isQaOrMasterUser ? (
+                  <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-extrabold text-[11px] border border-emerald-500/30 flex items-center gap-1">
+                    <ShieldCheck className="w-3.5 h-3.5" /> USUÁRIO QA / MASTER AUTORIZADO
+                  </span>
+                ) : (
+                  <span className="px-2.5 py-0.5 rounded-full bg-rose-500/20 text-rose-300 font-extrabold text-[11px] border border-rose-500/30 flex items-center gap-1">
+                    <AlertTriangle className="w-3.5 h-3.5" /> MODO SOMENTE LEITURA (RESTRITO AO QA)
+                  </span>
+                )}
+                <span className="px-2.5 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 font-extrabold text-[11px] border border-indigo-500/30">
+                  MODO ATUAL: {cfgCommunicationMode === 'direct_sefaz_sp' ? 'DIRETO SEFAZ SP (GRATUITO)' : 'GATEWAY PARTICULAR'}
+                </span>
+              </div>
+              <h2 className="text-base sm:text-lg font-bold text-slate-100">
+                Roteamento de WebServices da Fazenda SP & Emissão Municipal (NFS-e)
+              </h2>
+              <p className="text-xs text-slate-300 leading-relaxed">
+                Configure a comunicação direta com os servidores oficiais da Secretaria da Fazenda do Estado de São Paulo (NF-e/NFC-e 4.00) e da Prefeitura Municipal. Quando a empresa tiver caixa e desejar contratar um gateway privado (ex: Focus NFe), basta alternar o modo nesta tela.
+              </p>
+              <div className="pt-1 flex items-center gap-1 text-[11px] text-amber-300 font-mono">
+                <span>Documentação Oficial SEFAZ SP:</span>
+                <a
+                  href="https://portal.fazenda.sp.gov.br/servicos/nfce/Paginas/WebServices.aspx"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="underline hover:text-amber-200 flex items-center gap-1"
+                >
+                  portal.fazenda.sp.gov.br/servicos/nfce/Paginas/WebServices.aspx <ExternalLink className="w-3 h-3" />
+                </a>
+              </div>
+            </div>
+
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full md:w-auto shrink-0">
+              <button
+                type="button"
+                onClick={handleTestOfficialWebservices}
+                disabled={isTestingWs}
+                className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs rounded-xl transition flex items-center justify-center gap-2 shadow-sm cursor-pointer disabled:opacity-50"
+              >
+                <RefreshCw className={`w-4 h-4 ${isTestingWs ? 'animate-spin' : ''}`} />
+                {isTestingWs ? 'Testando Conexões...' : 'Testar Todos os WebServices'}
+              </button>
+
+              {isQaOrMasterUser && (
+                <button
+                  type="button"
+                  onClick={handleResetToOfficialSefazSpDefaults}
+                  className="px-3.5 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs rounded-xl transition border border-slate-700 flex items-center justify-center gap-1.5 cursor-pointer"
+                  title="Restaura os endpoints padrão da SEFAZ SP conforme o portal oficial"
+                >
+                  <RefreshCw className="w-3.5 h-3.5 text-amber-400" /> Restaurar Padrões SP
+                </button>
+              )}
+            </div>
+          </div>
+
+          {wsSaveSuccessMsg && (
+            <div className="p-4 bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-300 dark:border-emerald-800 rounded-2xl flex items-center gap-3 text-xs font-bold text-emerald-800 dark:text-emerald-200 animate-fade-in shadow-xs">
+              <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+              <span>{wsSaveSuccessMsg}</span>
+            </div>
+          )}
+
+          {/* Test Results Banner if any test was run */}
+          {testedWsResults.length > 0 && (
+            <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs space-y-3">
+              <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-2">
+                <h3 className="font-bold text-slate-900 dark:text-slate-100 text-xs flex items-center gap-2">
+                  <Wifi className="w-4 h-4 text-emerald-500" /> Resultados do Diagnóstico em Tempo Real dos WebServices
+                </h3>
+                <span className="text-[11px] font-mono text-slate-400">
+                  {testedWsResults.filter(r => r.reachable).length} de {testedWsResults.length} operacionais
+                </span>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2.5">
+                {testedWsResults.map((ws, i) => (
+                  <div
+                    key={i}
+                    className={`p-3 rounded-xl border flex items-center justify-between text-xs ${
+                      ws.reachable
+                        ? 'bg-emerald-50/50 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-900/60'
+                        : 'bg-slate-50 dark:bg-slate-800/40 border-slate-200 dark:border-slate-700'
+                    }`}
+                  >
+                    <div className="space-y-0.5 min-w-0 pr-2">
+                      <p className="font-bold text-slate-800 dark:text-slate-200 truncate">{ws.name}</p>
+                      <p className="text-[10px] text-slate-500 truncate font-mono">{ws.url}</p>
+                      <p className="text-[10px] text-slate-400">Tipo: {ws.type} ({ws.environment})</p>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-black ${
+                        ws.reachable
+                          ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
+                          : 'bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-300'
+                      }`}>
+                        {ws.reachable ? `${ws.httpStatus || 200} OK` : 'OFFLINE'}
+                      </span>
+                      {ws.latencyMs !== undefined && (
+                        <p className="text-[10px] text-slate-500 font-mono mt-0.5">{ws.latencyMs}ms</p>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Form with Routing Options */}
+          <form onSubmit={handleSaveWebservicesRouting} className="space-y-6">
+            {/* CARD 1: SELEÇÃO DE MODO DE COMUNICAÇÃO FISCAL */}
+            <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs space-y-4">
+              <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+                <div className="flex items-center gap-2">
+                  <Settings className="w-5 h-5 text-indigo-600" />
+                  <h3 className="font-bold text-slate-900 dark:text-slate-100 text-sm">
+                    Modo de Transmissão Fiscal do Sistema
+                  </h3>
+                </div>
+                <span className="px-2.5 py-0.5 rounded-full bg-indigo-100 text-indigo-800 dark:bg-indigo-950 dark:text-indigo-300 text-[10px] font-extrabold">
+                  {cfgCommunicationMode === 'direct_sefaz_sp' ? 'MODO DIRETO (SEM CUSTO)' : 'MODO GATEWAY'}
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Option 1: Direct SEFAZ SP */}
+                <label
+                  className={`p-4 rounded-2xl border-2 transition block cursor-pointer relative ${
+                    cfgCommunicationMode === 'direct_sefaz_sp'
+                      ? 'border-indigo-600 bg-indigo-50/50 dark:bg-indigo-950/30'
+                      : 'border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 bg-white dark:bg-slate-900'
+                  } ${!isQaOrMasterUser ? 'opacity-70 pointer-events-none' : ''}`}
+                >
+                  <div className="flex items-start justify-between">
+                    <div className="flex items-center gap-2.5">
+                      <input
+                        type="radio"
+                        name="comm_mode"
+                        value="direct_sefaz_sp"
+                        checked={cfgCommunicationMode === 'direct_sefaz_sp'}
+                        onChange={() => setCfgCommunicationMode('direct_sefaz_sp')}
+                        disabled={!isQaOrMasterUser}
+                        className="h-4 w-4 text-indigo-600 border-slate-300"
+                      />
+                      <span className="font-black text-slate-900 dark:text-slate-100 text-xs">
+                        🏛️ Conexão Direta com WebServices Oficiais SEFAZ SP (Padrão)
+                      </span>
+                    </div>
+                    <span className="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 text-[10px] font-black">
+                      GRATUITO
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-600 dark:text-slate-300 mt-2 leading-relaxed pl-6">
+                    O sistema assina os lotes XML com o Certificado Digital A1 do cliente e os envia diretamente para os WebServices oficiais SOAP/REST da Secretaria da Fazenda de São Paulo e da Prefeitura. Não exige mensalidade de gateway terceiro.
+                  </p>
+                </label>
+
+                {/* Option 2: Custom Gateway */}
+                <label
+                  className={`p-4 rounded-2xl border-2 transition block cursor-pointer relative ${
+                    cfgCommunicationMode === 'custom_gateway'
+                      ? 'border-amber-600 bg-amber-50/50 dark:bg-amber-950/30'
+                      : 'border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 bg-white dark:bg-slate-900'
+                  } ${!isQaOrMasterUser ? 'opacity-70 pointer-events-none' : ''}`}
+                >
+                  <div className="flex items-start justify-between">
+                    <div className="flex items-center gap-2.5">
+                      <input
+                        type="radio"
+                        name="comm_mode"
+                        value="custom_gateway"
+                        checked={cfgCommunicationMode === 'custom_gateway'}
+                        onChange={() => setCfgCommunicationMode('custom_gateway')}
+                        disabled={!isQaOrMasterUser}
+                        className="h-4 w-4 text-amber-600 border-slate-300"
+                      />
+                      <span className="font-black text-slate-900 dark:text-slate-100 text-xs">
+                        🏢 Gateway Particular / API Privada de Emissão
+                      </span>
+                    </div>
+                    <span className="px-2 py-0.5 rounded bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 text-[10px] font-black">
+                      SERVIÇO PAGO
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-600 dark:text-slate-300 mt-2 leading-relaxed pl-6">
+                    Utilize quando o cliente tiver recursos financeiros para contratar um emissor fiscal dedicado (Focus NFe, Nuvem Fiscal, PlugNotas, TecnoSpeed). O sistema fará as requisições autenticadas via token para a API contratada.
+                  </p>
+                </label>
+              </div>
+            </div>
+
+            {/* CARD 2: WEBSERVICES OFICIAIS SEFAZ SP (NF-E 4.00 & NFC-E 4.00) */}
+            <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs space-y-4">
+              <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+                <div className="flex items-center gap-2">
+                  <Building2 className="w-5 h-5 text-indigo-600" />
+                  <h3 className="font-bold text-slate-900 dark:text-slate-100 text-sm">
+                    Endpoints Oficiais SEFAZ SP — NF-e 4.00 & NFC-e (Modelo 55 e 65)
+                  </h3>
+                </div>
+                <span className="text-[11px] text-slate-400 font-mono">
+                  Ambiente Atual: {cfgEnvironment.toUpperCase()}
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 text-xs">
+                {/* NF-e Homologação */}
+                <div className="p-4 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200 dark:border-slate-700/70 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h4 className="font-bold text-slate-900 dark:text-slate-100 flex items-center gap-1.5">
+                      <span className="w-2.5 h-2.5 rounded-full bg-amber-500"></span>
+                      NF-e 4.00 (Homologação / Testes SP)
+                    </h4>
+                    <span className="text-[10px] font-mono text-slate-500">SOAP 1.2</span>
+                  </div>
+
+                  <div className="space-y-2">
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-300 mb-0.5">NFeAutorizacao4 (Envio de Lote)</label>
+                      <input
+                        type="text"
+                        value={cfgNfeAutorizacaoHml}
+                        onChange={e => setCfgNfeAutorizacaoHml(e.target.value)}
+                        disabled={!isQaOrMasterUser}
+                        className="w-full px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-[11px] font-mono text-slate-800 dark:text-slate-200 disabled:opacity-60"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-300 mb-0.5">NFeRetAutorizacao4 (Consulta Recibo Lote)</label>
+                      <input
+                        type="text"
+                        value={cfgNfeRetAutorizacaoHml}
+                        onChange={e => setCfgNfeRetAutorizacaoHml(e.target.value)}
+                        disabled={!isQaOrMasterUser}
+                        className="w-full px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-[11px] font-mono text-slate-800 dark:text-slate-200 disabled:opacity-60"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-300 mb-0.5">NFeStatusServico4 (Consulta Disponibilidade)</label>
+                      <input
+                        type="text"
+                        value={cfgNfeStatusServicoHml}
+                        onChange={e => setCfgNfeStatusServicoHml(e.target.value)}
+                        disabled={!isQaOrMasterUser}
+                        className="w-full px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-[11px] font-mono text-slate-800 dark:text-slate-200 disabled:opacity-60"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-300 mb-0.5">NFeRecepcaoEvento4 (Cancelamento & CC-e)</label>
+                      <input
+                        type="text"
+                        value={cfgNfeRecepcaoEventoHml}
+                        onChange={e => setCfgNfeRecepcaoEventoHml(e.target.value)}
+                        disabled={!isQaOrMasterUser}
+                        className="w-full px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-[11px] font-mono text-slate-800 dark:text-slate-200 disabled:opacity-60"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* NF-e Produção */}
+                <div className="p-4 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200 dark:border-slate-700/70 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h4 className="font-bold text-slate-900 dark:text-slate-100 flex items-center gap-1.5">
+                      <span className="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
+                      NF-e 4.00 (Produção / Oficial SP)
+                    </h4>
+                    <span className="text-[10px] font-mono text-slate-500">SOAP 1.2</span>
+                  </div>
+
+                  <div className="space-y-2">
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-300 mb-0.5">NFeAutorizacao4 (Produção Oficial)</label>
+                      <input
+                        type="text"
+                        value={cfgNfeAutorizacaoProd}
+                        onChange={e => setCfgNfeAutorizacaoProd(e.target.value)}
+                        disabled={!isQaOrMasterUser}
+                        className="w-full px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-[11px] font-mono text-slate-800 dark:text-slate-200 disabled:opacity-60"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-300 mb-0.5">NFeRetAutorizacao4 (Produção Oficial)</label>
+                      <input
+                        type="text"
+                        value={cfgNfeRetAutorizacaoProd}
+                        onChange={e => setCfgNfeRetAutorizacaoProd(e.target.value)}
+                        disabled={!isQaOrMasterUser}
+                        className="w-full px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-[11px] font-mono text-slate-800 dark:text-slate-200 disabled:opacity-60"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-300 mb-0.5">NFeStatusServico4 (Produção Oficial)</label>
+                      <input
+                        type="text"
+                        value={cfgNfeStatusServicoProd}
+                        onChange={e => setCfgNfeStatusServicoProd(e.target.value)}
+                        disabled={!isQaOrMasterUser}
+                        className="w-full px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-[11px] font-mono text-slate-800 dark:text-slate-200 disabled:opacity-60"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-300 mb-0.5">NFeRecepcaoEvento4 (Produção Oficial)</label>
+                      <input
+                        type="text"
+                        value={cfgNfeRecepcaoEventoProd}
+                        onChange={e => setCfgNfeRecepcaoEventoProd(e.target.value)}
+                        disabled={!isQaOrMasterUser}
+                        className="w-full px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-[11px] font-mono text-slate-800 dark:text-slate-200 disabled:opacity-60"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* NFC-e 4.00 (Consumidor Final - Modelo 65) */}
+                <div className="p-4 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200 dark:border-slate-700/70 space-y-3 lg:col-span-2">
+                  <div className="flex items-center justify-between">
+                    <h4 className="font-bold text-slate-900 dark:text-slate-100 flex items-center gap-1.5">
+                      <QrCode className="w-4 h-4 text-indigo-500" />
+                      NFC-e 4.00 (Nota Fiscal de Consumidor Eletrônica - SP)
+                    </h4>
+                    <span className="text-[10px] font-mono text-slate-500">QR Code v2.0</span>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-300 mb-0.5">NFCeAutorizacao (Homologação)</label>
+                      <input
+                        type="text"
+                        value={cfgNfceAutorizacaoHml}
+                        onChange={e => setCfgNfceAutorizacaoHml(e.target.value)}
+                        disabled={!isQaOrMasterUser}
+                        className="w-full px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-[11px] font-mono text-slate-800 dark:text-slate-200 disabled:opacity-60"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-300 mb-0.5">NFCeAutorizacao (Produção)</label>
+                      <input
+                        type="text"
+                        value={cfgNfceAutorizacaoProd}
+                        onChange={e => setCfgNfceAutorizacaoProd(e.target.value)}
+                        disabled={!isQaOrMasterUser}
+                        className="w-full px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-[11px] font-mono text-slate-800 dark:text-slate-200 disabled:opacity-60"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-300 mb-0.5">URL Consulta QR Code (Homologação)</label>
+                      <input
+                        type="text"
+                        value={cfgNfceQrCodeHml}
+                        onChange={e => setCfgNfceQrCodeHml(e.target.value)}
+                        disabled={!isQaOrMasterUser}
+                        className="w-full px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-[11px] font-mono text-slate-800 dark:text-slate-200 disabled:opacity-60"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* CARD 3: WEBSERVICE MUNICIPAL (NFS-E PREFEITURA) */}
+            <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs space-y-4">
+              <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+                <div className="flex items-center gap-2">
+                  <Building className="w-5 h-5 text-emerald-600" />
+                  <h3 className="font-bold text-slate-900 dark:text-slate-100 text-sm">
+                    WebService Municipal — NFS-e (Nota Fiscal de Serviços Eletrônica)
+                  </h3>
+                </div>
+                <span className="px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 text-[10px] font-extrabold">
+                  PADRÃO: {cfgNfseStandard.toUpperCase()}
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                    Padrão de Integração da Prefeitura:
+                  </label>
+                  <select
+                    value={cfgNfseStandard}
+                    onChange={e => setCfgNfseStandard(e.target.value as any)}
+                    disabled={!isQaOrMasterUser}
+                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-bold text-slate-800 dark:text-slate-200 disabled:opacity-60"
+                  >
+                    <option value="sp_capital">São Paulo Capital (Sistema Paulistana / LoteRPS.asmx)</option>
+                    <option value="adn_nacional">Padrão Nacional ADN (Ambiente de Dados Nacional)</option>
+                    <option value="abrasf_v2">Padrão ABRASF v2.04 (Maioria dos Municípios Paulistas)</option>
+                    <option value="ginfes">Padrão GINFES / IPM / Betha</option>
+                    <option value="custom">Padrão Customizado / Prefeitura Específica</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                    Nome da Prefeitura / Órgão Municipal:
+                  </label>
+                  <input
+                    type="text"
+                    value={cfgNfseCityHall}
+                    onChange={e => setCfgNfseCityHall(e.target.value)}
+                    disabled={!isQaOrMasterUser}
+                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-medium text-slate-800 dark:text-slate-200 disabled:opacity-60"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                    WebService NFS-e Homologação:
+                  </label>
+                  <input
+                    type="text"
+                    value={cfgNfseHmlUrl}
+                    onChange={e => setCfgNfseHmlUrl(e.target.value)}
+                    disabled={!isQaOrMasterUser}
+                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-mono text-slate-800 dark:text-slate-200 disabled:opacity-60"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                    WebService NFS-e Produção:
+                  </label>
+                  <input
+                    type="text"
+                    value={cfgNfseProdUrl}
+                    onChange={e => setCfgNfseProdUrl(e.target.value)}
+                    disabled={!isQaOrMasterUser}
+                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-mono text-slate-800 dark:text-slate-200 disabled:opacity-60"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* CARD 4: GATEWAY PARTICULAR (FOCUS NFE, NUVEM FISCAL, PLUGNOTAS) */}
+            <div className={`bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs space-y-4 ${
+              cfgCommunicationMode !== 'custom_gateway' ? 'opacity-80' : ''
+            }`}>
+              <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+                <div className="flex items-center gap-2">
+                  <Key className="w-5 h-5 text-amber-500" />
+                  <h3 className="font-bold text-slate-900 dark:text-slate-100 text-sm">
+                    Configuração de Gateway Particular (Para Quando Contratar Serviço Pago)
+                  </h3>
+                </div>
+                <span className="text-[11px] text-slate-400 font-mono">
+                  {cfgCommunicationMode === 'custom_gateway' ? 'ATIVO NO EMISSOR' : 'EM ESPERA (STANDBY)'}
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                    Provedor da API Contratada:
+                  </label>
+                  <select
+                    value={cfgGwProvider}
+                    onChange={e => setCfgGwProvider(e.target.value as any)}
+                    disabled={!isQaOrMasterUser}
+                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-bold text-slate-800 dark:text-slate-200 disabled:opacity-60"
+                  >
+                    <option value="focus_nfe">Focus NFe (focusnfe.com.br)</option>
+                    <option value="nuvem_fiscal">Nuvem Fiscal (nuvemfiscal.com.br)</option>
+                    <option value="plug_notas">PlugNotas / TecnoSpeed</option>
+                    <option value="speed_gov">SpeedGov Fiscal API</option>
+                    <option value="generic_rest">Outro Gateway REST / SOAP Customizado</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                    URL Base da API do Gateway:
+                  </label>
+                  <input
+                    type="text"
+                    value={cfgGwApiUrl}
+                    onChange={e => setCfgGwApiUrl(e.target.value)}
+                    disabled={!isQaOrMasterUser}
+                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-mono text-slate-800 dark:text-slate-200 disabled:opacity-60"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                    Token de Acesso / Chave de API Privada:
+                  </label>
+                  <input
+                    type="password"
+                    value={cfgGwApiKey}
+                    onChange={e => setCfgGwApiKey(e.target.value)}
+                    placeholder="Ex: tok_live_focus_982374981"
+                    disabled={!isQaOrMasterUser}
+                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-mono text-slate-800 dark:text-slate-200 disabled:opacity-60"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Bottom Actions Bar */}
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2">
+              <p className="text-[11px] text-slate-500">
+                {isQaOrMasterUser
+                  ? 'As alterações salvas entram em vigor imediatamente para todas as transmissões de NF-e, NFC-e e NFS-e da empresa selecionada.'
+                  : '🔒 Modo de visualização somente leitura. As alterações estão bloqueadas para o perfil atual.'}
+              </p>
+
+              {isQaOrMasterUser && (
+                <button
+                  type="submit"
+                  className="w-full sm:w-auto px-6 py-3 bg-amber-600 hover:bg-amber-500 text-white font-black text-xs rounded-xl transition shadow-md flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  <Save className="w-4 h-4" /> Salvar Configurações de WebServices & Roteamento
+                </button>
+              )}
+            </div>
+          </form>
         </div>
       )}
 

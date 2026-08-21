@@ -21,7 +21,8 @@ import {
   RefreshCw,
   Ban,
   Truck,
-  ShieldCheck
+  ShieldCheck,
+  X
 } from 'lucide-react';
 import { AppDatabase } from '../data/mockData';
 import {
@@ -91,6 +92,7 @@ export const SalesView: React.FC<SalesViewProps> = ({
   // Fiscal Conference & Emission Modal State (Phase 2)
   const [selectedSaleForFiscal, setSelectedSaleForFiscal] = useState<CommercialSale | null>(null);
   const [showFiscalModal, setShowFiscalModal] = useState<boolean>(false);
+  const [showFiscalChoiceModal, setShowFiscalChoiceModal] = useState<boolean>(false);
 
   // Success Notification Banner / Modal
   const [saleSuccessMessage, setSaleSuccessMessage] = useState<string | null>(null);
@@ -242,7 +244,7 @@ export const SalesView: React.FC<SalesViewProps> = ({
     setCart(prev => prev.filter(item => item.id !== itemId));
   };
 
-  // Finalize Sale
+  // Trigger Sale Finalization (Checks if user should be asked about Fiscal Emission)
   const handleFinalizeSale = (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -250,6 +252,19 @@ export const SalesView: React.FC<SalesViewProps> = ({
       alert('O carrinho de compras está vazio. Adicione produtos para prosseguir.');
       return;
     }
+
+    // Se o módulo fiscal estiver ativo e o usuário tiver permissão de emissão, perguntar se deseja emitir agora ou depois
+    const canEmit = currentUser.permissions?.fiscalEmit !== false && currentUser.permissions?.accessFiscal !== false;
+    if (isFiscalEnabled && canEmit) {
+      setShowFiscalChoiceModal(true);
+    } else {
+      executeFinalizeSale(false);
+    }
+  };
+
+  // Execute Sale Creation & Database persistence
+  const executeFinalizeSale = (emitFiscalNow: boolean) => {
+    setShowFiscalChoiceModal(false);
 
     let clientName = 'Consumidor Final (Balcão)';
     let clientCpfCnpj = '';
@@ -274,6 +289,8 @@ export const SalesView: React.FC<SalesViewProps> = ({
     const selectedCarrierObj = availableCarriers.find(c => c.id === carrierId);
     const selectedRedispersionCarrierObj = availableCarriers.find(c => c.id === redispersionCarrierId);
 
+    const isCreditOrBoleto = paymentMethod === 'A Prazo' || paymentMethod === 'Boleto' || paymentMethod === 'Crediário';
+
     const newSale: CommercialSale = {
       id: saleId,
       code: saleCode,
@@ -287,7 +304,8 @@ export const SalesView: React.FC<SalesViewProps> = ({
       discount: saleDiscount,
       totalAmount: cartTotalAmount,
       paymentMethod,
-      paymentStatus: 'paid',
+      paymentStatus: isCreditOrBoleto ? 'pending' : 'paid',
+      fiscalStatus: 'pending',
       installmentsCount: installments,
       notes: saleNotes,
       createdBy: `${currentUser.name} (${currentUser.role})`,
@@ -302,6 +320,49 @@ export const SalesView: React.FC<SalesViewProps> = ({
         ? (selectedRedispersionCarrierObj.corporateName || selectedRedispersionCarrierObj.tradeName)
         : undefined
     };
+
+    // Criar Título de Contas a Receber Integrado
+    const receivableId = 'cr-' + Date.now();
+    const installmentValue = cartTotalAmount / Math.max(1, installments);
+    const generatedInstallments = Array.from({ length: Math.max(1, installments) }, (_, idx) => {
+      const dueD = new Date(Date.now() + (idx + 1) * 30 * 86400000).toISOString().split('T')[0];
+      return {
+        id: `inst-${Date.now()}-${idx + 1}`,
+        installmentNumber: idx + 1,
+        totalInstallments: Math.max(1, installments),
+        amount: installmentValue,
+        paidAmount: isCreditOrBoleto ? 0 : installmentValue,
+        dueDate: dueD,
+        status: (isCreditOrBoleto ? 'pending' : 'paid') as 'pending' | 'paid',
+        paymentMethod,
+        paymentDate: isCreditOrBoleto ? undefined : nowIso.split('T')[0]
+      };
+    });
+
+    const newReceivable: any = {
+      id: receivableId,
+      code: `CR-${saleCode}`,
+      saleId,
+      saleCode,
+      clientId: resolvedClientId,
+      clientName,
+      clientCpf: clientCpfCnpj,
+      companyId: currentCompany.id,
+      title: `Venda Comercial #${saleCode} - ${clientName}`,
+      totalAmount: cartTotalAmount,
+      paidAmount: isCreditOrBoleto ? 0 : cartTotalAmount,
+      remainingAmount: isCreditOrBoleto ? cartTotalAmount : 0,
+      status: (isCreditOrBoleto ? 'pending' : 'paid') as any,
+      paymentMethod,
+      installmentsCount: installments,
+      dueDate: generatedInstallments[0]?.dueDate || nowIso.split('T')[0],
+      createdAt: nowIso,
+      installments: generatedInstallments,
+      nfeStatus: 'pending',
+      notes: `Gerado automaticamente pela Venda #${saleCode}`
+    };
+
+    newSale.receivableId = receivableId;
 
     onUpdateDb(prev => {
       // 1. Deduct Stock and Record Stock Movements
@@ -328,7 +389,7 @@ export const SalesView: React.FC<SalesViewProps> = ({
         companyId: currentCompany.id
       }));
 
-      // 2. Record Financial Transaction (Receita / Caixa)
+      // 2. Record Financial Transaction (Receita / Caixa se não for a prazo)
       const newFinancialTx = {
         id: 'ft-' + Date.now(),
         type: 'income' as const,
@@ -343,57 +404,18 @@ export const SalesView: React.FC<SalesViewProps> = ({
         companyId: currentCompany.id
       };
 
-      // 3. Optional Fiscal Document (NFC-e)
-      let newFiscalDoc: FiscalDocument | null = null;
-      if (isFiscalEnabled && autoEmitFiscal) {
-        newFiscalDoc = {
-          id: 'fisc-' + Date.now(),
-          code: 'NFCe-' + String((prev.fiscalDocuments?.length || 0) + 101),
-          type: 'nfe_product',
-          status: 'authorized',
-          accessKey: `3526${Date.now()}1234567890123456789012345678`,
-          protocolNumber: `1352600${Math.floor(10000000 + Math.random() * 90000000)}`,
-          issueDate: nowIso.split('T')[0],
-          issuedAt: nowIso.replace('T', ' ').split('.')[0],
-          companyId: currentCompany.id,
-          companyName: currentCompany.name,
-          companyCnpj: currentCompany.cnpj,
-          clientName,
-          clientCpfCnpj,
-          cfop: '5.102',
-          totalAmount: cartTotalAmount,
-          totalProducts: cartTotalAmount,
-          totalServices: 0,
-          totalTaxes: cartTotalAmount * 0.18,
-          items: cart.map(ci => ({
-            id: 'fitem-' + Date.now() + '-' + Math.random().toString(36).substring(2, 5),
-            code: ci.partCode,
-            name: ci.partName,
-            ncm: ci.ncm || '8708.99.90',
-            quantity: ci.quantity,
-            unitPrice: ci.unitPrice,
-            totalPrice: ci.totalPrice,
-            type: 'part' as const
-          })),
-          sefazStatusMessage: 'Autorizado o uso da NFC-e',
-          environment: 'homologation'
-        };
-        newSale.fiscalDocumentId = newFiscalDoc.id;
-        newSale.fiscalAccessKey = newFiscalDoc.accessKey;
-      }
-
       const existingSales = prev.sales || [];
       const existingMovements = prev.stockMovements || [];
       const existingFinancials = prev.financialTransactions || [];
-      const existingFiscals = prev.fiscalDocuments || [];
+      const existingReceivables = prev.accountsReceivable || [];
 
       return {
         ...prev,
         parts: updatedParts,
         sales: [newSale, ...existingSales],
+        accountsReceivable: [newReceivable, ...existingReceivables],
         stockMovements: [...newStockMovements, ...existingMovements],
-        financialTransactions: [newFinancialTx, ...existingFinancials],
-        fiscalDocuments: newFiscalDoc ? [newFiscalDoc, ...existingFiscals] : existingFiscals
+        financialTransactions: isCreditOrBoleto ? existingFinancials : [newFinancialTx, ...existingFinancials]
       };
     });
 
@@ -411,10 +433,17 @@ export const SalesView: React.FC<SalesViewProps> = ({
     setLogisticsHub('');
     setRedispersionCarrierId('');
 
-    // Open Receipt for the new sale
-    setSelectedSaleForReceipt(newSale);
-    setShowReceiptModal(true);
-    setSaleSuccessMessage(`Venda #${saleCode} finalizada com sucesso no valor de R$ ${cartTotalAmount.toFixed(2)}!`);
+    if (emitFiscalNow) {
+      // Dispara imediatamente o modal de conferência fiscal
+      setSelectedSaleForFiscal(newSale);
+      setShowFiscalModal(true);
+      setSaleSuccessMessage(`Venda #${saleCode} criada! Abrindo tela de conferência fiscal...`);
+    } else {
+      // Finalização com emissão posterior
+      setSelectedSaleForReceipt(newSale);
+      setShowReceiptModal(true);
+      setSaleSuccessMessage(`Venda #${saleCode} finalizada com sucesso! A Nota Fiscal foi registrada como "Pendente" para emissão posterior no Contas a Receber ou no Módulo Fiscal.`);
+    }
   };
 
   // Cancel Sale
@@ -1177,6 +1206,7 @@ export const SalesView: React.FC<SalesViewProps> = ({
                     <th className="p-3">Cliente</th>
                     <th className="p-3">Itens</th>
                     <th className="p-3">Pagamento</th>
+                    <th className="p-3">Nota Fiscal</th>
                     <th className="p-3 text-right">Valor Total</th>
                     <th className="p-3 text-center">Status</th>
                     <th className="p-3 text-center">Ações</th>
@@ -1185,6 +1215,9 @@ export const SalesView: React.FC<SalesViewProps> = ({
                 <tbody className="divide-y divide-slate-100">
                   {filteredHistory.map(sale => {
                     const isCanceled = sale.paymentStatus === 'canceled';
+                    const hasNfe = !!(sale.fiscalDocumentId || sale.fiscalAccessKey || sale.fiscalStatus === 'authorized');
+                    const isNfePending = !hasNfe && !isCanceled;
+
                     return (
                       <tr key={sale.id} className="hover:bg-slate-50/80 transition-colors">
                         <td className="p-3 whitespace-nowrap">
@@ -1219,6 +1252,19 @@ export const SalesView: React.FC<SalesViewProps> = ({
                             <div className="text-[10px] text-slate-400">{sale.installmentsCount}x parcelas</div>
                           )}
                         </td>
+                        <td className="p-3 whitespace-nowrap">
+                          {hasNfe ? (
+                            <span className="px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200 text-[10px] font-bold inline-flex items-center gap-1">
+                              🧾 {sale.nfeNumber || 'NF-e'} Autorizada
+                            </span>
+                          ) : isNfePending ? (
+                            <span className="px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200 text-[10px] font-bold inline-flex items-center gap-1">
+                              ⏱️ NF-e Pendente
+                            </span>
+                          ) : (
+                            <span className="text-[10px] text-slate-400 font-mono">—</span>
+                          )}
+                        </td>
                         <td className="p-3 text-right font-bold text-slate-800 whitespace-nowrap">
                           R$ {sale.totalAmount.toFixed(2)}
                         </td>
@@ -1240,7 +1286,7 @@ export const SalesView: React.FC<SalesViewProps> = ({
                               setSelectedSaleForReceipt(sale);
                               setShowReceiptModal(true);
                             }}
-                            className="px-2.5 py-1.5 rounded-lg text-xs font-bold bg-slate-100 text-slate-700 hover:bg-slate-200 transition-all inline-flex items-center gap-1"
+                            className="px-2.5 py-1.5 rounded-lg text-xs font-bold bg-slate-100 text-slate-700 hover:bg-slate-200 transition-all inline-flex items-center gap-1 cursor-pointer"
                             title="Visualizar Comprovante / Impressão"
                           >
                             <Printer className="w-3.5 h-3.5" />
@@ -1254,11 +1300,24 @@ export const SalesView: React.FC<SalesViewProps> = ({
                                 setSelectedSaleForFiscal(sale);
                                 setShowFiscalModal(true);
                               }}
-                              className="px-2.5 py-1.5 rounded-lg text-xs font-bold bg-indigo-50 text-indigo-700 hover:bg-indigo-100 transition-all inline-flex items-center gap-1"
-                              title="Emitir Nota Fiscal (NF-e / NFC-e em Homologação)"
+                              disabled={currentUser.permissions?.fiscalEmit === false}
+                              className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all inline-flex items-center gap-1 cursor-pointer ${
+                                currentUser.permissions?.fiscalEmit === false
+                                  ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
+                                  : hasNfe
+                                  ? 'bg-indigo-100 text-indigo-800 hover:bg-indigo-200'
+                                  : 'bg-indigo-50 text-indigo-700 hover:bg-indigo-100'
+                              }`}
+                              title={
+                                currentUser.permissions?.fiscalEmit === false
+                                  ? 'Sem permissão de emissão fiscal'
+                                  : hasNfe
+                                  ? 'Reimprimir / Consultar DANFE'
+                                  : 'Emitir Nota Fiscal (NF-e / NFC-e em Homologação)'
+                              }
                             >
                               <ShieldCheck className="w-3.5 h-3.5 text-indigo-600" />
-                              Emitir NF-e
+                              {hasNfe ? 'DANFE / NF-e' : 'Emitir NF-e'}
                             </button>
                           )}
 
@@ -1266,7 +1325,7 @@ export const SalesView: React.FC<SalesViewProps> = ({
                             <button
                               type="button"
                               onClick={() => handleCancelSale(sale)}
-                              className="px-2 py-1.5 rounded-lg text-xs font-bold bg-red-50 text-red-600 hover:bg-red-100 transition-all inline-flex items-center gap-1"
+                              className="px-2 py-1.5 rounded-lg text-xs font-bold bg-red-50 text-red-600 hover:bg-red-100 transition-all inline-flex items-center gap-1 cursor-pointer"
                               title="Cancelar Venda e Devolver Estoque"
                             >
                               <XCircle className="w-3.5 h-3.5" />
@@ -1418,10 +1477,26 @@ export const SalesView: React.FC<SalesViewProps> = ({
                   return {
                     ...s,
                     fiscalDocumentId: res.fiscalDocument.id,
-                    fiscalAccessKey: res.accessKey
+                    fiscalAccessKey: res.accessKey,
+                    fiscalStatus: (res.success ? 'authorized' : 'rejected') as any,
+                    nfeNumber: res.fiscalDocument.code
                   };
                 }
                 return s;
+              });
+
+              // Update associated account receivable
+              const updatedReceivables = (prev.accountsReceivable || []).map(r => {
+                if (r.saleId === selectedSaleForFiscal.id || r.code === `CR-${selectedSaleForFiscal.code}`) {
+                  return {
+                    ...r,
+                    nfeId: res.fiscalDocument.id,
+                    nfeCode: res.fiscalDocument.code,
+                    nfeStatus: (res.success ? 'authorized' : 'rejected') as any,
+                    nfeAccessKey: res.accessKey
+                  };
+                }
+                return r;
               });
 
               // Increment next nfe number in config
@@ -1438,15 +1513,103 @@ export const SalesView: React.FC<SalesViewProps> = ({
                 ...prev,
                 fiscalDocuments: updatedFiscDocs,
                 sales: updatedSales,
+                accountsReceivable: updatedReceivables,
                 sefazConfig: updatedSefazConfig
               };
             });
 
             if (res.success) {
-              setSaleSuccessMessage(`✅ NF-e emitida com sucesso em Homologação! Chave: ${res.accessKey} | Protocolo: ${res.protocolNumber || 'N/A'}`);
+              setSaleSuccessMessage(`✅ NF-e ${res.fiscalDocument.code} autorizada pela SEFAZ! Chave: ${res.accessKey}`);
             }
           }}
         />
+      )}
+
+      {/* DIALOG DE ESCOLHA: EMITIR NOTA FISCAL AGORA OU POSTERIORMENTE */}
+      {showFiscalChoiceModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-fade-in" id="modal-fiscal-choice">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-5 animate-scale-in">
+            <div className="flex items-start justify-between border-b border-slate-100 dark:border-slate-800 pb-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold">
+                  🧾
+                </div>
+                <div>
+                  <h3 className="font-bold text-slate-800 dark:text-slate-100 text-lg">Emissão Fiscal da Venda</h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">Integração SEFAZ Homologação & Produção</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowFiscalChoiceModal(false)}
+                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1.5 rounded-lg transition"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              <div className="p-4 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200/60 dark:border-slate-700/60 space-y-2">
+                <p className="text-sm font-semibold text-slate-800 dark:text-slate-200">
+                  Deseja emitir a nota fiscal agora?
+                </p>
+                <p className="text-xs text-slate-600 dark:text-slate-400">
+                  A venda possui <strong>{cart.length} item(ns)</strong> totalizando <strong className="text-emerald-600 dark:text-emerald-400 font-mono">R$ {cartTotalAmount.toFixed(2)}</strong>. Escolha a ação operacional:
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 gap-2.5">
+                <button
+                  type="button"
+                  id="btn-emit-nfe-now"
+                  onClick={() => executeFinalizeSale(true)}
+                  className="w-full text-left p-4 rounded-xl border-2 border-indigo-500 bg-indigo-50/40 dark:bg-indigo-950/30 hover:bg-indigo-100/50 dark:hover:bg-indigo-900/40 transition group cursor-pointer"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-indigo-700 dark:text-indigo-300 text-sm flex items-center gap-2">
+                      <span>🧾</span> Emitir Agora (Recomendado)
+                    </span>
+                    <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded bg-indigo-600 text-white">
+                      Conferência SEFAZ
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-600 dark:text-slate-400 mt-1.5">
+                    Abre a tela de conferência tributária (CFOP, ICMS, PIS/COFINS, IBS/CBS 2026) e realiza a transmissão direta.
+                  </p>
+                </button>
+
+                <button
+                  type="button"
+                  id="btn-emit-nfe-later"
+                  onClick={() => executeFinalizeSale(false)}
+                  className="w-full text-left p-4 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800/40 hover:bg-slate-50 dark:hover:bg-slate-800 transition group cursor-pointer"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-slate-700 dark:text-slate-300 text-sm flex items-center gap-2">
+                      <span>⏱️</span> Emitir Posteriormente
+                    </span>
+                    <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300">
+                      Status: Pendente
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1.5">
+                    Baixa o estoque e cria o título a receber imediatamente, deixando a NF-e marcada como <strong>Pendente</strong> para emissão no Contas a Receber ou no Módulo Fiscal.
+                  </p>
+                </button>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+              <button
+                type="button"
+                onClick={() => setShowFiscalChoiceModal(false)}
+                className="px-4 py-2 text-xs font-semibold text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition cursor-pointer"
+              >
+                Voltar ao Carrinho
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

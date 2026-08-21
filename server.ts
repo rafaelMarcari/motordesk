@@ -662,6 +662,44 @@ app.get("/api/fiscal/config-status", async (req, res) => {
   }
 });
 
+// Lista dos WebServices oficiais da SEFAZ SP e Municipal
+app.get("/api/fiscal/official-webservices", async (req, res) => {
+  try {
+    const modeInfo = fiscalBackendService.getCommunicationMode();
+    res.json(modeInfo);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Teste de conectividade com todos os WebServices oficiais
+app.post("/api/fiscal/test-webservices", async (req, res) => {
+  try {
+    const results = await fiscalBackendService.testAllOfficialWebservices();
+    res.json(results);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Configuração do modo de comunicação (SEFAZ SP Direto vs Gateway Particular)
+app.post("/api/fiscal/set-communication-mode", requireAuth, async (req, res) => {
+  try {
+    const { mode, customConfig } = req.body;
+    if (!mode || (mode !== 'direct_sefaz_sp' && mode !== 'custom_gateway')) {
+      return res.status(400).json({ error: "Modo de comunicação inválido. Use 'direct_sefaz_sp' ou 'custom_gateway'." });
+    }
+    fiscalBackendService.setCommunicationMode(mode, customConfig);
+    res.json({
+      success: true,
+      message: `Modo de comunicação fiscal atualizado para: ${mode === 'direct_sefaz_sp' ? 'Conexão Direta WebService SEFAZ SP' : 'Gateway Particular'}`,
+      currentMode: mode
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Consulta de disponibilidade SEFAZ
 app.get("/api/fiscal/status-servico", async (req, res) => {
   try {

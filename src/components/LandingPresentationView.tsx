@@ -157,6 +157,12 @@ export const DEFAULT_LANDING_CONTENT: LandingContent = {
         motordesk: 'Contas a Pagar/Receber, conciliação de boletos, transferência de estoque entre filiais e DRE gerencial.',
         concorrente: 'Controle financeiro básico em planilhas sem integração com as ordens de serviço.',
         highlight: false
+      },
+      {
+        feature: 'Fluxo Integrado Venda × Financeiro × Fiscal × Boleto (Fase 3)',
+        motordesk: 'Integração em tempo real: a finalização da venda gera recebíveis, emite NF-e/NFC-e na SEFAZ, emite Boleto Híbrido com Pix e respeita permissões granulares por operador.',
+        concorrente: 'Processos desconectados exigindo redigitação manual no emissor fiscal e no internet banking.',
+        highlight: true
       }
     ]
   },

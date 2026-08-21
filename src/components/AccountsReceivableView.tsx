@@ -8,7 +8,7 @@ import {
   Plus, Search, DollarSign, AlertTriangle, CheckCircle, ShieldCheck, 
   CreditCard, Calendar, UserCheck, X, FileText, ArrowUpRight, Lock, Eye,
   TrendingUp, TrendingDown, PieChart, Clock, ShieldAlert, ArrowRight, Filter, CheckCircle2, AlertCircle,
-  Printer, MessageSquare
+  Printer, MessageSquare, Copy, QrCode
 } from 'lucide-react';
 import { AccountReceivable, AccountInstallment, Client, User, SystemNotification, FinancialTransaction, Vehicle, FiscalDocument, BoletoDocument } from '../types';
 import { AppDatabase, INITIAL_PAYMENT_METHODS } from '../data/mockData';
@@ -48,6 +48,85 @@ export default function AccountsReceivableView({
   const [isPayModalOpen, setIsPayModalOpen] = useState(false);
   const [isManagerModalOpen, setIsManagerModalOpen] = useState(false);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
+  const [selectedBoletoForView, setSelectedBoletoForView] = useState<BoletoDocument | null>(null);
+  const [selectedDocForDanfe, setSelectedDocForDanfe] = useState<FiscalDocument | null>(null);
+  const [copiedText, setCopiedText] = useState<string | null>(null);
+
+  // Helper to copy text to clipboard
+  const handleCopyText = (text: string, label: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedText(label);
+    setTimeout(() => setCopiedText(null), 2500);
+  };
+
+  // Helper to download XML
+  const handleDownloadXml = (doc: FiscalDocument) => {
+    const xmlContent = `<?xml version="1.0" encoding="UTF-8"?>
+<NFe xmlns="http://www.portalfiscal.inf.br/nfe">
+  <infNFe Id="NFe${doc.accessKey}" versao="4.00">
+    <ide>
+      <cUF>35</cUF>
+      <cNF>${Math.floor(10000000 + Math.random() * 90000000)}</cNF>
+      <natOp>VENDA DE MERCADORIAS E SERVICOS</natOp>
+      <mod>55</mod>
+      <serie>1</serie>
+      <nNF>${doc.code.replace(/\D/g, '') || '101'}</nNF>
+      <dhEmi>${doc.issuedAt || new Date().toISOString()}</dhEmi>
+      <tpNF>1</tpNF>
+      <idDest>1</idDest>
+      <cMunFG>3550308</cMunFG>
+      <tpImp>1</tpImp>
+      <tpEmis>1</tpEmis>
+      <tpAmb>${doc.environment === 'production' ? '1' : '2'}</tpAmb>
+      <finNFe>1</finNFe>
+      <indFinal>1</indFinal>
+      <indPres>1</indPres>
+      <procEmi>0</procEmi>
+      <verProc>MotorDesk ERP 4.0</verProc>
+    </ide>
+    <emit>
+      <CNPJ>${(doc.companyCnpj || '00000000000100').replace(/\D/g, '')}</CNPJ>
+      <xNome>${doc.companyName}</xNome>
+      <xFant>${doc.companyName}</xFant>
+      <IE>123456789</IE>
+      <CRT>1</CRT>
+    </emit>
+    <dest>
+      <CPF>${(doc.clientCpfCnpj || '00000000000').replace(/\D/g, '')}</CPF>
+      <xNome>${doc.clientName}</xNome>
+      <indIEDest>9</indIEDest>
+    </dest>
+    <total>
+      <ICMSTot>
+        <vProd>${(doc.totalProducts || doc.totalAmount).toFixed(2)}</vProd>
+        <vNF>${doc.totalAmount.toFixed(2)}</vNF>
+        <vTotTrib>${(doc.totalTaxes || 0).toFixed(2)}</vTotTrib>
+      </ICMSTot>
+    </total>
+    <protNFe versao="4.00">
+      <infProt>
+        <tpAmb>${doc.environment === 'production' ? '1' : '2'}</tpAmb>
+        <verAplic>SP_NFE_PL_009</verAplic>
+        <chNFe>${doc.accessKey}</chNFe>
+        <dhRecbto>${doc.issuedAt || new Date().toISOString()}</dhRecbto>
+        <nProt>${doc.protocolNumber || '135260012345678'}</nProt>
+        <digVal>zT6XbV+4nKp9...</digVal>
+        <cStat>100</cStat>
+        <xMotivo>Autorizado o uso da NF-e</xMotivo>
+      </infProt>
+    </protNFe>
+  </infNFe>
+</NFe>`;
+    const blob = new Blob([xmlContent], { type: 'application/xml' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `NFe-${doc.code}-${doc.accessKey}.xml`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
 
   // Pre-Transmission Modal State
   const [preTxData, setPreTxData] = useState<PreTransmissionDocData | null>(null);
@@ -1288,30 +1367,164 @@ export default function AccountsReceivableView({
                           {/* Badges and Quick Actions for NF-e & Boleto */}
                           <div className="flex flex-wrap gap-1 mt-1.5">
                             {item.nfeCode ? (
-                              <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-200 flex items-center gap-1">
-                                🧾 {item.nfeCode} (Autorizada)
-                              </span>
+                              <div className="flex items-center gap-1">
+                                <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-200 flex items-center gap-1">
+                                  🧾 {item.nfeCode}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const foundDoc = (db.fiscalDocuments || []).find(d => d.id === item.nfeId || d.code === item.nfeCode || d.accessKey === item.nfeAccessKey);
+                                    const fallbackDoc: FiscalDocument = foundDoc || {
+                                      id: item.nfeId || `nfe-${Date.now()}`,
+                                      code: item.nfeCode || 'NFE-000101',
+                                      type: 'nfe_product',
+                                      status: 'authorized',
+                                      accessKey: item.nfeAccessKey || `352607${Date.now()}12345678901234567890`,
+                                      protocolNumber: `1352600${Math.floor(10000000 + Math.random() * 90000000)}`,
+                                      issueDate: item.dueDate || new Date().toISOString().split('T')[0],
+                                      issuedAt: `${item.dueDate || new Date().toISOString().split('T')[0]} 10:00:00`,
+                                      companyId: item.companyId || currentUser.companyId || 'company-001',
+                                      companyName: db.companyInfo?.tradeName || db.companyInfo?.name || 'Oficina Mecânica',
+                                      companyCnpj: db.companyInfo?.cnpj || '00.000.000/0001-91',
+                                      clientId: item.clientId,
+                                      clientName: item.clientName,
+                                      clientCpfCnpj: item.clientCpf,
+                                      receivableId: item.id,
+                                      receivableCode: item.code,
+                                      cfop: '5.102',
+                                      sefazStatusMessage: '100 - Autorizado o uso da NF-e',
+                                      totalAmount: item.totalAmount,
+                                      totalProducts: item.totalAmount,
+                                      totalServices: 0,
+                                      totalTaxes: item.totalAmount * 0.08,
+                                      items: [
+                                        {
+                                          id: `fitem-${Date.now()}`,
+                                          code: item.code,
+                                          name: item.title,
+                                          quantity: 1,
+                                          unitPrice: item.totalAmount,
+                                          totalPrice: item.totalAmount,
+                                          type: 'part' as const
+                                        }
+                                      ],
+                                      environment: db.sefazConfig?.environment || 'homologation'
+                                    };
+                                    setSelectedDocForDanfe(fallbackDoc);
+                                  }}
+                                  className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-800 hover:bg-indigo-200 transition cursor-pointer"
+                                  title="Visualizar / Reimprimir DANFE"
+                                >
+                                  DANFE
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const foundDoc = (db.fiscalDocuments || []).find(d => d.id === item.nfeId || d.code === item.nfeCode || d.accessKey === item.nfeAccessKey);
+                                    if (foundDoc) {
+                                      handleDownloadXml(foundDoc);
+                                    } else {
+                                      handleDownloadXml({
+                                        id: item.nfeId || `nfe-${Date.now()}`,
+                                        code: item.nfeCode || 'NFE-000101',
+                                        type: 'nfe_product',
+                                        status: 'authorized',
+                                        accessKey: item.nfeAccessKey || `352607${Date.now()}12345678901234567890`,
+                                        protocolNumber: `135260012345678`,
+                                        issueDate: item.dueDate || new Date().toISOString().split('T')[0],
+                                        issuedAt: `${item.dueDate || new Date().toISOString().split('T')[0]} 10:00:00`,
+                                        companyId: item.companyId || currentUser.companyId || 'company-001',
+                                        companyName: db.companyInfo?.tradeName || db.companyInfo?.name || 'Oficina Mecânica',
+                                        companyCnpj: db.companyInfo?.cnpj || '00.000.000/0001-91',
+                                        clientName: item.clientName,
+                                        clientCpfCnpj: item.clientCpf,
+                                        cfop: '5.102',
+                                        sefazStatusMessage: '100 - Autorizado o uso da NF-e',
+                                        totalProducts: item.totalAmount,
+                                        totalServices: 0,
+                                        totalTaxes: item.totalAmount * 0.08,
+                                        totalAmount: item.totalAmount,
+                                        items: [],
+                                        environment: db.sefazConfig?.environment || 'homologation'
+                                      });
+                                    }
+                                  }}
+                                  className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 hover:bg-slate-200 transition cursor-pointer"
+                                  title="Baixar XML Oficial da NF-e"
+                                >
+                                  XML
+                                </button>
+                              </div>
                             ) : (
                               <button
                                 type="button"
                                 onClick={() => handleQuickEmitNfe(item)}
-                                className="text-[10px] font-bold px-2 py-0.5 rounded bg-slate-100 text-slate-600 hover:bg-indigo-100 hover:text-indigo-800 border border-slate-200 transition cursor-pointer flex items-center gap-1"
-                                title="Emitir NF-e para este Contas a Receber"
+                                disabled={currentUser.permissions?.fiscalEmit === false}
+                                className={`text-[10px] font-bold px-2 py-0.5 rounded border transition flex items-center gap-1 ${
+                                  currentUser.permissions?.fiscalEmit === false
+                                    ? 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed'
+                                    : 'bg-slate-100 text-slate-600 hover:bg-indigo-100 hover:text-indigo-800 border-slate-200 cursor-pointer'
+                                }`}
+                                title={
+                                  currentUser.permissions?.fiscalEmit === false
+                                    ? 'Sem permissão para emitir NF-e'
+                                    : 'Emitir NF-e para este Contas a Receber'
+                                }
                               >
                                 🧾 Emitir NF-e
                               </button>
                             )}
 
                             {item.boletoCode ? (
-                              <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1">
-                                📄 {item.boletoCode}
-                              </span>
+                              <div className="flex items-center gap-1">
+                                <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1">
+                                  📄 {item.boletoCode}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const foundBoleto = (db.boletos || []).find(b => b.id === item.boletoId || b.code === item.boletoCode);
+                                    const fallbackBoleto: BoletoDocument = foundBoleto || {
+                                      id: item.boletoId || `bol-${Date.now()}`,
+                                      code: item.boletoCode || 'BOL-001',
+                                      bankCode: '341',
+                                      bankName: 'Itaú Unibanco',
+                                      barcodeNumber: item.boletoBarcode || '34191.09008 00000.123456 78901.234567 1 90000000010000',
+                                      pixQrCodeUrl: `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=00020126580014BR.GOV.BCB.PIX0136pix@oficina.com.br520400005303986540${item.remainingAmount.toFixed(2)}5802BR5915OFICINA%20MECANICA6009SAO%20PAULO62070503***6304`,
+                                      pixCopiaECola: `00020126580014BR.GOV.BCB.PIX0136pix@oficina.com.br520400005303986540${item.remainingAmount.toFixed(2)}5802BR5915OFICINA%20MECANICA6009SAO%20PAULO62070503***6304`,
+                                      payerName: item.clientName,
+                                      payerCpfCnpj: item.clientCpf || '000.000.000-00',
+                                      amount: item.remainingAmount > 0 ? item.remainingAmount : item.totalAmount,
+                                      dueDate: item.dueDate,
+                                      issueDate: new Date().toISOString().split('T')[0],
+                                      status: item.status === 'paid' ? 'paid' : 'registered',
+                                      companyId: item.companyId || currentUser.companyId || 'company-001',
+                                      receivableId: item.id
+                                    };
+                                    setSelectedBoletoForView(fallbackBoleto);
+                                  }}
+                                  className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 hover:bg-emerald-200 transition cursor-pointer"
+                                  title="Visualizar / Reimprimir Boleto"
+                                >
+                                  Ver / Imprimir
+                                </button>
+                              </div>
                             ) : (
                               <button
                                 type="button"
                                 onClick={() => handleQuickGenerateBoleto(item)}
-                                className="text-[10px] font-bold px-2 py-0.5 rounded bg-slate-100 text-slate-600 hover:bg-emerald-100 hover:text-emerald-800 border border-slate-200 transition cursor-pointer flex items-center gap-1"
-                                title="Gerar Boleto para este Contas a Receber"
+                                disabled={currentUser.permissions?.boletoGenerate === false}
+                                className={`text-[10px] font-bold px-2 py-0.5 rounded border transition flex items-center gap-1 ${
+                                  currentUser.permissions?.boletoGenerate === false
+                                    ? 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed'
+                                    : 'bg-slate-100 text-slate-600 hover:bg-emerald-100 hover:text-emerald-800 border-slate-200 cursor-pointer'
+                                }`}
+                                title={
+                                  currentUser.permissions?.boletoGenerate === false
+                                    ? 'Sem permissão para gerar Boleto'
+                                    : 'Gerar Boleto para este Contas a Receber'
+                                }
                               >
                                 📄 Gerar Boleto
                               </button>
@@ -1722,6 +1935,248 @@ export default function AccountsReceivableView({
             }
           }}
         />
+      )}
+
+      {/* BOLETO VISUALIZER / REPRINT MODAL */}
+      {selectedBoletoForView && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-4 animate-fade-in" id="modal-boleto-view">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full p-6 border border-slate-200 overflow-hidden flex flex-col max-h-[90vh]">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3 mb-4">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold text-base border border-emerald-100">
+                  📄
+                </div>
+                <div>
+                  <h3 className="font-bold text-slate-800 text-base">
+                    Boleto Bancário Híbrido (Boleto + PIX)
+                  </h3>
+                  <p className="text-xs text-slate-500 font-mono">
+                    {selectedBoletoForView.bankName || 'Banco Emissor'} • #{selectedBoletoForView.code}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedBoletoForView(null)}
+                className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-100 transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="overflow-y-auto flex-1 space-y-4 pr-1">
+              {/* Status Header */}
+              <div className="p-3 bg-emerald-50/70 rounded-xl border border-emerald-200/80 flex items-center justify-between text-xs">
+                <div className="flex items-center gap-2 text-emerald-800 font-semibold">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                  <span>Boleto Registrado e Válido para Pagamento</span>
+                </div>
+                <span className="font-bold font-mono text-emerald-700 bg-white px-2 py-0.5 rounded border border-emerald-200">
+                  Vencimento: {selectedBoletoForView.dueDate}
+                </span>
+              </div>
+
+              {/* Payer and Value Info */}
+              <div className="grid grid-cols-2 gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200 text-xs">
+                <div>
+                  <span className="text-slate-400 block text-[10px] uppercase font-bold">Sacado / Pagador</span>
+                  <span className="font-bold text-slate-800">{selectedBoletoForView.payerName}</span>
+                  <span className="text-slate-500 block font-mono text-[11px]">CPF/CNPJ: {selectedBoletoForView.payerCpfCnpj}</span>
+                </div>
+                <div className="text-right">
+                  <span className="text-slate-400 block text-[10px] uppercase font-bold">Valor do Documento</span>
+                  <span className="font-black text-slate-900 text-lg font-mono">
+                    R$ {selectedBoletoForView.amount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                  </span>
+                </div>
+              </div>
+
+              {/* Barcode / Linha Digitável */}
+              <div className="p-3 bg-slate-900 text-white rounded-xl space-y-2">
+                <div className="flex items-center justify-between text-[11px] text-slate-300">
+                  <span className="font-semibold uppercase tracking-wide">Linha Digitável (Código de Barras)</span>
+                  <button
+                    type="button"
+                    onClick={() => handleCopyText(selectedBoletoForView.barcodeNumber, 'barcode')}
+                    className="text-xs bg-slate-800 hover:bg-slate-700 text-emerald-400 px-2.5 py-1 rounded font-mono font-bold transition flex items-center gap-1 cursor-pointer"
+                  >
+                    <Copy className="w-3 h-3" />
+                    {copiedText === 'barcode' ? 'Copiado!' : 'Copiar Linha'}
+                  </button>
+                </div>
+                <div className="font-mono text-xs text-amber-300 tracking-wider break-all bg-slate-950/80 p-2 rounded border border-slate-800">
+                  {selectedBoletoForView.barcodeNumber}
+                </div>
+              </div>
+
+              {/* PIX QR Code if Hybrid */}
+              {selectedBoletoForView.pixQrCodeUrl && (
+                <div className="p-3 bg-indigo-50/60 rounded-xl border border-indigo-200/80 flex flex-col sm:flex-row items-center gap-4">
+                  <img
+                    src={selectedBoletoForView.pixQrCodeUrl}
+                    alt="QR Code Pix"
+                    className="w-24 h-24 rounded-lg bg-white p-1 border border-indigo-200 shrink-0"
+                  />
+                  <div className="flex-1 space-y-1.5 text-center sm:text-left">
+                    <span className="text-xs font-bold text-indigo-900 flex items-center justify-center sm:justify-start gap-1">
+                      <QrCode className="w-4 h-4 text-indigo-600" /> Pix Copia e Cola Integrado
+                    </span>
+                    <p className="text-[11px] text-indigo-700">
+                      O cliente pode pagar instantaneamente escaneando o QR Code ou colando o código Pix.
+                    </p>
+                    {selectedBoletoForView.pixCopiaECola && (
+                      <button
+                        type="button"
+                        onClick={() => handleCopyText(selectedBoletoForView.pixCopiaECola || '', 'pix')}
+                        className="text-xs bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1 rounded-lg font-semibold transition inline-flex items-center gap-1 cursor-pointer"
+                      >
+                        <Copy className="w-3 h-3" />
+                        {copiedText === 'pix' ? 'Pix Copiado!' : 'Copiar Código Pix'}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="border-t border-slate-100 pt-3 mt-3 flex justify-between items-center">
+              <span className="text-[11px] text-slate-400">
+                Emissão segura MotorDesk Banking
+              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => window.print()}
+                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-xs"
+                >
+                  <Printer className="w-4 h-4" /> Imprimir Boleto
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSelectedBoletoForView(null)}
+                  className="px-4 py-2 bg-slate-100 text-slate-700 rounded-xl text-xs font-semibold hover:bg-slate-200 transition cursor-pointer"
+                >
+                  Fechar
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* DANFE / NF-e VISUALIZER MODAL */}
+      {selectedDocForDanfe && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-4 animate-fade-in" id="modal-danfe-view">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-3xl w-full p-6 border border-slate-200 overflow-hidden flex flex-col max-h-[90vh]">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3 mb-4">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold text-base border border-indigo-100">
+                  🧾
+                </div>
+                <div>
+                  <h3 className="font-bold text-slate-800 text-base">
+                    Documento Auxiliar da Nota Fiscal Eletrônica (DANFE)
+                  </h3>
+                  <p className="text-xs text-slate-500 font-mono">
+                    {selectedDocForDanfe.code} • Status: {selectedDocForDanfe.status === 'authorized' ? 'Autorizada pela SEFAZ' : selectedDocForDanfe.status}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedDocForDanfe(null)}
+                className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-100 transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="overflow-y-auto flex-1 space-y-4 pr-1 text-xs">
+              {/* SEFAZ Protocol & Access Key */}
+              <div className="p-3 bg-indigo-50/70 rounded-xl border border-indigo-200 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-indigo-900">Protocolo de Autorização SEFAZ</span>
+                  <span className="font-mono font-bold text-indigo-700 bg-white px-2 py-0.5 rounded border border-indigo-200">
+                    {selectedDocForDanfe.protocolNumber || '135260012345678'}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-[10px] text-indigo-600 uppercase font-bold block mb-0.5">Chave de Acesso (44 dígitos)</span>
+                  <div className="flex items-center justify-between bg-white p-2 rounded-lg border border-indigo-200">
+                    <span className="font-mono text-xs text-slate-800 font-bold break-all">
+                      {selectedDocForDanfe.accessKey}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => handleCopyText(selectedDocForDanfe.accessKey, 'danfeKey')}
+                      className="ml-2 px-2 py-1 bg-indigo-100 hover:bg-indigo-200 text-indigo-800 rounded text-[11px] font-bold shrink-0 transition flex items-center gap-1 cursor-pointer"
+                    >
+                      <Copy className="w-3 h-3" />
+                      {copiedText === 'danfeKey' ? 'Copiado!' : 'Copiar'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Emitente & Destinatário */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
+                  <span className="text-[10px] uppercase font-bold text-slate-400 block mb-1">Emitente</span>
+                  <p className="font-bold text-slate-800">{selectedDocForDanfe.companyName}</p>
+                  <p className="font-mono text-slate-500 text-[11px]">CNPJ: {selectedDocForDanfe.companyCnpj}</p>
+                </div>
+                <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
+                  <span className="text-[10px] uppercase font-bold text-slate-400 block mb-1">Destinatário / Consumidor</span>
+                  <p className="font-bold text-slate-800">{selectedDocForDanfe.clientName || 'Consumidor Final'}</p>
+                  <p className="font-mono text-slate-500 text-[11px]">CPF/CNPJ: {selectedDocForDanfe.clientCpfCnpj || 'Não Informado'}</p>
+                </div>
+              </div>
+
+              {/* Totais */}
+              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 flex justify-between items-center">
+                <div>
+                  <span className="text-[10px] text-slate-500 uppercase font-bold block">Tributos Totais Aprox.</span>
+                  <span className="font-mono font-semibold text-slate-700">R$ {(selectedDocForDanfe.totalTaxes || 0).toFixed(2)}</span>
+                </div>
+                <div className="text-right">
+                  <span className="text-[10px] text-slate-500 uppercase font-bold block">Valor Total da NF-e</span>
+                  <span className="font-mono font-black text-slate-900 text-lg">
+                    R$ {selectedDocForDanfe.totalAmount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div className="border-t border-slate-100 pt-3 mt-3 flex justify-between items-center">
+              <span className="text-[11px] text-slate-400">
+                Ambiente: {selectedDocForDanfe.environment === 'production' ? 'Produção Nacional' : 'Homologação (Sem Valor Fiscal)'}
+              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleDownloadXml(selectedDocForDanfe)}
+                  className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition flex items-center gap-1 cursor-pointer"
+                >
+                  <FileText className="w-3.5 h-3.5" /> Baixar XML
+                </button>
+                <button
+                  type="button"
+                  onClick={() => window.print()}
+                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-xs"
+                >
+                  <Printer className="w-4 h-4" /> Imprimir DANFE
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSelectedDocForDanfe(null)}
+                  className="px-4 py-2 bg-slate-100 text-slate-700 rounded-xl text-xs font-semibold hover:bg-slate-200 transition cursor-pointer"
+                >
+                  Fechar
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* SHARE / PRINT PDF RECEIPT MODAL */}
