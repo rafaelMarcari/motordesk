@@ -63,6 +63,8 @@ export type BusinessType = "OFICINA" | "COMERCIO" | "OFICINA_COMERCIO" | "SERVIC
 export type ViewID = 
   | 'dashboard' 
   | 'sales'
+  | 'withdrawals'
+  | 'fiscal_conference'
   | 'carriers'
   | 'clients' 
   | 'vehicles' 
@@ -84,6 +86,7 @@ export type ViewID =
 
 export interface CompanyModules {
   sales: boolean;
+  withdrawals?: boolean;
   serviceOrders: boolean;
   vehicles: boolean;
   inventory: boolean;
@@ -257,6 +260,7 @@ export interface UserPermissions {
   accessUserManagement: boolean;
   accessQAPanel: boolean;
   accessSales?: boolean;
+  accessWithdrawals?: boolean;
   accessCarriers?: boolean;
   accessQuotations?: boolean;
   accessNotifications?: boolean;
@@ -269,6 +273,7 @@ export interface UserPermissions {
 
   // Permissões Granulares - Módulo Fiscal
   fiscalView?: boolean;
+  fiscalConference?: boolean;
   fiscalEmit?: boolean;
   fiscalCancel?: boolean;
   fiscalConfig?: boolean;
@@ -364,6 +369,7 @@ export interface Part {
   name: string;
   code: string;
   stock: number;
+  reservedStock?: number; // Saldo de estoque físico reservado por vendas pendentes de retirada/entrega
   price: number; // Preço de Venda
   companyId?: string;
   costPrice?: number; // Preço de Custo / Compra
@@ -407,6 +413,7 @@ export interface StockMovement {
   quantity: number;
   unitCost?: number;
   reason: string; // Ex: "Importação NFe #1042", "Ajuste de Inventário", "Baixa por Ordem de Serviço OS-001"
+  description?: string;
   supplierOrNFe?: string;
   date: string;
   userName: string;
@@ -798,6 +805,7 @@ export interface Carrier {
   city: string; // Cidade
   state: string; // UF
   internalCode?: string; // Código Interno (Ex: TR-001)
+  code?: string;
   notes?: string; // Observações gerais
   active: boolean; // Ativo / Inativo
   status?: 'active' | 'inactive'; // Status auxiliar
@@ -1338,7 +1346,7 @@ export interface CommercialSale {
   receivableId?: string;
   fiscalDocumentId?: string;
   fiscalAccessKey?: string;
-  fiscalStatus?: 'pending' | 'authorized' | 'rejected' | 'canceled';
+  fiscalStatus?: 'pending' | 'authorized' | 'rejected' | 'canceled' | 'pending_conference' | 'ready_for_emission' | 'emit_later' | 'transmitting' | 'error_transmission';
   fiscalRejectionReason?: string;
   nfeNumber?: string;
   nfeSeries?: string;
@@ -1357,6 +1365,73 @@ export interface CommercialSale {
   logisticsHub?: string;
   redispersionCarrierId?: string;
   redispersionCarrierName?: string;
+}
+
+export type WithdrawalType = 'BALCAO' | 'ENTREGA';
+
+export type WithdrawalStatus = 
+  | 'AGUARDANDO_SEPARACAO' 
+  | 'EM_SEPARACAO' 
+  | 'PARCIALMENTE_SEPARADO' 
+  | 'PRONTO_RETIRADA' 
+  | 'PRONTO_ENTREGA' 
+  | 'SAIU_PARA_ENTREGA' 
+  | 'ENTREGUE' 
+  | 'RETIRADO' 
+  | 'CANCELADO';
+
+export interface GoodsWithdrawalItem {
+  id: string;
+  partId: string;
+  partName: string;
+  partCode: string;
+  quantitySold: number;
+  quantityReserved: number;
+  quantitySeparated: number;
+  quantityReleased: number;
+  unitPrice: number;
+  totalPrice: number;
+}
+
+export interface GoodsWithdrawalHistoryEvent {
+  id: string;
+  status: WithdrawalStatus;
+  action: string;
+  description: string;
+  userId: string;
+  userName: string;
+  timestamp: string;
+  quantityMoved?: number;
+}
+
+export interface GoodsWithdrawalOrder {
+  id: string;
+  code: string; // Ex: RET-2026-0001
+  saleId: string;
+  saleCode: string;
+  companyId: string;
+  clientId: string;
+  clientName: string;
+  clientDocument?: string;
+  clientPhone?: string;
+  type: WithdrawalType;
+  status: WithdrawalStatus;
+  items: GoodsWithdrawalItem[];
+  createdAt: string;
+  updatedAt: string;
+  separatedAt?: string;
+  releasedAt?: string;
+  deliveredAt?: string;
+  collectedByName?: string;
+  collectedByDocument?: string;
+  carrierId?: string;
+  carrierName?: string;
+  shippingAddress?: string;
+  trackingCode?: string;
+  deliveryNotes?: string;
+  notes?: string;
+  assignedOperator?: string;
+  history: GoodsWithdrawalHistoryEvent[];
 }
 
 

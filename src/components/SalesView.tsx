@@ -36,7 +36,10 @@ import {
   Carrier,
   FreightType,
   ShippingOperation,
-  SefazApiConfig
+  SefazApiConfig,
+  GoodsWithdrawalOrder,
+  GoodsWithdrawalItem,
+  GoodsWithdrawalHistoryEvent
 } from '../types';
 import ShareDocumentModal from './ShareDocumentModal';
 import FiscalConferenceModal from './FiscalConferenceModal';
@@ -93,6 +96,7 @@ export const SalesView: React.FC<SalesViewProps> = ({
   const [selectedSaleForFiscal, setSelectedSaleForFiscal] = useState<CommercialSale | null>(null);
   const [showFiscalModal, setShowFiscalModal] = useState<boolean>(false);
   const [showFiscalChoiceModal, setShowFiscalChoiceModal] = useState<boolean>(false);
+  const [lastFinalizedSale, setLastFinalizedSale] = useState<CommercialSale | null>(null);
 
   // Success Notification Banner / Modal
   const [saleSuccessMessage, setSaleSuccessMessage] = useState<string | null>(null);
@@ -166,8 +170,9 @@ export const SalesView: React.FC<SalesViewProps> = ({
 
   // Add Item to Cart
   const handleAddToCart = (part: Part) => {
-    if (part.stock <= 0) {
-      alert(`O produto "${part.name}" está com estoque zerado!`);
+    const availableStock = Math.max(0, part.stock - (part.reservedStock || 0));
+    if (availableStock <= 0) {
+      alert(`O produto "${part.name}" não possui saldo disponível em estoque (Físico: ${part.stock}, Reservado: ${part.reservedStock || 0})!`);
       return;
     }
 
@@ -176,8 +181,8 @@ export const SalesView: React.FC<SalesViewProps> = ({
       if (existingIndex >= 0) {
         const existing = prev[existingIndex];
         const newQty = existing.quantity + 1;
-        if (newQty > part.stock) {
-          alert(`Quantidade solicitada excede o estoque disponível (${part.stock} un).`);
+        if (newQty > availableStock) {
+          alert(`Quantidade solicitada (${newQty}) excede o estoque disponível livre (${availableStock} un).`);
           return prev;
         }
         const updated = [...prev];
@@ -217,11 +222,12 @@ export const SalesView: React.FC<SalesViewProps> = ({
         if (item.id !== itemId) return item;
 
         const partObj = db.parts.find(p => p.id === item.partId);
+        const availableStock = partObj ? Math.max(0, partObj.stock - (partObj.reservedStock || 0)) : 9999;
         let newQty = field === 'quantity' ? Math.max(1, value) : item.quantity;
 
-        if (field === 'quantity' && partObj && newQty > partObj.stock) {
-          alert(`Quantidade máxima disponível em estoque: ${partObj.stock}`);
-          newQty = partObj.stock;
+        if (field === 'quantity' && partObj && newQty > availableStock) {
+          alert(`Quantidade máxima disponível para venda (livre de reservas): ${availableStock}`);
+          newQty = Math.max(1, availableStock);
         }
 
         const newUnitPrice = field === 'unitPrice' ? Math.max(0, value) : item.unitPrice;
@@ -244,7 +250,7 @@ export const SalesView: React.FC<SalesViewProps> = ({
     setCart(prev => prev.filter(item => item.id !== itemId));
   };
 
-  // Trigger Sale Finalization (Checks if user should be asked about Fiscal Emission)
+  // Trigger Sale Finalization
   const handleFinalizeSale = (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -253,29 +259,21 @@ export const SalesView: React.FC<SalesViewProps> = ({
       return;
     }
 
-    // Se o módulo fiscal estiver ativo e o usuário tiver permissão de emissão, perguntar se deseja emitir agora ou depois
-    const canEmit = currentUser.permissions?.fiscalEmit !== false && currentUser.permissions?.accessFiscal !== false;
-    if (isFiscalEnabled && canEmit) {
-      setShowFiscalChoiceModal(true);
-    } else {
-      executeFinalizeSale(false);
-    }
+    executeFinalizeSale();
   };
 
-  // Execute Sale Creation & Database persistence
-  const executeFinalizeSale = (emitFiscalNow: boolean) => {
-    setShowFiscalChoiceModal(false);
-
+  // Execute Sale Creation & Database persistence (Atomic single execution)
+  const executeFinalizeSale = () => {
     let clientName = 'Consumidor Final (Balcão)';
     let clientCpfCnpj = '';
     let resolvedClientId = 'walk-in';
+    const selectedClientObj = selectedClientId !== 'walk-in' ? availableClients.find(c => c.id === selectedClientId) : undefined;
 
     if (selectedClientId !== 'walk-in') {
-      const foundClient = availableClients.find(c => c.id === selectedClientId);
-      if (foundClient) {
-        resolvedClientId = foundClient.id;
-        clientName = foundClient.name;
-        clientCpfCnpj = foundClient.cpf || foundClient.cpfCnpj || '';
+      if (selectedClientObj) {
+        resolvedClientId = selectedClientObj.id;
+        clientName = selectedClientObj.name;
+        clientCpfCnpj = selectedClientObj.cpf || selectedClientObj.cpfCnpj || '';
       }
     } else {
       if (customClientName.trim()) clientName = customClientName.trim();
@@ -305,7 +303,7 @@ export const SalesView: React.FC<SalesViewProps> = ({
       totalAmount: cartTotalAmount,
       paymentMethod,
       paymentStatus: isCreditOrBoleto ? 'pending' : 'paid',
-      fiscalStatus: 'pending',
+      fiscalStatus: 'pending_conference',
       installmentsCount: installments,
       notes: saleNotes,
       createdBy: `${currentUser.name} (${currentUser.role})`,
@@ -364,30 +362,67 @@ export const SalesView: React.FC<SalesViewProps> = ({
 
     newSale.receivableId = receivableId;
 
+    // Criar Ordem de Retirada / Expedição (GoodsWithdrawalOrder)
+    const withdrawalId = 'gwo-' + Date.now();
+    const withdrawalCode = `RET-${saleCode}`;
+    const withdrawalItems: GoodsWithdrawalItem[] = cart.map(ci => ({
+      id: 'gwi-' + Date.now() + '-' + Math.random().toString(36).substr(2, 4),
+      partId: ci.partId,
+      partCode: ci.partCode,
+      partName: ci.partName,
+      quantitySold: ci.quantity,
+      quantityReserved: ci.quantity,
+      quantitySeparated: 0,
+      quantityReleased: 0,
+      unitPrice: ci.unitPrice,
+      totalPrice: ci.totalPrice
+    }));
+
+    const newWithdrawalOrder: GoodsWithdrawalOrder = {
+      id: withdrawalId,
+      code: withdrawalCode,
+      saleId,
+      saleCode: String(saleCode),
+      clientId: resolvedClientId,
+      clientName,
+      clientDocument: clientCpfCnpj,
+      clientPhone: selectedClientObj?.phone,
+      shippingAddress: (freightType !== 'NONE' && selectedClientObj?.address) ? `${selectedClientObj.address}` : undefined,
+      companyId: currentCompany.id,
+      type: freightType === 'NONE' ? 'BALCAO' : 'ENTREGA',
+      status: 'AGUARDANDO_SEPARACAO',
+      carrierId: freightType !== 'NONE' ? carrierId : undefined,
+      carrierName: (freightType !== 'NONE' && selectedCarrierObj) ? (selectedCarrierObj.corporateName || selectedCarrierObj.tradeName) : undefined,
+      items: withdrawalItems,
+      history: [
+        {
+          id: 'gwh-' + Date.now(),
+          status: 'AGUARDANDO_SEPARACAO',
+          action: 'Venda Concluída',
+          timestamp: nowIso,
+          userId: currentUser.id,
+          userName: currentUser.name,
+          description: `Pedido de expedição gerado automaticamente pela Venda #${saleCode}. Itens reservados no estoque.`
+        }
+      ],
+      notes: saleNotes || undefined,
+      createdAt: nowIso,
+      updatedAt: nowIso
+    };
+
     onUpdateDb(prev => {
-      // 1. Deduct Stock and Record Stock Movements
+      // 1. Reservar Estoque (NÃO baixar fisicamente no momento da venda)
       const updatedParts = prev.parts.map(p => {
         const cartItem = cart.find(ci => ci.partId === p.id);
         if (cartItem) {
-          const newQty = Math.max(0, p.stock - cartItem.quantity);
-          return { ...p, stock: newQty };
+          const currentReserved = p.reservedStock || 0;
+          return {
+            ...p,
+            reservedStock: currentReserved + cartItem.quantity
+          };
         }
         return p;
       });
-
-      const newStockMovements = cart.map(ci => ({
-        id: 'sm-' + Date.now() + '-' + Math.random().toString(36).substr(2, 4),
-        partId: ci.partId,
-        partName: ci.partName,
-        partCode: ci.partCode,
-        type: 'out' as const,
-        quantity: ci.quantity,
-        date: nowIso,
-        reason: 'sales' as const,
-        description: `Venda Comercial Direta #${saleCode} - Cliente: ${clientName}`,
-        userName: currentUser.name,
-        companyId: currentCompany.id
-      }));
 
       // 2. Record Financial Transaction (Receita / Caixa se não for a prazo)
       const newFinancialTx = {
@@ -405,19 +440,22 @@ export const SalesView: React.FC<SalesViewProps> = ({
       };
 
       const existingSales = prev.sales || [];
-      const existingMovements = prev.stockMovements || [];
       const existingFinancials = prev.financialTransactions || [];
       const existingReceivables = prev.accountsReceivable || [];
+      const existingWithdrawals = prev.goodsWithdrawals || [];
 
       return {
         ...prev,
         parts: updatedParts,
         sales: [newSale, ...existingSales],
         accountsReceivable: [newReceivable, ...existingReceivables],
-        stockMovements: [...newStockMovements, ...existingMovements],
+        goodsWithdrawals: [newWithdrawalOrder, ...existingWithdrawals],
         financialTransactions: isCreditOrBoleto ? existingFinancials : [newFinancialTx, ...existingFinancials]
       };
     });
+
+    // Save newly created sale reference
+    setLastFinalizedSale(newSale);
 
     // Reset Form
     setCart([]);
@@ -433,17 +471,71 @@ export const SalesView: React.FC<SalesViewProps> = ({
     setLogisticsHub('');
     setRedispersionCarrierId('');
 
-    if (emitFiscalNow) {
-      // Dispara imediatamente o modal de conferência fiscal
-      setSelectedSaleForFiscal(newSale);
-      setShowFiscalModal(true);
-      setSaleSuccessMessage(`Venda #${saleCode} criada! Abrindo tela de conferência fiscal...`);
+    // Open Fiscal Post-Sale Decision Modal if fiscal enabled
+    if (isFiscalEnabled) {
+      setShowFiscalChoiceModal(true);
     } else {
-      // Finalização com emissão posterior
       setSelectedSaleForReceipt(newSale);
       setShowReceiptModal(true);
-      setSaleSuccessMessage(`Venda #${saleCode} finalizada com sucesso! A Nota Fiscal foi registrada como "Pendente" para emissão posterior no Contas a Receber ou no Módulo Fiscal.`);
+      setSaleSuccessMessage(`Venda #${saleCode} finalizada com sucesso!`);
     }
+  };
+
+  // Post-Sale Fiscal Actions
+  const handleChoiceEmitNow = () => {
+    if (!lastFinalizedSale) return;
+    setShowFiscalChoiceModal(false);
+
+    // Atualiza status fiscal para ready_for_emission
+    onUpdateDb(prev => ({
+      ...prev,
+      sales: (prev.sales || []).map(s => {
+        if (s.id === lastFinalizedSale.id) {
+          return { ...s, fiscalStatus: 'ready_for_emission' as const };
+        }
+        return s;
+      })
+    }));
+
+    setSelectedSaleForFiscal({ ...lastFinalizedSale, fiscalStatus: 'ready_for_emission' });
+    setShowFiscalModal(true);
+    setSaleSuccessMessage(`Venda #${lastFinalizedSale.code} criada! Abrindo tela de conferência fiscal...`);
+  };
+
+  const handleChoiceSendToConference = () => {
+    if (!lastFinalizedSale) return;
+    setShowFiscalChoiceModal(false);
+
+    onUpdateDb(prev => ({
+      ...prev,
+      sales: (prev.sales || []).map(s => {
+        if (s.id === lastFinalizedSale.id) {
+          return { ...s, fiscalStatus: 'pending_conference' as const };
+        }
+        return s;
+      })
+    }));
+
+    setSaleSuccessMessage(`✅ Venda #${lastFinalizedSale.code} finalizada com sucesso e enviada para a Fila de Conferência Fiscal.`);
+  };
+
+  const handleChoiceEmitLater = () => {
+    if (!lastFinalizedSale) return;
+    setShowFiscalChoiceModal(false);
+
+    onUpdateDb(prev => ({
+      ...prev,
+      sales: (prev.sales || []).map(s => {
+        if (s.id === lastFinalizedSale.id) {
+          return { ...s, fiscalStatus: 'emit_later' as const };
+        }
+        return s;
+      })
+    }));
+
+    setSelectedSaleForReceipt(lastFinalizedSale);
+    setShowReceiptModal(true);
+    setSaleSuccessMessage(`✅ Venda #${lastFinalizedSale.code} finalizada! A Nota Fiscal foi registrada como "Emitir Depois" para emissão posterior.`);
   };
 
   // Cancel Sale
@@ -459,11 +551,18 @@ export const SalesView: React.FC<SalesViewProps> = ({
     }
 
     onUpdateDb(prev => {
-      // Restore stock
+      const withdrawalOrder = (prev.goodsWithdrawals || []).find(w => w.saleId === sale.id);
+      const isAlreadyPhysicallyDeducted = withdrawalOrder && (withdrawalOrder.status === 'RETIRADO' || withdrawalOrder.status === 'ENTREGUE');
+
+      // Restore stock (either reserved or physical)
       const updatedParts = prev.parts.map(p => {
         const item = sale.items.find(i => i.partId === p.id);
         if (item) {
-          return { ...p, stock: p.stock + item.quantity };
+          if (isAlreadyPhysicallyDeducted) {
+            return { ...p, stock: p.stock + item.quantity };
+          } else {
+            return { ...p, reservedStock: Math.max(0, (p.reservedStock || 0) - item.quantity) };
+          }
         }
         return p;
       });
@@ -476,8 +575,32 @@ export const SalesView: React.FC<SalesViewProps> = ({
         return s;
       });
 
-      // Stock movement record
-      const restoreMovements = sale.items.map(item => ({
+      // Update withdrawal status if exists
+      const updatedWithdrawals = (prev.goodsWithdrawals || []).map(w => {
+        if (w.saleId === sale.id) {
+          return {
+            ...w,
+            status: 'CANCELADO' as const,
+            updatedAt: new Date().toISOString(),
+            history: [
+              ...w.history,
+              {
+                id: 'gwh-' + Date.now(),
+                status: 'CANCELADO' as const,
+                action: 'Venda Cancelada',
+                timestamp: new Date().toISOString(),
+                userId: currentUser.id,
+                userName: currentUser.name,
+                description: 'Venda vinculada foi cancelada. Reserva de estoque liberada.'
+              }
+            ]
+          };
+        }
+        return w;
+      });
+
+      // Stock movement record only if physical stock was restored
+      const restoreMovements = isAlreadyPhysicallyDeducted ? sale.items.map(item => ({
         id: 'sm-' + Date.now() + '-' + Math.random().toString(36).substr(2, 4),
         partId: item.partId,
         partName: item.partName,
@@ -489,12 +612,13 @@ export const SalesView: React.FC<SalesViewProps> = ({
         description: `Devolução por Cancelamento de Venda #${sale.code}`,
         userName: currentUser.name,
         companyId: currentCompany.id
-      }));
+      })) : [];
 
       return {
         ...prev,
         parts: updatedParts,
         sales: updatedSales,
+        goodsWithdrawals: updatedWithdrawals,
         stockMovements: [...restoreMovements, ...(prev.stockMovements || [])]
       };
     });
@@ -1525,18 +1649,18 @@ export const SalesView: React.FC<SalesViewProps> = ({
         />
       )}
 
-      {/* DIALOG DE ESCOLHA: EMITIR NOTA FISCAL AGORA OU POSTERIORMENTE */}
-      {showFiscalChoiceModal && (
+      {/* DIALOG DE ESCOLHA: EMISSÃO FISCAL PÓS-VENDA (3 OPÇÕES CONTROLADAS) */}
+      {showFiscalChoiceModal && lastFinalizedSale && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-fade-in" id="modal-fiscal-choice">
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-5 animate-scale-in">
             <div className="flex items-start justify-between border-b border-slate-100 dark:border-slate-800 pb-4">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold">
+                <div className="w-10 h-10 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold text-lg">
                   🧾
                 </div>
                 <div>
-                  <h3 className="font-bold text-slate-800 dark:text-slate-100 text-lg">Emissão Fiscal da Venda</h3>
-                  <p className="text-xs text-slate-500 dark:text-slate-400">Integração SEFAZ Homologação & Produção</p>
+                  <h3 className="font-bold text-slate-800 dark:text-slate-100 text-lg">Venda #{lastFinalizedSale.code} Concluída</h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">Escolha o fluxo de emissão fiscal para esta venda</p>
                 </div>
               </div>
               <button
@@ -1549,51 +1673,78 @@ export const SalesView: React.FC<SalesViewProps> = ({
             </div>
 
             <div className="space-y-3">
-              <div className="p-4 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200/60 dark:border-slate-700/60 space-y-2">
-                <p className="text-sm font-semibold text-slate-800 dark:text-slate-200">
-                  Deseja emitir a nota fiscal agora?
-                </p>
-                <p className="text-xs text-slate-600 dark:text-slate-400">
-                  A venda possui <strong>{cart.length} item(ns)</strong> totalizando <strong className="text-emerald-600 dark:text-emerald-400 font-mono">R$ {cartTotalAmount.toFixed(2)}</strong>. Escolha a ação operacional:
+              <div className="p-3.5 bg-emerald-50 dark:bg-emerald-950/30 rounded-xl border border-emerald-200 dark:border-emerald-800/50 space-y-1">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-emerald-800 dark:text-emerald-300 flex items-center gap-1.5">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600" /> Venda e Financeiro Registrados
+                  </span>
+                  <span className="font-mono font-bold text-emerald-900 dark:text-emerald-200 text-xs">
+                    R$ {lastFinalizedSale.totalAmount.toFixed(2)}
+                  </span>
+                </div>
+                <p className="text-[11px] text-emerald-700 dark:text-emerald-400">
+                  Estoque atualizado e título criado no Contas a Receber. A venda não será duplicada.
                 </p>
               </div>
 
               <div className="grid grid-cols-1 gap-2.5">
+                {/* OPÇÃO 1: EMITIR NOTA AGORA */}
                 <button
                   type="button"
                   id="btn-emit-nfe-now"
-                  onClick={() => executeFinalizeSale(true)}
-                  className="w-full text-left p-4 rounded-xl border-2 border-indigo-500 bg-indigo-50/40 dark:bg-indigo-950/30 hover:bg-indigo-100/50 dark:hover:bg-indigo-900/40 transition group cursor-pointer"
+                  onClick={handleChoiceEmitNow}
+                  className="w-full text-left p-3.5 rounded-xl border-2 border-indigo-500 bg-indigo-50/40 dark:bg-indigo-950/30 hover:bg-indigo-100/60 dark:hover:bg-indigo-900/40 transition group cursor-pointer"
                 >
                   <div className="flex items-center justify-between">
                     <span className="font-bold text-indigo-700 dark:text-indigo-300 text-sm flex items-center gap-2">
-                      <span>🧾</span> Emitir Agora (Recomendado)
+                      <span>⚡</span> EMITIR NOTA AGORA
                     </span>
                     <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded bg-indigo-600 text-white">
-                      Conferência SEFAZ
+                      Conferência Direta
                     </span>
                   </div>
-                  <p className="text-xs text-slate-600 dark:text-slate-400 mt-1.5">
-                    Abre a tela de conferência tributária (CFOP, ICMS, PIS/COFINS, IBS/CBS 2026) e realiza a transmissão direta.
+                  <p className="text-xs text-slate-600 dark:text-slate-400 mt-1">
+                    Abre imediatamente a tela de conferência tributária (CFOP, ICMS, IBS/CBS) para validação e transmissão à SEFAZ.
                   </p>
                 </button>
 
+                {/* OPÇÃO 2: ENVIAR PARA CONFERÊNCIA */}
+                <button
+                  type="button"
+                  id="btn-send-to-conference"
+                  onClick={handleChoiceSendToConference}
+                  className="w-full text-left p-3.5 rounded-xl border border-amber-300 dark:border-amber-700 bg-amber-50/30 dark:bg-amber-950/20 hover:bg-amber-100/50 dark:hover:bg-amber-900/30 transition group cursor-pointer"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-amber-800 dark:text-amber-300 text-sm flex items-center gap-2">
+                      <span>⚖️</span> ENVIAR PARA CONFERÊNCIA
+                    </span>
+                    <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded bg-amber-200 dark:bg-amber-800 text-amber-800 dark:text-amber-200">
+                      Fila Operacional
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-600 dark:text-slate-400 mt-1">
+                    Marca a venda como <strong>Pendente de Conferência</strong> na fila fiscal para auditoria posterior pelo encarregado.
+                  </p>
+                </button>
+
+                {/* OPÇÃO 3: EMITIR DEPOIS */}
                 <button
                   type="button"
                   id="btn-emit-nfe-later"
-                  onClick={() => executeFinalizeSale(false)}
-                  className="w-full text-left p-4 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800/40 hover:bg-slate-50 dark:hover:bg-slate-800 transition group cursor-pointer"
+                  onClick={handleChoiceEmitLater}
+                  className="w-full text-left p-3.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800/40 hover:bg-slate-50 dark:hover:bg-slate-800 transition group cursor-pointer"
                 >
                   <div className="flex items-center justify-between">
                     <span className="font-bold text-slate-700 dark:text-slate-300 text-sm flex items-center gap-2">
-                      <span>⏱️</span> Emitir Posteriormente
+                      <span>⏱️</span> EMITIR DEPOIS
                     </span>
                     <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300">
-                      Status: Pendente
+                      Status: Emitir Depois
                     </span>
                   </div>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1.5">
-                    Baixa o estoque e cria o título a receber imediatamente, deixando a NF-e marcada como <strong>Pendente</strong> para emissão no Contas a Receber ou no Módulo Fiscal.
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                    Fecha o fluxo e permite imprimir o comprovante de venda. A NF-e poderá ser emitida posteriormente no Contas a Receber ou no Painel Fiscal.
                   </p>
                 </button>
               </div>
@@ -1605,7 +1756,7 @@ export const SalesView: React.FC<SalesViewProps> = ({
                 onClick={() => setShowFiscalChoiceModal(false)}
                 className="px-4 py-2 text-xs font-semibold text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition cursor-pointer"
               >
-                Voltar ao Carrinho
+                Fechar
               </button>
             </div>
           </div>

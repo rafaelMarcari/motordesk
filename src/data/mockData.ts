@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { User, Client, Vehicle, Part, Service, Budget, ServiceOrder, HistoryEntry, TestCase, StockMovement, CompanyInfo, SystemNotification, AlertSettings, Supplier, SupplierPartPrice, Quotation, AccountReceivable, AccountPayable, FinancialTransaction, MaintenanceLog, PaymentMethodOption, FiscalDocument, BoletoDocument, InterBranchSaleLogistics, SefazApiConfig, TaxOperationNature, TaxRule, XmlImportRecord, CommercialSale, Carrier, getDefaultModulesForBusinessType } from '../types';
+import { User, Client, Vehicle, Part, Service, Budget, ServiceOrder, HistoryEntry, TestCase, StockMovement, CompanyInfo, SystemNotification, AlertSettings, Supplier, SupplierPartPrice, Quotation, AccountReceivable, AccountPayable, FinancialTransaction, MaintenanceLog, PaymentMethodOption, FiscalDocument, BoletoDocument, InterBranchSaleLogistics, SefazApiConfig, TaxOperationNature, TaxRule, XmlImportRecord, CommercialSale, Carrier, GoodsWithdrawalOrder, WithdrawalType, WithdrawalStatus, getDefaultModulesForBusinessType } from '../types';
 
 export const INITIAL_SEFAZ_CONFIG: SefazApiConfig = {
   environment: 'homologation',
@@ -1906,6 +1906,534 @@ export const INITIAL_CARRIERS: Carrier[] = [
   }
 ];
 
+export const INITIAL_GOODS_WITHDRAWALS: GoodsWithdrawalOrder[] = [
+  // 8 Aguardando Separação
+  {
+    id: 'ret-001',
+    code: 'RET-2026-0001',
+    saleId: 'sal-101',
+    saleCode: 'VEN-2026-0101',
+    companyId: 'comp-1',
+    clientId: 'cli-1',
+    clientName: 'João Pedro da Silva',
+    clientPhone: '(11) 98765-4321',
+    type: 'BALCAO',
+    status: 'AGUARDANDO_SEPARACAO',
+    items: [
+      { id: 'wi-1', partId: 'pe-1', partName: 'Jogo de Pastilhas de Freio Dianteira Brembo', partCode: 'PE-001', quantitySold: 2, quantityReserved: 2, quantitySeparated: 0, quantityReleased: 0, unitPrice: 220, totalPrice: 440 }
+    ],
+    createdAt: '2026-08-22T08:15:00Z',
+    updatedAt: '2026-08-22T08:15:00Z',
+    history: [{ id: 'he-1', status: 'AGUARDANDO_SEPARACAO', action: 'Criação do Pedido', description: 'Venda finalizada no balcão aguardando separação no estoque.', userId: 'usr-1', userName: 'Admin Demo', timestamp: '2026-08-22T08:15:00Z' }]
+  },
+  {
+    id: 'ret-002',
+    code: 'RET-2026-0002',
+    saleId: 'sal-102',
+    saleCode: 'VEN-2026-0102',
+    companyId: 'comp-1',
+    clientId: 'cli-2',
+    clientName: 'Mariana Oliveira Costa',
+    clientPhone: '(11) 97654-3210',
+    type: 'ENTREGA',
+    status: 'AGUARDANDO_SEPARACAO',
+    carrierId: 'car-1',
+    carrierName: 'Braspress Transportes Urgentes',
+    shippingAddress: 'Av. Paulista, 1500, Bela Vista, São Paulo - SP',
+    items: [
+      { id: 'wi-2', partId: 'pe-2', partName: 'Filtro de Óleo Mann-Filter W712', partCode: 'PE-002', quantitySold: 4, quantityReserved: 4, quantitySeparated: 0, quantityReleased: 0, unitPrice: 50, totalPrice: 200 }
+    ],
+    createdAt: '2026-08-22T08:30:00Z',
+    updatedAt: '2026-08-22T08:30:00Z',
+    history: [{ id: 'he-2', status: 'AGUARDANDO_SEPARACAO', action: 'Criação do Pedido', description: 'Venda para entrega interestadual aguardando separação.', userId: 'usr-1', userName: 'Admin Demo', timestamp: '2026-08-22T08:30:00Z' }]
+  },
+  {
+    id: 'ret-003',
+    code: 'RET-2026-0003',
+    saleId: 'sal-103',
+    saleCode: 'VEN-2026-0103',
+    companyId: 'comp-1',
+    clientId: 'cli-3',
+    clientName: 'Auto Peças & Mecânica Central Ltda',
+    clientPhone: '(11) 3221-9988',
+    type: 'BALCAO',
+    status: 'AGUARDANDO_SEPARACAO',
+    items: [
+      { id: 'wi-3', partId: 'pe-3', partName: 'Disco de Freio Dianteiro Ventilado Fremax', partCode: 'PE-003', quantitySold: 2, quantityReserved: 2, quantitySeparated: 0, quantityReleased: 0, unitPrice: 310, totalPrice: 620 }
+    ],
+    createdAt: '2026-08-22T09:00:00Z',
+    updatedAt: '2026-08-22T09:00:00Z',
+    history: [{ id: 'he-3', status: 'AGUARDANDO_SEPARACAO', action: 'Criação do Pedido', description: 'Pedido de balcão aguardando triagem.', userId: 'usr-2', userName: 'Carlos Atendente', timestamp: '2026-08-22T09:00:00Z' }]
+  },
+  {
+    id: 'ret-004',
+    code: 'RET-2026-0004',
+    saleId: 'sal-104',
+    saleCode: 'VEN-2026-0104',
+    companyId: 'comp-1',
+    clientId: 'cli-1',
+    clientName: 'Roberto Alves de Almeida',
+    type: 'ENTREGA',
+    status: 'AGUARDANDO_SEPARACAO',
+    carrierId: 'car-2',
+    carrierName: 'Jadlog Express',
+    shippingAddress: 'Rua Augusta, 450, Consolação, São Paulo - SP',
+    items: [
+      { id: 'wi-4', partId: 'pe-4', partName: 'Amortecedor Dianteiro Turbogás Cofap', partCode: 'PE-004', quantitySold: 2, quantityReserved: 2, quantitySeparated: 0, quantityReleased: 0, unitPrice: 420, totalPrice: 840 }
+    ],
+    createdAt: '2026-08-22T09:15:00Z',
+    updatedAt: '2026-08-22T09:15:00Z',
+    history: [{ id: 'he-4', status: 'AGUARDANDO_SEPARACAO', action: 'Criação do Pedido', description: 'Aguardando separador no estoque.', userId: 'usr-2', userName: 'Carlos Atendente', timestamp: '2026-08-22T09:15:00Z' }]
+  },
+  {
+    id: 'ret-005',
+    code: 'RET-2026-0005',
+    saleId: 'sal-105',
+    saleCode: 'VEN-2026-0105',
+    companyId: 'comp-1',
+    clientId: 'cli-2',
+    clientName: 'Lucas Mendes Santana',
+    type: 'BALCAO',
+    status: 'AGUARDANDO_SEPARACAO',
+    items: [
+      { id: 'wi-5', partId: 'pe-1', partName: 'Jogo de Pastilhas de Freio Dianteira Brembo', partCode: 'PE-001', quantitySold: 1, quantityReserved: 1, quantitySeparated: 0, quantityReleased: 0, unitPrice: 220, totalPrice: 220 }
+    ],
+    createdAt: '2026-08-22T09:40:00Z',
+    updatedAt: '2026-08-22T09:40:00Z',
+    history: [{ id: 'he-5', status: 'AGUARDANDO_SEPARACAO', action: 'Criação do Pedido', description: 'Cliente aguardando retirada em loja.', userId: 'usr-1', userName: 'Admin Demo', timestamp: '2026-08-22T09:40:00Z' }]
+  },
+  {
+    id: 'ret-006',
+    code: 'RET-2026-0006',
+    saleId: 'sal-106',
+    saleCode: 'VEN-2026-0106',
+    companyId: 'comp-1',
+    clientId: 'cli-3',
+    clientName: 'Transportes Express ABC',
+    type: 'ENTREGA',
+    status: 'AGUARDANDO_SEPARACAO',
+    carrierId: 'car-3',
+    carrierName: 'RTE Rodonaves',
+    shippingAddress: 'Rodovia Anchieta, Km 18, São Bernardo do Campo - SP',
+    items: [
+      { id: 'wi-6', partId: 'pe-2', partName: 'Filtro de Óleo Mann-Filter W712', partCode: 'PE-002', quantitySold: 10, quantityReserved: 10, quantitySeparated: 0, quantityReleased: 0, unitPrice: 48, totalPrice: 480 }
+    ],
+    createdAt: '2026-08-22T10:00:00Z',
+    updatedAt: '2026-08-22T10:00:00Z',
+    history: [{ id: 'he-6', status: 'AGUARDANDO_SEPARACAO', action: 'Criação do Pedido', description: 'Carga fracionada agendada.', userId: 'usr-1', userName: 'Admin Demo', timestamp: '2026-08-22T10:00:00Z' }]
+  },
+  {
+    id: 'ret-007',
+    code: 'RET-2026-0007',
+    saleId: 'sal-107',
+    saleCode: 'VEN-2026-0107',
+    companyId: 'comp-1',
+    clientId: 'cli-1',
+    clientName: 'Carla Nogueira',
+    type: 'BALCAO',
+    status: 'AGUARDANDO_SEPARACAO',
+    items: [
+      { id: 'wi-7', partId: 'pe-3', partName: 'Disco de Freio Dianteiro Ventilado Fremax', partCode: 'PE-003', quantitySold: 1, quantityReserved: 1, quantitySeparated: 0, quantityReleased: 0, unitPrice: 310, totalPrice: 310 }
+    ],
+    createdAt: '2026-08-22T10:20:00Z',
+    updatedAt: '2026-08-22T10:20:00Z',
+    history: [{ id: 'he-7', status: 'AGUARDANDO_SEPARACAO', action: 'Criação do Pedido', description: 'Venda de balcão.', userId: 'usr-2', userName: 'Carlos Atendente', timestamp: '2026-08-22T10:20:00Z' }]
+  },
+  {
+    id: 'ret-008',
+    code: 'RET-2026-0008',
+    saleId: 'sal-108',
+    saleCode: 'VEN-2026-0108',
+    companyId: 'comp-1',
+    clientId: 'cli-2',
+    clientName: 'Diego Ferraz',
+    type: 'BALCAO',
+    status: 'AGUARDANDO_SEPARACAO',
+    items: [
+      { id: 'wi-8', partId: 'pe-4', partName: 'Amortecedor Dianteiro Turbogás Cofap', partCode: 'PE-004', quantitySold: 2, quantityReserved: 2, quantitySeparated: 0, quantityReleased: 0, unitPrice: 420, totalPrice: 840 }
+    ],
+    createdAt: '2026-08-22T10:35:00Z',
+    updatedAt: '2026-08-22T10:35:00Z',
+    history: [{ id: 'he-8', status: 'AGUARDANDO_SEPARACAO', action: 'Criação do Pedido', description: 'Retirada programada.', userId: 'usr-1', userName: 'Admin Demo', timestamp: '2026-08-22T10:35:00Z' }]
+  },
+
+  // 3 Em Separação
+  {
+    id: 'ret-009',
+    code: 'RET-2026-0009',
+    saleId: 'sal-109',
+    saleCode: 'VEN-2026-0109',
+    companyId: 'comp-1',
+    clientId: 'cli-1',
+    clientName: 'Marcos Vinicius Rezende',
+    type: 'BALCAO',
+    status: 'EM_SEPARACAO',
+    assignedOperator: 'Mecânico Teste',
+    items: [
+      { id: 'wi-9', partId: 'pe-1', partName: 'Jogo de Pastilhas de Freio Dianteira Brembo', partCode: 'PE-001', quantitySold: 2, quantityReserved: 2, quantitySeparated: 1, quantityReleased: 0, unitPrice: 220, totalPrice: 440 }
+    ],
+    createdAt: '2026-08-22T08:00:00Z',
+    updatedAt: '2026-08-22T09:10:00Z',
+    history: [
+      { id: 'he-9a', status: 'AGUARDANDO_SEPARACAO', action: 'Criação', description: 'Pedido gerado.', userId: 'usr-1', userName: 'Admin Demo', timestamp: '2026-08-22T08:00:00Z' },
+      { id: 'he-9b', status: 'EM_SEPARACAO', action: 'Início de Separação', description: 'Operador coletando itens na prateleira A3.', userId: 'usr-3', userName: 'Mecânico Teste', timestamp: '2026-08-22T09:10:00Z' }
+    ]
+  },
+  {
+    id: 'ret-010',
+    code: 'RET-2026-0010',
+    saleId: 'sal-110',
+    saleCode: 'VEN-2026-0110',
+    companyId: 'comp-1',
+    clientId: 'cli-2',
+    clientName: 'Juliana Barbosa',
+    type: 'ENTREGA',
+    status: 'EM_SEPARACAO',
+    carrierId: 'car-2',
+    carrierName: 'Jadlog Express',
+    assignedOperator: 'Mecânico Teste',
+    shippingAddress: 'Rua Bela Cintra, 890, São Paulo - SP',
+    items: [
+      { id: 'wi-10', partId: 'pe-2', partName: 'Filtro de Óleo Mann-Filter W712', partCode: 'PE-002', quantitySold: 3, quantityReserved: 3, quantitySeparated: 2, quantityReleased: 0, unitPrice: 50, totalPrice: 150 }
+    ],
+    createdAt: '2026-08-22T08:20:00Z',
+    updatedAt: '2026-08-22T09:30:00Z',
+    history: [
+      { id: 'he-10a', status: 'AGUARDANDO_SEPARACAO', action: 'Criação', description: 'Pedido gerado.', userId: 'usr-1', userName: 'Admin Demo', timestamp: '2026-08-22T08:20:00Z' },
+      { id: 'he-10b', status: 'EM_SEPARACAO', action: 'Início de Separação', description: 'Conferência de embalagem em andamento.', userId: 'usr-3', userName: 'Mecânico Teste', timestamp: '2026-08-22T09:30:00Z' }
+    ]
+  },
+  {
+    id: 'ret-011',
+    code: 'RET-2026-0011',
+    saleId: 'sal-111',
+    saleCode: 'VEN-2026-0111',
+    companyId: 'comp-1',
+    clientId: 'cli-3',
+    clientName: 'Oficina Rápida Moema',
+    type: 'BALCAO',
+    status: 'EM_SEPARACAO',
+    assignedOperator: 'Carlos Atendente',
+    items: [
+      { id: 'wi-11', partId: 'pe-3', partName: 'Disco de Freio Dianteiro Ventilado Fremax', partCode: 'PE-003', quantitySold: 4, quantityReserved: 4, quantitySeparated: 2, quantityReleased: 0, unitPrice: 310, totalPrice: 1240 }
+    ],
+    createdAt: '2026-08-22T08:45:00Z',
+    updatedAt: '2026-08-22T09:50:00Z',
+    history: [
+      { id: 'he-11a', status: 'AGUARDANDO_SEPARACAO', action: 'Criação', description: 'Pedido gerado.', userId: 'usr-2', userName: 'Carlos Atendente', timestamp: '2026-08-22T08:45:00Z' },
+      { id: 'he-11b', status: 'EM_SEPARACAO', action: 'Início de Separação', description: 'Separando lote para retirada.', userId: 'usr-2', userName: 'Carlos Atendente', timestamp: '2026-08-22T09:50:00Z' }
+    ]
+  },
+
+  // 2 Parcialmente Separado / Pendências
+  {
+    id: 'ret-012',
+    code: 'RET-2026-0012',
+    saleId: 'sal-112',
+    saleCode: 'VEN-2026-0112',
+    companyId: 'comp-1',
+    clientId: 'cli-1',
+    clientName: 'Frota Express Transporte',
+    type: 'BALCAO',
+    status: 'PARCIALMENTE_SEPARADO',
+    items: [
+      { id: 'wi-12a', partId: 'pe-1', partName: 'Jogo de Pastilhas de Freio Dianteira Brembo', partCode: 'PE-001', quantitySold: 5, quantityReserved: 5, quantitySeparated: 5, quantityReleased: 0, unitPrice: 220, totalPrice: 1100 },
+      { id: 'wi-12b', partId: 'pe-4', partName: 'Amortecedor Dianteiro Turbogás Cofap', partCode: 'PE-004', quantitySold: 4, quantityReserved: 4, quantitySeparated: 2, quantityReleased: 0, unitPrice: 420, totalPrice: 1680 }
+    ],
+    createdAt: '2026-08-22T07:30:00Z',
+    updatedAt: '2026-08-22T10:15:00Z',
+    history: [
+      { id: 'he-12a', status: 'PARCIALMENTE_SEPARADO', action: 'Separação Parcial', description: 'Pastilhas 100% separadas. Amortecedores separados 2 de 4 (faltam 2).', userId: 'usr-3', userName: 'Mecânico Teste', timestamp: '2026-08-22T10:15:00Z' }
+    ]
+  },
+  {
+    id: 'ret-013',
+    code: 'RET-2026-0013',
+    saleId: 'sal-113',
+    saleCode: 'VEN-2026-0113',
+    companyId: 'comp-1',
+    clientId: 'cli-2',
+    clientName: 'Centro Automotivo Pinheiros',
+    type: 'ENTREGA',
+    status: 'PARCIALMENTE_SEPARADO',
+    carrierId: 'car-1',
+    carrierName: 'Braspress Transportes Urgentes',
+    items: [
+      { id: 'wi-13', partId: 'pe-2', partName: 'Filtro de Óleo Mann-Filter W712', partCode: 'PE-002', quantitySold: 8, quantityReserved: 8, quantitySeparated: 5, quantityReleased: 0, unitPrice: 50, totalPrice: 400 }
+    ],
+    createdAt: '2026-08-22T07:50:00Z',
+    updatedAt: '2026-08-22T10:25:00Z',
+    history: [
+      { id: 'he-13', status: 'PARCIALMENTE_SEPARADO', action: 'Separação Parcial', description: '5 unidades separadas na caixa 1. Pendente conferência final.', userId: 'usr-3', userName: 'Mecânico Teste', timestamp: '2026-08-22T10:25:00Z' }
+    ]
+  },
+
+  // 5 Prontos para Retirada (3 com >24h de espera para teste de alerta operacional SLA)
+  {
+    id: 'ret-014',
+    code: 'RET-2026-0014',
+    saleId: 'sal-114',
+    saleCode: 'VEN-2026-0114',
+    companyId: 'comp-1',
+    clientId: 'cli-1',
+    clientName: 'Rodrigo Toledo Martins',
+    clientPhone: '(11) 98111-2233',
+    type: 'BALCAO',
+    status: 'PRONTO_RETIRADA',
+    separatedAt: '2026-08-20T14:00:00Z', // >24h
+    items: [
+      { id: 'wi-14', partId: 'pe-1', partName: 'Jogo de Pastilhas de Freio Dianteira Brembo', partCode: 'PE-001', quantitySold: 1, quantityReserved: 1, quantitySeparated: 1, quantityReleased: 0, unitPrice: 220, totalPrice: 220 }
+    ],
+    createdAt: '2026-08-20T11:00:00Z',
+    updatedAt: '2026-08-20T14:00:00Z',
+    history: [{ id: 'he-14', status: 'PRONTO_RETIRADA', action: 'Separação Concluída', description: 'Mercadoria embalada e disponível no Balcão 1.', userId: 'usr-1', userName: 'Admin Demo', timestamp: '2026-08-20T14:00:00Z' }]
+  },
+  {
+    id: 'ret-015',
+    code: 'RET-2026-0015',
+    saleId: 'sal-115',
+    saleCode: 'VEN-2026-0115',
+    companyId: 'comp-1',
+    clientId: 'cli-2',
+    clientName: 'Fernando Guimarães Silva',
+    clientPhone: '(11) 97222-3344',
+    type: 'BALCAO',
+    status: 'PRONTO_RETIRADA',
+    separatedAt: '2026-08-20T16:30:00Z', // >24h
+    items: [
+      { id: 'wi-15', partId: 'pe-3', partName: 'Disco de Freio Dianteiro Ventilado Fremax', partCode: 'PE-003', quantitySold: 2, quantityReserved: 2, quantitySeparated: 2, quantityReleased: 0, unitPrice: 310, totalPrice: 620 }
+    ],
+    createdAt: '2026-08-20T15:00:00Z',
+    updatedAt: '2026-08-20T16:30:00Z',
+    history: [{ id: 'he-15', status: 'PRONTO_RETIRADA', action: 'Separação Concluída', description: 'Aguardando cliente vir retirar.', userId: 'usr-2', userName: 'Carlos Atendente', timestamp: '2026-08-20T16:30:00Z' }]
+  },
+  {
+    id: 'ret-016',
+    code: 'RET-2026-0016',
+    saleId: 'sal-116',
+    saleCode: 'VEN-2026-0116',
+    companyId: 'comp-1',
+    clientId: 'cli-3',
+    clientName: 'Patricia Vasconcelos',
+    clientPhone: '(11) 96333-4455',
+    type: 'BALCAO',
+    status: 'PRONTO_RETIRADA',
+    separatedAt: '2026-08-21T08:00:00Z', // >24h
+    items: [
+      { id: 'wi-16', partId: 'pe-2', partName: 'Filtro de Óleo Mann-Filter W712', partCode: 'PE-002', quantitySold: 2, quantityReserved: 2, quantitySeparated: 2, quantityReleased: 0, unitPrice: 50, totalPrice: 100 }
+    ],
+    createdAt: '2026-08-21T07:30:00Z',
+    updatedAt: '2026-08-21T08:00:00Z',
+    history: [{ id: 'he-16', status: 'PRONTO_RETIRADA', action: 'Separação Concluída', description: 'Notificação enviada por WhatsApp.', userId: 'usr-1', userName: 'Admin Demo', timestamp: '2026-08-21T08:00:00Z' }]
+  },
+  {
+    id: 'ret-017',
+    code: 'RET-2026-0017',
+    saleId: 'sal-117',
+    saleCode: 'VEN-2026-0117',
+    companyId: 'comp-1',
+    clientId: 'cli-1',
+    clientName: 'Henrique Faria',
+    clientPhone: '(11) 99444-5566',
+    type: 'BALCAO',
+    status: 'PRONTO_RETIRADA',
+    separatedAt: '2026-08-22T08:50:00Z',
+    items: [
+      { id: 'wi-17', partId: 'pe-4', partName: 'Amortecedor Dianteiro Turbogás Cofap', partCode: 'PE-004', quantitySold: 2, quantityReserved: 2, quantitySeparated: 2, quantityReleased: 0, unitPrice: 420, totalPrice: 840 }
+    ],
+    createdAt: '2026-08-22T08:10:00Z',
+    updatedAt: '2026-08-22T08:50:00Z',
+    history: [{ id: 'he-17', status: 'PRONTO_RETIRADA', action: 'Separação Concluída', description: 'Pronto para entrega de balcão imediata.', userId: 'usr-3', userName: 'Mecânico Teste', timestamp: '2026-08-22T08:50:00Z' }]
+  },
+  {
+    id: 'ret-018',
+    code: 'RET-2026-0018',
+    saleId: 'sal-118',
+    saleCode: 'VEN-2026-0118',
+    companyId: 'comp-1',
+    clientId: 'cli-2',
+    clientName: 'Luciana Prado',
+    clientPhone: '(11) 98555-6677',
+    type: 'BALCAO',
+    status: 'PRONTO_RETIRADA',
+    separatedAt: '2026-08-22T09:20:00Z',
+    items: [
+      { id: 'wi-18', partId: 'pe-1', partName: 'Jogo de Pastilhas de Freio Dianteira Brembo', partCode: 'PE-001', quantitySold: 1, quantityReserved: 1, quantitySeparated: 1, quantityReleased: 0, unitPrice: 220, totalPrice: 220 }
+    ],
+    createdAt: '2026-08-22T08:40:00Z',
+    updatedAt: '2026-08-22T09:20:00Z',
+    history: [{ id: 'he-18', status: 'PRONTO_RETIRADA', action: 'Separação Concluída', description: 'Etiqueta de cliente anexada.', userId: 'usr-2', userName: 'Carlos Atendente', timestamp: '2026-08-22T09:20:00Z' }]
+  },
+
+  // 4 Prontos para Entrega / Despacho
+  {
+    id: 'ret-019',
+    code: 'RET-2026-0019',
+    saleId: 'sal-119',
+    saleCode: 'VEN-2026-0119',
+    companyId: 'comp-1',
+    clientId: 'cli-1',
+    clientName: 'Oficina Mecânica São Judas',
+    type: 'ENTREGA',
+    status: 'PRONTO_ENTREGA',
+    carrierId: 'car-2',
+    carrierName: 'Jadlog Express',
+    shippingAddress: 'Av. Jabaquara, 1200, Mirandópolis, São Paulo - SP',
+    trackingCode: 'JAD-SP-99201',
+    separatedAt: '2026-08-22T09:00:00Z',
+    items: [
+      { id: 'wi-19', partId: 'pe-3', partName: 'Disco de Freio Dianteiro Ventilado Fremax', partCode: 'PE-003', quantitySold: 4, quantityReserved: 4, quantitySeparated: 4, quantityReleased: 0, unitPrice: 310, totalPrice: 1240 }
+    ],
+    createdAt: '2026-08-22T08:00:00Z',
+    updatedAt: '2026-08-22T09:00:00Z',
+    history: [{ id: 'he-19', status: 'PRONTO_ENTREGA', action: 'Pronto para Despacho', description: 'Volumes pesados e com DANFE anexada.', userId: 'usr-1', userName: 'Admin Demo', timestamp: '2026-08-22T09:00:00Z' }]
+  },
+  {
+    id: 'ret-020',
+    code: 'RET-2026-0020',
+    saleId: 'sal-120',
+    saleCode: 'VEN-2026-0120',
+    companyId: 'comp-1',
+    clientId: 'cli-2',
+    clientName: 'Transportes Rápidos Campinas',
+    type: 'ENTREGA',
+    status: 'PRONTO_ENTREGA',
+    carrierId: 'car-1',
+    carrierName: 'Braspress Transportes Urgentes',
+    shippingAddress: 'Rua Barão de Jaguara, 500, Centro, Campinas - SP',
+    trackingCode: 'BP-887102-SP',
+    separatedAt: '2026-08-22T09:30:00Z',
+    items: [
+      { id: 'wi-20', partId: 'pe-2', partName: 'Filtro de Óleo Mann-Filter W712', partCode: 'PE-002', quantitySold: 6, quantityReserved: 6, quantitySeparated: 6, quantityReleased: 0, unitPrice: 50, totalPrice: 300 }
+    ],
+    createdAt: '2026-08-22T08:30:00Z',
+    updatedAt: '2026-08-22T09:30:00Z',
+    history: [{ id: 'he-20', status: 'PRONTO_ENTREGA', action: 'Pronto para Despacho', description: 'Coleta solicitada para o período da tarde.', userId: 'usr-1', userName: 'Admin Demo', timestamp: '2026-08-22T09:30:00Z' }]
+  },
+  {
+    id: 'ret-021',
+    code: 'RET-2026-0021',
+    saleId: 'sal-121',
+    saleCode: 'VEN-2026-0121',
+    companyId: 'comp-1',
+    clientId: 'cli-3',
+    clientName: 'Gabriel Siqueira',
+    type: 'ENTREGA',
+    status: 'PRONTO_ENTREGA',
+    carrierId: 'car-3',
+    carrierName: 'RTE Rodonaves',
+    shippingAddress: 'Av. Brasil, 4300, Jardim Paulista, Ribeirão Preto - SP',
+    trackingCode: 'ROD-SP-44120',
+    separatedAt: '2026-08-22T10:00:00Z',
+    items: [
+      { id: 'wi-21', partId: 'pe-4', partName: 'Amortecedor Dianteiro Turbogás Cofap', partCode: 'PE-004', quantitySold: 2, quantityReserved: 2, quantitySeparated: 2, quantityReleased: 0, unitPrice: 420, totalPrice: 840 }
+    ],
+    createdAt: '2026-08-22T09:00:00Z',
+    updatedAt: '2026-08-22T10:00:00Z',
+    history: [{ id: 'he-21', status: 'PRONTO_ENTREGA', action: 'Pronto para Despacho', description: 'Embalagem reforçada.', userId: 'usr-2', userName: 'Carlos Atendente', timestamp: '2026-08-22T10:00:00Z' }]
+  },
+  {
+    id: 'ret-022',
+    code: 'RET-2026-0022',
+    saleId: 'sal-122',
+    saleCode: 'VEN-2026-0122',
+    companyId: 'comp-1',
+    clientId: 'cli-1',
+    clientName: 'Eduardo Brandão',
+    type: 'ENTREGA',
+    status: 'PRONTO_ENTREGA',
+    carrierId: 'car-2',
+    carrierName: 'Jadlog Express',
+    shippingAddress: 'Rua Domingos de Morais, 2100, Vila Mariana, São Paulo - SP',
+    trackingCode: 'JAD-SP-99304',
+    separatedAt: '2026-08-22T10:15:00Z',
+    items: [
+      { id: 'wi-22', partId: 'pe-1', partName: 'Jogo de Pastilhas de Freio Dianteira Brembo', partCode: 'PE-001', quantitySold: 2, quantityReserved: 2, quantitySeparated: 2, quantityReleased: 0, unitPrice: 220, totalPrice: 440 }
+    ],
+    createdAt: '2026-08-22T09:20:00Z',
+    updatedAt: '2026-08-22T10:15:00Z',
+    history: [{ id: 'he-22', status: 'PRONTO_ENTREGA', action: 'Pronto para Despacho', description: 'Aguardando transportadora.', userId: 'usr-3', userName: 'Mecânico Teste', timestamp: '2026-08-22T10:15:00Z' }]
+  },
+
+  // 2 Saiu para Entrega (Em Trânsito)
+  {
+    id: 'ret-023',
+    code: 'RET-2026-0023',
+    saleId: 'sal-123',
+    saleCode: 'VEN-2026-0123',
+    companyId: 'comp-1',
+    clientId: 'cli-2',
+    clientName: 'Rogério Albuquerque',
+    type: 'ENTREGA',
+    status: 'SAIU_PARA_ENTREGA',
+    carrierId: 'car-2',
+    carrierName: 'Jadlog Express',
+    shippingAddress: 'Rua Teodoro Sampaio, 1800, Pinheiros, São Paulo - SP',
+    trackingCode: 'JAD-SP-88129',
+    separatedAt: '2026-08-22T08:00:00Z',
+    releasedAt: '2026-08-22T09:30:00Z',
+    items: [
+      { id: 'wi-23', partId: 'pe-3', partName: 'Disco de Freio Dianteiro Ventilado Fremax', partCode: 'PE-003', quantitySold: 2, quantityReserved: 0, quantitySeparated: 2, quantityReleased: 2, unitPrice: 310, totalPrice: 620 }
+    ],
+    createdAt: '2026-08-22T07:15:00Z',
+    updatedAt: '2026-08-22T09:30:00Z',
+    history: [
+      { id: 'he-23a', status: 'PRONTO_ENTREGA', action: 'Separação Concluída', description: 'Separado e embalado.', userId: 'usr-1', userName: 'Admin Demo', timestamp: '2026-08-22T08:00:00Z' },
+      { id: 'he-23b', status: 'SAIU_PARA_ENTREGA', action: 'Coleta Efetuada', description: 'Despachado com motorista Jadlog. Baixa física de estoque executada.', userId: 'usr-1', userName: 'Admin Demo', timestamp: '2026-08-22T09:30:00Z' }
+    ]
+  },
+  {
+    id: 'ret-024',
+    code: 'RET-2026-0024',
+    saleId: 'sal-124',
+    saleCode: 'VEN-2026-0124',
+    companyId: 'comp-1',
+    clientId: 'cli-3',
+    clientName: 'Centro Técnico Morumbi',
+    type: 'ENTREGA',
+    status: 'SAIU_PARA_ENTREGA',
+    carrierId: 'car-1',
+    carrierName: 'Braspress Transportes Urgentes',
+    shippingAddress: 'Av. Giovanni Gronchi, 3200, Morumbi, São Paulo - SP',
+    trackingCode: 'BP-990142-SP',
+    separatedAt: '2026-08-22T08:20:00Z',
+    releasedAt: '2026-08-22T10:00:00Z',
+    items: [
+      { id: 'wi-24', partId: 'pe-2', partName: 'Filtro de Óleo Mann-Filter W712', partCode: 'PE-002', quantitySold: 4, quantityReserved: 0, quantitySeparated: 4, quantityReleased: 4, unitPrice: 50, totalPrice: 200 }
+    ],
+    createdAt: '2026-08-22T07:40:00Z',
+    updatedAt: '2026-08-22T10:00:00Z',
+    history: [
+      { id: 'he-24a', status: 'PRONTO_ENTREGA', action: 'Separação Concluída', description: 'Separado.', userId: 'usr-2', userName: 'Carlos Atendente', timestamp: '2026-08-22T08:20:00Z' },
+      { id: 'he-24b', status: 'SAIU_PARA_ENTREGA', action: 'Coleta Efetuada', description: 'Coleta efetuada pela transportadora.', userId: 'usr-1', userName: 'Admin Demo', timestamp: '2026-08-22T10:00:00Z' }
+    ]
+  },
+
+  // 12 Concluídos / Entregues hoje
+  ...Array.from({ length: 12 }, (_, i) => ({
+    id: `ret-done-${i + 1}`,
+    code: `RET-2026-00${30 + i}`,
+    saleId: `sal-done-${i + 1}`,
+    saleCode: `VEN-2026-01${30 + i}`,
+    companyId: 'comp-1',
+    clientId: 'cli-1',
+    clientName: i % 2 === 0 ? `Cliente Balcão Concluído #${i + 1}` : `Entrega Expressa #${i + 1}`,
+    type: (i % 2 === 0 ? 'BALCAO' : 'ENTREGA') as WithdrawalType,
+    status: (i % 2 === 0 ? 'RETIRADO' : 'ENTREGUE') as WithdrawalStatus,
+    separatedAt: '2026-08-22T08:00:00Z',
+    releasedAt: '2026-08-22T09:00:00Z',
+    deliveredAt: '2026-08-22T10:30:00Z',
+    items: [
+      { id: `wi-d-${i}`, partId: 'pe-1', partName: 'Jogo de Pastilhas de Freio Dianteira Brembo', partCode: 'PE-001', quantitySold: 1, quantityReserved: 0, quantitySeparated: 1, quantityReleased: 1, unitPrice: 220, totalPrice: 220 }
+    ],
+    createdAt: '2026-08-22T07:30:00Z',
+    updatedAt: '2026-08-22T10:30:00Z',
+    history: [
+      { id: `he-d-${i}`, status: (i % 2 === 0 ? 'RETIRADO' : 'ENTREGUE') as WithdrawalStatus, action: i % 2 === 0 ? 'Retirada Efetuada' : 'Entrega Concluída', description: 'Operação finalizada com sucesso.', userId: 'usr-1', userName: 'Admin Demo', timestamp: '2026-08-22T10:30:00Z' }
+    ]
+  }))
+];
+
 // Complete Database load/save management
 export interface AppDatabase {
   landingContent?: any;
@@ -1919,6 +2447,7 @@ export interface AppDatabase {
   vehicles: Vehicle[];
   parts: Part[];
   sales?: CommercialSale[];
+  goodsWithdrawals?: GoodsWithdrawalOrder[];
   carriers?: Carrier[];
   stockMovements?: StockMovement[];
   services: Service[];
@@ -1959,6 +2488,7 @@ export function getDatabase(): AppDatabase {
       vehicles: INITIAL_VEHICLES,
       parts: INITIAL_PARTS,
       sales: INITIAL_SALES,
+      goodsWithdrawals: INITIAL_GOODS_WITHDRAWALS,
       carriers: INITIAL_CARRIERS,
       stockMovements: INITIAL_STOCK_MOVEMENTS,
       services: INITIAL_SERVICES,
@@ -1994,6 +2524,9 @@ export function getDatabase(): AppDatabase {
       }
       if (!db.sales) {
         db.sales = INITIAL_SALES;
+      }
+      if (!db.goodsWithdrawals) {
+        db.goodsWithdrawals = INITIAL_GOODS_WITHDRAWALS;
       }
       if (!db.carriers) {
         db.carriers = INITIAL_CARRIERS;
@@ -2072,6 +2605,7 @@ export function getDatabase(): AppDatabase {
         vehicles: INITIAL_VEHICLES,
         parts: INITIAL_PARTS,
         sales: INITIAL_SALES,
+        goodsWithdrawals: INITIAL_GOODS_WITHDRAWALS,
         carriers: INITIAL_CARRIERS,
         stockMovements: INITIAL_STOCK_MOVEMENTS,
         services: INITIAL_SERVICES,

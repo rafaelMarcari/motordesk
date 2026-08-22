@@ -18,6 +18,7 @@ export const WORKSHOP_EXCLUSIVE_VIEWS: ViewID[] = [
 
 export const COMMERCE_EXCLUSIVE_VIEWS: ViewID[] = [
   'sales',
+  'withdrawals',
   'carriers',
 ];
 
@@ -31,6 +32,7 @@ export const WORKSHOP_EXCLUSIVE_PERMISSIONS: (keyof UserPermissions | string)[] 
 
 export const COMMERCE_EXCLUSIVE_PERMISSIONS: (keyof UserPermissions | string)[] = [
   'accessSales',
+  'accessWithdrawals',
   'accessCarriers',
 ];
 
@@ -144,6 +146,7 @@ export function normalizeUserPermissions(
   return {
     accessDashboard: permissions?.accessDashboard !== undefined ? Boolean(permissions.accessDashboard) : true,
     accessSales: permissions?.accessSales !== undefined ? Boolean(permissions.accessSales) : defaultAccessSales,
+    accessWithdrawals: permissions?.accessWithdrawals !== undefined ? Boolean(permissions.accessWithdrawals) : defaultAccessSales,
     accessCarriers: permissions?.accessCarriers !== undefined ? Boolean(permissions.accessCarriers) : defaultAccessCarriers,
     accessClients: permissions?.accessClients !== undefined ? Boolean(permissions.accessClients) : defaultAccessClients,
     accessVehicles: permissions?.accessVehicles !== undefined ? Boolean(permissions.accessVehicles) : defaultAccessVehicles,
@@ -317,6 +320,7 @@ export function getAvailableViewsForBusinessType(businessType?: BusinessType | s
   const allViews: ViewID[] = [
     'dashboard',
     'sales',
+    'withdrawals',
     'carriers',
     'clients',
     'vehicles',

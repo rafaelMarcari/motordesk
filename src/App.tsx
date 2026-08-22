@@ -61,6 +61,7 @@ import {
   Bell, 
   ShoppingBag, 
   Truck,
+  Boxes,
   DollarSign, 
   Wallet, 
   ArrowDownRight, 
@@ -90,7 +91,9 @@ import AccountsReceivableView from './components/AccountsReceivableView';
 import AccountsPayableView from './components/AccountsPayableView';
 import FinancialView from './components/FinancialView';
 import FiscalSefazView from './components/FiscalSefazView';
+import FiscalConferenceView from './components/FiscalConferenceView';
 import { SalesView } from './components/SalesView';
+import WithdrawalView from './components/WithdrawalView';
 import CarriersView from './components/CarriersView';
 import NotificationToastPopup from './components/NotificationToastPopup';
 import NotificationsModal from './components/NotificationsModal';
@@ -101,7 +104,7 @@ import PrivacyLgpdModal, { PrivacyLgpdFooter } from './components/PrivacyLgpdMod
 import { sweepExpiredBudgets, checkLowStockAlerts } from './utils/stockUtils';
 import { syncServiceOrdersWithBudgets } from './utils/serviceOrderUtils';
 import { AccountReceivable, AccountPayable, FinancialTransaction, FiscalDocument, BoletoDocument, InterBranchSaleLogistics, SefazApiConfig } from './types';
-import { Globe, FileText } from 'lucide-react';
+import { Globe, FileText, FileCheck2 } from 'lucide-react';
 import {
   getBusinessType,
   normalizeBusinessType,
@@ -122,6 +125,8 @@ import {
 type ViewID = 
   | 'dashboard' 
   | 'sales'
+  | 'withdrawals'
+  | 'fiscal_conference'
   | 'carriers'
   | 'clients' 
   | 'vehicles' 
@@ -144,6 +149,8 @@ type ViewID =
 const VIEW_PERMISSION_MAP: Record<ViewID, keyof UserPermissions | null> = {
   dashboard: 'accessDashboard',
   sales: 'accessSales',
+  withdrawals: 'accessWithdrawals',
+  fiscal_conference: 'accessFiscal',
   carriers: 'accessCarriers',
   clients: 'accessClients',
   vehicles: 'accessVehicles',
@@ -342,6 +349,8 @@ export default function App() {
     const viewPermissionMap: Record<ViewID, keyof UserPermissions | null> = {
       dashboard: 'accessDashboard',
       sales: 'accessSales',
+      withdrawals: 'accessWithdrawals',
+      fiscal_conference: 'accessFiscal',
       carriers: 'accessCarriers',
       clients: 'accessClients',
       vehicles: 'accessVehicles',
@@ -1169,6 +1178,8 @@ export default function App() {
       const viewPermissionMap: Record<ViewID, keyof UserPermissions | null> = {
         dashboard: 'accessDashboard',
         sales: 'accessSales',
+        withdrawals: 'accessWithdrawals',
+        fiscal_conference: 'accessFiscal',
         carriers: 'accessCarriers',
         clients: 'accessClients',
         vehicles: 'accessVehicles',
@@ -1726,6 +1737,28 @@ export default function App() {
               </button>
             )}
 
+            {(currentUser.permissions.accessWithdrawals ?? true) && isViewAllowedForBusinessType('withdrawals', activeBusinessType) && (
+              <button 
+                id="menu-btn-withdrawals"
+                onClick={() => !isModuleLocked('accessWithdrawals') && navigateToView('withdrawals')}
+                disabled={isModuleLocked('accessWithdrawals')}
+                title="Retirada & Entrega de Mercadorias (Expedição)"
+                className={`w-full flex items-center ${(!isSidebarCollapsed || isSidebarHovered) ? 'justify-between px-3' : 'justify-center px-2'} py-2.5 rounded-lg text-xs font-semibold tracking-wide transition ${
+                  isModuleLocked('accessWithdrawals')
+                    ? 'opacity-40 cursor-not-allowed text-slate-500'
+                    : activeView === 'withdrawals' ? 'bg-indigo-600 text-white font-bold shadow-xs' : 'hover:bg-slate-800 text-slate-300 hover:text-slate-100'
+                }`}
+              >
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <Boxes className="w-4 h-4 shrink-0 text-indigo-400" />
+                  {(!isSidebarCollapsed || isSidebarHovered) && <span className="truncate">Retirada & Entrega</span>}
+                </div>
+                {(!isSidebarCollapsed || isSidebarHovered) && activeCompanyModules.accessWithdrawals === false && (
+                  <span className="text-[9px] bg-amber-500/10 text-amber-500 px-1 py-0.2 rounded border border-amber-500/20 font-mono">🔒</span>
+                )}
+              </button>
+            )}
+
             {currentUser.permissions.accessCarriers && isViewAllowedForBusinessType('carriers', activeBusinessType) && (
               <button 
                 id="menu-btn-carriers"
@@ -1848,7 +1881,7 @@ export default function App() {
                   onClick={() => setIsFinSubmenuOpen(prev => !prev)}
                   title="Módulo Financeiro & Fiscal"
                   className={`w-full flex items-center ${(!isSidebarCollapsed || isSidebarHovered) ? 'justify-between px-3' : 'justify-center px-2'} py-2.5 rounded-lg text-xs font-semibold tracking-wide transition ${
-                    ['financial', 'accounts_receivable', 'accounts_payable', 'fiscal'].includes(activeView)
+                    ['financial', 'accounts_receivable', 'accounts_payable', 'fiscal', 'fiscal_conference'].includes(activeView)
                       ? 'bg-indigo-600 text-white font-bold shadow-xs'
                       : 'hover:bg-slate-800 text-slate-300 hover:text-slate-100'
                   }`}
@@ -1865,7 +1898,7 @@ export default function App() {
                 </button>
 
                 {/* SUBMENUS AO PASSAR O MOUSE / HOVER */}
-                {(isFinSubmenuOpen || ['financial', 'accounts_receivable', 'accounts_payable', 'fiscal'].includes(activeView)) && (!isSidebarCollapsed || isSidebarHovered) && (
+                {(isFinSubmenuOpen || ['financial', 'accounts_receivable', 'accounts_payable', 'fiscal', 'fiscal_conference'].includes(activeView)) && (!isSidebarCollapsed || isSidebarHovered) && (
                   <div className="pl-4 pr-1 space-y-1 py-1 border-l-2 border-indigo-500/40 ml-4 animate-fade-in">
                     {currentUser.permissions.accessFinancial && (
                       <button
@@ -1906,6 +1939,20 @@ export default function App() {
                       >
                         <ArrowDownRight className="w-3.5 h-3.5 text-rose-400 shrink-0" />
                         <span className="truncate">Contas a Pagar</span>
+                      </button>
+                    )}
+
+                    {(currentUser.permissions.accessFiscal ?? true) && (
+                      <button
+                        id="submenu-btn-fiscal-conference"
+                        onClick={() => !isModuleLocked('accessFiscal') && navigateToView('fiscal_conference')}
+                        disabled={isModuleLocked('accessFiscal')}
+                        className={`w-full text-left px-2.5 py-1.5 rounded-md text-[11px] font-medium transition flex items-center gap-2 cursor-pointer ${
+                          activeView === 'fiscal_conference' ? 'bg-cyan-500/20 text-cyan-200 font-bold border border-cyan-500/30' : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+                        }`}
+                      >
+                        <FileCheck2 className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+                        <span className="truncate">Fila de Conferência</span>
                       </button>
                     )}
 
@@ -2264,6 +2311,18 @@ export default function App() {
             )
           )}
 
+          {activeView === 'withdrawals' && (currentUser.permissions.accessWithdrawals ?? true) && (
+            isModuleLocked('accessWithdrawals') ? renderLockedScreen() : (
+              <WithdrawalView 
+                db={db}
+                onUpdateDb={syncDb}
+                currentUser={currentUser}
+                currentCompany={activeCompanyObj || db.companyInfo}
+                onNavigate={(view: string) => navigateToView(view as ViewID)}
+              />
+            )
+          )}
+
           {activeView === 'carriers' && currentUser.permissions.accessCarriers && (
             isModuleLocked('accessCarriers') ? renderLockedScreen() : (
               <CarriersView 
@@ -2354,6 +2413,18 @@ export default function App() {
                 currentUser={currentUser}
                 onSaveTransactions={handleSaveTransactions}
                 onAddHistoryLog={handleAddHistoryLog}
+              />
+            )
+          )}
+
+          {activeView === 'fiscal_conference' && (currentUser.permissions.accessFiscal ?? true) && (
+            isModuleLocked('accessFiscal') ? renderLockedScreen() : (
+              <FiscalConferenceView 
+                db={db}
+                onUpdateDb={syncDb}
+                currentUser={currentUser}
+                currentCompany={activeCompanyObj || db.companyInfo}
+                onNavigate={navigateToView}
               />
             )
           )}

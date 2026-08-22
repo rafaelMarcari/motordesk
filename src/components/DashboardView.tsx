@@ -22,7 +22,11 @@ import {
   CreditCard,
   Receipt,
   Store,
-  Layers
+  Layers,
+  Truck,
+  Boxes,
+  CheckCircle2,
+  ArrowRight
 } from 'lucide-react';
 import { 
   ResponsiveContainer, 
@@ -49,8 +53,33 @@ interface DashboardViewProps {
 }
 
 export default function DashboardView({ db, onNavigate, businessType = 'OFICINA' }: DashboardViewProps) {
-  // Selected month for analysis (YYYY-MM)
-  const [selectedMonth, setSelectedMonth] = useState<string>('2026-07');
+  // Helper to generate dynamic month options (current month + previous 11 months)
+  const generateDynamicMonthOptions = () => {
+    const options = [];
+    const now = new Date();
+    const monthNames = [
+      'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
+      'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
+    ];
+    
+    for (let i = 0; i < 12; i++) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const year = d.getFullYear();
+      const monthIndex = d.getMonth();
+      const monthStr = String(monthIndex + 1).padStart(2, '0');
+      const value = `${year}-${monthStr}`;
+      const isCurrent = i === 0;
+      const label = `${monthNames[monthIndex]} ${year}${isCurrent ? ' (Mês Atual)' : ''}`;
+      options.push({ value, label });
+    }
+    return options;
+  };
+
+  const MONTH_OPTIONS = React.useMemo(() => generateDynamicMonthOptions(), []);
+  const currentIsoMonth = MONTH_OPTIONS[0]?.value || new Date().toISOString().slice(0, 7);
+
+  // Selected month for analysis (YYYY-MM), dynamically defaulting to current month
+  const [selectedMonth, setSelectedMonth] = useState<string>(currentIsoMonth);
   const [dualViewMode, setDualViewMode] = useState<'all' | 'workshop' | 'sales'>('all');
 
   const isWorkshop = businessType === 'OFICINA';
@@ -118,17 +147,15 @@ export default function DashboardView({ db, onNavigate, businessType = 'OFICINA'
   // Check low stock
   const lowStockParts = db.parts.filter(part => part.stock < 5);
 
-  // Month selector options
-  const MONTH_OPTIONS = [
-    { value: '2026-07', label: 'Julho 2026 (Mês Atual)' },
-    { value: '2026-06', label: 'Junho 2026' },
-    { value: '2026-05', label: 'Maio 2026' },
-    { value: '2026-04', label: 'Abril 2026' },
-    { value: '2026-03', label: 'Março 2026' },
-    { value: '2026-02', label: 'Fevereiro 2026' },
-    { value: '2026-01', label: 'Janeiro 2026' },
-    { value: '2025-12', label: 'Dezembro 2025' }
-  ];
+  // Withdrawal & Delivery operational metrics
+  const withdrawalsList = db.goodsWithdrawals || [];
+  const wAguardando = withdrawalsList.filter(w => w.status === 'AGUARDANDO_SEPARACAO').length;
+  const wEmSeparacao = withdrawalsList.filter(w => w.status === 'EM_SEPARACAO').length;
+  const wParcial = withdrawalsList.filter(w => w.status === 'PARCIALMENTE_SEPARADO').length;
+  const wProntoRetirada = withdrawalsList.filter(w => w.status === 'PRONTO_RETIRADA').length;
+  const wProntoEntrega = withdrawalsList.filter(w => w.status === 'PRONTO_ENTREGA').length;
+  const wSaiuEntrega = withdrawalsList.filter(w => w.status === 'SAIU_PARA_ENTREGA').length;
+  const wEntregues = withdrawalsList.filter(w => w.status === 'RETIRADO' || w.status === 'ENTREGUE').length;
 
   const selectedMonthLabel = MONTH_OPTIONS.find(m => m.value === selectedMonth)?.label || selectedMonth;
 
@@ -491,6 +518,176 @@ export default function DashboardView({ db, onNavigate, businessType = 'OFICINA'
                 Ver Vendas <ChevronRight className="w-3.5 h-3.5" />
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* 3. QUADRO OPERACIONAL: RETIRADA E ENTREGA DE MERCADORIAS (COMÉRCIO & HÍBRIDO) */}
+      {(isCommerce || (isDual && dualViewMode !== 'workshop')) && (
+        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-4" id="kpi-withdrawal-operational-panel">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between pb-3 border-b border-slate-100 gap-2">
+            <div className="flex items-center gap-2.5">
+              <div className="p-2 bg-indigo-50 text-indigo-600 rounded-xl">
+                <Boxes className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="font-bold text-slate-800 text-base font-display flex items-center gap-2">
+                  Retirada e Entrega de Mercadorias
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Acompanhe as mercadorias vendidas que ainda precisam ser separadas, retiradas ou entregues.
+                </p>
+              </div>
+            </div>
+
+            <span className="text-[11px] font-bold text-slate-500 bg-slate-100 px-3 py-1 rounded-full w-fit">
+              {withdrawalsList.length} pedidos no fluxo
+            </span>
+          </div>
+
+          {/* Operational Stage Cards Grid */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-3">
+            {/* 1. Aguardando Separação */}
+            <div 
+              onClick={() => onNavigate('withdrawals')}
+              className="p-3.5 rounded-xl border border-amber-200 bg-amber-50/40 hover:bg-amber-50 hover:border-amber-300 transition cursor-pointer flex flex-col justify-between"
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-amber-700">Aguardando</span>
+                <span className="w-2 h-2 rounded-full bg-amber-500"></span>
+              </div>
+              <div className="my-2">
+                <span className="text-2xl font-extrabold text-amber-950 font-display">{wAguardando}</span>
+                <p className="text-[11px] text-amber-800 font-medium">Aguardando separação</p>
+              </div>
+              <span className="text-[10px] font-bold text-amber-700 bg-amber-100/80 px-2 py-0.5 rounded text-center block">
+                Separar →
+              </span>
+            </div>
+
+            {/* 2. Em Separação */}
+            <div 
+              onClick={() => onNavigate('withdrawals')}
+              className="p-3.5 rounded-xl border border-blue-200 bg-blue-50/40 hover:bg-blue-50 hover:border-blue-300 transition cursor-pointer flex flex-col justify-between"
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-blue-700">Em Separação</span>
+                <span className="w-2 h-2 rounded-full bg-blue-500"></span>
+              </div>
+              <div className="my-2">
+                <span className="text-2xl font-extrabold text-blue-950 font-display">{wEmSeparacao}</span>
+                <p className="text-[11px] text-blue-800 font-medium">Em processo</p>
+              </div>
+              <span className="text-[10px] font-bold text-blue-700 bg-blue-100/80 px-2 py-0.5 rounded text-center block">
+                Continuar →
+              </span>
+            </div>
+
+            {/* 3. Parcialmente Separado */}
+            <div 
+              onClick={() => onNavigate('withdrawals')}
+              className="p-3.5 rounded-xl border border-orange-200 bg-orange-50/40 hover:bg-orange-50 hover:border-orange-300 transition cursor-pointer flex flex-col justify-between"
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-orange-700">Pendências</span>
+                <span className="w-2 h-2 rounded-full bg-orange-500"></span>
+              </div>
+              <div className="my-2">
+                <span className="text-2xl font-extrabold text-orange-950 font-display">{wParcial}</span>
+                <p className="text-[11px] text-orange-800 font-medium">Parcial separado</p>
+              </div>
+              <span className="text-[10px] font-bold text-orange-700 bg-orange-100/80 px-2 py-0.5 rounded text-center block">
+                Ver pendências →
+              </span>
+            </div>
+
+            {/* 4. Pronto para Retirada */}
+            <div 
+              onClick={() => onNavigate('withdrawals')}
+              className="p-3.5 rounded-xl border border-emerald-200 bg-emerald-50/40 hover:bg-emerald-50 hover:border-emerald-300 transition cursor-pointer flex flex-col justify-between"
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700">P/ Retirada</span>
+                <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+              </div>
+              <div className="my-2">
+                <span className="text-2xl font-extrabold text-emerald-950 font-display">{wProntoRetirada}</span>
+                <p className="text-[11px] text-emerald-800 font-medium">Pronto no balcão</p>
+              </div>
+              <span className="text-[10px] font-bold text-emerald-700 bg-emerald-100/80 px-2 py-0.5 rounded text-center block">
+                Ver pedidos →
+              </span>
+            </div>
+
+            {/* 5. Pronto para Entrega */}
+            <div 
+              onClick={() => onNavigate('withdrawals')}
+              className="p-3.5 rounded-xl border border-teal-200 bg-teal-50/40 hover:bg-teal-50 hover:border-teal-300 transition cursor-pointer flex flex-col justify-between"
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-teal-700">P/ Despacho</span>
+                <span className="w-2 h-2 rounded-full bg-teal-500"></span>
+              </div>
+              <div className="my-2">
+                <span className="text-2xl font-extrabold text-teal-950 font-display">{wProntoEntrega}</span>
+                <p className="text-[11px] text-teal-800 font-medium">Aguardando coleta</p>
+              </div>
+              <span className="text-[10px] font-bold text-teal-700 bg-teal-100/80 px-2 py-0.5 rounded text-center block">
+                Despachar →
+              </span>
+            </div>
+
+            {/* 6. Saiu para Entrega */}
+            <div 
+              onClick={() => onNavigate('withdrawals')}
+              className="p-3.5 rounded-xl border border-indigo-200 bg-indigo-50/40 hover:bg-indigo-50 hover:border-indigo-300 transition cursor-pointer flex flex-col justify-between"
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-700">Em Trânsito</span>
+                <span className="w-2 h-2 rounded-full bg-indigo-500"></span>
+              </div>
+              <div className="my-2">
+                <span className="text-2xl font-extrabold text-indigo-950 font-display">{wSaiuEntrega}</span>
+                <p className="text-[11px] text-indigo-800 font-medium">Saiu p/ entrega</p>
+              </div>
+              <span className="text-[10px] font-bold text-indigo-700 bg-indigo-100/80 px-2 py-0.5 rounded text-center block">
+                Acompanhar →
+              </span>
+            </div>
+
+            {/* 7. Entregues Hoje / Concluídos */}
+            <div 
+              onClick={() => onNavigate('withdrawals')}
+              className="p-3.5 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 transition cursor-pointer flex flex-col justify-between"
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Concluídos</span>
+                <CheckCircle2 className="w-3.5 h-3.5 text-slate-400" />
+              </div>
+              <div className="my-2">
+                <span className="text-2xl font-extrabold text-slate-800 font-display">{wEntregues}</span>
+                <p className="text-[11px] text-slate-600 font-medium">Retirados/Entregues</p>
+              </div>
+              <span className="text-[10px] font-bold text-slate-600 bg-slate-200/80 px-2 py-0.5 rounded text-center block">
+                Ver histórico →
+              </span>
+            </div>
+          </div>
+
+          {/* Action Footer */}
+          <div className="pt-3 border-t border-slate-100 flex items-center justify-between">
+            <span className="text-xs text-slate-500 flex items-center gap-1.5">
+              <Truck className="w-3.5 h-3.5 text-indigo-500" />
+              Gestão de separação física (picking), romaneios e comprovantes com baixa definitiva de estoque.
+            </span>
+            <button
+              id="btn-goto-withdrawals-from-dashboard"
+              onClick={() => onNavigate('withdrawals')}
+              className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs px-4 py-2 rounded-xl transition flex items-center gap-1.5 shadow-xs cursor-pointer"
+            >
+              <span>VER FILA DE RETIRADA E ENTREGA</span>
+              <ArrowRight className="w-4 h-4" />
+            </button>
           </div>
         </div>
       )}
