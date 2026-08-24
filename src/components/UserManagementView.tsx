@@ -41,7 +41,8 @@ import {
   PlusCircle,
   ShoppingBag,
   Wrench,
-  Zap
+  Zap,
+  Package
 } from 'lucide-react';
 import { User, UserRole, UserPermissions, CompanyInfo, BusinessType } from '../types';
 import { AppDatabase } from '../data/mockData';
@@ -396,6 +397,14 @@ export default function UserManagementView({
   const [compProviderLegalRepRg, setCompProviderLegalRepRg] = useState(currentCompany?.providerLegalRepRg || 'Desenvolvedor / Proprietário');
   const [compProviderPhone, setCompProviderPhone] = useState(currentCompany?.providerPhone || '(11) 99999-9999');
   const [compProviderEmail, setCompProviderEmail] = useState(currentCompany?.providerEmail || 'contato@motordesk.com.br');
+
+  // Configurações de Reserva de Estoque em Orçamentos
+  const [compBudgetStockReservationMode, setCompBudgetStockReservationMode] = useState<'none' | 'reserve_while_valid'>(
+    currentCompany?.budgetStockReservationMode || 'reserve_while_valid'
+  );
+  const [compBudgetStockReservationValidityDays, setCompBudgetStockReservationValidityDays] = useState<number>(
+    currentCompany?.budgetStockReservationValidityDays || 10
+  );
 
   // Modal de resultado das operações (Sucesso / Erro com botão OK)
   const [resultModal, setResultModal] = useState<{
@@ -970,6 +979,9 @@ export default function UserManagementView({
 
       setContractAddendums(comp.contractAddendums || []);
 
+      setCompBudgetStockReservationMode(comp.budgetStockReservationMode || 'reserve_while_valid');
+      setCompBudgetStockReservationValidityDays(comp.budgetStockReservationValidityDays || 10);
+
       if (comp.levelPermissions) {
         setLevelPermissions(comp.levelPermissions as any);
       } else {
@@ -1050,6 +1062,8 @@ export default function UserManagementView({
       supportWhatsapp: compSupportWhatsapp,
       supportBusinessHours: compSupportBusinessHours,
       supportChannelsText: compSupportChannelsText,
+      budgetStockReservationMode: compBudgetStockReservationMode,
+      budgetStockReservationValidityDays: compBudgetStockReservationValidityDays,
       contractAddendums: contractAddendums,
       levelPermissions: levelPermissions,
       reportPageOrientation: currentCompany?.reportPageOrientation,
@@ -3021,6 +3035,110 @@ export default function UserManagementView({
                     </span>
                   </label>
                 </div>
+              </div>
+
+              {/* Reserva de Estoque em Orçamentos (Configuração por Empresa) */}
+              <div className="space-y-3 bg-slate-900 text-white p-4.5 rounded-xl border border-slate-800 sm:col-span-2 shadow-xs" id="budget-stock-reservation-config">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold uppercase tracking-wider text-amber-300 flex items-center gap-1.5">
+                    <Package className="w-4 h-4 text-amber-400" />
+                    Política de Reserva de Estoque em Orçamentos *
+                  </label>
+                  <span className="text-[10px] bg-amber-500/20 text-amber-300 px-2 py-0.5 rounded-full font-mono font-bold border border-amber-500/30">
+                    Estoque Comercial & Oficina
+                  </span>
+                </div>
+                <p className="text-xs text-slate-300 leading-relaxed">
+                  Defina o comportamento do estoque quando novos orçamentos comerciais ou de oficina forem gerados:
+                </p>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                  <label 
+                    className={`p-3.5 rounded-xl border-2 flex flex-col justify-between cursor-pointer transition ${
+                      compBudgetStockReservationMode === 'none' 
+                        ? 'bg-slate-800 border-indigo-500 ring-2 ring-indigo-500/30 shadow-md text-white' 
+                        : 'bg-slate-800/60 border-slate-700 text-slate-300 hover:border-slate-600'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 mb-2">
+                      <input 
+                        type="radio" 
+                        name="compBudgetStockReservationRadio" 
+                        value="none" 
+                        checked={compBudgetStockReservationMode === 'none'} 
+                        onChange={() => {
+                          setCompBudgetStockReservationMode('none');
+                          setHasUnsavedChanges(true);
+                        }}
+                        className="h-4 w-4 text-indigo-500 border-slate-600 focus:ring-indigo-500 cursor-pointer"
+                      />
+                      <span className="font-bold text-xs text-white">
+                        Não Reservar Estoque
+                      </span>
+                    </div>
+                    <span className="text-[11px] text-slate-400 leading-normal">
+                      O orçamento registra intenção de compra sem bloquear unidades do saldo disponível. Apenas a venda ou OS confirmada movimenta/reserva o estoque.
+                    </span>
+                  </label>
+
+                  <label 
+                    className={`p-3.5 rounded-xl border-2 flex flex-col justify-between cursor-pointer transition ${
+                      compBudgetStockReservationMode === 'reserve_while_valid' 
+                        ? 'bg-slate-800 border-amber-500 ring-2 ring-amber-500/30 shadow-md text-white' 
+                        : 'bg-slate-800/60 border-slate-700 text-slate-300 hover:border-slate-600'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 mb-2">
+                      <input 
+                        type="radio" 
+                        name="compBudgetStockReservationRadio" 
+                        value="reserve_while_valid" 
+                        checked={compBudgetStockReservationMode === 'reserve_while_valid'} 
+                        onChange={() => {
+                          setCompBudgetStockReservationMode('reserve_while_valid');
+                          setHasUnsavedChanges(true);
+                        }}
+                        className="h-4 w-4 text-amber-500 border-slate-600 focus:ring-amber-500 cursor-pointer"
+                      />
+                      <span className="font-bold text-xs text-white flex items-center gap-1">
+                        Reservar Enquanto Orçamento Estiver Válido
+                      </span>
+                    </div>
+                    <span className="text-[11px] text-slate-400 leading-normal">
+                      Reserva temporariamente os itens do orçamento durante o prazo de validade. Ao vencer o prazo, a reserva é liberada automaticamente.
+                    </span>
+                  </label>
+                </div>
+
+                {compBudgetStockReservationMode === 'reserve_while_valid' && (
+                  <div className="mt-3 pt-3 border-t border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-950/50 p-3 rounded-lg">
+                    <div className="space-y-0.5">
+                      <label className="text-xs font-bold text-slate-200 uppercase flex items-center gap-1" htmlFor="budget-validity-days-input">
+                        <Clock className="w-3.5 h-3.5 text-amber-400" />
+                        Prazo Padrão de Validade da Reserva (Dias)
+                      </label>
+                      <p className="text-[11px] text-slate-400">
+                        Após este período, o orçamento expira e o saldo reservado retorna automaticamente ao estoque disponível.
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <input
+                        id="budget-validity-days-input"
+                        type="number"
+                        min="1"
+                        max="90"
+                        value={compBudgetStockReservationValidityDays}
+                        onChange={e => {
+                          const val = Math.max(1, Math.min(90, parseInt(e.target.value, 10) || 10));
+                          setCompBudgetStockReservationValidityDays(val);
+                          setHasUnsavedChanges(true);
+                        }}
+                        className="w-24 text-xs p-2 bg-slate-800 border border-slate-700 text-white font-bold rounded-lg text-center focus:ring-2 focus:ring-amber-500"
+                      />
+                      <span className="text-xs text-slate-300 font-semibold">dias</span>
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div className="space-y-1">

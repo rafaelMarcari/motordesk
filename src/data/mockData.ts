@@ -1564,6 +1564,155 @@ export const INITIAL_TEST_CASES: TestCase[] = [
     ],
     expectedResult: 'A senha só é alterada se a senha atual digitada for validada com sucesso pelo sistema.',
     status: 'passed'
+  },
+  {
+    id: 'tc-10',
+    code: 'CT010',
+    requirement: 'RN-RES-01',
+    title: 'Configurar Modo de Reserva de Estoque por Empresa',
+    category: 'Regra de Negócio',
+    preConditions: 'Usuário Admin logado na tela de Gestão de Empresas / Configurações.',
+    steps: [
+      'Acessar "Usuários e Empresas" -> "Parâmetros da Empresa".',
+      'Localizar o bloco "Política de Reserva de Estoque em Orçamentos".',
+      'Alternar entre os modos: Não Reservar (none), Sempre Reservar (always) e Perguntar (prompt).',
+      'Definir o prazo padrão de validade da reserva em dias (ex: 5 dias).',
+      'Salvar as configurações e verificar a persistência no perfil da empresa ativa.'
+    ],
+    expectedResult: 'Os parâmetros são salvos com sucesso respeitando o isolamento por companyId.',
+    status: 'passed'
+  },
+  {
+    id: 'tc-11',
+    code: 'CT011',
+    requirement: 'RF-ORC-01',
+    title: 'Criar Orçamento no Segmento Comércio (Sem Veículo)',
+    category: 'Funcional',
+    preConditions: 'Empresa selecionada do segmento COMERCIO.',
+    steps: [
+      'Navegar até a tela "Orçamentos".',
+      'Clicar em "Novo Orçamento".',
+      'Verificar que o seletor de segmento vem predefinido como "Comércio" e o campo de veículo não é obrigatório.',
+      'Selecionar um cliente e adicionar itens de produtos/peças.',
+      'Salvar o orçamento.'
+    ],
+    expectedResult: 'Orçamento comercial de balcão criado com sucesso sem necessidade de vincular placa/veículo.',
+    status: 'passed'
+  },
+  {
+    id: 'tc-12',
+    code: 'CT012',
+    requirement: 'RF-ORC-02',
+    title: 'Criar Orçamento no Segmento Oficina (Com Veículo)',
+    category: 'Funcional',
+    preConditions: 'Empresa selecionada do segmento OFICINA.',
+    steps: [
+      'Navegar até "Orçamentos" -> "Novo Orçamento".',
+      'Selecionar o cliente e o veículo da frota.',
+      'Adicionar peças e serviços com prazo de validade.',
+      'Salvar o orçamento.'
+    ],
+    expectedResult: 'Orçamento de oficina salvo com vinculação integral ao veículo e histórico.',
+    status: 'passed'
+  },
+  {
+    id: 'tc-13',
+    code: 'CT013',
+    requirement: 'RF-ORC-03',
+    title: 'Criar Orçamento Híbrido (Peças + Serviços)',
+    category: 'Funcional',
+    preConditions: 'Empresa selecionada do segmento HÍBRIDO (OFICINA + COMÉRCIO).',
+    steps: [
+      'Abrir o formulário de orçamento.',
+      'Adicionar produtos do catálogo e serviços de mão de obra.',
+      'Verificar o cálculo de subtotais de peças e de serviços em separado.',
+      'Salvar o orçamento.'
+    ],
+    expectedResult: 'Orçamento híbrido criado com discriminação clara de peças e serviços.',
+    status: 'passed'
+  },
+  {
+    id: 'tc-14',
+    code: 'CT014',
+    requirement: 'RN-RES-02',
+    title: 'Reserva de Estoque em Orçamento e Bloqueio de Baixa Física',
+    category: 'Regra de Negócio',
+    preConditions: 'Empresa configurada com modo de reserva "always" ou "prompt" (com confirmação).',
+    steps: [
+      'Criar orçamento para a peça "Óleo 5W30" com 3 unidades.',
+      'Confirmar a reserva de estoque.',
+      'Verificar que o saldo total físico do produto NÃO foi decrementado.',
+      'Verificar que o saldo reservado aumentou em 3 unidades e o saldo disponível reduziu correspondente.',
+      'Consultar a tela de Peças e confirmar o badge de reserva ativa.'
+    ],
+    expectedResult: 'O saldo físico permanece intacto, mas o saldo disponível é reduzido para evitar sobrevendagem.',
+    status: 'passed'
+  },
+  {
+    id: 'tc-15',
+    code: 'CT015',
+    requirement: 'RN-RES-03',
+    title: 'Expiração Automática da Reserva e Liberação de Saldo',
+    category: 'Regra de Negócio',
+    preConditions: 'Orçamento pendente com data de validade/reserva ultrapassada.',
+    steps: [
+      'Executar a rotina de varredura ou carregar a listagem de orçamentos.',
+      'O sistema identifica que a data limite da reserva expirou.',
+      'O status da reserva é alterado para EXPIRED.',
+      'O saldo reservado é imediatamente devolvido ao saldo disponível da peça.'
+    ],
+    expectedResult: 'A reserva expirada é liberada automaticamente sem afetar o estoque físico.',
+    status: 'passed'
+  },
+  {
+    id: 'tc-16',
+    code: 'CT016',
+    requirement: 'RF-CONV-01',
+    title: 'Converter Orçamento Comercial em Venda Balcão',
+    category: 'Fluxo Principal',
+    preConditions: 'Orçamento comercial aprovado com reserva de peças ativa.',
+    steps: [
+      'Localizar o orçamento aprovado na lista.',
+      'Clicar na ação "Converter em Venda".',
+      'Confirmar a conversão.',
+      'Verificar que a Venda Comercial foi gerada na aba "Vendas".',
+      'Verificar que a reserva do orçamento foi TRANSFERIDA para a venda sem duplicidade.',
+      'Verificar o status do orçamento como "Convertido" e com link para a venda.'
+    ],
+    expectedResult: 'Venda criada com sucesso e reserva transferida de forma atômica.',
+    status: 'passed'
+  },
+  {
+    id: 'tc-17',
+    code: 'CT017',
+    requirement: 'RF-CONV-02',
+    title: 'Converter Orçamento de Oficina em Ordem de Serviço (OS)',
+    category: 'Fluxo Principal',
+    preConditions: 'Orçamento de oficina aprovado.',
+    steps: [
+      'Localizar o orçamento de oficina aprovado.',
+      'Clicar em "Converter em OS".',
+      'Confirmar a criação da Ordem de Serviço.',
+      'Verificar que a OS foi aberta na tela "Ordens de Serviço" com as peças e serviços correspondentes.',
+      'Verificar a rastreabilidade do budgetId na nova OS.'
+    ],
+    expectedResult: 'Ordem de Serviço gerada com sucesso vinculada ao orçamento original.',
+    status: 'passed'
+  },
+  {
+    id: 'tc-18',
+    code: 'CT018',
+    requirement: 'RN-CONV-03',
+    title: 'Proteção contra Dupla Conversão e Idempotência',
+    category: 'Regra de Negócio',
+    preConditions: 'Orçamento já convertido em Venda ou OS.',
+    steps: [
+      'Tentar acionar novamente o botão de conversão no orçamento já convertido.',
+      'Verificar que os botões de conversão ficam desabilitados ou exibem mensagem de já convertido.',
+      'Simular duplo clique rápido no momento da conversão.'
+    ],
+    expectedResult: 'O sistema bloqueia e impede a geração de vendas ou OSs duplicadas para o mesmo orçamento.',
+    status: 'passed'
   }
 ];
 
@@ -2263,6 +2412,52 @@ export const INITIAL_GOODS_WITHDRAWALS: GoodsWithdrawalOrder[] = [
     createdAt: '2026-08-22T08:40:00Z',
     updatedAt: '2026-08-22T09:20:00Z',
     history: [{ id: 'he-18', status: 'PRONTO_RETIRADA', action: 'Separação Concluída', description: 'Etiqueta de cliente anexada.', userId: 'usr-2', userName: 'Carlos Atendente', timestamp: '2026-08-22T09:20:00Z' }]
+  },
+
+  // 1 Parcialmente Retirado (Exemplo Demonstrativo de Romaneio Híbrido: Balcão + Entrega Residual)
+  {
+    id: 'ret-018b',
+    code: 'RET-2026-0018B',
+    saleId: 'sal-118b',
+    saleCode: 'VEN-2026-0188',
+    companyId: 'comp-1',
+    clientId: 'cli-1',
+    clientName: 'Transportadora & Logística Real',
+    clientPhone: '(11) 97788-9900',
+    type: 'BALCAO',
+    status: 'PARCIALMENTE_RETIRADO',
+    carrierId: 'car-2',
+    carrierName: 'Jadlog Express',
+    shippingAddress: 'Av. das Nações Unidas, 14200, Brooklin, São Paulo - SP',
+    collectedByName: 'Marcos Aurelio (Motorista)',
+    collectedByDocument: '33.444.555-6',
+    items: [
+      { 
+        id: 'wi-18b-1', 
+        partId: 'pe-2', 
+        partName: 'Filtro de Óleo Mann-Filter W712', 
+        partCode: 'PE-002', 
+        location: 'Prateleira A-02',
+        unit: 'UN',
+        quantitySold: 10, 
+        quantityReserved: 4, 
+        quantitySeparated: 10, 
+        quantityReleased: 6, 
+        quantityWithdrawn: 6,
+        quantityForDelivery: 4, 
+        unitPrice: 50, 
+        totalPrice: 500,
+        isConferred: true,
+        divergenceNotes: '6 un retiradas no balcão pelo motorista. 4 un restantes para expedição via Jadlog.'
+      }
+    ],
+    createdAt: '2026-08-22T07:15:00Z',
+    updatedAt: '2026-08-22T10:45:00Z',
+    history: [
+      { id: 'he-18b-1', status: 'AGUARDANDO_SEPARACAO', action: 'Venda Concluída', description: 'Pedido de expedição gerado automaticamente com 10 unidades reservadas.', userId: 'usr-1', userName: 'Admin Demo', timestamp: '2026-08-22T07:15:00Z' },
+      { id: 'he-18b-2', status: 'PRONTO_RETIRADA', action: 'Separação Concluída (100%)', description: '10 unidades separadas e conferidas no estoque.', userId: 'usr-3', userName: 'Mecânico Teste', timestamp: '2026-08-22T08:30:00Z' },
+      { id: 'he-18b-3', status: 'PARCIALMENTE_RETIRADO', action: 'Retirada Parcial no Balcão', description: 'Cliente retirou 6 unidades no balcão (Doc: 33.444.555-6). Saldo residual de 4 unidades destinado para entrega/expedição posterior.', userId: 'usr-2', userName: 'Carlos Atendente', timestamp: '2026-08-22T10:45:00Z' }
+    ]
   },
 
   // 4 Prontos para Entrega / Despacho

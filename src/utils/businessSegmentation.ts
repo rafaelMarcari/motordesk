@@ -11,7 +11,6 @@ import { BusinessType, CompanyInfo, User, UserPermissions, UserRole, ViewID } fr
 export const WORKSHOP_EXCLUSIVE_VIEWS: ViewID[] = [
   'vehicles',
   'services',
-  'budgets',
   'serviceOrders',
   'quotations',
 ];
@@ -25,7 +24,6 @@ export const COMMERCE_EXCLUSIVE_VIEWS: ViewID[] = [
 export const WORKSHOP_EXCLUSIVE_PERMISSIONS: (keyof UserPermissions | string)[] = [
   'accessVehicles',
   'accessServices',
-  'accessBudgets',
   'accessServiceOrders',
   'accessQuotations',
 ];

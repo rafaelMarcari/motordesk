@@ -362,21 +362,29 @@ export const SalesView: React.FC<SalesViewProps> = ({
 
     newSale.receivableId = receivableId;
 
-    // Criar Ordem de Retirada / Expedição (GoodsWithdrawalOrder)
+    // Criar Ordem de Retirada / Expedição (GoodsWithdrawalOrder com Romaneio)
     const withdrawalId = 'gwo-' + Date.now();
     const withdrawalCode = `RET-${saleCode}`;
-    const withdrawalItems: GoodsWithdrawalItem[] = cart.map(ci => ({
-      id: 'gwi-' + Date.now() + '-' + Math.random().toString(36).substr(2, 4),
-      partId: ci.partId,
-      partCode: ci.partCode,
-      partName: ci.partName,
-      quantitySold: ci.quantity,
-      quantityReserved: ci.quantity,
-      quantitySeparated: 0,
-      quantityReleased: 0,
-      unitPrice: ci.unitPrice,
-      totalPrice: ci.totalPrice
-    }));
+    const withdrawalItems: GoodsWithdrawalItem[] = cart.map(ci => {
+      const partObj = db.parts.find(p => p.id === ci.partId);
+      return {
+        id: 'gwi-' + Date.now() + '-' + Math.random().toString(36).substr(2, 4),
+        partId: ci.partId,
+        partCode: ci.partCode,
+        partName: ci.partName,
+        location: partObj?.location || 'Estoque Geral',
+        unit: ci.unit || partObj?.unit || 'UN',
+        quantitySold: ci.quantity,
+        quantityReserved: ci.quantity,
+        quantitySeparated: 0,
+        quantityReleased: 0,
+        quantityWithdrawn: 0,
+        quantityForDelivery: freightType !== 'NONE' ? ci.quantity : 0,
+        unitPrice: ci.unitPrice,
+        totalPrice: ci.totalPrice,
+        isConferred: false
+      };
+    });
 
     const newWithdrawalOrder: GoodsWithdrawalOrder = {
       id: withdrawalId,

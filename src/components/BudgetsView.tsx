@@ -26,9 +26,13 @@ import {
   Clock,
   Info,
   AlertTriangle,
-  Calendar
+  Calendar,
+  ShoppingBag,
+  ArrowRight,
+  Sparkles,
+  Link as LinkIcon
 } from 'lucide-react';
-import { Budget, BudgetItem, Client, Vehicle, Part, Service, ServiceOrder, OSItem, SystemNotification, CompanyInfo } from '../types';
+import { Budget, BudgetItem, Client, Vehicle, Part, Service, ServiceOrder, OSItem, SystemNotification, CompanyInfo, CommercialSale, CommercialSaleItem, BusinessType } from '../types';
 import { AppDatabase } from '../data/mockData';
 import ShareDocumentModal from './ShareDocumentModal';
 import { getPartStockDetails, getReservingBudgetsForPart, ReservingBudgetInfo } from '../utils/stockUtils';
@@ -38,8 +42,13 @@ import WarrantyAlertBanner from './WarrantyAlertBanner';
 interface BudgetsViewProps {
   db: AppDatabase;
   currentUser: any;
+  businessType?: BusinessType;
+  currentCompany?: CompanyInfo;
+  onNavigate?: (view: string) => void;
   onSaveBudgets: (budgets: Budget[]) => void;
   onSaveServiceOrders: (os: ServiceOrder[]) => void;
+  onSaveSales?: (sales: CommercialSale[]) => void;
+  onUpdateDb?: (db: AppDatabase) => void;
   onSaveCompanyInfo?: (companyInfo: CompanyInfo) => void;
   onAddNotification?: (notification: SystemNotification) => void;
   onAddHistoryLog: (type: 'budget' | 'service_order' | 'payment' | 'user_activity' | 'system', title: string, description: string, clientId: string, vehicleId: string, metadata?: any) => void;
@@ -50,7 +59,21 @@ interface BudgetsViewProps {
   } | null) => void;
 }
 
-export default function BudgetsView({ db, currentUser, onSaveBudgets, onSaveServiceOrders, onSaveCompanyInfo, onAddNotification, onAddHistoryLog, setUnsavedTask }: BudgetsViewProps) {
+export default function BudgetsView({ 
+  db, 
+  currentUser, 
+  businessType = 'OFICINA',
+  currentCompany,
+  onNavigate,
+  onSaveBudgets, 
+  onSaveServiceOrders, 
+  onSaveSales,
+  onUpdateDb,
+  onSaveCompanyInfo, 
+  onAddNotification, 
+  onAddHistoryLog, 
+  setUnsavedTask 
+}: BudgetsViewProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingBudgetId, setEditingBudgetId] = useState<string | null>(null);
@@ -60,10 +83,21 @@ export default function BudgetsView({ db, currentUser, onSaveBudgets, onSaveServ
   // Check role & user permissions
   const canEditBudgets = currentUser?.role === 'admin' || currentUser?.permissions?.canEditBudgets !== false;
 
+  // Active Company Reservation Settings
+  const activeCompany = currentCompany || db.companyInfo;
+  const reservationMode = activeCompany?.budgetStockReservationMode || 'none';
+  const defaultValidityDays = activeCompany?.budgetStockReservationValidityDays || 10;
+
+  // Segment detection
+  const isCommerceOnly = businessType === 'COMERCIO';
+  const isHybrid = businessType === 'OFICINA_COMERCIO';
+  const isWorkshopOnly = businessType === 'OFICINA';
+
   // Form Fields
+  const [budgetType, setBudgetType] = useState<'OFICINA' | 'COMERCIO'>(isCommerceOnly ? 'COMERCIO' : 'OFICINA');
   const [clientId, setClientId] = useState('');
   const [vehicleId, setVehicleId] = useState('');
-  const [validityDays, setValidityDays] = useState<number>(10);
+  const [validityDays, setValidityDays] = useState<number>(defaultValidityDays);
   const [notes, setNotes] = useState('');
   const [customerComplaint, setCustomerComplaint] = useState('');
   const [isWarrantyReturn, setIsWarrantyReturn] = useState(false);
@@ -85,6 +119,9 @@ export default function BudgetsView({ db, currentUser, onSaveBudgets, onSaveServ
 
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
+
+  // Conversion Loading / Lock state
+  const [convertingId, setConvertingId] = useState<string | null>(null);
 
   // Stock Reservation Warning Modal State
   const [reservationModalData, setReservationModalData] = useState<{
@@ -119,12 +156,14 @@ export default function BudgetsView({ db, currentUser, onSaveBudgets, onSaveServ
       if (db.services.length > 0 && !selectedServiceId) {
         setSelectedServiceId(db.services[0].id);
       }
+      setBudgetType(isCommerceOnly ? 'COMERCIO' : 'OFICINA');
+      setValidityDays(defaultValidityDays);
     }
-  }, [isFormOpen, db, editingBudgetId]);
+  }, [isFormOpen, db, editingBudgetId, isCommerceOnly, defaultValidityDays]);
 
   // Sync vehicle list on client change
   useEffect(() => {
-    if (clientId && !editingBudgetId) {
+    if (clientId && !editingBudgetId && budgetType === 'OFICINA') {
       const clientVehicles = db.vehicles.filter(v => v.clientId === clientId);
       if (clientVehicles.length > 0) {
         setVehicleId(clientVehicles[0].id);
@@ -132,7 +171,7 @@ export default function BudgetsView({ db, currentUser, onSaveBudgets, onSaveServ
         setVehicleId('');
       }
     }
-  }, [clientId, db.vehicles, editingBudgetId]);
+  }, [clientId, db.vehicles, editingBudgetId, budgetType]);
 
   // Check dirty state
   const isFormDirty = clientId !== '' || items.length > 0 || notes.trim() !== '';
@@ -141,7 +180,8 @@ export default function BudgetsView({ db, currentUser, onSaveBudgets, onSaveServ
     setEditingBudgetId(null);
     setClientId('');
     setVehicleId('');
-    setValidityDays(10);
+    setBudgetType(isCommerceOnly ? 'COMERCIO' : 'OFICINA');
+    setValidityDays(defaultValidityDays);
     setNotes('');
     setCustomerComplaint('');
     setIsWarrantyReturn(false);
@@ -166,8 +206,9 @@ export default function BudgetsView({ db, currentUser, onSaveBudgets, onSaveServ
     }
     setErrorMsg('');
     setEditingBudgetId(budget.id);
+    setBudgetType(budget.segmentType === 'COMERCIO' || !budget.vehicleId ? 'COMERCIO' : 'OFICINA');
     setClientId(budget.clientId);
-    setVehicleId(budget.vehicleId);
+    setVehicleId(budget.vehicleId || '');
     setValidityDays(budget.validityDays);
     setNotes(budget.notes || '');
     setCustomerComplaint(budget.customerComplaint || '');
@@ -391,8 +432,12 @@ export default function BudgetsView({ db, currentUser, onSaveBudgets, onSaveServ
 
   // Core save budget action
   const executeSave = () => {
-    if (!clientId || !vehicleId) {
-      return { success: false, message: 'Selecione um Cliente e um Veículo.' };
+    const isBalcao = budgetType === 'COMERCIO' || isCommerceOnly;
+    if (!clientId) {
+      return { success: false, message: 'Selecione um Cliente.' };
+    }
+    if (!isBalcao && !vehicleId) {
+      return { success: false, message: 'Selecione um Veículo para orçamentos da Oficina.' };
     }
     if (items.length === 0) {
       return { success: false, message: 'Adicione pelo menos um item (Peça ou Serviço) ao orçamento.' };
@@ -405,6 +450,9 @@ export default function BudgetsView({ db, currentUser, onSaveBudgets, onSaveServ
     const stockReservationNotes = reservationNotesList.length > 0
       ? reservationNotesList.join(' | ')
       : undefined;
+
+    const initialReservationStatus = reservationMode === 'reserve_while_valid' ? 'ACTIVE' : 'NONE';
+    const targetCompanyId = activeCompany?.id || db.companyInfo?.id || 'comp-1';
 
     if (editingBudgetId) {
       const existingBudget = db.budgets.find(b => b.id === editingBudgetId);
@@ -437,13 +485,16 @@ export default function BudgetsView({ db, currentUser, onSaveBudgets, onSaveServ
       const updatedBudget: Budget = {
         ...existingBudget,
         clientId,
-        vehicleId,
+        vehicleId: isBalcao ? (vehicleId || '') : vehicleId,
         validityDays,
         items: processedItems,
+        segmentType: budgetType,
+        companyId: existingBudget.companyId || targetCompanyId,
         notes,
         customerComplaint,
         isWarrantyReturn,
         warrantyOriginOSId,
+        stockReservationStatus: existingBudget.stockReservationStatus || initialReservationStatus,
         stockReservationNotes: stockReservationNotes || existingBudget.stockReservationNotes,
         paymentRequirementMode: calcMode,
         requiredDepositPercentage: calcPct,
@@ -489,7 +540,7 @@ export default function BudgetsView({ db, currentUser, onSaveBudgets, onSaveServ
             return {
               ...os,
               clientId,
-              vehicleId,
+              vehicleId: isBalcao ? '' : vehicleId,
               items: updatedOSItems
             };
           }
@@ -519,7 +570,7 @@ export default function BudgetsView({ db, currentUser, onSaveBudgets, onSaveServ
         'Orçamento Editado / Atualizado',
         `Orçamento #${editingBudgetId} foi editado por ${currentUser?.name || 'Usuário'}. Novos itens e serviços foram inseridos. Novo total: R$ ${getBudgetTotal(processedItems).toFixed(2)}`,
         clientId,
-        vehicleId,
+        vehicleId || 'N/A',
         { total: getBudgetTotal(processedItems) }
       );
 
@@ -543,11 +594,14 @@ export default function BudgetsView({ db, currentUser, onSaveBudgets, onSaveServ
     const newBudget: Budget = {
       id: `orc-${Date.now()}`,
       clientId,
-      vehicleId,
+      vehicleId: isBalcao ? (vehicleId || '') : vehicleId,
       validityDays,
       createdAt: new Date().toISOString(),
       items,
       status: 'pending',
+      segmentType: budgetType,
+      companyId: targetCompanyId,
+      stockReservationStatus: initialReservationStatus,
       notes,
       customerComplaint,
       isWarrantyReturn,
@@ -560,7 +614,7 @@ export default function BudgetsView({ db, currentUser, onSaveBudgets, onSaveServ
 
     const updatedBudgets = [...db.budgets, newBudget];
     onSaveBudgets(updatedBudgets);
-    onAddHistoryLog('budget', 'Orçamento Criado', `Orçamento ${newBudget.id} gerado com ${items.length} itens. Validade: ${validityDays} dias. Total: R$ ${getBudgetTotal(items).toFixed(2)}`, clientId, vehicleId, { total: getBudgetTotal(items) });
+    onAddHistoryLog('budget', 'Orçamento Criado', `Orçamento ${newBudget.id} (${budgetType}) gerado com ${items.length} itens. Validade: ${validityDays} dias. Reserva: ${reservationMode === 'reserve_while_valid' ? 'Ativa' : 'Sem Reserva'}. Total: R$ ${getBudgetTotal(items).toFixed(2)}`, clientId, vehicleId || 'N/A', { total: getBudgetTotal(items) });
     
     // Notification for budget created
     if (onAddNotification && (db.alertSettings?.enableBudgetCreatedAlerts ?? true)) {
@@ -579,6 +633,284 @@ export default function BudgetsView({ db, currentUser, onSaveBudgets, onSaveServ
     }
 
     return { success: true, budget: newBudget, isEdit: false };
+  };
+
+  // Convert Budget to Commercial Sale (PDV Balcão / Vendas)
+  const handleConvertToSale = (budget: Budget) => {
+    if (convertingId) return;
+    if (budget.saleId) {
+      setErrorMsg(`Este orçamento já foi convertido na Venda #${budget.saleId}.`);
+      return;
+    }
+
+    const partItems = budget.items.filter(i => i.type === 'part');
+    if (partItems.length === 0 && budget.items.length > 0) {
+      setErrorMsg('Este orçamento contém apenas serviços. Para serviços de oficina, converta em Ordem de Serviço (OS).');
+      return;
+    }
+
+    setConvertingId(budget.id);
+    const saleId = `venda-${Date.now().toString().slice(-6)}`;
+    const saleCompanyId = budget.companyId || activeCompany?.id || db.companyInfo?.id || 'comp-1';
+    const saleItems: CommercialSaleItem[] = partItems.map(item => {
+      const p = db.parts.find(part => part.id === item.itemId);
+      return {
+        id: `sale-it-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+        partId: item.itemId,
+        partCode: p?.code || '',
+        partName: item.name,
+        quantity: item.quantity,
+        unitPrice: item.unitPrice,
+        discount: 0,
+        totalPrice: item.totalPrice
+      };
+    });
+
+    const subtotal = saleItems.reduce((s, i) => s + i.totalPrice, 0);
+    const client = db.clients.find(c => c.id === budget.clientId);
+
+    const newSale: CommercialSale = {
+      id: saleId,
+      code: `VEN-${Date.now().toString().slice(-4)}`,
+      companyId: saleCompanyId,
+      budgetId: budget.id,
+      clientId: budget.clientId || 'cli-consumidor',
+      clientName: client?.name || 'Cliente Balcão',
+      items: saleItems,
+      subtotal,
+      discount: 0,
+      totalAmount: subtotal,
+      paymentMethod: 'PIX',
+      paymentStatus: 'paid',
+      createdAt: new Date().toISOString(),
+      createdBy: currentUser?.id || 'admin',
+      notes: `Convertido do Orçamento #${budget.id}. ${budget.notes || ''}`
+    };
+
+    // Update budget: transfer reservation directly to sale (status CONVERTED)
+    const updatedBudget: Budget = {
+      ...budget,
+      status: 'approved',
+      saleId,
+      stockReservationStatus: 'CONVERTED',
+      items: budget.items.map(i => ({ ...i, status: 'approved' }))
+    };
+
+    const updatedBudgets = db.budgets.map(b => b.id === budget.id ? updatedBudget : b);
+    const updatedSales = [...(db.sales || []), newSale];
+
+    if (onUpdateDb) {
+      onUpdateDb({
+        ...db,
+        budgets: updatedBudgets,
+        sales: updatedSales
+      });
+    } else {
+      onSaveBudgets(updatedBudgets);
+      if (onSaveSales) onSaveSales(updatedSales);
+    }
+
+    onAddHistoryLog(
+      'budget',
+      'Orçamento Convertido em Venda Balcão',
+      `Orçamento #${budget.id} foi convertido com sucesso na Venda Comercial #${saleId}. Reserva de estoque transferida para a venda. Total: R$ ${subtotal.toFixed(2)}`,
+      budget.clientId,
+      budget.vehicleId || 'N/A',
+      { budgetId: budget.id, saleId, total: subtotal }
+    );
+
+    if (onAddNotification) {
+      onAddNotification({
+        id: `notif-conv-sale-${budget.id}-${Date.now()}`,
+        type: 'budget_converted',
+        title: 'Orçamento Convertido em Venda',
+        message: `Orçamento #${budget.id} foi convertido com sucesso na Venda #${saleId}. Total: R$ ${subtotal.toFixed(2)}.`,
+        date: new Date().toISOString(),
+        read: false,
+        metadata: { budgetId: budget.id, saleId }
+      });
+    }
+
+    setSuccessMsg(`Orçamento #${budget.id} convertido com sucesso na Venda #${saleId}! A reserva de estoque foi transferida para a venda.`);
+    setTimeout(() => {
+      setSuccessMsg('');
+      setConvertingId(null);
+    }, 4500);
+
+    if (viewingBudget && viewingBudget.id === budget.id) {
+      setViewingBudget(updatedBudget);
+    }
+  };
+
+  // Convert Budget to Service Order (OS Oficina)
+  const handleConvertToOS = (budget: Budget) => {
+    if (convertingId) return;
+    if (budget.serviceOrderId || db.serviceOrders.some(os => os.budgetId === budget.id)) {
+      const existingOS = db.serviceOrders.find(os => os.budgetId === budget.id);
+      setErrorMsg(`Este orçamento já possui uma Ordem de Serviço gerada (#${existingOS?.id || budget.serviceOrderId}).`);
+      return;
+    }
+
+    setConvertingId(budget.id);
+    const updatedBudget: Budget = {
+      ...budget,
+      status: 'approved',
+      stockReservationStatus: 'CONVERTED',
+      items: budget.items.map(i => ({ ...i, status: 'approved' }))
+    };
+
+    const createdOS = generateServiceOrder(updatedBudget);
+    if (createdOS) {
+      const finalBudget: Budget = {
+        ...updatedBudget,
+        serviceOrderId: createdOS.id
+      };
+      const updatedBudgets = db.budgets.map(b => b.id === budget.id ? finalBudget : b);
+      onSaveBudgets(updatedBudgets);
+      if (viewingBudget && viewingBudget.id === budget.id) {
+        setViewingBudget(finalBudget);
+      }
+      setSuccessMsg(`Orçamento #${budget.id} convertido com sucesso na Ordem de Serviço #${createdOS.id}!`);
+      setTimeout(() => {
+        setSuccessMsg('');
+        setConvertingId(null);
+      }, 4500);
+    } else {
+      setConvertingId(null);
+    }
+  };
+
+  // Convert Budget to Sale (Parts) + OS (Services) for Hybrid Businesses
+  const handleConvertToSaleAndOS = (budget: Budget) => {
+    if (convertingId) return;
+    const partItems = budget.items.filter(i => i.type === 'part');
+    const serviceItems = budget.items.filter(i => i.type === 'service');
+
+    if (partItems.length === 0) {
+      handleConvertToOS(budget);
+      return;
+    }
+    if (serviceItems.length === 0) {
+      handleConvertToSale(budget);
+      return;
+    }
+
+    setConvertingId(budget.id);
+    const saleId = `venda-${Date.now().toString().slice(-6)}`;
+    const saleCompanyId = budget.companyId || activeCompany?.id || db.companyInfo?.id || 'comp-1';
+    const saleItems: CommercialSaleItem[] = partItems.map(item => {
+      const p = db.parts.find(part => part.id === item.itemId);
+      return {
+        id: `sale-it-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+        partId: item.itemId,
+        partCode: p?.code || '',
+        partName: item.name,
+        quantity: item.quantity,
+        unitPrice: item.unitPrice,
+        discount: 0,
+        totalPrice: item.totalPrice
+      };
+    });
+
+    const saleSubtotal = saleItems.reduce((s, i) => s + i.totalPrice, 0);
+    const client = db.clients.find(c => c.id === budget.clientId);
+
+    const newSale: CommercialSale = {
+      id: saleId,
+      code: `VEN-${Date.now().toString().slice(-4)}`,
+      companyId: saleCompanyId,
+      budgetId: budget.id,
+      clientId: budget.clientId || 'cli-consumidor',
+      clientName: client?.name || 'Cliente Balcão',
+      items: saleItems,
+      subtotal: saleSubtotal,
+      discount: 0,
+      totalAmount: saleSubtotal,
+      paymentMethod: 'PIX',
+      paymentStatus: 'paid',
+      createdAt: new Date().toISOString(),
+      createdBy: currentUser?.id || 'admin',
+      notes: `Peças convertidas do Orçamento Híbrido #${budget.id}.`
+    };
+
+    // Create OS for services
+    const osItems: OSItem[] = serviceItems.map(item => ({
+      id: `os-it-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+      type: 'service',
+      itemId: item.itemId,
+      name: item.name,
+      quantity: item.quantity,
+      unitPrice: item.unitPrice,
+      totalPrice: item.totalPrice,
+      status: 'pending',
+      source: 'budget'
+    }));
+
+    const osId = `os-${Date.now().toString().slice(-4)}`;
+    const newOS: ServiceOrder = {
+      id: osId,
+      budgetId: budget.id,
+      clientId: budget.clientId,
+      vehicleId: budget.vehicleId || '',
+      mechanicId: db.users.find(u => u.role === 'mecanico')?.id || currentUser?.id || 'usr-3',
+      createdAt: new Date().toISOString(),
+      status: 'pending',
+      paymentStatus: 'pending',
+      paymentRequirementMode: 'AFTER_COMPLETION',
+      requiredDepositPercentage: 0,
+      requiredDepositAmount: 0,
+      depositPaidAmount: 0,
+      isDepositPaid: false,
+      technicalRecommendations: '',
+      customerComplaint: budget.customerComplaint || budget.notes,
+      items: osItems,
+      notes: `Mão de obra convertida do Orçamento Híbrido #${budget.id}. Peças faturadas na Venda #${saleId}.`
+    };
+
+    const updatedBudget: Budget = {
+      ...budget,
+      status: 'approved',
+      saleId,
+      serviceOrderId: osId,
+      stockReservationStatus: 'CONVERTED',
+      items: budget.items.map(i => ({ ...i, status: 'approved' }))
+    };
+
+    const updatedBudgets = db.budgets.map(b => b.id === budget.id ? updatedBudget : b);
+    const updatedSales = [...(db.sales || []), newSale];
+    const updatedOSList = [...(db.serviceOrders || []), newOS];
+
+    if (onUpdateDb) {
+      onUpdateDb({
+        ...db,
+        budgets: updatedBudgets,
+        sales: updatedSales,
+        serviceOrders: updatedOSList
+      });
+    } else {
+      onSaveBudgets(updatedBudgets);
+      if (onSaveSales) onSaveSales(updatedSales);
+      onSaveServiceOrders(updatedOSList);
+    }
+
+    onAddHistoryLog(
+      'budget',
+      'Orçamento Convertido em Venda + OS',
+      `Orçamento Híbrido #${budget.id} foi convertido na Venda #${saleId} (Peças: R$ ${saleSubtotal.toFixed(2)}) e na OS #${osId} (Serviços: R$ ${getBudgetTotal(serviceItems).toFixed(2)}).`,
+      budget.clientId,
+      budget.vehicleId || 'N/A',
+      { budgetId: budget.id, saleId, serviceOrderId: osId }
+    );
+
+    setSuccessMsg(`Conversão Híbrida concluída! Gerada a Venda #${saleId} (Peças) e a Ordem de Serviço #${osId} (Mão de obra).`);
+    setTimeout(() => {
+      setSuccessMsg('');
+      setConvertingId(null);
+    }, 5000);
+
+    if (viewingBudget && viewingBudget.id === budget.id) {
+      setViewingBudget(updatedBudget);
+    }
   };
 
   const handleSaveBudget = (e?: React.FormEvent) => {
@@ -947,6 +1279,37 @@ export default function BudgetsView({ db, currentUser, onSaveBudgets, onSaveServ
               <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 space-y-4">
                 <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400">Dados do Atendimento</h4>
                 
+                {/* Segment Selector (Hybrid / Multi-segment) */}
+                {isHybrid && (
+                  <div className="space-y-1.5" id="budget-segment-selector">
+                    <label className="text-xs font-semibold text-slate-600">Tipo / Segmento do Orçamento *</label>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setBudgetType('OFICINA')}
+                        className={`py-2 px-2.5 rounded-lg text-xs font-bold border flex items-center justify-center gap-1.5 transition ${
+                          budgetType === 'OFICINA'
+                            ? 'bg-indigo-600 text-white border-indigo-600 shadow-2xs'
+                            : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
+                        }`}
+                      >
+                        <Wrench className="w-3.5 h-3.5" /> Oficina
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setBudgetType('COMERCIO')}
+                        className={`py-2 px-2.5 rounded-lg text-xs font-bold border flex items-center justify-center gap-1.5 transition ${
+                          budgetType === 'COMERCIO'
+                            ? 'bg-emerald-600 text-white border-emerald-600 shadow-2xs'
+                            : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
+                        }`}
+                      >
+                        <ShoppingBag className="w-3.5 h-3.5" /> Balcão / Peças
+                      </button>
+                    </div>
+                  </div>
+                )}
+
                 <div className="space-y-1.5">
                   <label className="text-xs font-semibold text-slate-600" htmlFor="budget-client-select">Cliente *</label>
                   <select 
@@ -962,7 +1325,9 @@ export default function BudgetsView({ db, currentUser, onSaveBudgets, onSaveServ
                 </div>
 
                 <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-slate-600" htmlFor="budget-vehicle-select">Veículo *</label>
+                  <label className="text-xs font-semibold text-slate-600" htmlFor="budget-vehicle-select">
+                    Veículo {budgetType === 'COMERCIO' ? '(Opcional no Balcão)' : '*'}
+                  </label>
                   <select 
                     id="budget-vehicle-select"
                     value={vehicleId}
@@ -970,13 +1335,26 @@ export default function BudgetsView({ db, currentUser, onSaveBudgets, onSaveServ
                     className="w-full text-sm px-3 py-2 border border-slate-200 rounded-lg bg-white"
                     disabled={!clientId}
                   >
+                    <option value="">{budgetType === 'COMERCIO' ? '-- Sem vínculo com veículo (Venda Balcão) --' : '-- Selecione o Veículo --'}</option>
                     {db.vehicles.filter(v => v.clientId === clientId).map(v => (
                       <option key={v.id} value={v.id}>{v.brand} {v.model} ({v.plate})</option>
                     ))}
                   </select>
-                  {db.vehicles.filter(v => v.clientId === clientId).length === 0 && clientId && (
-                    <p className="text-[10px] text-rose-500 font-medium">Este cliente não possui veículos cadastrados!</p>
+                  {budgetType === 'OFICINA' && db.vehicles.filter(v => v.clientId === clientId).length === 0 && clientId && (
+                    <p className="text-[10px] text-rose-500 font-medium">Este cliente não possui veículos cadastrados! Cadastre um veículo para gerar orçamento de oficina.</p>
                   )}
+                </div>
+
+                {/* Reservation Mode Badge indicator */}
+                <div className="p-2.5 rounded-lg border text-xs flex items-center justify-between bg-white border-slate-200">
+                  <span className="text-slate-500 font-medium">Política de Reserva:</span>
+                  <span className={`font-bold px-2 py-0.5 rounded text-[11px] ${
+                    reservationMode === 'reserve_while_valid'
+                      ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                      : 'bg-slate-100 text-slate-600 border border-slate-200'
+                  }`}>
+                    {reservationMode === 'reserve_while_valid' ? `Reserva Ativa (${validityDays}d)` : 'Sem Reserva'}
+                  </span>
                 </div>
 
                 {/* ACTIVE WARRANTY ALERT & RETURN CLAIM BANNER */}
@@ -998,7 +1376,7 @@ export default function BudgetsView({ db, currentUser, onSaveBudgets, onSaveServ
                 )}
 
                 <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-slate-600" htmlFor="budget-validity-input">Validade do Orçamento (RN004 - Dias) *</label>
+                  <label className="text-xs font-semibold text-slate-600" htmlFor="budget-validity-input">Validade do Orçamento (Dias) *</label>
                   <input 
                     id="budget-validity-input"
                     type="number" 
@@ -1013,13 +1391,13 @@ export default function BudgetsView({ db, currentUser, onSaveBudgets, onSaveServ
                 <div className="space-y-1.5">
                   <label className="text-xs font-bold text-slate-700 flex items-center gap-1" htmlFor="budget-notes-input">
                     <FileText className="w-3.5 h-3.5 text-indigo-600" />
-                    Informações Pertinentes ao Serviço / Observações do Cliente e Oficina
+                    Informações Pertinentes ao Atendimento / Observações
                   </label>
                   <textarea 
                     id="budget-notes-input"
                     value={notes}
                     onChange={e => setNotes(e.target.value)}
-                    placeholder="Espaço livre para digitar qualquer informação pertinente ao serviço ou relato do cliente (Ex: Barulho agudo na roda dianteira esquerda ao frear)..."
+                    placeholder="Espaço livre para digitar qualquer informação pertinente ao atendimento, peças ou relato do cliente..."
                     rows={3}
                     className="w-full text-xs p-3 border border-slate-200 rounded-xl focus:outline-hidden focus:border-indigo-500 bg-white"
                   />
@@ -1654,15 +2032,69 @@ export default function BudgetsView({ db, currentUser, onSaveBudgets, onSaveServ
 
           {/* Action Buttons inside Details */}
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-t border-slate-100 pt-4">
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              {/* Linked Converted Documents */}
+              {viewingBudget.saleId && (
+                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-200 text-xs font-bold font-mono">
+                  <ShoppingBag className="w-3.5 h-3.5 text-emerald-600" />
+                  Venda #{viewingBudget.saleId}
+                </span>
+              )}
+              {viewingBudget.serviceOrderId && (
+                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-50 text-indigo-800 border border-indigo-200 text-xs font-bold font-mono">
+                  <Wrench className="w-3.5 h-3.5 text-indigo-600" />
+                  OS #{viewingBudget.serviceOrderId}
+                </span>
+              )}
+
+              {/* Conversion Buttons */}
+              {!viewingBudget.saleId && viewingBudget.items.some(i => i.type === 'part') && (
+                <button
+                  id={`btn-convert-to-sale-${viewingBudget.id}`}
+                  type="button"
+                  onClick={() => handleConvertToSale(viewingBudget)}
+                  disabled={convertingId === viewingBudget.id}
+                  className="bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-semibold text-xs px-3.5 py-2.5 rounded-lg transition inline-flex items-center gap-1.5 shadow-xs cursor-pointer"
+                  title="Converter itens de peças deste orçamento em uma Venda Comercial Balcão (Transfere reserva)"
+                >
+                  <ShoppingBag className="w-4 h-4" /> Converter em Venda
+                </button>
+              )}
+
+              {!viewingBudget.serviceOrderId && (!isCommerceOnly || viewingBudget.items.some(i => i.type === 'service')) && (
+                <button
+                  id={`btn-convert-to-os-${viewingBudget.id}`}
+                  type="button"
+                  onClick={() => handleConvertToOS(viewingBudget)}
+                  disabled={convertingId === viewingBudget.id}
+                  className="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-semibold text-xs px-3.5 py-2.5 rounded-lg transition inline-flex items-center gap-1.5 shadow-xs cursor-pointer"
+                  title="Converter este orçamento em uma Ordem de Serviço na Oficina"
+                >
+                  <Wrench className="w-4 h-4" /> Converter em OS
+                </button>
+              )}
+
+              {isHybrid && !viewingBudget.saleId && !viewingBudget.serviceOrderId && viewingBudget.items.some(i => i.type === 'part') && viewingBudget.items.some(i => i.type === 'service') && (
+                <button
+                  id={`btn-convert-to-hybrid-${viewingBudget.id}`}
+                  type="button"
+                  onClick={() => handleConvertToSaleAndOS(viewingBudget)}
+                  disabled={convertingId === viewingBudget.id}
+                  className="bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white font-semibold text-xs px-3.5 py-2.5 rounded-lg transition inline-flex items-center gap-1.5 shadow-xs cursor-pointer"
+                  title="Converter peças em Venda e serviços em Ordem de Serviço simultaneamente"
+                >
+                  <Sparkles className="w-4 h-4" /> Converter em Venda + OS
+                </button>
+              )}
+
               {canEditBudgets && (
                 <button
                   id={`btn-edit-budget-details-${viewingBudget.id}`}
                   type="button"
                   onClick={() => openEditForm(viewingBudget)}
-                  className="bg-amber-600 hover:bg-amber-700 text-white font-semibold text-xs px-4 py-2.5 rounded-lg transition inline-flex items-center gap-1.5 shadow-xs"
+                  className="bg-amber-600 hover:bg-amber-700 text-white font-semibold text-xs px-3.5 py-2.5 rounded-lg transition inline-flex items-center gap-1.5 shadow-xs"
                 >
-                  <Pencil className="w-4 h-4" /> Editar Orçamento
+                  <Pencil className="w-4 h-4" /> Editar
                 </button>
               )}
 
@@ -1670,36 +2102,23 @@ export default function BudgetsView({ db, currentUser, onSaveBudgets, onSaveServ
                 id={`btn-share-budget-details-${viewingBudget.id}`}
                 type="button"
                 onClick={() => setShareModalData({ isOpen: true, budget: viewingBudget })}
-                className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs px-4 py-2.5 rounded-lg transition inline-flex items-center gap-1.5 shadow-xs"
+                className="bg-slate-700 hover:bg-slate-800 text-white font-semibold text-xs px-3.5 py-2.5 rounded-lg transition inline-flex items-center gap-1.5 shadow-xs"
               >
-                <MessageSquare className="w-4 h-4" /> Enviar por WhatsApp / E-mail
+                <MessageSquare className="w-4 h-4" /> Enviar WhatsApp / E-mail
               </button>
 
               {viewingBudget.status === 'pending' && (
                 <button 
                   id="btn-simulate-decision-details"
                   onClick={() => launchApprovalSimulator(viewingBudget)} 
-                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs px-4 py-2.5 rounded-lg transition inline-flex items-center gap-1.5 cursor-pointer shadow-xs"
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs px-3.5 py-2.5 rounded-lg transition inline-flex items-center gap-1.5 cursor-pointer shadow-xs"
                 >
-                  <ShieldCheck className="w-4 h-4" /> Registrar Decisão do Cliente & Liberar OS
-                </button>
-              )}
-
-              {(viewingBudget.status === 'approved' || viewingBudget.status === 'partially_approved') && (
-                <button 
-                  id="btn-generate-os-details"
-                  onClick={() => generateServiceOrder(viewingBudget)}
-                  disabled={db.serviceOrders.some(os => os.budgetId === viewingBudget.id)}
-                  className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-100 disabled:text-emerald-400 text-white font-semibold text-xs px-4 py-2.5 rounded-lg transition inline-flex items-center gap-1.5"
-                  title={db.serviceOrders.some(os => os.budgetId === viewingBudget.id) ? 'OS já existente para este orçamento.' : 'Gerar Ordem de Serviço'}
-                >
-                  <ShieldCheck className="w-4 h-4" /> 
-                  {db.serviceOrders.some(os => os.budgetId === viewingBudget.id) ? 'OS já Originada' : 'Gerar Ordem de Serviço (RF008)'}
+                  <ShieldCheck className="w-4 h-4" /> Registrar Decisão do Cliente
                 </button>
               )}
             </div>
             
-            <button id="btn-back-to-list" onClick={() => setViewingBudget(null)} className="text-slate-500 hover:text-slate-700 font-semibold text-xs px-4 py-2 rounded-lg border border-slate-200 bg-white">
+            <button id="btn-back-to-list" onClick={() => setViewingBudget(null)} className="text-slate-500 hover:text-slate-700 font-semibold text-xs px-4 py-2 rounded-lg border border-slate-200 bg-white cursor-pointer">
               Voltar para Listagem
             </button>
           </div>
@@ -1709,7 +2128,7 @@ export default function BudgetsView({ db, currentUser, onSaveBudgets, onSaveServ
       {/* BUDGETS LIST TABLE */}
       {!isFormOpen && !viewingBudget && (
         <div className="bg-white border border-slate-100 rounded-xl shadow-xs overflow-hidden" id="budgets-list-panel">
-          <div className="p-4 border-b border-slate-100 bg-slate-50 flex items-center">
+          <div className="p-4 border-b border-slate-100 bg-slate-50 flex items-center justify-between gap-4">
             <div className="relative w-full max-w-md">
               <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
               <input 
@@ -1721,6 +2140,17 @@ export default function BudgetsView({ db, currentUser, onSaveBudgets, onSaveServ
                 className="w-full text-sm pl-10 pr-4 py-2 bg-white border border-slate-200 rounded-lg focus:outline-hidden focus:border-indigo-500 transition"
               />
             </div>
+            {/* Status of company reservation policy */}
+            <div className="hidden sm:flex items-center gap-2 text-xs font-semibold text-slate-600 bg-white border border-slate-200 px-3 py-1.5 rounded-lg">
+              <span>Política de Reserva:</span>
+              <span className={`px-2 py-0.5 rounded font-bold text-[11px] ${
+                reservationMode === 'reserve_while_valid'
+                  ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                  : 'bg-slate-100 text-slate-600 border border-slate-200'
+              }`}>
+                {reservationMode === 'reserve_while_valid' ? `Reserva Ativa (${defaultValidityDays}d)` : 'Sem Reserva'}
+              </span>
+            </div>
           </div>
 
           <div className="overflow-x-auto">
@@ -1728,26 +2158,50 @@ export default function BudgetsView({ db, currentUser, onSaveBudgets, onSaveServ
               <thead>
                 <tr className="border-b border-slate-100 text-xs font-semibold uppercase text-slate-400 bg-slate-50/50">
                   <th className="p-4">Código</th>
-                  <th className="p-4">Cliente / Proprietário</th>
+                  <th className="p-4">Segmento</th>
+                  <th className="p-4">Cliente</th>
                   <th className="p-4">Veículo</th>
-                  <th className="p-4">Data Emissão</th>
-                  <th className="p-4">Valor Total</th>
-                  <th className="p-4">Estado / Decisão</th>
-                  <th className="p-4 text-right">Ações</th>
+                  <th className="p-4">Emissão</th>
+                  <th className="p-4">Total</th>
+                  <th className="p-4">Reserva Estoque</th>
+                  <th className="p-4">Estado</th>
+                  <th className="p-4 text-right">Ações & Conversão</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 text-sm text-slate-700">
                 {filteredBudgets.map(budget => {
-                  const hasOS = db.serviceOrders.some(os => os.budgetId === budget.id);
+                  const hasOS = !!budget.serviceOrderId || db.serviceOrders.some(os => os.budgetId === budget.id);
+                  const hasSale = !!budget.saleId || (db.sales && db.sales.some(s => s.budgetId === budget.id));
+                  const hasParts = budget.items.some(i => i.type === 'part');
+                  const hasServices = budget.items.some(i => i.type === 'service');
+                  const isBalcao = budget.segmentType === 'COMERCIO' || !budget.vehicleId;
+
                   return (
                     <tr key={budget.id} className="hover:bg-slate-50/50 transition duration-150" id={`budget-row-${budget.id}`}>
-                      <td className="p-4 font-mono text-xs font-bold text-indigo-600 uppercase">{budget.id}</td>
+                      <td className="p-4 font-mono text-xs font-bold text-indigo-600 uppercase">
+                        #{budget.id}
+                      </td>
+                      <td className="p-4">
+                        {isBalcao ? (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-100">
+                            <ShoppingBag className="w-3 h-3" /> Balcão
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-100">
+                            <Wrench className="w-3 h-3" /> Oficina
+                          </span>
+                        )}
+                      </td>
                       <td className="p-4 font-semibold text-slate-800">{getClientName(budget.clientId)}</td>
                       <td className="p-4">
-                        <div className="space-y-0.5">
-                          <p className="font-medium text-slate-700">{getVehicleDesc(budget.vehicleId)}</p>
-                          <p className="font-mono text-xs text-slate-400 uppercase">{getVehiclePlate(budget.vehicleId)}</p>
-                        </div>
+                        {budget.vehicleId ? (
+                          <div className="space-y-0.5">
+                            <p className="font-medium text-slate-700 text-xs">{getVehicleDesc(budget.vehicleId)}</p>
+                            <p className="font-mono text-[11px] text-slate-400 uppercase">{getVehiclePlate(budget.vehicleId)}</p>
+                          </div>
+                        ) : (
+                          <span className="text-xs text-slate-400 italic">Venda Balcão (S/ Veículo)</span>
+                        )}
                       </td>
                       <td className="p-4 text-slate-500 text-xs font-mono">
                         {new Date(budget.createdAt).toLocaleDateString('pt-BR')}
@@ -1756,59 +2210,121 @@ export default function BudgetsView({ db, currentUser, onSaveBudgets, onSaveServ
                         R$ {getBudgetTotal(budget.items).toFixed(2)}
                       </td>
                       <td className="p-4">
-                        <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded ${
-                          budget.status === 'approved' ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' :
-                          budget.status === 'partially_approved' ? 'bg-amber-50 text-amber-700 border border-amber-100 font-bold' :
-                          budget.status === 'rejected' ? 'bg-rose-50 text-rose-700 border border-rose-100' :
-                          'bg-slate-50 text-slate-600 border border-slate-200'
-                        }`}>
-                          {budget.status === 'pending' ? 'Pendente' :
-                           budget.status === 'approved' ? 'Aprovado' :
-                           budget.status === 'partially_approved' ? 'Parcial (RF009)' :
-                           budget.status === 'rejected' ? 'Recusado' : 'Expirado'}
-                        </span>
-                        {hasOS && (
-                          <span className="ml-2 text-[8px] bg-indigo-50 text-indigo-600 font-bold uppercase px-1 py-0.5 rounded border border-indigo-100">
-                            OS Originada
+                        {/* Reservation status badge */}
+                        {budget.stockReservationStatus === 'CONVERTED' ? (
+                          <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200">
+                            ✓ Convertido
+                          </span>
+                        ) : budget.stockReservationStatus === 'ACTIVE' || (reservationMode === 'reserve_while_valid' && budget.status === 'pending' && budget.stockReservationStatus !== 'NONE' && budget.stockReservationStatus !== 'EXPIRED') ? (
+                          <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1 w-fit">
+                            <Clock className="w-3 h-3" /> Reserva Ativa
+                          </span>
+                        ) : budget.stockReservationStatus === 'EXPIRED' ? (
+                          <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-rose-50 text-rose-700 border border-rose-200">
+                            Expirado
+                          </span>
+                        ) : (
+                          <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-slate-50 text-slate-500 border border-slate-200">
+                            Sem Reserva
                           </span>
                         )}
                       </td>
-                      <td className="p-4 text-right flex items-center justify-end gap-1.5">
-                        <button 
-                          id={`btn-decision-budget-${budget.id}`}
-                          type="button"
-                          onClick={() => launchApprovalSimulator(budget)} 
-                          className="text-emerald-700 hover:text-emerald-900 bg-emerald-50 hover:bg-emerald-100 font-semibold p-1.5 rounded-md transition inline-flex items-center gap-1 text-xs border border-emerald-200 shadow-2xs cursor-pointer"
-                          title="Registrar decisão do cliente e liberar Ordem de Serviço ao mecânico"
-                        >
-                          <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" /> Decisão do Cliente
-                        </button>
-                        {canEditBudgets && (
+                      <td className="p-4">
+                        <div className="space-y-1">
+                          <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded block w-fit ${
+                            budget.status === 'approved' ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' :
+                            budget.status === 'partially_approved' ? 'bg-amber-50 text-amber-700 border border-amber-100 font-bold' :
+                            budget.status === 'rejected' ? 'bg-rose-50 text-rose-700 border border-rose-100' :
+                            'bg-slate-50 text-slate-600 border border-slate-200'
+                          }`}>
+                            {budget.status === 'pending' ? 'Pendente' :
+                             budget.status === 'approved' ? 'Aprovado' :
+                             budget.status === 'partially_approved' ? 'Parcial' :
+                             budget.status === 'rejected' ? 'Recusado' : 'Expirado'}
+                          </span>
+                          {hasSale && (
+                            <span className="text-[9px] bg-emerald-50 text-emerald-700 font-mono font-bold uppercase px-1.5 py-0.5 rounded border border-emerald-200 block w-fit">
+                              Venda #{budget.saleId || 'OK'}
+                            </span>
+                          )}
+                          {hasOS && (
+                            <span className="text-[9px] bg-indigo-50 text-indigo-700 font-mono font-bold uppercase px-1.5 py-0.5 rounded border border-indigo-200 block w-fit">
+                              OS #{budget.serviceOrderId || 'OK'}
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="p-4 text-right">
+                        <div className="flex flex-wrap items-center justify-end gap-1.5">
+                          {/* Quick Conversion Buttons */}
+                          {!hasSale && hasParts && (
+                            <button
+                              id={`btn-table-convert-sale-${budget.id}`}
+                              type="button"
+                              onClick={() => handleConvertToSale(budget)}
+                              disabled={convertingId === budget.id}
+                              className="text-emerald-700 hover:text-emerald-900 bg-emerald-50 hover:bg-emerald-100 font-bold px-2 py-1 rounded text-xs border border-emerald-200 transition inline-flex items-center gap-1 shadow-2xs cursor-pointer"
+                              title="Converter em Venda Balcão"
+                            >
+                              <ShoppingBag className="w-3 h-3" /> Venda
+                            </button>
+                          )}
+
+                          {!hasOS && (hasServices || !isCommerceOnly) && (
+                            <button
+                              id={`btn-table-convert-os-${budget.id}`}
+                              type="button"
+                              onClick={() => handleConvertToOS(budget)}
+                              disabled={convertingId === budget.id}
+                              className="text-indigo-700 hover:text-indigo-900 bg-indigo-50 hover:bg-indigo-100 font-bold px-2 py-1 rounded text-xs border border-indigo-200 transition inline-flex items-center gap-1 shadow-2xs cursor-pointer"
+                              title="Converter em Ordem de Serviço"
+                            >
+                              <Wrench className="w-3 h-3" /> OS
+                            </button>
+                          )}
+
+                          {budget.status === 'pending' && (
+                            <button 
+                              id={`btn-decision-budget-${budget.id}`}
+                              type="button"
+                              onClick={() => launchApprovalSimulator(budget)} 
+                              className="text-slate-700 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 font-semibold p-1.5 rounded-md transition inline-flex items-center gap-1 text-xs border border-slate-300 shadow-2xs cursor-pointer"
+                              title="Registrar decisão do cliente"
+                            >
+                              <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" /> Decisão
+                            </button>
+                          )}
+
+                          {canEditBudgets && (
+                            <button 
+                              id={`btn-edit-budget-${budget.id}`}
+                              onClick={() => openEditForm(budget)} 
+                              className="text-amber-600 hover:text-amber-800 font-medium hover:bg-amber-50 p-1.5 rounded-md transition inline-flex items-center gap-1 text-xs"
+                              title="Editar informações e itens do orçamento"
+                            >
+                              <Pencil className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+
                           <button 
-                            id={`btn-edit-budget-${budget.id}`}
-                            onClick={() => openEditForm(budget)} 
-                            className="text-amber-600 hover:text-amber-800 font-medium hover:bg-amber-50 p-1.5 rounded-md transition inline-flex items-center gap-1 text-xs"
-                            title="Editar informações e itens do orçamento"
+                            id={`btn-share-budget-${budget.id}`}
+                            type="button"
+                            onClick={() => setShareModalData({ isOpen: true, budget })} 
+                            className="text-emerald-600 hover:text-emerald-800 font-medium hover:bg-emerald-50 p-1.5 rounded-md transition inline-flex items-center gap-1 text-xs"
+                            title="Enviar por WhatsApp / E-mail"
                           >
-                            <Pencil className="w-3.5 h-3.5" /> Editar
+                            <Send className="w-3.5 h-3.5" />
                           </button>
-                        )}
-                        <button 
-                          id={`btn-share-budget-${budget.id}`}
-                          type="button"
-                          onClick={() => setShareModalData({ isOpen: true, budget })} 
-                          className="text-emerald-600 hover:text-emerald-800 font-medium hover:bg-emerald-50 p-1.5 rounded-md transition inline-flex items-center gap-1 text-xs"
-                          title="Enviar por WhatsApp / E-mail"
-                        >
-                          <Send className="w-3.5 h-3.5" /> Enviar
-                        </button>
-                        <button 
-                          id={`btn-view-budget-${budget.id}`}
-                          onClick={() => setViewingBudget(budget)} 
-                          className="text-indigo-600 hover:text-indigo-800 font-medium hover:bg-indigo-50 p-1.5 rounded-md transition inline-flex items-center gap-1 text-xs"
-                        >
-                          <Eye className="w-3.5 h-3.5" /> Detalhar
-                        </button>
+
+                          <button 
+                            id={`btn-view-budget-${budget.id}`}
+                            onClick={() => setViewingBudget(budget)} 
+                            className="text-indigo-600 hover:text-indigo-800 font-medium hover:bg-indigo-50 p-1.5 rounded-md transition inline-flex items-center gap-1 text-xs"
+                            title="Ver detalhes completos do orçamento"
+                          >
+                            <Eye className="w-3.5 h-3.5" /> Detalhes
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );

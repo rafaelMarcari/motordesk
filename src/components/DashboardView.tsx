@@ -147,6 +147,28 @@ export default function DashboardView({ db, onNavigate, businessType = 'OFICINA'
   // Check low stock
   const lowStockParts = db.parts.filter(part => part.stock < 5);
 
+  // 3. MULTI-SEGMENT BUDGET & RESERVATION METRICS (Scoped by companyId)
+  const scopedBudgets = db.budgets || [];
+
+  const monthBudgets = scopedBudgets.filter(b => (b.createdAt || '').startsWith(selectedMonth));
+  const pendingBudgets = scopedBudgets.filter(b => b.status === 'pending');
+  const approvedBudgets = scopedBudgets.filter(b => b.status === 'approved' || b.status === 'partially_approved');
+  const convertedBudgets = scopedBudgets.filter(b => b.saleId || b.serviceOrderId || b.stockReservationStatus === 'CONVERTED');
+  const expiredBudgets = scopedBudgets.filter(b => b.status === 'expired' || b.stockReservationStatus === 'EXPIRED');
+  
+  const totalBudgetVolume = monthBudgets.reduce((sum, b) => 
+    sum + (b.items || []).reduce((isum, item) => isum + item.totalPrice, 0), 0
+  );
+
+  const activeReservedBudgets = scopedBudgets.filter(b => 
+    b.stockReservationStatus === 'ACTIVE' || 
+    (b.status === 'pending' && b.stockReservationStatus !== 'NONE' && b.stockReservationStatus !== 'EXPIRED')
+  );
+
+  const reservedBudgetVolume = activeReservedBudgets.reduce((sum, b) => 
+    sum + (b.items || []).filter(i => i.type === 'part').reduce((isum, item) => isum + item.totalPrice, 0), 0
+  );
+
   // Withdrawal & Delivery operational metrics
   const withdrawalsList = db.goodsWithdrawals || [];
   const wAguardando = withdrawalsList.filter(w => w.status === 'AGUARDANDO_SEPARACAO').length;
@@ -771,6 +793,126 @@ export default function DashboardView({ db, onNavigate, businessType = 'OFICINA'
           </div>
           <div className="bg-emerald-50 p-3 rounded-lg text-emerald-600">
             <DollarSign className="w-5 h-5" />
+          </div>
+        </div>
+      </div>
+
+      {/* 4. QUADRO EXECUTIVO GLOBAL: ORÇAMENTOS E RESERVA DE ESTOQUE (TODOS OS SEGMENTOS) */}
+      <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-4" id="kpi-budgets-operational-panel">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between pb-3 border-b border-slate-100 gap-2">
+          <div className="flex items-center gap-2.5">
+            <div className="p-2 bg-blue-50 text-blue-600 rounded-xl">
+              <FileText className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="font-bold text-slate-800 text-base font-display flex items-center gap-2">
+                Painel Geral de Orçamentos & Reserva de Estoque
+              </h3>
+              <p className="text-xs text-slate-500">
+                Acompanhe o volume de propostas comerciais emitidas, taxa de aprovação e estoque reservado ({selectedMonthLabel}).
+              </p>
+            </div>
+          </div>
+          <button
+            id="btn-goto-budgets-from-dashboard"
+            onClick={() => onNavigate('budgets')}
+            className="bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs px-4 py-2 rounded-xl transition flex items-center gap-1.5 shadow-xs cursor-pointer w-fit self-start sm:self-auto"
+          >
+            <span>GERENCIAR ORÇAMENTOS</span>
+            <ArrowRight className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* 6 Grid items of budget metrics */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+          {/* 1. Orçamentos no Mês */}
+          <div 
+            onClick={() => onNavigate('budgets')}
+            className="p-3.5 rounded-xl border border-slate-200 bg-slate-50/70 hover:bg-slate-100 transition cursor-pointer flex flex-col justify-between"
+          >
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Emitidos no Mês</span>
+            <div className="my-1.5">
+              <span className="text-2xl font-extrabold text-slate-800 font-display">{monthBudgets.length}</span>
+              <p className="text-[11px] text-slate-500 font-medium">R$ {totalBudgetVolume.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+            </div>
+            <span className="text-[10px] font-bold text-slate-600 bg-slate-200/80 px-2 py-0.5 rounded text-center block">
+              Ver todos →
+            </span>
+          </div>
+
+          {/* 2. Pendentes */}
+          <div 
+            onClick={() => onNavigate('budgets')}
+            className="p-3.5 rounded-xl border border-amber-200 bg-amber-50/40 hover:bg-amber-50 transition cursor-pointer flex flex-col justify-between"
+          >
+            <span className="text-[10px] font-bold uppercase tracking-wider text-amber-700">Pendentes</span>
+            <div className="my-1.5">
+              <span className="text-2xl font-extrabold text-amber-950 font-display">{pendingBudgets.length}</span>
+              <p className="text-[11px] text-amber-800 font-medium">Aguardando cliente</p>
+            </div>
+            <span className="text-[10px] font-bold text-amber-700 bg-amber-100/80 px-2 py-0.5 rounded text-center block">
+              Cobrar decisão →
+            </span>
+          </div>
+
+          {/* 3. Aprovados */}
+          <div 
+            onClick={() => onNavigate('budgets')}
+            className="p-3.5 rounded-xl border border-emerald-200 bg-emerald-50/40 hover:bg-emerald-50 transition cursor-pointer flex flex-col justify-between"
+          >
+            <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700">Aprovados</span>
+            <div className="my-1.5">
+              <span className="text-2xl font-extrabold text-emerald-950 font-display">{approvedBudgets.length}</span>
+              <p className="text-[11px] text-emerald-800 font-medium">Prontos p/ converter</p>
+            </div>
+            <span className="text-[10px] font-bold text-emerald-700 bg-emerald-100/80 px-2 py-0.5 rounded text-center block">
+              Converter →
+            </span>
+          </div>
+
+          {/* 4. Convertidos em Venda/OS */}
+          <div 
+            onClick={() => onNavigate('budgets')}
+            className="p-3.5 rounded-xl border border-indigo-200 bg-indigo-50/40 hover:bg-indigo-50 transition cursor-pointer flex flex-col justify-between"
+          >
+            <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-700">Convertidos</span>
+            <div className="my-1.5">
+              <span className="text-2xl font-extrabold text-indigo-950 font-display">{convertedBudgets.length}</span>
+              <p className="text-[11px] text-indigo-800 font-medium">Venda ou OS gerada</p>
+            </div>
+            <span className="text-[10px] font-bold text-indigo-700 bg-indigo-100/80 px-2 py-0.5 rounded text-center block">
+              Ver pedidos →
+            </span>
+          </div>
+
+          {/* 5. Reserva de Estoque Ativa */}
+          <div 
+            onClick={() => onNavigate('budgets')}
+            className="p-3.5 rounded-xl border border-teal-200 bg-teal-50/40 hover:bg-teal-50 transition cursor-pointer flex flex-col justify-between"
+          >
+            <span className="text-[10px] font-bold uppercase tracking-wider text-teal-700">Estoque Reservado</span>
+            <div className="my-1.5">
+              <span className="text-2xl font-extrabold text-teal-950 font-display">{activeReservedBudgets.length}</span>
+              <p className="text-[11px] text-teal-800 font-medium">R$ {reservedBudgetVolume.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+            </div>
+            <span className="text-[10px] font-bold text-teal-700 bg-teal-100/80 px-2 py-0.5 rounded text-center block">
+              Ver reservas →
+            </span>
+          </div>
+
+          {/* 6. Expirados / Recusados */}
+          <div 
+            onClick={() => onNavigate('budgets')}
+            className="p-3.5 rounded-xl border border-rose-200 bg-rose-50/40 hover:bg-rose-50 transition cursor-pointer flex flex-col justify-between"
+          >
+            <span className="text-[10px] font-bold uppercase tracking-wider text-rose-700">Expirados/Recusados</span>
+            <div className="my-1.5">
+              <span className="text-2xl font-extrabold text-rose-950 font-display">{expiredBudgets.length}</span>
+              <p className="text-[11px] text-rose-800 font-medium">Reserva liberada</p>
+            </div>
+            <span className="text-[10px] font-bold text-rose-700 bg-rose-100/80 px-2 py-0.5 rounded text-center block">
+              Histórico →
+            </span>
           </div>
         </div>
       </div>

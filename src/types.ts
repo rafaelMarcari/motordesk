@@ -16,6 +16,7 @@ export interface SystemNotification {
     partName?: string;
     budgetId?: string;
     serviceOrderId?: string;
+    saleId?: string;
     conversionType?: 'TOTAL' | 'PARCIAL';
     completionType?: 'TOTAL' | 'PARCIAL';
     itemsCount?: number;
@@ -245,6 +246,18 @@ export interface CompanyInfo {
 
   // Configuração Fiscal Isolada por Empresa
   sefazConfig?: SefazApiConfig;
+
+  // Habilitação e Modelos Fiscais
+  habilitarNfce?: boolean;
+  habilitarNfe?: boolean;
+  habilitarNfse?: boolean;
+  defaultFiscalModel?: 'nfce' | 'nfe' | 'none';
+  exigirFiscalConference?: boolean; // Se true, vendas vão para a Fila de Conferência Fiscal antes da transmissão
+  requireAuthorizedFiscalBeforeRelease?: boolean; // Se true, bloqueia saída física na retirada/expedição se nota não estiver autorizada
+
+  // Configuração de Reserva de Estoque em Orçamentos
+  budgetStockReservationMode?: 'none' | 'reserve_while_valid'; // Opção A: none, Opção B: reserve_while_valid
+  budgetStockReservationValidityDays?: number; // 1, 3, 5, 7, 10, 15, 30 ou personalizado
 }
 
 export interface UserPermissions {
@@ -268,8 +281,25 @@ export interface UserPermissions {
   accessAccountsPayable?: boolean;
   accessFinancial?: boolean;
   accessFiscal?: boolean;
+
+  // Permissões Específicas Fiscais / NFC-e / NF-e
+  nfceView?: boolean;
+  nfceEmit?: boolean;
+  nfceCancel?: boolean;
+  nfceReprint?: boolean;
+  nfceXml?: boolean;
+  nfceConfig?: boolean;
   accessBoletos?: boolean;
   accessSefaz?: boolean;
+
+  // Permissões Granulares - Módulo de Orçamentos
+  budgetView?: boolean;
+  budgetCreate?: boolean;
+  budgetEdit?: boolean;
+  budgetApprove?: boolean;
+  budgetCancel?: boolean;
+  budgetConvert?: boolean;
+  budgetConfig?: boolean;
 
   // Permissões Granulares - Módulo Fiscal
   fiscalView?: boolean;
@@ -645,7 +675,7 @@ export interface BudgetItem {
 export interface Budget {
   id: string;
   clientId: string;
-  vehicleId: string;
+  vehicleId?: string; // Opcional para orçamentos de balcão / comércio
   companyId?: string;
   validityDays: number; // RN004: validade configurável
   createdAt: string;
@@ -660,6 +690,14 @@ export interface Budget {
   paymentRequirementMode?: PaymentRequirementMode; // Regra de recebimento estipulada para este orçamento
   requiredDepositPercentage?: number; // % do sinal de entrada exigido
   requiredDepositAmount?: number; // R$ valor calculado do sinal de entrada
+
+  // Suporte Multissegmento e Rastreabilidade de Conversão
+  segmentType?: BusinessType; // 'OFICINA' | 'COMERCIO' | 'OFICINA_COMERCIO'
+  saleId?: string; // ID da Venda Comercial gerada na aprovação/conversão
+  serviceOrderId?: string; // ID da Ordem de Serviço gerada na aprovação/conversão
+  isStockReserved?: boolean; // Se gerou reserva ativa de peças
+  stockReservationStatus?: 'ACTIVE' | 'RELEASED' | 'TRANSFERRED' | 'EXPIRED' | 'CONVERTED' | 'NONE'; // Status da reserva
+  reservationExpiresAt?: string; // Data ISO da expiração da reserva
 }
 
 export interface OSItem {
@@ -1346,7 +1384,8 @@ export interface CommercialSale {
   receivableId?: string;
   fiscalDocumentId?: string;
   fiscalAccessKey?: string;
-  fiscalStatus?: 'pending' | 'authorized' | 'rejected' | 'canceled' | 'pending_conference' | 'ready_for_emission' | 'emit_later' | 'transmitting' | 'error_transmission';
+  fiscalStatus?: 'pending' | 'authorized' | 'rejected' | 'canceled' | 'pending_conference' | 'ready_for_emission' | 'ready_for_transmission' | 'emit_later' | 'transmitting' | 'error_transmission';
+  fiscalModelChoice?: '65' | '55' | 'NFS-e' | 'none' | 'emit_later';
   fiscalRejectionReason?: string;
   nfeNumber?: string;
   nfeSeries?: string;
@@ -1356,6 +1395,7 @@ export interface CommercialSale {
   boletoBarcode?: string;
   notes?: string;
   createdBy: string;
+  budgetId?: string; // Rastreabilidade do Orçamento de Origem convertido
   // Logística & Transporte de Frete
   freightType?: FreightType;
   carrierId?: string;
@@ -1373,8 +1413,10 @@ export type WithdrawalStatus =
   | 'AGUARDANDO_SEPARACAO' 
   | 'EM_SEPARACAO' 
   | 'PARCIALMENTE_SEPARADO' 
+  | 'SEPARADO'
   | 'PRONTO_RETIRADA' 
   | 'PRONTO_ENTREGA' 
+  | 'PARCIALMENTE_RETIRADO' 
   | 'SAIU_PARA_ENTREGA' 
   | 'ENTREGUE' 
   | 'RETIRADO' 
@@ -1385,12 +1427,23 @@ export interface GoodsWithdrawalItem {
   partId: string;
   partName: string;
   partCode: string;
-  quantitySold: number;
-  quantityReserved: number;
-  quantitySeparated: number;
-  quantityReleased: number;
+  location?: string;            // Localização de estoque (ex: Corredor A - Prateleira 3)
+  quantitySold: number;         // Quantidade original vendida (imutável no romaneio)
+  quantityReserved: number;     // Quantidade física ainda reservada
+  quantitySeparated: number;    // Quantidade separada pelo operador de picking
+  quantityReleased: number;     // Quantidade retirada no balcão pelo cliente (baixa física executada)
+  quantityWithdrawn?: number;   // Sinônimo operacional de quantityReleased
+  quantityForDelivery?: number; // Quantidade residual destinada para entrega/expedição
+  quantityDelivered?: number;   // Quantidade entregue no destino final
   unitPrice: number;
   totalPrice: number;
+  unit?: string;                // UN, PC, L, CX, etc.
+  isConferred?: boolean;        // Item conferido no picking [✓]
+  conferredAt?: string;
+  conferredBy?: string;
+  divergenceNotes?: string;     // Observações de divergência / falta
+  missingQuantity?: number;     // Quantidade em falta identificada
+  replacementPartName?: string; // Nome de peça substituta autorizada
 }
 
 export interface GoodsWithdrawalHistoryEvent {
