@@ -323,7 +323,11 @@ export default function BudgetsView({
         quantity: addingQty,
         unitPrice: part.price,
         totalPrice: addingQty * part.price,
-        status: 'pending'
+        status: 'pending',
+        unit: part.unit || 'UN',
+        unitOfMeasureId: part.unitOfMeasureId,
+        unitName: part.unitName,
+        dimensions: part.dimensions
       };
 
       // Venda Casada
@@ -662,7 +666,12 @@ export default function BudgetsView({
         quantity: item.quantity,
         unitPrice: item.unitPrice,
         discount: 0,
-        totalPrice: item.totalPrice
+        totalPrice: item.totalPrice,
+        unit: item.unit || p?.unit || 'UN',
+        unitOfMeasureId: item.unitOfMeasureId || p?.unitOfMeasureId,
+        unitName: item.unitName || p?.unitName,
+        dimensions: item.dimensions || p?.dimensions,
+        ncm: p?.ncm || '8708.99.90'
       };
     });
 

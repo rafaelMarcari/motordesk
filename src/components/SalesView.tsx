@@ -208,7 +208,10 @@ export const SalesView: React.FC<SalesViewProps> = ({
             discount: itemDiscount,
             totalPrice: part.price - itemDiscount,
             unit: part.unit || 'UN',
-            ncm: '8708.99.90'
+            unitOfMeasureId: part.unitOfMeasureId,
+            unitName: part.unitName,
+            dimensions: part.dimensions,
+            ncm: part.ncm || '8708.99.90'
           }
         ];
       }
@@ -972,8 +975,22 @@ export const SalesView: React.FC<SalesViewProps> = ({
                     >
                       <div className="flex items-start justify-between gap-2">
                         <div>
-                          <div className="font-bold text-slate-800">{item.partName}</div>
-                          <div className="text-[10px] text-slate-400">SKU: {item.partCode}</div>
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="font-bold text-slate-800">{item.partName}</span>
+                            <span className="text-[10px] font-bold bg-indigo-50 text-indigo-700 px-1.5 py-0.5 rounded font-mono">
+                              {item.unit || 'UN'}
+                            </span>
+                          </div>
+                          <div className="text-[10px] text-slate-400 flex items-center gap-1.5 mt-0.5">
+                            <span>SKU: {item.partCode}</span>
+                            {item.dimensions && (item.dimensions.length || item.dimensions.width) && (
+                              <span className="text-indigo-600 bg-indigo-50/70 px-1 rounded font-medium">
+                                {item.dimensions.length}{item.dimensions.unitLength || 'm'}
+                                {item.dimensions.width && ` × ${item.dimensions.width}${item.dimensions.unitWidth || 'm'}`}
+                                {item.dimensions.height && ` × ${item.dimensions.height}${item.dimensions.unitHeight || 'm'}`}
+                              </span>
+                            )}
+                          </div>
                         </div>
                         <button
                           type="button"

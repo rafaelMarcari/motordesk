@@ -61,6 +61,41 @@ export type UserRole = 'admin' | 'atendente' | 'mecanico' | 'qa';
 
 export type BusinessType = "OFICINA" | "COMERCIO" | "OFICINA_COMERCIO" | "SERVICOS" | "OUTROS";
 
+export type UnitCategory = 'QUANTIDADE' | 'COMPRIMENTO' | 'AREA' | 'VOLUME' | 'MASSA' | 'TEMPO' | 'OUTROS';
+
+export type UnitCalculationType = 'SIMPLES' | 'LINEAR' | 'AREA' | 'VOLUME';
+
+export interface ItemDimensionData {
+  calculationType: UnitCalculationType;
+  length?: number;
+  width?: number;
+  height?: number;
+  unitLength?: string;
+  unitWidth?: string;
+  unitHeight?: string;
+  piecesCount?: number;
+  unitAcronym?: string;
+  calculatedQuantity?: number;
+  formulaDescription?: string;
+}
+
+export interface UnitOfMeasure {
+  id: string;
+  name: string; // Ex: Metro quadrado, Quilograma, Unidade
+  acronym: string; // Ex: M², KG, UN, L, M³
+  code?: string; // Código/Sigla
+  category: UnitCategory; // QUANTIDADE, AREA, VOLUME, etc.
+  calculationType: UnitCalculationType; // SIMPLES, LINEAR, AREA, VOLUME
+  conversionFactor?: number; // Fator multiplicador em relação à unidade base (padrão: 1.0)
+  decimalPlaces: number; // 0 a 4 (ex: UN -> 0, KG -> 3, M² -> 3, M³ -> 3)
+  active: boolean;
+  isGlobal?: boolean; // Unidade padrão do sistema (disponível a todos) ou criada pela empresa
+  companyId?: string; // ID da empresa proprietária (se personalizada)
+  notes?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 export type ViewID = 
   | 'dashboard' 
   | 'sales'
@@ -70,6 +105,7 @@ export type ViewID =
   | 'clients' 
   | 'vehicles' 
   | 'parts' 
+  | 'units_of_measure'
   | 'quotations'
   | 'accounts_receivable'
   | 'accounts_payable'
@@ -291,6 +327,10 @@ export interface UserPermissions {
   nfceConfig?: boolean;
   accessBoletos?: boolean;
   accessSefaz?: boolean;
+  accessUnitsOfMeasure?: boolean; // Acesso ao módulo de Unidades de Medida
+  unitsOfMeasureCreate?: boolean; // Permissão para cadastrar novas unidades de medida
+  unitsOfMeasureEdit?: boolean; // Permissão para editar unidades existentes
+  unitsOfMeasureToggleActive?: boolean; // Permissão para ativar/desativar unidades
 
   // Permissões Granulares - Módulo de Orçamentos
   budgetView?: boolean;
@@ -406,7 +446,10 @@ export interface Part {
   minStock?: number; // Alerta de Estoque Mínimo
   category?: string; // Categoria (Freios, Suspensão, Óleos, Filtros, Elétrica, Motor, etc.)
   location?: string; // Localização no Galpão/Prateleira
-  unit?: string; // Unidade de Medida (UN, CX, L, KG, PÇ, PAR)
+  unit?: string; // Unidade de Medida Sigla (UN, CX, L, KG, M, M², M³)
+  unitOfMeasureId?: string; // Referência para a Unidade de Medida configurada
+  unitName?: string; // Nome descritivo da unidade (ex: Metro Linear, Metro Quadrado)
+  dimensions?: ItemDimensionData; // Dimensões para cálculo geométrico (comprimento, largura, altura)
   lastSupplier?: string; // Nome ou CNPJ do Fornecedor da NFe
   isPeriodic?: boolean; // Se o produto/peça é periódico (óleo, filtro, pneu, etc.)
   maintenanceControl?: ServiceMaintenanceControl;
@@ -665,6 +708,11 @@ export interface BudgetItem {
   originalUnitPrice?: number; // Preço unitário original (quando foi orçado/adiado)
   totalPrice: number;
   status: 'pending' | 'approved' | 'rejected' | 'postponed'; // RN005: items recusados permanecem no historico
+  unit?: string; // Sigla da unidade de medida (ex: UN, M², KG)
+  unitOfMeasureId?: string; // ID da unidade de medida
+  unitName?: string; // Nome da unidade de medida
+  dimensions?: ItemDimensionData; // Dados de cálculo dimensional (comprimento, largura, altura, etc.)
+  calculatedQuantity?: number; // Quantidade calculada real
   serviceNotes?: string; // Campo de texto livre com informação pertinente ao serviço/item
   reservationAgreement?: string; // Combinado/acordo com o cliente sobre a reserva de estoque
   priceChangeApproval?: PriceChangeApproval;
@@ -711,6 +759,11 @@ export interface OSItem {
   totalPrice: number;
   status: 'pending' | 'executing' | 'completed' | 'canceled' | 'postponed';
   source: 'budget' | 'mechanic_suggestion'; // RN006: mecanico sugere novos itens
+  unit?: string; // Sigla da unidade de medida (ex: UN, M², KG)
+  unitOfMeasureId?: string; // ID da unidade de medida
+  unitName?: string; // Nome da unidade de medida
+  dimensions?: ItemDimensionData; // Dados de cálculo dimensional
+  calculatedQuantity?: number; // Quantidade calculada real
   serviceNotes?: string; // Campo de texto livre com informação pertinente ao serviço/item
   priceChangeApproval?: PriceChangeApproval;
   isWarrantyCovered?: boolean; // Se este item/serviço específico é coberto por garantia
@@ -1363,6 +1416,10 @@ export interface CommercialSaleItem {
   discount: number;
   totalPrice: number;
   unit?: string;
+  unitOfMeasureId?: string;
+  unitName?: string;
+  dimensions?: ItemDimensionData;
+  calculatedQuantity?: number;
   ncm?: string;
 }
 
@@ -1438,6 +1495,8 @@ export interface GoodsWithdrawalItem {
   unitPrice: number;
   totalPrice: number;
   unit?: string;                // UN, PC, L, CX, etc.
+  unitName?: string;
+  dimensions?: ItemDimensionData;
   isConferred?: boolean;        // Item conferido no picking [✓]
   conferredAt?: string;
   conferredBy?: string;

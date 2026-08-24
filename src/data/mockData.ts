@@ -3,7 +3,30 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { User, Client, Vehicle, Part, Service, Budget, ServiceOrder, HistoryEntry, TestCase, StockMovement, CompanyInfo, SystemNotification, AlertSettings, Supplier, SupplierPartPrice, Quotation, AccountReceivable, AccountPayable, FinancialTransaction, MaintenanceLog, PaymentMethodOption, FiscalDocument, BoletoDocument, InterBranchSaleLogistics, SefazApiConfig, TaxOperationNature, TaxRule, XmlImportRecord, CommercialSale, Carrier, GoodsWithdrawalOrder, WithdrawalType, WithdrawalStatus, getDefaultModulesForBusinessType } from '../types';
+import { User, Client, Vehicle, Part, Service, Budget, ServiceOrder, HistoryEntry, TestCase, StockMovement, CompanyInfo, SystemNotification, AlertSettings, Supplier, SupplierPartPrice, Quotation, AccountReceivable, AccountPayable, FinancialTransaction, MaintenanceLog, PaymentMethodOption, FiscalDocument, BoletoDocument, InterBranchSaleLogistics, SefazApiConfig, TaxOperationNature, TaxRule, XmlImportRecord, CommercialSale, Carrier, GoodsWithdrawalOrder, WithdrawalType, WithdrawalStatus, getDefaultModulesForBusinessType, UnitOfMeasure } from '../types';
+
+export const INITIAL_UNITS_OF_MEASURE: UnitOfMeasure[] = [
+  { id: 'uom-un', name: 'Unidade', acronym: 'UN', category: 'QUANTIDADE', calculationType: 'SIMPLES', conversionFactor: 1, decimalPlaces: 0, active: true, isGlobal: true, notes: 'Contagem unitária inteira padrão' },
+  { id: 'uom-pc', name: 'Peça', acronym: 'PC', category: 'QUANTIDADE', calculationType: 'SIMPLES', conversionFactor: 1, decimalPlaces: 0, active: true, isGlobal: true, notes: 'Peça ou componente individual' },
+  { id: 'uom-cx', name: 'Caixa', acronym: 'CX', category: 'QUANTIDADE', calculationType: 'SIMPLES', conversionFactor: 1, decimalPlaces: 0, active: true, isGlobal: true, notes: 'Embalagem ou caixa fechada' },
+  { id: 'uom-jg', name: 'Jogo', acronym: 'JG', category: 'QUANTIDADE', calculationType: 'SIMPLES', conversionFactor: 1, decimalPlaces: 0, active: true, isGlobal: true, notes: 'Jogo ou conjunto de peças' },
+  { id: 'uom-kit', name: 'Kit', acronym: 'KIT', category: 'QUANTIDADE', calculationType: 'SIMPLES', conversionFactor: 1, decimalPlaces: 0, active: true, isGlobal: true, notes: 'Kit composto' },
+  { id: 'uom-par', name: 'Par', acronym: 'PAR', category: 'QUANTIDADE', calculationType: 'SIMPLES', conversionFactor: 1, decimalPlaces: 0, active: true, isGlobal: true, notes: 'Par de itens' },
+  { id: 'uom-kg', name: 'Quilograma', acronym: 'KG', category: 'MASSA', calculationType: 'SIMPLES', conversionFactor: 1, decimalPlaces: 3, active: true, isGlobal: true, notes: 'Peso em quilos' },
+  { id: 'uom-g', name: 'Grama', acronym: 'G', category: 'MASSA', calculationType: 'SIMPLES', conversionFactor: 0.001, decimalPlaces: 3, active: true, isGlobal: true, notes: 'Peso em gramas' },
+  { id: 'uom-ton', name: 'Tonelada', acronym: 'T', category: 'MASSA', calculationType: 'SIMPLES', conversionFactor: 1000, decimalPlaces: 3, active: true, isGlobal: true, notes: 'Peso em toneladas' },
+  { id: 'uom-l', name: 'Litro', acronym: 'L', category: 'VOLUME', calculationType: 'SIMPLES', conversionFactor: 1, decimalPlaces: 3, active: true, isGlobal: true, notes: 'Volume líquido em litros' },
+  { id: 'uom-ml', name: 'Mililitro', acronym: 'ML', category: 'VOLUME', calculationType: 'SIMPLES', conversionFactor: 0.001, decimalPlaces: 3, active: true, isGlobal: true, notes: 'Volume líquido fracionado' },
+  { id: 'uom-m', name: 'Metro Linear', acronym: 'M', category: 'COMPRIMENTO', calculationType: 'LINEAR', conversionFactor: 1, decimalPlaces: 3, active: true, isGlobal: true, notes: 'Cálculo por comprimento linear' },
+  { id: 'uom-cm', name: 'Centímetro Linear', acronym: 'CM', category: 'COMPRIMENTO', calculationType: 'LINEAR', conversionFactor: 0.01, decimalPlaces: 2, active: true, isGlobal: true, notes: 'Cálculo por comprimento em centímetros' },
+  { id: 'uom-mm', name: 'Milímetro Linear', acronym: 'MM', category: 'COMPRIMENTO', calculationType: 'LINEAR', conversionFactor: 0.001, decimalPlaces: 1, active: true, isGlobal: true, notes: 'Cálculo por comprimento em milímetros' },
+  { id: 'uom-m2', name: 'Metro Quadrado', acronym: 'M²', category: 'AREA', calculationType: 'AREA', conversionFactor: 1, decimalPlaces: 3, active: true, isGlobal: true, notes: 'Cálculo por área (Comprimento × Largura)' },
+  { id: 'uom-cm2', name: 'Centímetro Quadrado', acronym: 'CM²', category: 'AREA', calculationType: 'AREA', conversionFactor: 0.0001, decimalPlaces: 2, active: true, isGlobal: true, notes: 'Cálculo por área em cm²' },
+  { id: 'uom-m3', name: 'Metro Cúbico', acronym: 'M³', category: 'VOLUME', calculationType: 'VOLUME', conversionFactor: 1, decimalPlaces: 3, active: true, isGlobal: true, notes: 'Cálculo por volume (Comprimento × Largura × Altura)' },
+  { id: 'uom-cm3', name: 'Centímetro Cúbico', acronym: 'CM³', category: 'VOLUME', calculationType: 'VOLUME', conversionFactor: 0.000001, decimalPlaces: 2, active: true, isGlobal: true, notes: 'Cálculo por volume em cm³' },
+  { id: 'uom-h', name: 'Hora', acronym: 'H', category: 'TEMPO', calculationType: 'SIMPLES', conversionFactor: 1, decimalPlaces: 2, active: true, isGlobal: true, notes: 'Tempo em horas de serviço' },
+  { id: 'uom-min', name: 'Minuto', acronym: 'MIN', category: 'TEMPO', calculationType: 'SIMPLES', conversionFactor: 0.01666, decimalPlaces: 0, active: true, isGlobal: true, notes: 'Tempo em minutos' }
+];
 
 export const INITIAL_SEFAZ_CONFIG: SefazApiConfig = {
   environment: 'homologation',
@@ -2667,6 +2690,7 @@ export interface AppDatabase {
   taxOperationNatures?: TaxOperationNature[];
   taxRules?: TaxRule[];
   xmlImportRecords?: XmlImportRecord[];
+  unitsOfMeasure?: UnitOfMeasure[];
 }
 
 export const STORAGE_KEY = 'motordesk_db_v1';
@@ -2707,6 +2731,7 @@ export function getDatabase(): AppDatabase {
       taxOperationNatures: INITIAL_TAX_OPERATION_NATURES,
       taxRules: INITIAL_TAX_RULES,
       xmlImportRecords: INITIAL_XML_IMPORT_RECORDS,
+      unitsOfMeasure: INITIAL_UNITS_OF_MEASURE,
     };
   } else {
     try {
@@ -2779,6 +2804,9 @@ export function getDatabase(): AppDatabase {
       }
       if (!db.xmlImportRecords) {
         db.xmlImportRecords = INITIAL_XML_IMPORT_RECORDS;
+      }
+      if (!db.unitsOfMeasure || !Array.isArray(db.unitsOfMeasure) || db.unitsOfMeasure.length === 0) {
+        db.unitsOfMeasure = INITIAL_UNITS_OF_MEASURE;
       }
       if (!db.landingContent) {
         try {

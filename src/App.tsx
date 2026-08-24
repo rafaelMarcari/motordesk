@@ -33,7 +33,8 @@ import {
   TaxOperationNature,
   TaxRule,
   XmlImportRecord,
-  Carrier
+  Carrier,
+  UnitOfMeasure
 } from './types';
 
 // Icons for navigation
@@ -69,7 +70,8 @@ import {
   ChevronDown, 
   ChevronRight, 
   Sparkles, 
-  Wrench as ToolIcon 
+  Wrench as ToolIcon,
+  Ruler
 } from 'lucide-react';
 
 // View Imports
@@ -95,6 +97,7 @@ import FiscalConferenceView from './components/FiscalConferenceView';
 import { SalesView } from './components/SalesView';
 import WithdrawalView from './components/WithdrawalView';
 import CarriersView from './components/CarriersView';
+import UnitsOfMeasureView from './components/UnitsOfMeasureView';
 import NotificationToastPopup from './components/NotificationToastPopup';
 import NotificationsModal from './components/NotificationsModal';
 import LandingPresentationView, { LandingContent } from './components/LandingPresentationView';
@@ -128,6 +131,7 @@ type ViewID =
   | 'withdrawals'
   | 'fiscal_conference'
   | 'carriers'
+  | 'units_of_measure'
   | 'clients' 
   | 'vehicles' 
   | 'parts' 
@@ -152,6 +156,7 @@ const VIEW_PERMISSION_MAP: Record<ViewID, keyof UserPermissions | null> = {
   withdrawals: 'accessWithdrawals',
   fiscal_conference: 'accessFiscal',
   carriers: 'accessCarriers',
+  units_of_measure: 'accessUnitsOfMeasure',
   clients: 'accessClients',
   vehicles: 'accessVehicles',
   parts: 'accessParts',
@@ -355,6 +360,7 @@ export default function App() {
       clients: 'accessClients',
       vehicles: 'accessVehicles',
       parts: 'accessParts',
+      units_of_measure: 'accessUnitsOfMeasure',
       quotations: 'accessQuotations',
       accounts_receivable: 'accessAccountsReceivable',
       accounts_payable: 'accessAccountsPayable',
@@ -686,10 +692,23 @@ export default function App() {
       taxOperationNatures: db.taxOperationNatures || [],
       taxRules: db.taxRules || [],
       xmlImportRecords: db.xmlImportRecords || [],
+      unitsOfMeasure: (db.unitsOfMeasure || []).filter(item => item.isGlobal || !item.companyId || (item.companyId || 'comp-1') === activeCompanyId),
     };
   }, [db, activeCompanyId, activeCompanyObj]);
 
   // State Updaters passed to Views (Preserving multi-tenant data for other companies)
+  const handleSaveUnitsOfMeasure = (units: UnitOfMeasure[]) => {
+    setDb(prev => {
+      if (!prev) return prev;
+      const otherCompanyUnits = (prev.unitsOfMeasure || []).filter(
+        u => !u.isGlobal && u.companyId && (u.companyId || 'comp-1') !== activeCompanyId
+      );
+      const nextDb = { ...prev, unitsOfMeasure: [...otherCompanyUnits, ...units] };
+      dataProvider.saveDatabaseImmediate(nextDb);
+      return nextDb;
+    });
+  };
+
   const handleSaveCarriers = (carriers: Carrier[]) => {
     const formatted = carriers.map(c => ({ ...c, companyId: c.companyId || activeCompanyId }));
     setDb(prev => {
@@ -1184,6 +1203,7 @@ export default function App() {
         clients: 'accessClients',
         vehicles: 'accessVehicles',
         parts: 'accessParts',
+        units_of_measure: 'accessUnitsOfMeasure',
         quotations: 'accessQuotations',
         accounts_receivable: 'accessAccountsReceivable',
         accounts_payable: 'accessAccountsPayable',
@@ -1847,6 +1867,22 @@ export default function App() {
               </button>
             )}
 
+            {(currentUser.permissions.accessUnitsOfMeasure ?? (currentUser.role === 'admin' || currentUser.role === 'qa')) && (
+              <button 
+                id="menu-btn-units-of-measure"
+                onClick={() => navigateToView('units_of_measure')}
+                title="Unidades de Medida"
+                className={`w-full flex items-center ${(!isSidebarCollapsed || isSidebarHovered) ? 'justify-between px-3' : 'justify-center px-2'} py-2.5 rounded-lg text-xs font-semibold tracking-wide transition ${
+                  activeView === 'units_of_measure' ? 'bg-indigo-600 text-white font-bold' : 'hover:bg-slate-800 text-slate-400 hover:text-slate-100'
+                }`}
+              >
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <Ruler className="w-4 h-4 shrink-0 text-indigo-400" />
+                  {(!isSidebarCollapsed || isSidebarHovered) && <span className="truncate">Unidades de Medida</span>}
+                </div>
+              </button>
+            )}
+
             {currentUser.permissions.accessQuotations && isViewAllowedForBusinessType('quotations', activeBusinessType) && (
               <button 
                 id="menu-btn-quotations"
@@ -2367,6 +2403,16 @@ export default function App() {
                 setUnsavedTask={setUnsavedTask}
               />
             )
+          )}
+
+          {activeView === 'units_of_measure' && (currentUser.permissions.accessUnitsOfMeasure ?? (currentUser.role === 'admin' || currentUser.role === 'qa')) && (
+            <UnitsOfMeasureView
+              db={scopedDb}
+              currentUser={currentUser}
+              currentCompany={activeCompanyObj || db.companyInfo}
+              onSaveUnitsOfMeasure={handleSaveUnitsOfMeasure}
+              onAddHistoryLog={handleAddHistoryLog}
+            />
           )}
 
           {activeView === 'quotations' && currentUser.permissions.accessQuotations && (

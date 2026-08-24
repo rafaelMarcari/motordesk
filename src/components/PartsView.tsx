@@ -8,11 +8,12 @@ import {
   Plus, Search, Edit2, AlertCircle, CheckCircle, X, Package, 
   FileCode, Upload, ArrowUpRight, ArrowDownLeft, FileText, 
   TrendingUp, Layers, MapPin, DollarSign, ShieldAlert, Check, 
-  RefreshCw, FileCheck2, ArrowUpDown, Filter, Sparkles, Building2, ShieldCheck, Lock, Link as LinkIcon, Trash2
+  RefreshCw, FileCheck2, ArrowUpDown, Filter, Sparkles, Building2, ShieldCheck, Lock, Link as LinkIcon, Trash2, Ruler
 } from 'lucide-react';
-import { Part, StockMovement, NFeImportData, NFeItem, User, MaintenanceCategory, CrossSellItem } from '../types';
+import { Part, StockMovement, NFeImportData, NFeItem, User, MaintenanceCategory, CrossSellItem, ItemDimensionData } from '../types';
 import { AppDatabase } from '../data/mockData';
 import { getPartStockDetails } from '../utils/stockUtils';
+import { resolveUnitOfMeasure } from '../utils/unitMeasurementUtils';
 
 interface PartsViewProps {
   db: AppDatabase;
@@ -371,6 +372,14 @@ export default function PartsView({
   const [costPrice, setCostPrice] = useState<number>(0);
   const [price, setPrice] = useState<number>(0);
   const [unit, setUnit] = useState<string>('UN');
+  const [unitOfMeasureId, setUnitOfMeasureId] = useState<string>('');
+  const [unitName, setUnitName] = useState<string>('');
+  const [dimLength, setDimLength] = useState<number | undefined>(undefined);
+  const [dimWidth, setDimWidth] = useState<number | undefined>(undefined);
+  const [dimHeight, setDimHeight] = useState<number | undefined>(undefined);
+  const [dimUnitLength, setDimUnitLength] = useState<'m' | 'cm' | 'mm'>('m');
+  const [dimUnitWidth, setDimUnitWidth] = useState<'m' | 'cm' | 'mm'>('m');
+  const [dimUnitHeight, setDimUnitHeight] = useState<'m' | 'cm' | 'mm'>('m');
   const [location, setLocation] = useState<string>('Prateleira A1');
   const [ncm, setNcm] = useState<string>('8708.30.90');
   const [lastSupplier, setLastSupplier] = useState<string>('');
@@ -438,6 +447,14 @@ export default function PartsView({
     setCostPrice(0);
     setPrice(0);
     setUnit('UN');
+    setUnitOfMeasureId('');
+    setUnitName('');
+    setDimLength(undefined);
+    setDimWidth(undefined);
+    setDimHeight(undefined);
+    setDimUnitLength('m');
+    setDimUnitWidth('m');
+    setDimUnitHeight('m');
     setLocation('Prateleira A1');
     setNcm('8708.30.90');
     setLastSupplier('');
@@ -483,6 +500,14 @@ export default function PartsView({
     setCostPrice(part.costPrice ?? 0);
     setPrice(part.price);
     setUnit(part.unit || 'UN');
+    setUnitOfMeasureId(part.unitOfMeasureId || '');
+    setUnitName(part.unitName || '');
+    setDimLength(part.dimensions?.length);
+    setDimWidth(part.dimensions?.width);
+    setDimHeight(part.dimensions?.height);
+    setDimUnitLength((part.dimensions?.unitLength as 'm' | 'cm' | 'mm') || 'm');
+    setDimUnitWidth((part.dimensions?.unitWidth as 'm' | 'cm' | 'mm') || 'm');
+    setDimUnitHeight((part.dimensions?.unitHeight as 'm' | 'cm' | 'mm') || 'm');
     setLocation(part.location || 'Prateleira A1');
     setNcm(part.ncm || '8708.30.90');
     setLastSupplier(part.lastSupplier || '');
@@ -537,6 +562,17 @@ export default function PartsView({
       defaultIntervalDays: Number(defaultIntervalDays) || 180
     } : undefined;
 
+    const matchedUom = (db.unitsOfMeasure || []).find(u => u.id === unitOfMeasureId || (u.acronym || u.code) === unit);
+    const dimensionsData: ItemDimensionData | undefined = (dimLength || dimWidth || dimHeight) ? {
+      calculationType: matchedUom?.calculationType || 'SIMPLES',
+      length: dimLength ? Number(dimLength) : undefined,
+      width: dimWidth ? Number(dimWidth) : undefined,
+      height: dimHeight ? Number(dimHeight) : undefined,
+      unitLength: dimUnitLength,
+      unitWidth: dimUnitWidth,
+      unitHeight: dimUnitHeight
+    } : undefined;
+
     let updatedPartsList: Part[] = [];
     let newMovement: StockMovement | null = null;
 
@@ -554,7 +590,10 @@ export default function PartsView({
               minStock, 
               costPrice, 
               price, 
-              unit, 
+              unit: unit.trim().toUpperCase() || 'UN',
+              unitOfMeasureId: unitOfMeasureId || undefined,
+              unitName: unitName || undefined,
+              dimensions: dimensionsData,
               location, 
               ncm, 
               lastSupplier,
@@ -597,7 +636,7 @@ export default function PartsView({
         onAddHistoryLog(
           'user_activity',
           'Peça / Estoque Atualizado',
-          `Alterou dados da peça "${name}" (Código: ${code}, NCM: ${ncm}). Estoque: ${stock} un | Preço Custo: R$ ${costPrice.toFixed(2)} | Venda: R$ ${price.toFixed(2)}.`,
+          `Alterou dados da peça "${name}" (Código: ${code}, Unidade: ${unit}). Estoque: ${stock} ${unit} | Preço Custo: R$ ${costPrice.toFixed(2)} | Venda: R$ ${price.toFixed(2)}.`,
           '',
           ''
         );
@@ -612,9 +651,12 @@ export default function PartsView({
         minStock,
         costPrice,
         price,
-        unit,
-        location,
-        ncm,
+        unit: unit.trim().toUpperCase() || 'UN',
+        unitOfMeasureId: unitOfMeasureId || undefined,
+        unitName: unitName || undefined,
+        dimensions: dimensionsData,
+        location, 
+        ncm, 
         lastSupplier,
         cest: cest.trim() || undefined,
         origem,
@@ -1308,6 +1350,197 @@ export default function PartsView({
                   />
                 </div>
 
+                {/* UNIDADE DE MEDIDA & CÁLCULO POR DIMENSÕES */}
+                <div className="md:col-span-3 bg-indigo-50/50 p-4 rounded-xl border border-indigo-200/80 space-y-4 my-1" id="part-uom-section">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-indigo-200/70 pb-2">
+                    <div>
+                      <h4 className="text-xs font-bold text-indigo-950 uppercase tracking-wider flex items-center gap-1.5 font-display">
+                        <Ruler className="w-4 h-4 text-indigo-600" />
+                        Unidade de Medida & Cálculo por Dimensões (Metragem Linear, Área m², Volume m³)
+                      </h4>
+                      <p className="text-[11px] text-slate-600">
+                        Selecione a unidade de medida do produto. Caso seja calculada por metro linear, área ou volume, informe as dimensões padrão da peça.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div className="space-y-1 sm:col-span-1">
+                      <label className="text-[11px] font-bold text-slate-700" htmlFor="part-uom-select">Unidade de Medida *</label>
+                      <select
+                        id="part-uom-select"
+                        value={unitOfMeasureId || unit}
+                        onChange={e => {
+                          const val = e.target.value;
+                          const matchedUom = (db.unitsOfMeasure || []).find(u => u.id === val || (u.acronym || u.code) === val);
+                          if (matchedUom) {
+                            setUnitOfMeasureId(matchedUom.id);
+                            setUnit(matchedUom.acronym || matchedUom.code || 'UN');
+                            setUnitName(matchedUom.name);
+                          } else {
+                            setUnitOfMeasureId('');
+                            setUnit(val.toUpperCase());
+                            setUnitName(val);
+                          }
+                        }}
+                        className="w-full text-xs p-2 border border-indigo-200 rounded-lg bg-white font-bold text-indigo-900"
+                      >
+                        {(db.unitsOfMeasure || []).map(uom => (
+                          <option key={uom.id} value={uom.id}>
+                            {uom.acronym || uom.code} - {uom.name} ({uom.calculationType === 'LINEAR' ? '📏 Linear' : uom.calculationType === 'AREA' ? '📐 Área m²' : uom.calculationType === 'VOLUME' ? '📦 Volume m³' : '📦 Simples'})
+                          </option>
+                        ))}
+                        {!(db.unitsOfMeasure || []).some(u => (u.acronym || u.code) === unit) && (
+                          <option value={unit}>{unit} (Personalizado)</option>
+                        )}
+                      </select>
+                    </div>
+
+                    <div className="space-y-1 sm:col-span-2 flex items-end">
+                      {(() => {
+                        const selectedUom = (db.unitsOfMeasure || []).find(u => u.id === unitOfMeasureId || (u.acronym || u.code) === unit);
+                        const isLinear = selectedUom?.calculationType === 'LINEAR';
+                        const isArea = selectedUom?.calculationType === 'AREA';
+                        const isVolume = selectedUom?.calculationType === 'VOLUME';
+
+                        return (
+                          <div className="w-full text-xs bg-white p-2.5 rounded-lg border border-indigo-100 flex items-center justify-between">
+                            <span className="text-slate-600 font-medium">
+                              Tipo de Cálculo: <strong className="text-indigo-700 uppercase">{selectedUom?.calculationType || 'SIMPLES'}</strong>
+                              {isLinear && ' • Faturamento e Estoque calculados por Comprimento (Metro Linear)'}
+                              {isArea && ' • Faturamento e Estoque calculados por Área (Comprimento × Largura)'}
+                              {isVolume && ' • Faturamento e Estoque calculados por Volume (Comprimento × Largura × Altura)'}
+                              {!isLinear && !isArea && !isVolume && ' • Faturamento direto por Quantidade × Preço Unitário'}
+                            </span>
+                            <span className="text-[11px] font-mono font-bold bg-indigo-100 text-indigo-800 px-2 py-0.5 rounded">
+                              Sigla: {unit}
+                            </span>
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  </div>
+
+                  {/* CAMPOS DE DIMENSÕES SE UOM FOR LINEAR, AREA OU VOLUME */}
+                  {(() => {
+                    const selectedUom = (db.unitsOfMeasure || []).find(u => u.id === unitOfMeasureId || (u.acronym || u.code) === unit);
+                    const calcType = selectedUom?.calculationType;
+                    const needsDimensions = calcType === 'LINEAR' || calcType === 'AREA' || calcType === 'VOLUME';
+
+                    if (!needsDimensions) return null;
+
+                    return (
+                      <div className="bg-white p-3.5 rounded-lg border border-indigo-200/70 space-y-3 animate-fade-in">
+                        <div className="flex items-center gap-1.5 text-xs font-bold text-slate-800">
+                          <Ruler className="w-3.5 h-3.5 text-indigo-600" />
+                          Dimensões Padrão do Produto (Medidas Físicas)
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                          <div className="space-y-1">
+                            <label className="text-[11px] font-bold text-slate-700" htmlFor="dim-length-input">Comprimento *</label>
+                            <div className="flex gap-1">
+                              <input
+                                id="dim-length-input"
+                                type="number"
+                                step="0.001"
+                                min="0"
+                                placeholder="0.00"
+                                value={dimLength ?? ''}
+                                onChange={e => setDimLength(e.target.value ? Number(e.target.value) : undefined)}
+                                className="w-full text-xs p-2 border border-slate-200 rounded-lg font-mono font-bold"
+                              />
+                              <select
+                                value={dimUnitLength}
+                                onChange={e => setDimUnitLength(e.target.value as any)}
+                                className="text-xs p-2 border border-slate-200 rounded-lg bg-slate-50 font-bold"
+                              >
+                                <option value="m">m</option>
+                                <option value="cm">cm</option>
+                                <option value="mm">mm</option>
+                              </select>
+                            </div>
+                          </div>
+
+                          {(calcType === 'AREA' || calcType === 'VOLUME') && (
+                            <div className="space-y-1">
+                              <label className="text-[11px] font-bold text-slate-700" htmlFor="dim-width-input">Largura *</label>
+                              <div className="flex gap-1">
+                                <input
+                                  id="dim-width-input"
+                                  type="number"
+                                  step="0.001"
+                                  min="0"
+                                  placeholder="0.00"
+                                  value={dimWidth ?? ''}
+                                  onChange={e => setDimWidth(e.target.value ? Number(e.target.value) : undefined)}
+                                  className="w-full text-xs p-2 border border-slate-200 rounded-lg font-mono font-bold"
+                                />
+                                <select
+                                  value={dimUnitWidth}
+                                  onChange={e => setDimUnitWidth(e.target.value as any)}
+                                  className="text-xs p-2 border border-slate-200 rounded-lg bg-slate-50 font-bold"
+                                >
+                                  <option value="m">m</option>
+                                  <option value="cm">cm</option>
+                                  <option value="mm">mm</option>
+                                </select>
+                              </div>
+                            </div>
+                          )}
+
+                          {calcType === 'VOLUME' && (
+                            <div className="space-y-1">
+                              <label className="text-[11px] font-bold text-slate-700" htmlFor="dim-height-input">Altura / Espessura *</label>
+                              <div className="flex gap-1">
+                                <input
+                                  id="dim-height-input"
+                                  type="number"
+                                  step="0.001"
+                                  min="0"
+                                  placeholder="0.00"
+                                  value={dimHeight ?? ''}
+                                  onChange={e => setDimHeight(e.target.value ? Number(e.target.value) : undefined)}
+                                  className="w-full text-xs p-2 border border-slate-200 rounded-lg font-mono font-bold"
+                                />
+                                <select
+                                  value={dimUnitHeight}
+                                  onChange={e => setDimUnitHeight(e.target.value as any)}
+                                  className="text-xs p-2 border border-slate-200 rounded-lg bg-slate-50 font-bold"
+                                >
+                                  <option value="m">m</option>
+                                  <option value="cm">cm</option>
+                                  <option value="mm">mm</option>
+                                </select>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Prévia do cálculo dimensional */}
+                        {dimLength && (
+                          <div className="p-2.5 bg-indigo-50 text-indigo-900 rounded-md text-xs flex items-center justify-between">
+                            <span>
+                              {calcType === 'LINEAR' && (
+                                <>Medida linear por unidade: <strong>{dimLength} {dimUnitLength}</strong></>
+                              )}
+                              {calcType === 'AREA' && dimWidth && (
+                                <>Área calculada: <strong>{dimLength}{dimUnitLength} × {dimWidth}{dimUnitWidth} = {(dimLength * dimWidth).toFixed(3)} m²</strong> por peça</>
+                              )}
+                              {calcType === 'VOLUME' && dimWidth && dimHeight && (
+                                <>Volume calculado: <strong>{dimLength}{dimUnitLength} × {dimWidth}{dimUnitWidth} × {dimHeight}{dimUnitHeight} = {(dimLength * dimWidth * dimHeight).toFixed(4)} m³</strong> por peça</>
+                              )}
+                            </span>
+                            <span className="text-[10px] font-semibold bg-indigo-200/70 text-indigo-950 px-2 py-0.5 rounded">
+                              Preço de venda R$ {price.toFixed(2)} por {unit}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
+                </div>
+
                 {/* CLASSIFICAÇÃO FISCAL E REGRAS DA CONTABILIDADE */}
                 <div className="md:col-span-3 bg-emerald-50/50 p-4 rounded-xl border border-emerald-200 space-y-4 my-1" id="part-fiscal-fields-section">
                   <div className="flex items-center justify-between border-b border-emerald-200/80 pb-2">
@@ -1721,8 +1954,23 @@ export default function PartsView({
                                 <Package className="w-4 h-4" />
                               </div>
                               <div>
-                                <p className="font-bold text-slate-800">{part.name}</p>
-                                <span className="text-[10px] text-slate-400 font-semibold">{part.category || 'Geral'}</span>
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <p className="font-bold text-slate-800">{part.name}</p>
+                                  <span className="text-[10px] font-bold bg-indigo-50 text-indigo-700 px-1.5 py-0.5 rounded border border-indigo-100 font-mono">
+                                    {part.unit || 'UN'}
+                                  </span>
+                                </div>
+                                <div className="flex items-center gap-2 mt-0.5">
+                                  <span className="text-[10px] text-slate-400 font-semibold">{part.category || 'Geral'}</span>
+                                  {part.dimensions && (part.dimensions.length || part.dimensions.width) && (
+                                    <span className="text-[10px] text-indigo-600 bg-indigo-50/50 px-1 rounded flex items-center gap-1">
+                                      <Ruler className="w-2.5 h-2.5" />
+                                      {part.dimensions.length}{part.dimensions.unitLength || 'm'}
+                                      {part.dimensions.width && ` × ${part.dimensions.width}${part.dimensions.unitWidth || 'm'}`}
+                                      {part.dimensions.height && ` × ${part.dimensions.height}${part.dimensions.unitHeight || 'm'}`}
+                                    </span>
+                                  )}
+                                </div>
                               </div>
                             </div>
                           </td>
