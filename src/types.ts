@@ -294,6 +294,14 @@ export interface CompanyInfo {
   // Configuração de Reserva de Estoque em Orçamentos
   budgetStockReservationMode?: 'none' | 'reserve_while_valid'; // Opção A: none, Opção B: reserve_while_valid
   budgetStockReservationValidityDays?: number; // 1, 3, 5, 7, 10, 15, 30 ou personalizado
+
+  // Módulo de Logística, Retirada e Entrega por Empresa
+  enableWithdrawalAndDelivery?: boolean; // Habilita esteira de picking, separação e romaneios de entrega
+
+  // Operação Multiloja / Rede
+  enableInterStoreSales?: boolean; // Permite venda de produtos pertencentes a outra loja/filial
+  interStorePaymentMode?: 'PURCHASE_STORE_ONLY' | 'FULFILLMENT_STORE_ONLY' | 'BOTH';
+  interStoreFulfillmentMode?: 'pickup_at_stock_store' | 'transfer_to_origin_store' | 'allow_customer_choice';
 }
 
 export interface UserPermissions {
@@ -830,7 +838,7 @@ export interface TestCase {
   code: string; // CT001, CT002...
   requirement: string; // RF001, RN001...
   title: string;
-  category: 'Funcional' | 'Regra de Negócio' | 'Permissões' | 'Fluxo Principal';
+  category: 'Funcional' | 'Regra de Negócio' | 'Permissões' | 'Fluxo Principal' | 'Logística' | 'Fiscal' | 'Multiloja' | 'Segurança & Arquitetura';
   preConditions: string;
   steps: string[];
   expectedResult: string;

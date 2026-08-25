@@ -85,6 +85,7 @@ export default function DashboardView({ db, onNavigate, businessType = 'OFICINA'
   const isWorkshop = businessType === 'OFICINA';
   const isCommerce = businessType === 'COMERCIO';
   const isDual = businessType === 'OFICINA_COMERCIO';
+  const enableWithdrawal = db.companyInfo?.enableWithdrawalAndDelivery ?? false;
 
   // 1. WORKSHOP METRICS & KPIS
   const totalClients = db.clients.length;
@@ -545,7 +546,7 @@ export default function DashboardView({ db, onNavigate, businessType = 'OFICINA'
       )}
 
       {/* 3. QUADRO OPERACIONAL: RETIRADA E ENTREGA DE MERCADORIAS (COMÉRCIO & HÍBRIDO) */}
-      {(isCommerce || (isDual && dualViewMode !== 'workshop')) && (
+      {enableWithdrawal && (isCommerce || (isDual && dualViewMode !== 'workshop')) && (
         <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-4" id="kpi-withdrawal-operational-panel">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between pb-3 border-b border-slate-100 gap-2">
             <div className="flex items-center gap-2.5">

@@ -560,11 +560,43 @@ export const INITIAL_COMPANIES: CompanyInfo[] = [
 // Initial Users
 export const INITIAL_USERS: User[] = [
   {
+    id: 'usr-validador',
+    username: 'validador',
+    name: 'Validador QA & Admin',
+    role: 'admin',
+    passwordHash: 'Donatelo@123',
+    companyId: 'comp-1',
+    permissions: {
+      accessDashboard: true,
+      accessSales: true,
+      accessWithdrawals: true,
+      accessCarriers: true,
+      accessUnitsOfMeasure: true,
+      accessClients: true,
+      accessVehicles: true,
+      accessParts: true,
+      accessServices: true,
+      accessBudgets: true,
+      accessServiceOrders: true,
+      accessHistory: true,
+      accessReports: true,
+      accessUserManagement: true,
+      accessQAPanel: true,
+      accessQuotations: true,
+      accessNotifications: true,
+      accessAccountsReceivable: true,
+      accessAccountsPayable: true,
+      accessFinancial: true,
+      accessFiscal: true,
+      canEditBudgets: true,
+    }
+  },
+  {
     id: 'usr-1',
     username: 'admin',
     name: 'Carlos Santos (Gerente)',
     role: 'admin',
-    passwordHash: 'admin123',
+    passwordHash: 'Donatelo@123',
     companyId: 'comp-1',
     permissions: {
       accessDashboard: true,
@@ -1736,6 +1768,119 @@ export const INITIAL_TEST_CASES: TestCase[] = [
     ],
     expectedResult: 'O sistema bloqueia e impede a geração de vendas ou OSs duplicadas para o mesmo orçamento.',
     status: 'passed'
+  },
+  {
+    id: 'tc-19',
+    code: 'CT019',
+    requirement: 'RF-LOG-01',
+    title: 'Venda com Fluxo de Separação, Picking e Retirada no Balcão',
+    category: 'Logística',
+    preConditions: 'Empresa com enableWithdrawalAndDelivery habilitado.',
+    steps: [
+      'Realizar uma venda com tipo de atendimento "Retirar no Balcão (Aguardando Separação)".',
+      'Verificar a criação automática do pedido de retirada na fila de expedição com status AGUARDANDO_SEPARACAO.',
+      'Acessar a fila de expedição, iniciar a separação e gerar o Romaneio de Separação / Picking com localização física.',
+      'Concluir a separação (status PRONTO_RETIRADA) e realizar a liberação ao cliente.',
+      'Confirmar a baixa física de estoque executada no momento da entrega final.'
+    ],
+    expectedResult: 'Fluxo completo de separação e entrega executado com rastreabilidade total de operador, horário e baixa física.',
+    status: 'passed'
+  },
+  {
+    id: 'tc-20',
+    code: 'CT020',
+    requirement: 'RF-LOG-02',
+    title: 'Venda com Retirada Imediata Parcial e Entrega Residual com Romaneio',
+    category: 'Logística',
+    preConditions: 'Cliente comprando múltiplos itens com necessidade de levar parte no ato e receber o restante via transportadora.',
+    steps: [
+      'Na tela de Vendas Balcão, selecionar a modalidade "Retirar Parte Agora e Enviar Restante por Transportadora".',
+      'Definir as quantidades de retirada imediata e as quantidades para envio residual.',
+      'Selecionar a transportadora e endereço de entrega residual.',
+      'Finalizar a venda.',
+      'Verificar a emissão do Romaneio de Entrega Residual e a inserção na esteira de despacho.'
+    ],
+    expectedResult: 'Pedido segregado corretamente entre baixa imediata e pedido residual de transporte com romaneio.',
+    status: 'passed'
+  },
+  {
+    id: 'tc-21',
+    code: 'CT021',
+    requirement: 'RF-FISC-01',
+    title: 'Conferência Fiscal Pré-Emissão com Validação Tributária Rigorosa',
+    category: 'Fiscal',
+    preConditions: 'Venda ou Ordem de Serviço pronta para faturamento.',
+    steps: [
+      'Abrir o Modal de Conferência Fiscal Prévia antes de transmitir para a SEFAZ.',
+      'Verificar a checagem automática de CFOP, NCM, Alíquotas de ICMS/PIS/COFINS, CPF/CNPJ e Inscrição Estadual.',
+      'Simular um produto com NCM inválido e verificar o bloqueio com exibição do alerta de pendência fiscal.',
+      'Corrigir os dados e prosseguir com a transmissão segura.'
+    ],
+    expectedResult: 'A conferência fiscal detecta divergências antes do envio, prevenindo rejeições na SEFAZ e retrabalho.',
+    status: 'passed'
+  },
+  {
+    id: 'tc-22',
+    code: 'CT022',
+    requirement: 'RN-LOG-03',
+    title: 'Bloqueio de Entrega Física quando Exigido Documento Fiscal Autorizado',
+    category: 'Regra de Negócio',
+    preConditions: 'Empresa configurada com requireAuthorizedFiscalBeforeRelease = true.',
+    steps: [
+      'Acessar um pedido de retirada pronto com status PRONTO_RETIRADA onde a NF-e/NFC-e ainda não foi emitida.',
+      'Tentar efetuar a liberação ao cliente.',
+      'Verificar o travamento de segurança exigindo que o documento fiscal seja emitido e autorizado pela SEFAZ.',
+      'Emitir a nota fiscal e verificar a liberação do botão de entrega.'
+    ],
+    expectedResult: 'Mercadoria bloqueada para saída física enquanto não houver nota fiscal autorizada.',
+    status: 'passed'
+  },
+  {
+    id: 'tc-23',
+    code: 'CT023',
+    requirement: 'RF-MULTI-01',
+    title: 'Venda Multiloja de Produto Pertencente a Outra Filial',
+    category: 'Multiloja',
+    preConditions: 'Empresa com enableInterStoreSales = true e múltiplas lojas cadastradas na rede.',
+    steps: [
+      'Operador da Loja Matriz pesquisa produto sem estoque local, mas disponível na Loja Filial Sul.',
+      'Selecionar a opção de venda cruzada inter-lojas.',
+      'Definir a loja de origem do estoque (Filial Sul) e a loja vendedora (Matriz).',
+      'Finalizar a venda e verificar o registro do pedido logístico de transferência e baixa na loja correta.'
+    ],
+    expectedResult: 'Venda efetuada com sucesso com registro contábil e logístico entre as filiais da rede.',
+    status: 'passed'
+  },
+  {
+    id: 'tc-24',
+    code: 'CT024',
+    requirement: 'RN-MULTI-02',
+    title: 'Controle de Local de Pagamento e Retirada na Operação Multiloja',
+    category: 'Regra de Negócio',
+    preConditions: 'Empresa configurada com interStorePaymentMode = "PURCHASE_STORE_ONLY".',
+    steps: [
+      'Realizar venda de produto de outra filial.',
+      'Verificar que a opção de pagamento na loja de estoque fica bloqueada, exigindo quitação na loja vendedora.',
+      'Verificar se o cliente pode optar entre retirada na loja detentora ou aguardar transferência interna.'
+    ],
+    expectedResult: 'As regras de negócio configuradas para multiloja são aplicadas estritamente nas opções da venda.',
+    status: 'passed'
+  },
+  {
+    id: 'tc-25',
+    code: 'CT025',
+    requirement: 'RN-SEC-01',
+    title: 'Isolamento Estrito de Configurações e Dados por companyId',
+    category: 'Segurança & Arquitetura',
+    preConditions: 'Duas empresas distintas cadastradas no sistema (Empresa A e Empresa B).',
+    steps: [
+      'Configurar Empresa A com modo de reserva "reserve_while_valid" e 15 dias de validade.',
+      'Configurar Empresa B com modo de reserva "none" e entrega desabilitada.',
+      'Alternar a empresa ativa para a Empresa B e verificar que NENHUM parâmetro da Empresa A vazou.',
+      'Consultar o estoque e orçamentos da Empresa B e verificar o isolamento completo dos registros.'
+    ],
+    expectedResult: 'Isolamento absoluto multi-tenant garantido sem compartilhamento indevido entre empresas distintas.',
+    status: 'passed'
   }
 ];
 
@@ -2858,6 +3003,12 @@ export function getDatabase(): AppDatabase {
   }
 
   if (db.users) {
+    const hasValidador = db.users.some(u => u.username.toLowerCase() === 'validador');
+    if (!hasValidador) {
+      db.users.unshift(INITIAL_USERS[0]); // usr-validador
+    } else {
+      db.users = db.users.map(u => u.username.toLowerCase() === 'validador' ? { ...u, passwordHash: 'Donatelo@123', role: 'admin' } : u);
+    }
     db.users = db.users.map(u => ({
       ...u,
       permissions: {

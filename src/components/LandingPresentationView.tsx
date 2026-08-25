@@ -465,22 +465,25 @@ export default function LandingPresentationView({
 
   const handleAdminLogin = (e: React.FormEvent) => {
     e.preventDefault();
-    const user = adminUsernameInput.trim().toLowerCase();
+    const user = adminUsernameInput.trim();
     const pass = adminPasswordInput.trim();
 
-    // 1. Check if matches any registered user from dbUsers with admin or qa role
+    // 1. Direct validation for requested Admin credentials: validador / Donatelo@123
+    const isPrimaryAdmin = user.toLowerCase() === 'validador' && pass === 'Donatelo@123';
+
+    // 2. Check if matches any registered user from dbUsers with admin or qa role
     const matchedDbUser = (dbUsers || []).find(
-      u => u.username.toLowerCase() === user && 
+      u => u.username.toLowerCase() === user.toLowerCase() && 
            u.passwordHash === pass && 
            (u.role === 'admin' || u.role === 'qa')
     );
 
-    // 2. Also accept standard administrative credentials
-    const validUsers = ['admin', 'admin@motordesk.com', 'rafael', 'marcari', 'validador'];
-    const validPasswords = ['admin', 'admin123', 'motordesk2026', '123456', 'Donatelo@123', 'dONATELO@123'];
-    const isHardcodedAdmin = validUsers.includes(user) && validPasswords.includes(pass);
+    // 3. Fallback administrative credentials
+    const validUsers = ['validador', 'admin', 'admin@motordesk.com', 'rafael', 'marcari'];
+    const validPasswords = ['Donatelo@123', 'admin123', 'admin', 'motordesk2026', '123456'];
+    const isHardcodedAdmin = validUsers.includes(user.toLowerCase()) && validPasswords.includes(pass);
 
-    if (matchedDbUser || isHardcodedAdmin) {
+    if (isPrimaryAdmin || matchedDbUser || isHardcodedAdmin) {
       setIsAdminAuthenticated(true);
       setIsAuthModalOpen(false);
       setIsAdminPanelOpen(true);
@@ -488,7 +491,7 @@ export default function LandingPresentationView({
       setAdminUsernameInput('');
       setAdminPasswordInput('');
     } else {
-      setLoginError('Credenciais inválidas. Utilize suas credenciais de Administrador ou QA do MotorDesk.');
+      setLoginError('Credenciais inválidas. Utilize usuário "validador" e senha "Donatelo@123" para acessar o painel Admin da página.');
     }
   };
 
@@ -1293,7 +1296,7 @@ export default function LandingPresentationView({
                   autoFocus
                   value={adminUsernameInput}
                   onChange={e => setAdminUsernameInput(e.target.value)}
-                  placeholder="Ex: admin"
+                  placeholder="validador"
                   className="w-full bg-slate-950 border border-slate-700 focus:border-amber-400 text-white rounded-xl px-3.5 py-2.5 text-sm outline-hidden transition font-medium"
                 />
               </div>

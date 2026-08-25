@@ -42,7 +42,8 @@ import {
   ShoppingBag,
   Wrench,
   Zap,
-  Package
+  Package,
+  Truck
 } from 'lucide-react';
 import { User, UserRole, UserPermissions, CompanyInfo, BusinessType } from '../types';
 import { AppDatabase } from '../data/mockData';
@@ -404,6 +405,23 @@ export default function UserManagementView({
   );
   const [compBudgetStockReservationValidityDays, setCompBudgetStockReservationValidityDays] = useState<number>(
     currentCompany?.budgetStockReservationValidityDays || 10
+  );
+
+  // Novas Configurações: Retirada/Entrega, Multiloja e Conferência Fiscal
+  const [compEnableWithdrawalAndDelivery, setCompEnableWithdrawalAndDelivery] = useState<boolean>(
+    currentCompany?.enableWithdrawalAndDelivery || false
+  );
+  const [compEnableInterStoreSales, setCompEnableInterStoreSales] = useState<boolean>(
+    currentCompany?.enableInterStoreSales || false
+  );
+  const [compInterStorePaymentMode, setCompInterStorePaymentMode] = useState<'PURCHASE_STORE_ONLY' | 'FULFILLMENT_STORE_ONLY' | 'BOTH'>(
+    currentCompany?.interStorePaymentMode || 'BOTH'
+  );
+  const [compInterStoreFulfillmentMode, setCompInterStoreFulfillmentMode] = useState<'pickup_at_stock_store' | 'transfer_to_origin_store' | 'allow_customer_choice'>(
+    currentCompany?.interStoreFulfillmentMode || 'allow_customer_choice'
+  );
+  const [compRequireAuthorizedFiscalBeforeRelease, setCompRequireAuthorizedFiscalBeforeRelease] = useState<boolean>(
+    currentCompany?.requireAuthorizedFiscalBeforeRelease || false
   );
 
   // Modal de resultado das operações (Sucesso / Erro com botão OK)
@@ -981,6 +999,11 @@ export default function UserManagementView({
 
       setCompBudgetStockReservationMode(comp.budgetStockReservationMode || 'reserve_while_valid');
       setCompBudgetStockReservationValidityDays(comp.budgetStockReservationValidityDays || 10);
+      setCompEnableWithdrawalAndDelivery(comp.enableWithdrawalAndDelivery || false);
+      setCompEnableInterStoreSales(comp.enableInterStoreSales || false);
+      setCompInterStorePaymentMode(comp.interStorePaymentMode || 'BOTH');
+      setCompInterStoreFulfillmentMode(comp.interStoreFulfillmentMode || 'allow_customer_choice');
+      setCompRequireAuthorizedFiscalBeforeRelease(comp.requireAuthorizedFiscalBeforeRelease || false);
 
       if (comp.levelPermissions) {
         setLevelPermissions(comp.levelPermissions as any);
@@ -1064,6 +1087,11 @@ export default function UserManagementView({
       supportChannelsText: compSupportChannelsText,
       budgetStockReservationMode: compBudgetStockReservationMode,
       budgetStockReservationValidityDays: compBudgetStockReservationValidityDays,
+      enableWithdrawalAndDelivery: compEnableWithdrawalAndDelivery,
+      enableInterStoreSales: compEnableInterStoreSales,
+      interStorePaymentMode: compInterStorePaymentMode,
+      interStoreFulfillmentMode: compInterStoreFulfillmentMode,
+      requireAuthorizedFiscalBeforeRelease: compRequireAuthorizedFiscalBeforeRelease,
       contractAddendums: contractAddendums,
       levelPermissions: levelPermissions,
       reportPageOrientation: currentCompany?.reportPageOrientation,
@@ -3136,6 +3164,142 @@ export default function UserManagementView({
                         className="w-24 text-xs p-2 bg-slate-800 border border-slate-700 text-white font-bold rounded-lg text-center focus:ring-2 focus:ring-amber-500"
                       />
                       <span className="text-xs text-slate-300 font-semibold">dias</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Módulo Logístico de Retirada & Entrega (Configuração por Empresa) */}
+              <div className="space-y-4 bg-indigo-950/40 text-slate-800 p-4.5 rounded-xl border border-indigo-200 sm:col-span-2 shadow-xs" id="logistics-withdrawal-config">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold uppercase tracking-wider text-indigo-950 flex items-center gap-1.5 font-display">
+                    <Truck className="w-4 h-4 text-indigo-600" />
+                    Fluxo de Separação, Retirada Balcão e Entrega Residual
+                  </label>
+                  <span className="text-[10px] bg-indigo-100 text-indigo-800 px-2 py-0.5 rounded-full font-bold border border-indigo-200">
+                    Logística & Expedição
+                  </span>
+                </div>
+                <p className="text-xs text-slate-600 leading-relaxed">
+                  Controle a esteira física de picking, conferência, romaneios de separação e baixas parciais de mercadoria:
+                </p>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                  <label className={`p-3.5 rounded-xl border-2 flex items-start gap-3 cursor-pointer transition ${compEnableWithdrawalAndDelivery ? 'bg-white border-indigo-600 shadow-sm' : 'bg-slate-50 border-slate-200 text-slate-600'}`}>
+                    <input
+                      type="checkbox"
+                      id="comp-enable-withdrawal-delivery-checkbox"
+                      checked={compEnableWithdrawalAndDelivery}
+                      onChange={e => {
+                        setCompEnableWithdrawalAndDelivery(e.target.checked);
+                        setHasUnsavedChanges(true);
+                      }}
+                      className="mt-0.5 h-4 w-4 text-indigo-600 border-slate-300 rounded focus:ring-indigo-500 cursor-pointer"
+                    />
+                    <div className="space-y-1">
+                      <span className="font-bold text-xs text-slate-900 block">
+                        Habilitar Fluxo de Separação / Retirada e Entrega
+                      </span>
+                      <p className="text-[11px] text-slate-500 leading-normal">
+                        Ativa a fila de expedição, geração de romaneios de entrega residual e baixa física na conferência.
+                      </p>
+                    </div>
+                  </label>
+
+                  <label className={`p-3.5 rounded-xl border-2 flex items-start gap-3 cursor-pointer transition ${compRequireAuthorizedFiscalBeforeRelease ? 'bg-white border-teal-600 shadow-sm' : 'bg-slate-50 border-slate-200 text-slate-600'}`}>
+                    <input
+                      type="checkbox"
+                      id="comp-require-fiscal-before-release-checkbox"
+                      checked={compRequireAuthorizedFiscalBeforeRelease}
+                      onChange={e => {
+                        setCompRequireAuthorizedFiscalBeforeRelease(e.target.checked);
+                        setHasUnsavedChanges(true);
+                      }}
+                      className="mt-0.5 h-4 w-4 text-teal-600 border-slate-300 rounded focus:ring-teal-500 cursor-pointer"
+                    />
+                    <div className="space-y-1">
+                      <span className="font-bold text-xs text-slate-900 block">
+                        Exigir Documento Fiscal Autorizado para Liberação
+                      </span>
+                      <p className="text-[11px] text-slate-500 leading-normal">
+                        Bloqueia a entrega física de mercadorias até que a NF-e/NFC-e correspondente seja autorizada pela SEFAZ.
+                      </p>
+                    </div>
+                  </label>
+                </div>
+              </div>
+
+              {/* Operação Multiloja & Venda Cruzada Entre Lojas (Configuração por Empresa) */}
+              <div className="space-y-4 bg-slate-50 text-slate-800 p-4.5 rounded-xl border border-slate-200 sm:col-span-2 shadow-xs" id="multi-store-operations-config">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold uppercase tracking-wider text-slate-900 flex items-center gap-1.5 font-display">
+                    <Building2 className="w-4 h-4 text-indigo-600" />
+                    Operação Multiloja & Estoque Compartilhado na Rede
+                  </label>
+                  <span className="text-[10px] bg-slate-200 text-slate-700 px-2 py-0.5 rounded-full font-bold">
+                    Rede Matriz & Filiais
+                  </span>
+                </div>
+
+                <label className={`p-3.5 rounded-xl border-2 flex items-start gap-3 cursor-pointer transition ${compEnableInterStoreSales ? 'bg-white border-indigo-600 shadow-sm' : 'bg-white border-slate-200 text-slate-600'}`}>
+                  <input
+                    type="checkbox"
+                    id="comp-enable-interstore-sales-checkbox"
+                    checked={compEnableInterStoreSales}
+                    onChange={e => {
+                      setCompEnableInterStoreSales(e.target.checked);
+                      setHasUnsavedChanges(true);
+                    }}
+                    className="mt-0.5 h-4 w-4 text-indigo-600 border-slate-300 rounded focus:ring-indigo-500 cursor-pointer"
+                  />
+                  <div className="space-y-1">
+                    <span className="font-bold text-xs text-slate-900 block">
+                      Permitir Venda de Produtos Pertencentes a Outras Lojas / Filiais
+                    </span>
+                    <p className="text-[11px] text-slate-500 leading-normal">
+                      Permite que operadores consultem o saldo de outras lojas da rede e realizem vendas cruzadas com rastreabilidade de origem e destino.
+                    </p>
+                  </div>
+                </label>
+
+                {compEnableInterStoreSales && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1 border-t border-slate-200">
+                    <div className="space-y-1.5 bg-white p-3 rounded-lg border border-slate-200">
+                      <label className="text-[11px] font-bold text-slate-700 uppercase block" htmlFor="interstore-payment-mode-select">
+                        Local Permitido para Pagamento
+                      </label>
+                      <select
+                        id="interstore-payment-mode-select"
+                        value={compInterStorePaymentMode}
+                        onChange={e => {
+                          setCompInterStorePaymentMode(e.target.value as any);
+                          setHasUnsavedChanges(true);
+                        }}
+                        className="w-full text-xs p-2 border border-slate-200 rounded-lg bg-white font-medium text-slate-800"
+                      >
+                        <option value="BOTH">Qualquer Loja (Origem ou Atendimento)</option>
+                        <option value="PURCHASE_STORE_ONLY">Apenas na Loja Onde o Cliente Comprou</option>
+                        <option value="FULFILLMENT_STORE_ONLY">Apenas na Loja Onde a Mercadoria Está Físicamente</option>
+                      </select>
+                    </div>
+
+                    <div className="space-y-1.5 bg-white p-3 rounded-lg border border-slate-200">
+                      <label className="text-[11px] font-bold text-slate-700 uppercase block" htmlFor="interstore-fulfillment-mode-select">
+                        Política Padrão de Retirada / Entrega
+                      </label>
+                      <select
+                        id="interstore-fulfillment-mode-select"
+                        value={compInterStoreFulfillmentMode}
+                        onChange={e => {
+                          setCompInterStoreFulfillmentMode(e.target.value as any);
+                          setHasUnsavedChanges(true);
+                        }}
+                        className="w-full text-xs p-2 border border-slate-200 rounded-lg bg-white font-medium text-slate-800"
+                      >
+                        <option value="allow_customer_choice">Cliente Escolhe (Retirar na Loja de Estoque ou Transferência)</option>
+                        <option value="pickup_at_stock_store">Retirada Obrigatória na Loja Detentora do Estoque</option>
+                        <option value="transfer_to_origin_store">Sempre Transferir Internamente para a Loja de Origem</option>
+                      </select>
                     </div>
                   </div>
                 )}

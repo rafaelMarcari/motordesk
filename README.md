@@ -8,13 +8,78 @@
 
 ## 📋 Sumário
 1. [🛠️ Linguagem & Stack Tecnológica](#-linguagem--stack-tecnológica)
-2. [🗄️ Arquitetura do Banco de Dados & Verificação de Persistência](#-arquitetura-do-banco-de-dados--verificação-de-persistência)
-3. [📁 Estrutura de Diretórios & Módulos do Sistema](#-estrutura-de-diretórios--módulos-do-sistema)
-4. [📄 Documento de Requisitos do Sistema (PRD / SRD)](#-documento-de-requisitos-do-sistema-prd--srd)
-5. [⚙️ Funcionalidades de Destaque Recentes](#️-funcionalidades-de-destaque-recentes)
-6. [🧪 Plano de Testes Manuais & Suíte de Automação (QA)](#-plano-de-testes-manuais--suíte-de-automação-qa)
-7. [🚀 Como Configurar e Executar na Máquina Local](#-como-configurar-e-executar-na-máquina-local)
-8. [🌿 Workflow de Versionamento e Comandos Git](#-workflow-de-versionamento-e-comandos-git)
+2. [🏢 Segmentos de Atuação da Empresa (Oficina, Comércio & Híbrido)](#-segmentos-de-atuação-da-empresa-oficina-comércio--híbrido)
+3. [📦 Regras Operacionais de Venda, Estoque, Retirada, Entrega e Multiloja](#-regras-operacionais-de-venda-estoque-retirada-entrega-e-multiloja)
+4. [🗄️ Arquitetura do Banco de Dados & Verificação de Persistência](#-arquitetura-do-banco-de-dados--verificação-de-persistência)
+5. [📁 Estrutura de Diretórios & Módulos do Sistema](#-estrutura-de-diretórios--módulos-do-sistema)
+6. [🧩 Guia Completo dos Módulos Operacionais & Liberação de Acesso (RBAC)](#-guia-completo-dos-módulos-operacionais--liberação-de-acesso-rbac)
+7. [📄 Documento de Requisitos do Sistema (PRD / SRD)](#-documento-de-requisitos-do-sistema-prd--srd)
+8. [⚙️ Funcionalidades de Destaque Recentes](#️-funcionalidades-de-destaque-recentes)
+9. [🧪 Plano de Testes Manuais & Suíte de Automação (QA)](#-plano-de-testes-manuais--suíte-de-automação-qa)
+10. [🚀 Como Configurar e Executar na Máquina Local](#-como-configurar-e-executar-na-máquina-local)
+11. [🌿 Workflow de Versionamento e Comandos Git](#-workflow-de-versionamento-e-comandos-git)
+
+---
+
+## 🏢 Segmentos de Atuação da Empresa (Oficina, Comércio & Híbrido)
+
+O MotorDesk possui suporte nativo a 3 tipos de segmento de atuação empresarial (`BusinessType`), adaptando automaticamente o menu lateral, os fluxos operacionais, os módulos liberados e as políticas fiscais da empresa contratante (Tenant):
+
+### 1. 🔧 Segmento Oficina Mecânica (`OFICINA`)
+- **Foco Principal**: Ordens de Serviço (OS), gestão de pátio e veículos da frota, diagnósticos mecânicos, checklists fotográficos de vistoria, alocação de mecânicos e controle de revisões preventivas periódicas (km e data).
+- **Orçamentos**: Cliente e Veículo obrigatórios; pode conter serviços e peças; conversão direta para Ordem de Serviço (OS).
+- **Como auxilia nas operações**: Elimina ordens em papel, rastreia a garantia legal de 90 dias de peças e mão de obra, impede retrabalho e alerta o cliente via WhatsApp sobre manutenções preventivas.
+- **Público**: Oficinas mecânicas gerais, centros automotivos, autoelétricas, funilarias e oficinas de motos/diesel.
+
+### 2. 🛍️ Segmento Comércio & Autopeças (`COMERCIO`)
+- **Foco Principal**: Ponto de Venda Express (PDV Balcão), vendas diretas sem exigência de vínculo veicular, catálogo de peças e insumos com cálculo dimensional (unidade, linear por metro, m² e m³), entrada automática de NF-e via leitor XML e caixa ágil.
+- **Orçamentos**: Cliente formal ou "Cliente Balcão"; veículo opcional (não exige placa); conversão direta para Venda Balcão.
+- **Como auxilia nas operações**: Reduz filas no balcão atendendo clientes e mecânicos externos em segundos, dá baixa imediata no estoque e integra o faturamento ao Contas a Receber ou Caixa à vista com emissão fiscal (NFC-e/NF-e).
+- **Público**: Lojas de autopeças, distribuidoras de motopeças, casas de rolamentos e lojas de baterias/pneus.
+
+### 3. ⚡ Segmento Híbrido: Oficina + Comércio (`OFICINA_COMERCIO`)
+- **Foco Principal**: Integração total 360°. Opera simultaneamente o pátio com Ordens de Serviço completas para serviços mecânicos E a venda de balcão direta com o mesmo estoque unificado.
+- **Orçamentos**: Pode conter produtos, peças e serviços. Permite conversão para Venda, para OS ou Híbrida (Venda + OS).
+- **Como auxilia nas operações**: Evita divergências e furos de estoque entre o balcão e a oficina mecânica, permitindo emitir NFS-e para mão de obra e NFC-e/NF-e para peças em um único sistema centralizado.
+- **Público**: Centros automotivos integrados (Autocenters), grandes oficinas com loja de peças anexa e concessionárias.
+
+---
+
+## 📦 Regras Operacionais de Venda, Estoque, Retirada, Entrega e Multiloja
+
+O MotorDesk implementa uma arquitetura robusta de regras de negócio com isolamento estrito por `companyId`:
+
+### 1. 📝 Orçamentos Globais e Política de Reserva de Estoque
+- **Disponibilidade Global**: Disponível para `OFICINA`, `COMERCIO` e `OFICINA_COMERCIO`.
+- **Configuração por Empresa (`budgetStockReservationMode`)**:
+  - `none`: O orçamento não consome o estoque disponível.
+  - `reserve_while_valid`: Reserva os produtos no estoque enquanto o orçamento estiver dentro da validade.
+- **Prazo de Validade (`budgetStockReservationValidityDays`)**: Parametrizável (1, 3, 5, 7, 10, 15, 30 dias ou personalizado). Exibe criação, validade, dias restantes e status da reserva.
+- **Expiração Automática & Idempotência**: Quando o orçamento vence, a reserva é liberada automaticamente sem afetar o estoque físico.
+- **Conversão Idempotente**: Converte com segurança para Venda, OS ou Híbrido sem duplicação de baixas físicas.
+
+### 2. 📐 Unidades de Medida e Conversão Dimensional
+- Unidades padronizadas globais: `UN`, `KG`, `G`, `L`, `ML`, `M`, `M2`, `M3`, `CX`, `PAR`, `HR`.
+- Reconhecimento automático na importação de XML de NF-e, preservando regras dimensionais (linear, m², m³) e fatores de conversão sem criar duplicidades.
+
+### 3. 🚚 Logística, Retirada Balcão e Entrega Residual (`enableWithdrawalAndDelivery`)
+- **Quando DESATIVADA**: Venda expressa simples (Venda → Pagamento → Baixa Física → Conclusão). Ideal para pequenos balcões sem expedição.
+- **Quando ATIVADA**: Fila operacional completa (Venda → Reserva → Separação/Picking → Conferência → Retirada/Entrega → Baixa Física).
+- **Romaneio de Separação (Picking)**: Rastreia localização, itens, separador, conferente, divergências e data/hora. A quantidade vendida original é imutável para os operadores.
+- **Retirada Parcial**: Permite retirada fracionada no balcão e geração automática de **Romaneio Residual de Entrega** contendo apenas o saldo restante a entregar (com canhoto de assinatura e dados do transportador).
+- **Baixa Física Idempotente**: Ocorre somente no momento real da retirada ou saída para entrega. Proteção contra duplo clique.
+
+### 4. 🏢 Operação Multiloja & Venda Cruzada (`enableInterStoreSales`)
+- **Segregação por Loja**: Registro explícito de `companyId`, `saleStoreId` e `fulfillmentStoreId`. O estoque é individualizado por filial (nunca soma global indiscriminada).
+- **Modo de Pagamento Configurável (`interStorePaymentMode`)**:
+  - `PURCHASE_STORE_ONLY`: Pagamento obrigatório na loja de compra.
+  - `FULFILLMENT_STORE_ONLY`: Pagamento na loja detentora do estoque.
+  - `BOTH`: Cliente escolhe pagar na origem ou na retirada.
+- **Reserva e Baixa Interlojas**: Venda na Loja A reserva na Loja B; a baixa física ocorre na Loja B quando o produto for expedido/retirado.
+
+### 5. 🏛️ Trava Fiscal Pré-Expedição (`requireAuthorizedFiscalBeforeRelease`)
+- Bloqueia a saída física de mercadorias da expedição até que a respectiva NF-e (mod. 55) ou NFC-e (mod. 65) esteja autorizada na SEFAZ.
+- Conferência fiscal prévia com validação de CFOP, NCM, Alíquotas e Inscrição Estadual.
 
 ---
 
@@ -129,6 +194,7 @@ console.table(JSON.parse(localStorage.getItem('motordesk_db_v1')).paymentMethods
 motordesk/
 ├── package.json                 # Manifesto de dependências e scripts npm
 ├── README.md                    # Documentação oficial do projeto
+├── AGENTS.md                    # Instruções de contexto, regras e arquitetura
 ├── vite.config.ts               # Configuração do Vite e plugin Tailwind CSS v4
 ├── index.html                   # HTML base da aplicação
 └── src/
@@ -137,26 +203,60 @@ motordesk/
     ├── index.css                # Estilos globais e utilitários Tailwind
     ├── types.ts                 # Definições das interfaces e contratos de dados
     ├── data/
-    │   └── mockData.ts          # Banco de dados inicial e engine de persistência LocalStorage
+    │   └── mockData.ts          # Banco de dados inicial e engine de persistência LocalStorage/CloudSQL
     └── components/
         ├── DashboardView.tsx    # Painel com KPIs, gráficos de faturamento e resumo operacional
+        ├── SalesView.tsx        # Ponto de Venda Express / Vendas Balcão com cálculo dimensional
+        ├── BudgetsView.tsx      # Criador de orçamentos, desconto por perfil e portal do cliente
+        ├── ServiceOrdersView.tsx# Ciclo de vida de OS, periodicidade, baixa de estoque e faturamento
         ├── ClientsView.tsx      # Gestão de clientes e validação de CPF único
         ├── VehiclesView.tsx     # Cadastro de veículos, controle de revisões e histórico
-        ├── PartsView.tsx        # Estoque de peças, movimentações e Importador de NFe XML
-        ├── ServicesView.tsx     # Catálogo de serviços de mão de obra
-        ├── BudgetsView.tsx      # Criador de orçamentos, desconto por perfil e aprovação parcial
-        ├── ServiceOrdersView.tsx# Ciclo de vida de OS, periodicidade, baixa de estoque e contas a receber
+        ├── PartsView.tsx        # Estoque de peças, cálculo dimensional e Importador de NFe XML
+        ├── UnitsOfMeasureView.tsx # Unidades de Medida e cálculo dimensional (linear, m², m³)
+        ├── ServicesView.tsx     # Catálogo de serviços de mão de obra e enquadramento LC 116
         ├── QuotationsSuppliersView.tsx # Cotações, catálogo de fornecedores e cotação multi-item
-        ├── AccountsReceivableView.tsx  # Contas a receber, gestão de parcelas, juros e quitação
-        ├── AccountsPayableView.tsx     # Contas a pagar de fornecedores e baixa financeira
+        ├── AccountsReceivableView.tsx  # Contas a receber, gestão de parcelas, juros e boletos PIX
+        ├── AccountsPayableView.tsx     # Contas a pagar de fornecedores e despesas operacionais
         ├── FinancialView.tsx    # DRE Simplificado, fluxo de caixa e conciliação financeira
+        ├── FiscalSefazView.tsx  # Emissão, transmissão e consulta de NF-e, NFC-e e NFS-e
+        ├── FiscalConferenceView.tsx # Painel de conferência tributária e validação fiscal
+        ├── CarriersView.tsx     # Cadastro de transportadoras e dados logísticos de frete
         ├── HistoryView.tsx      # Trilha de auditoria imutável (Audit Trail)
-        ├── ReportsView.tsx      # Relatórios de desempenho, curva ABC de peças e conversão
+        ├── ReportsView.tsx      # Relatórios de desempenho, curva ABC de peças e exportação PDF
         ├── DataMigrationConverterView.tsx # Importador/Conversor de dados legados (CSV/JSON/Excel)
         ├── UserManagementView.tsx# Gestão de operadores, matriz de níveis e bloqueio global
         ├── ProfileView.tsx      # Perfil do usuário logado e alteração de senha
         └── QAPortfolioView.tsx  # Portal de QA (PRD, Casos de Teste, Rastreabilidade, Cypress e SQL)
 ```
+
+---
+
+## 🧩 Guia Completo dos Módulos Operacionais & Liberação de Acesso (RBAC)
+
+Abaixo está o detalhamento de cada módulo que pode ser liberado no sistema, sua finalidade operacional e de que forma ele auxilia diretamente nas rotinas diárias da oficina mecânica:
+
+| # | Módulo | Finalidade / Para que Funciona | Como Auxilia nas Operações | Perfil Recomendado | Permissão RBAC |
+| :-: | :--- | :--- | :--- | :--- | :--- |
+| **1** | **Dashboard Executivo** | Painel em tempo real de KPIs: faturamento diário/mensal, ticket médio, OSs em aberto/execução/concluídas, veículos no pátio e alertas de estoque. | Permite tomada de decisão ágil pela gerência, dá visão instantânea da produtividade do pátio e antecipa faturas a vencer. | Gestores, Sócios e Gerentes | `accessDashboard` |
+| **2** | **Vendas Balcão / PDV** | Ponto de Venda Express para venda direta de autopeças e fluidos sem necessidade de abertura de OS veicular. | Elimina filas no balcão, atende clientes rápidos e mecânicos externos em segundos, dá baixa imediata de estoque e integra com o caixa. | Vendedores de Balcão e Caixa | `accessSales` |
+| **3** | **Orçamentos Comerciais** | Emissão de propostas técnicas com cálculo de impostos, trava de desconto por alçada (>15% exige Gerente) e link do Portal do Cliente via WhatsApp. | Acelera fechamentos comerciais, registra a aprovação formal com assinatura do cliente e converte o orçamento em OS com 1 clique. | Consultores Técnicos e Atendentes | `accessBudgets` |
+| **4** | **Ordens de Serviço (OS)** | Núcleo operacional da oficina. Gerencia status da OS, fotos de vistoria, mecânico responsável, revisões periódicas e faturamento. | Extingue papéis na oficina, rastreia quem realizou o reparo, baixa o estoque de forma atômica e gera contas a receber com juros de maquininha. | Consultores e Mecânicos Chefes | `accessServiceOrders` |
+| **5** | **Clientes & CRM** | Base cadastral unificada com validação de CPF/CNPJ único (RN001), histórico de passagens, limites de crédito e contato direto por WhatsApp. | Previne cadastros duplicados no banco de dados, facilita o atendimento receptivo e apoia campanhas de retorno e fidelização de clientes. | Recepção e Atendimento | `accessClients` |
+| **6** | **Veículos & Frota** | Controle de veículos com validação de placa tradicional e Mercosul (RN002), histórico mecânico de longo prazo e prazos de garantia. | Fornece histórico técnico completo para diagnósticos assertivos, rastreia garantias de 90 dias e notifica o cliente sobre revisões futuras. | Consultores e Mecânicos | `accessVehicles` |
+| **7** | **Peças & Estoque** | Gestão física e fiscal de insumos com leitor de XML de NF-e, ponto de pedido/estoque mínimo, margens de lucro e dados fiscais (NCM/CEST/CST). | Evita que serviços fiquem parados por falta de peças, agiliza a entrada de notas fiscais de compra em segundos e assegura margem de lucro real. | Almoxarifado e Estoquistas | `accessParts` |
+| **8** | **Unidades de Medida** | Parametrização de unidades de venda e estoque (UN, KG, L, M, M², M³, CX, PAR, HR) com regras de cálculo dimensional (linear, área e volume). | Permite vender e estocar materiais fracionados ou sob medida (tubos, chapas de funilaria, tintas e óleos) com precisão matemática sem erros manuais. | Gerência e Almoxarife Chefe | `accessUnitsOfMeasure` |
+| **9** | **Catálogo de Serviços** | Cadastro padronizado de mão de obra mecânica/elétrica, tempos padrões de execução, valor da hora e enquadramento tributário (LC 116 e ISSQN). | Uniformiza a precificação entre os orçamentistas da oficina, estabelece métricas de tempo de execução e garante regularidade com a prefeitura. | Gerentes de Oficina e Técnicos | `accessServices` |
+| **10** | **Cotações de Compras** | Gestão de fornecedores e tomada de preços multi-fornecedor com destaque automático do menor valor cotado por item. | Reduz os custos diretos com peças em até 20%, agiliza a reposição de itens urgentes e cria histórico de preços dos distribuidores. | Compradores e Almoxarifado | `accessQuotations` |
+| **11** | **Contas a Receber** | Controle de títulos originados de OS e Vendas, gestão de parcelas, juros de maquininha, emissão de boletos com PIX e quitação com conciliação. | Diminui a inadimplência com painel de títulos vencidos e a vencer, automatiza cálculo de juros e alimenta o caixa em tempo real ao quitar. | Setor Financeiro e Faturamento | `accessAccountsReceivable` |
+| **12** | **Contas a Pagar** | Gestão de compromissos com fornecedores de autopeças, contas de consumo (energia, água, internet), aluguel, salários e despesas fixas. | Previne pagamento de juros e multas por atraso, projeta a necessidade futura de desembolso e categoriza as despesas por centro de custo. | Setor Financeiro e Contas a Pagar | `accessAccountsPayable` |
+| **13** | **Fluxo de Caixa & DRE** | Centralização das entradas e saídas de caixa e bancos, conciliação de saldos e Demonstrativo de Resultados do Exercício (DRE) em tempo real. | Revela a lucratividade líquida real da oficina, o ponto de equilíbrio operacional e a saúde financeira das contas bancárias. | Sócios, Diretores e Gerentes Financeiros | `accessFinancial` |
+| **14** | **Módulo Fiscal SEFAZ** | Emissão, transmissão, cancelamento e inutilização de NF-e (mod. 55), NFC-e (mod. 65) e NFS-e, com DANFE, chave de 44 dígitos e XML assinado. | Mantém a empresa 100% regular perante o Fisco, previne autuações tributárias e permite emissão fiscal tanto imediata quanto posterior. | Setor Fiscal e Faturamento | `accessFiscal` |
+| **15** | **Transportadoras** | Cadastro de transportadoras parceiras, modalidade de frete (CIF/FOB), dados de veículos e integração com a aba de transporte da NF-e. | Organiza a logística de envio de peças e devoluções para frotistas e registra fretes corretamente nos documentos fiscais eletrônicos. | Expedição e Logística | `accessCarriers` |
+| **16** | **Relatórios Gerenciais** | Emissão de relatórios analíticos de faturamento, produtividade mecânica, curva ABC de peças e conversão de orçamentos em PDF oficial. | Identifica os serviços e peças mais lucrativos da empresa, mede o rendimento da equipe técnica e guia decisões estratégicas. | Sócios e Gerência Geral | `accessReports` |
+| **17** | **Trilha de Auditoria** | Registro inviolável, cronológico e detalhado de todas as operações realizadas (usuário, data/hora, ação e alterações de valores). | Garante segurança contra fraudes internas, permite rastrear responsáveis por cada ação e fornece subsídios para auditorias e conferências. | Administradores e Auditores | `accessHistory` |
+| **18** | **Gestão de Usuários (RBAC)**| Administração de contas de operadores, papéis de acesso e matriz de permissões individual por tela e funcionalidade. | Assegura que cada funcionário acesse estritamente os recursos necessários ao seu trabalho, protegendo dados confidenciais e financeiros. | Exclusivo Administrador | `accessUserManagement` |
+| **19** | **Migração de Dados Legados**| Ferramenta de importação em massa via planilhas CSV/JSON para carga inicial de clientes, veículos e catálogo de peças. | Reduz o tempo de implantação da oficina no sistema de semanas para poucos minutos, sem necessidade de digitação manual de cadastros. | Técnicos de Implantação e Admin | `accessQAPanel` |
+| **20** | **Portfólio QA & Terminal SQL**| Ambiente de engenharia de qualidade com PRD, execução de Casos de Teste em tempo real, Matriz de Rastreabilidade e Console SQL ANSI. | Valida a integridade do sistema após atualizações e permite que analistas executem consultas ad-hoc no banco de dados. | Engenheiros de QA e Analistas | `accessQAPanel` |
 
 ---
 
@@ -197,6 +297,21 @@ motordesk/
 | **CT008** | RF013 / RN007 | Imutabilidade da Trilha de Auditoria | Segurança | Garante ausência de botões ou funções de exclusão de registros do histórico. | `Passed` |
 | **CT009** | RF012 | Trava Global de Módulos e Permissões | Acesso | Oculta menus e bloqueia acesso a módulos desativados pelo Administrador. | `Passed` |
 | **CT010** | RN008 | Interceptor de Logout com Tarefa Pendente | Usabilidade | Exibe modal de confirmação ao sair com formulário preenchido sem salvar. | `Passed` |
+| **CT011** | RF-ORC-01 | Orçamento Comercial sem Vínculo de Veículo Obrigatório | Funcional | Permite gerar proposta comercial em Comércio/Híbrido sem exigir placa veicular. | `Passed` |
+| **CT012** | RN-EST-01 | Reserva de Estoque em Orçamento com Expiração Automática | Regra de Negócio | Reserva produtos no estoque e libera o saldo automaticamente ao atingir a data limite. | `Passed` |
+| **CT013** | RF-ORC-02 | Conversão Direta de Orçamento em Venda Balcão | Fluxo Principal | Converte orçamento aprovado em venda no PDV e abate o estoque com idempotência. | `Passed` |
+| **CT014** | RF-MED-01 | Cálculo Dimensional com Unidades Fracionadas (M, M², M³) | Funcional | Converte unidades e calcula preço/estoque de mangueiras, chapas e fluidos. | `Passed` |
+| **CT015** | RF-EST-02 | Importação de XML de NF-e com Reconhecimento de Unidades | Integridade | Lê XML de compra, reconhece unidades métricas e atualiza custos sem duplicar itens. | `Passed` |
+| **CT016** | RN-RBAC-01 | Trava de Acesso e Isolamento Modular por Perfil | Permissões | Assegura que cada usuário acesse estritamente as telas e ações liberadas no seu perfil. | `Passed` |
+| **CT017** | RF-ORC-03 | Conversão Híbrida de Orçamento (OS de Serviços + Venda de Peças) | Fluxo Principal | Segrega peças e mão de obra gerando Ordem de Serviço e Venda simultaneamente. | `Passed` |
+| **CT018** | RN-EST-02 | Idempotência e Bloqueio de Conversão Duplicada de Orçamento | Integridade | Impede geração de duplicidade de vendas ou OSs para o mesmo orçamento. | `Passed` |
+| **CT019** | RF-LOG-01 | Fluxo de Separação, Picking e Retirada no Balcão | Logística | Cria fila de expedição, gera romaneio de separação com localização e baixa na entrega. | `Passed` |
+| **CT020** | RF-LOG-02 | Retirada Parcial Imediata e Entrega Residual com Romaneio | Logística | Separa o que o cliente leva na hora e emite romaneio residual com canhoto para transportadora. | `Passed` |
+| **CT021** | RF-FISC-01| Conferência Fiscal Pré-Emissão com Validação Tributária | Fiscal | Valida CFOP, NCM, Alíquotas e Inscrição Estadual antes do envio à SEFAZ. | `Passed` |
+| **CT022** | RN-LOG-03 | Bloqueio de Entrega Física sem Documento Fiscal Autorizado | Regra de Negócio | Impede saída de mercadoria da expedição até que a NF-e/NFC-e seja autorizada. | `Passed` |
+| **CT023** | RF-MULTI-01| Venda Multiloja de Produto Pertencente a Outra Filial | Multiloja | Permite venda cruzada entre filiais com rastreio de origem, faturamento e baixa na filial correta. | `Passed` |
+| **CT024** | RN-MULTI-02| Controle de Local de Pagamento e Retirada na Operação Multiloja | Regra de Negócio | Aplica regras `PURCHASE_STORE_ONLY`, `FULFILLMENT_STORE_ONLY` ou `BOTH` na venda. | `Passed` |
+| **CT025** | RN-SEC-01 | Isolamento Estrito de Configurações e Dados por companyId | Segurança & Arquitetura | Garante segregação absoluta multi-tenant sem vazamento de estoque, vendas ou parâmetros. | `Passed` |
 
 ---
 

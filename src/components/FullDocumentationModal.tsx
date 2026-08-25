@@ -20,7 +20,9 @@ import {
   ArrowUp,
   Search,
   Building2,
-  FileSpreadsheet
+  FileSpreadsheet,
+  ShoppingBag,
+  Zap
 } from 'lucide-react';
 import { generatePdfFromElement } from '../utils/pdfGenerator';
 import { TestCase } from '../types';
@@ -410,49 +412,221 @@ export default function FullDocumentationModal({ isOpen, onClose, testCases = []
               <section className="space-y-4 pt-4 border-t border-slate-200">
                 <div className="border-b border-indigo-200 pb-2 flex items-center gap-2">
                   <span className="bg-indigo-600 text-white text-xs font-bold px-2.5 py-0.5 rounded-md">SEÇÃO 2</span>
-                  <h2 className="text-lg font-bold text-slate-900">Mapa de Módulos e Funcionalidades</h2>
+                  <h2 className="text-lg font-bold text-slate-900">Segmentos de Atuação & Mapa Completo de Módulos</h2>
                 </div>
+
+                {/* SEGMENTOS DE NEGÓCIO SUPORTADOS */}
+                <div className="space-y-3">
+                  <h3 className="font-bold text-slate-800 text-xs uppercase tracking-wider flex items-center gap-1.5">
+                    <Building2 className="w-4 h-4 text-indigo-600" />
+                    Segmentos de Atuação Parametrizáveis por Empresa (Tenant)
+                  </h3>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <div className="bg-indigo-50/70 border border-indigo-200 rounded-xl p-3.5 space-y-2">
+                      <div className="flex items-center gap-2">
+                        <span className="p-1.5 bg-indigo-600 text-white rounded-lg"><Wrench className="w-4 h-4" /></span>
+                        <div>
+                          <h4 className="font-bold text-xs text-indigo-950">1. Oficina Mecânica</h4>
+                          <span className="text-[10px] text-indigo-600 font-bold uppercase font-mono">OFICINA</span>
+                        </div>
+                      </div>
+                      <p className="text-[11px] text-indigo-900 leading-relaxed">
+                        <strong>Foco:</strong> Ordens de Serviço (OS), pátio veicular, mecânicos, histórico de manutenção, peças aplicadas e revisões periódicas.
+                      </p>
+                      <div className="text-[10px] text-slate-600 bg-white/80 p-2 rounded-md border border-indigo-100">
+                        <strong>Auxílio Operacional:</strong> Elimina papéis, rastreia garantia de 90 dias e alerta revisões periódicas via WhatsApp.
+                      </div>
+                    </div>
+
+                    <div className="bg-emerald-50/70 border border-emerald-200 rounded-xl p-3.5 space-y-2">
+                      <div className="flex items-center gap-2">
+                        <span className="p-1.5 bg-emerald-600 text-white rounded-lg"><ShoppingBag className="w-4 h-4" /></span>
+                        <div>
+                          <h4 className="font-bold text-xs text-emerald-950">2. Comércio & Autopeças</h4>
+                          <span className="text-[10px] text-emerald-600 font-bold uppercase font-mono">COMERCIO</span>
+                        </div>
+                      </div>
+                      <p className="text-[11px] text-emerald-900 leading-relaxed">
+                        <strong>Foco:</strong> Vendas de Balcão (PDV Express), cálculo dimensional (m, m², m³, L), leitor XML de NF-e, estoque mínimo e caixa.
+                      </p>
+                      <div className="text-[10px] text-slate-600 bg-white/80 p-2 rounded-md border border-emerald-100">
+                        <strong>Auxílio Operacional:</strong> Atendimento rápido sem placa/veículo, cálculo de fracionados e emissão fiscal imediata.
+                      </div>
+                    </div>
+
+                    <div className="bg-amber-50/70 border border-amber-200 rounded-xl p-3.5 space-y-2">
+                      <div className="flex items-center gap-2">
+                        <span className="p-1.5 bg-amber-600 text-white rounded-lg"><Zap className="w-4 h-4" /></span>
+                        <div>
+                          <h4 className="font-bold text-xs text-amber-950">3. Híbrido: Oficina + Comércio</h4>
+                          <span className="text-[10px] text-amber-600 font-bold uppercase font-mono">OFICINA_COMERCIO</span>
+                        </div>
+                      </div>
+                      <p className="text-[11px] text-amber-900 leading-relaxed">
+                        <strong>Foco:</strong> Gestão 360° com OS completa no pátio E venda balcão express com estoque unificado em tempo real.
+                      </p>
+                      <div className="text-[10px] text-slate-600 bg-white/80 p-2 rounded-md border border-amber-100">
+                        <strong>Auxílio Operacional:</strong> Evita duplicidade de estoque, permite faturar serviços (NFS-e) e peças (NF-e/NFC-e) na mesma conta.
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <p className="text-xs text-slate-600 pt-2">
+                  O MotorDesk possui arquitetura modular com controle de acesso granular (RBAC) e isolamento multi-tenant. Cada módulo abaixo pode ser liberado individualmente por usuário ou perfil:
+                </p>
 
                 <div className="overflow-x-auto">
                   <table className="w-full text-left text-xs border border-slate-200 rounded-lg overflow-hidden">
                     <thead className="bg-slate-100 text-slate-700 font-bold uppercase text-[10px]">
                       <tr>
                         <th className="p-2.5 border-b border-slate-200">Módulo</th>
-                        <th className="p-2.5 border-b border-slate-200">Funcionalidades Principais</th>
+                        <th className="p-2.5 border-b border-slate-200">Para que Funciona</th>
+                        <th className="p-2.5 border-b border-slate-200">O que Auxilia nas Operações</th>
                         <th className="p-2.5 border-b border-slate-200">Público Alvo</th>
-                        <th className="p-2.5 border-b border-slate-200">Status</th>
+                        <th className="p-2.5 border-b border-slate-200">Permissão</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-200 text-slate-700">
                       <tr>
-                        <td className="p-2.5 font-bold text-slate-900">Dashboard General</td>
-                        <td className="p-2.5">Indicadores financeiros, quantidade de OS ativas, gráfico de faturamento e resumo diário.</td>
-                        <td className="p-2.5">Gestores / Proprietários</td>
-                        <td className="p-2.5"><span className="bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded font-bold">100% Ok</span></td>
+                        <td className="p-2.5 font-bold text-slate-900">1. Dashboard Executivo</td>
+                        <td className="p-2.5">KPIs em tempo real: faturamento do dia/mês, ticket médio, OSs em aberto/execução, pátio e estoque crítico.</td>
+                        <td className="p-2.5 text-indigo-900 font-medium">Decisões rápidas da gerência, monitoramento de metas e visão geral da produtividade.</td>
+                        <td className="p-2.5">Sócios / Gerentes</td>
+                        <td className="p-2.5"><span className="bg-indigo-50 text-indigo-700 px-1.5 py-0.5 rounded font-mono font-bold text-[10px]">accessDashboard</span></td>
                       </tr>
                       <tr>
-                        <td className="p-2.5 font-bold text-slate-900">Ordens de Serviço (OS)</td>
-                        <td className="p-2.5">Abertura, status em tempo real, anexos de fotos, checklists, peças e serviços.</td>
-                        <td className="p-2.5">Recepcionistas / Mecânicos</td>
-                        <td className="p-2.5"><span className="bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded font-bold">100% Ok</span></td>
+                        <td className="p-2.5 font-bold text-slate-900">2. Vendas Balcão / PDV</td>
+                        <td className="p-2.5">Ponto de venda express para peças e fluidos sem abertura obrigatória de OS, com cálculo dimensional.</td>
+                        <td className="p-2.5 text-indigo-900 font-medium">Agiliza atendimento de balcão e mecânicos externos, baixa estoque imediata e integra com caixa.</td>
+                        <td className="p-2.5">Vendedores / Caixa</td>
+                        <td className="p-2.5"><span className="bg-indigo-50 text-indigo-700 px-1.5 py-0.5 rounded font-mono font-bold text-[10px]">accessSales</span></td>
                       </tr>
                       <tr>
-                        <td className="p-2.5 font-bold text-slate-900">Peças e Estoque</td>
-                        <td className="p-2.5">Cadastro de insumos, preço de custo/venda, margem de lucro, alerta de mínimo e movimentações.</td>
+                        <td className="p-2.5 font-bold text-slate-900">3. Orçamentos Comerciais</td>
+                        <td className="p-2.5">Criação de propostas técnicas com alçadas de desconto (acima de 15% exige Gerente) e link do Portal do Cliente via WhatsApp.</td>
+                        <td className="p-2.5 text-indigo-900 font-medium">Aumenta taxa de conversão, registra aprovação digital e converte em OS com 1 clique.</td>
+                        <td className="p-2.5">Consultores / Atendentes</td>
+                        <td className="p-2.5"><span className="bg-indigo-50 text-indigo-700 px-1.5 py-0.5 rounded font-mono font-bold text-[10px]">accessBudgets</span></td>
+                      </tr>
+                      <tr>
+                        <td className="p-2.5 font-bold text-slate-900">4. Ordens de Serviço (OS)</td>
+                        <td className="p-2.5">Gestão do ciclo de vida da OS, fotos de vistoria, mecânico responsável, revisões periódicas e finalização.</td>
+                        <td className="p-2.5 text-indigo-900 font-medium">Elimina papéis, rastreia mecânicos, baixa estoque de forma atômica e gera contas a receber.</td>
+                        <td className="p-2.5">Consultores / Mecânicos</td>
+                        <td className="p-2.5"><span className="bg-indigo-50 text-indigo-700 px-1.5 py-0.5 rounded font-mono font-bold text-[10px]">accessServiceOrders</span></td>
+                      </tr>
+                      <tr>
+                        <td className="p-2.5 font-bold text-slate-900">5. Clientes & CRM</td>
+                        <td className="p-2.5">Base cadastral com validação estrita de CPF/CNPJ único (RN001), limites de crédito e histórico de serviços.</td>
+                        <td className="p-2.5 text-indigo-900 font-medium">Impede duplicidades, agiliza o atendimento receptivo e apoia retenção e pós-venda.</td>
+                        <td className="p-2.5">Recepção / Comercial</td>
+                        <td className="p-2.5"><span className="bg-indigo-50 text-indigo-700 px-1.5 py-0.5 rounded font-mono font-bold text-[10px]">accessClients</span></td>
+                      </tr>
+                      <tr>
+                        <td className="p-2.5 font-bold text-slate-900">6. Veículos & Frota</td>
+                        <td className="p-2.5">Controle de veículos com validação de placa tradicional e Mercosul (RN002) e controle de garantia de 90 dias.</td>
+                        <td className="p-2.5 text-indigo-900 font-medium">Diagnósticos assertivos com base no histórico mecânico e avisos preventivos de revisão.</td>
+                        <td className="p-2.5">Consultores / Mecânicos</td>
+                        <td className="p-2.5"><span className="bg-indigo-50 text-indigo-700 px-1.5 py-0.5 rounded font-mono font-bold text-[10px]">accessVehicles</span></td>
+                      </tr>
+                      <tr>
+                        <td className="p-2.5 font-bold text-slate-900">7. Peças & Estoque</td>
+                        <td className="p-2.5">Inventário com importador de XML de NF-e, ponto de pedido/mínimo, margem de lucro e dados fiscais (NCM/CST).</td>
+                        <td className="p-2.5 text-indigo-900 font-medium">Evita paradas por falta de peças, automatiza entrada de compras e garante margem real.</td>
                         <td className="p-2.5">Estoquistas / Compras</td>
-                        <td className="p-2.5"><span className="bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded font-bold">100% Ok</span></td>
+                        <td className="p-2.5"><span className="bg-indigo-50 text-indigo-700 px-1.5 py-0.5 rounded font-mono font-bold text-[10px]">accessParts</span></td>
                       </tr>
                       <tr>
-                        <td className="p-2.5 font-bold text-slate-900">Módulo Fiscal SEFAZ</td>
-                        <td className="p-2.5">Emissão simulada de NFe e NFCe, cálculo de impostos, arquivo XML, cancelamento e inutilização.</td>
-                        <td className="p-2.5">Setor Contábil / Adm</td>
-                        <td className="p-2.5"><span className="bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded font-bold">100% Ok</span></td>
+                        <td className="p-2.5 font-bold text-slate-900">8. Unidades de Medida</td>
+                        <td className="p-2.5">Configuração de UOM (UN, KG, L, M, M², M³) com cálculo linear, área e volume para produtos sob medida.</td>
+                        <td className="p-2.5 text-indigo-900 font-medium">Permite comercializar materiais fracionados (tubos, chapas, tintas) com exatidão matemática.</td>
+                        <td className="p-2.5">Gerência / Estoque</td>
+                        <td className="p-2.5"><span className="bg-indigo-50 text-indigo-700 px-1.5 py-0.5 rounded font-mono font-bold text-[10px]">accessUnitsOfMeasure</span></td>
                       </tr>
                       <tr>
-                        <td className="p-2.5 font-bold text-slate-900">Landing Page & Admin</td>
-                        <td className="p-2.5">Apresentação institucional, menu rolável com atalhos, e painel admin com senha para alterar fotos e contatos.</td>
-                        <td className="p-2.5">Clientes / Visitantes</td>
-                        <td className="p-2.5"><span className="bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded font-bold">100% Ok</span></td>
+                        <td className="p-2.5 font-bold text-slate-900">9. Serviços & Mão de Obra</td>
+                        <td className="p-2.5">Tabela padronizada de mão de obra, tempo estimado, preço/hora e enquadramento tributário (LC 116 e ISS).</td>
+                        <td className="p-2.5 text-indigo-900 font-medium">Uniformiza preços entre orçamentistas e assegura conformidade fiscal municipal.</td>
+                        <td className="p-2.5">Chefes de Oficina</td>
+                        <td className="p-2.5"><span className="bg-indigo-50 text-indigo-700 px-1.5 py-0.5 rounded font-mono font-bold text-[10px]">accessServices</span></td>
+                      </tr>
+                      <tr>
+                        <td className="p-2.5 font-bold text-slate-900">10. Cotações & Fornecedores</td>
+                        <td className="p-2.5">Tomada de preços multi-fornecedor com destaque automático do menor valor por item e pedido de compra.</td>
+                        <td className="p-2.5 text-indigo-900 font-medium">Reduz custos diretos de autopeças e acelera reposição de estoque crítico.</td>
+                        <td className="p-2.5">Compradores / Gerência</td>
+                        <td className="p-2.5"><span className="bg-indigo-50 text-indigo-700 px-1.5 py-0.5 rounded font-mono font-bold text-[10px]">accessQuotations</span></td>
+                      </tr>
+                      <tr>
+                        <td className="p-2.5 font-bold text-slate-900">11. Contas a Receber</td>
+                        <td className="p-2.5">Gestão de títulos de OS/Vendas, parcelamento, juros de maquininha, emissão de boletos PIX e quitações.</td>
+                        <td className="p-2.5 text-indigo-900 font-medium">Reduz inadimplência com painel de títulos a vencer e alimenta o caixa em tempo real.</td>
+                        <td className="p-2.5">Financeiro / Faturamento</td>
+                        <td className="p-2.5"><span className="bg-indigo-50 text-indigo-700 px-1.5 py-0.5 rounded font-mono font-bold text-[10px]">accessAccountsReceivable</span></td>
+                      </tr>
+                      <tr>
+                        <td className="p-2.5 font-bold text-slate-900">12. Contas a Pagar</td>
+                        <td className="p-2.5">Controle de títulos de fornecedores de peças, consumo (água, luz), aluguel, folha e despesas operacionais.</td>
+                        <td className="p-2.5 text-indigo-900 font-medium">Previne juros/multas por atraso, projeta fluxo de caixa e categoriza despesas.</td>
+                        <td className="p-2.5">Financeiro / Gestão</td>
+                        <td className="p-2.5"><span className="bg-indigo-50 text-indigo-700 px-1.5 py-0.5 rounded font-mono font-bold text-[10px]">accessAccountsPayable</span></td>
+                      </tr>
+                      <tr>
+                        <td className="p-2.5 font-bold text-slate-900">13. Fluxo de Caixa & DRE</td>
+                        <td className="p-2.5">Extrato unificado de entradas/saídas por conta bancária, conciliação e DRE em tempo real.</td>
+                        <td className="p-2.5 text-indigo-900 font-medium">Mostra o lucro líquido real, margem de contribuição e saldo bancário consolidado.</td>
+                        <td className="p-2.5">Diretoria / Sócios</td>
+                        <td className="p-2.5"><span className="bg-indigo-50 text-indigo-700 px-1.5 py-0.5 rounded font-mono font-bold text-[10px]">accessFinancial</span></td>
+                      </tr>
+                      <tr>
+                        <td className="p-2.5 font-bold text-slate-900">14. Módulo Fiscal SEFAZ</td>
+                        <td className="p-2.5">Emissão, transmissão e consulta de NF-e (55), NFC-e (65) e NFS-e, DANFE oficial e XML assinado.</td>
+                        <td className="p-2.5 text-indigo-900 font-medium">Garante 100% de conformidade com o Fisco e possibilita emissão imediata ou posterior.</td>
+                        <td className="p-2.5">Setor Fiscal / Contábil</td>
+                        <td className="p-2.5"><span className="bg-indigo-50 text-indigo-700 px-1.5 py-0.5 rounded font-mono font-bold text-[10px]">accessFiscal</span></td>
+                      </tr>
+                      <tr>
+                        <td className="p-2.5 font-bold text-slate-900">15. Transportadoras</td>
+                        <td className="p-2.5">Cadastro de parceiros de frete (CIF/FOB), dados do veículo transportador e integração com NF-e.</td>
+                        <td className="p-2.5 text-indigo-900 font-medium">Organiza a logística de envio de peças e devoluções para frotistas e registra fretes.</td>
+                        <td className="p-2.5">Expedição / Logística</td>
+                        <td className="p-2.5"><span className="bg-indigo-50 text-indigo-700 px-1.5 py-0.5 rounded font-mono font-bold text-[10px]">accessCarriers</span></td>
+                      </tr>
+                      <tr>
+                        <td className="p-2.5 font-bold text-slate-900">16. Relatórios Gerenciais</td>
+                        <td className="p-2.5">Relatórios analíticos de faturamento, produtividade mecânica, curva ABC de peças e exportação PDF.</td>
+                        <td className="p-2.5 text-indigo-900 font-medium">Evidencia serviços e peças mais lucrativos e embasa decisões estratégicas da gerência.</td>
+                        <td className="p-2.5">Sócios / Gerentes</td>
+                        <td className="p-2.5"><span className="bg-indigo-50 text-indigo-700 px-1.5 py-0.5 rounded font-mono font-bold text-[10px]">accessReports</span></td>
+                      </tr>
+                      <tr>
+                        <td className="p-2.5 font-bold text-slate-900">17. Trilha de Auditoria</td>
+                        <td className="p-2.5">Logs cronológicos e imutáveis de todas as operações (criação, edição, exclusão, descontos e estornos).</td>
+                        <td className="p-2.5 text-indigo-900 font-medium">Garante segurança contra fraudes internas e viabiliza auditorias e conferências operacionais.</td>
+                        <td className="p-2.5">Admin / Auditores</td>
+                        <td className="p-2.5"><span className="bg-indigo-50 text-indigo-700 px-1.5 py-0.5 rounded font-mono font-bold text-[10px]">accessHistory</span></td>
+                      </tr>
+                      <tr>
+                        <td className="p-2.5 font-bold text-slate-900">18. Gestão de Usuários (RBAC)</td>
+                        <td className="p-2.5">Administração de operadores, papéis e matriz de permissões individual por tela e ação.</td>
+                        <td className="p-2.5 text-indigo-900 font-medium">Protege dados confidenciais e restringe acessos conforme o cargo de cada colaborador.</td>
+                        <td className="p-2.5">Administrador Geral</td>
+                        <td className="p-2.5"><span className="bg-indigo-50 text-indigo-700 px-1.5 py-0.5 rounded font-mono font-bold text-[10px]">accessUserManagement</span></td>
+                      </tr>
+                      <tr>
+                        <td className="p-2.5 font-bold text-slate-900">19. Migração de Dados</td>
+                        <td className="p-2.5">Importação em lote de clientes, veículos e catálogo de peças via planilhas CSV e JSON.</td>
+                        <td className="p-2.5 text-indigo-900 font-medium">Reduz o tempo de implantação da oficina para minutos, sem digitação manual.</td>
+                        <td className="p-2.5">Técnicos / Admin</td>
+                        <td className="p-2.5"><span className="bg-indigo-50 text-indigo-700 px-1.5 py-0.5 rounded font-mono font-bold text-[10px]">accessQAPanel</span></td>
+                      </tr>
+                      <tr>
+                        <td className="p-2.5 font-bold text-slate-900">20. Portfólio QA & SQL</td>
+                        <td className="p-2.5">Documentação de requisitos (PRD), suíte de testes interativos e console SQL para consultas diretas.</td>
+                        <td className="p-2.5 text-indigo-900 font-medium">Garante a conformidade do sistema e permite extrações analíticas ad-hoc no banco.</td>
+                        <td className="p-2.5">QA / Desenvolvedores</td>
+                        <td className="p-2.5"><span className="bg-indigo-50 text-indigo-700 px-1.5 py-0.5 rounded font-mono font-bold text-[10px]">accessQAPanel</span></td>
                       </tr>
                     </tbody>
                   </table>
