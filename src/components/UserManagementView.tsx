@@ -68,7 +68,9 @@ const DEFAULT_LEVEL_PERMISSIONS: { [key in UserRole]: UserPermissions } = {
   admin: {
     accessDashboard: true,
     accessSales: true,
+    accessWithdrawals: true,
     accessCarriers: true,
+    accessUnitsOfMeasure: true,
     accessClients: true,
     accessVehicles: true,
     accessParts: true,
@@ -115,7 +117,9 @@ const DEFAULT_LEVEL_PERMISSIONS: { [key in UserRole]: UserPermissions } = {
   atendente: {
     accessDashboard: true,
     accessSales: true,
+    accessWithdrawals: true,
     accessCarriers: true,
+    accessUnitsOfMeasure: false,
     accessClients: true,
     accessVehicles: true,
     accessParts: false,
@@ -162,7 +166,9 @@ const DEFAULT_LEVEL_PERMISSIONS: { [key in UserRole]: UserPermissions } = {
   mecanico: {
     accessDashboard: true,
     accessSales: false,
+    accessWithdrawals: false,
     accessCarriers: false,
+    accessUnitsOfMeasure: false,
     accessClients: false,
     accessVehicles: false,
     accessParts: true,
@@ -209,7 +215,9 @@ const DEFAULT_LEVEL_PERMISSIONS: { [key in UserRole]: UserPermissions } = {
   qa: {
     accessDashboard: true,
     accessSales: true,
+    accessWithdrawals: true,
     accessCarriers: true,
+    accessUnitsOfMeasure: true,
     accessClients: true,
     accessVehicles: true,
     accessParts: true,
@@ -258,7 +266,9 @@ const DEFAULT_LEVEL_PERMISSIONS: { [key in UserRole]: UserPermissions } = {
 const PERMISSION_LABEL_MAP: { [K in keyof UserPermissions]: string } = {
   accessDashboard: "Dashboard Geral KPI",
   accessSales: "Vendas & Balcão (PDV / Comércio)",
+  accessWithdrawals: "Retirada & Entrega (Expedição de Mercadorias)",
   accessCarriers: "Cadastro de Transportadoras & Frete",
+  accessUnitsOfMeasure: "Unidades de Medida & Cálculo Dimensional",
   restrictToOwnSales: "Restringir aos Próprios Pedidos de Venda (Vendedores)",
   accessClients: "Cadastro de Clientes",
   accessVehicles: "Cadastro de Veículos",
@@ -301,7 +311,24 @@ const PERMISSION_LABEL_MAP: { [K in keyof UserPermissions]: string } = {
   canCustomizePdf: "Personalizar Layout e Campos do PDF / Relatório",
   canViewOtherStoresStock: "Visualizar Estoque de Outras Lojas/Filiais (Rede)",
   canSellOtherStoresStock: "Realizar Venda / OS de Peças de Outras Lojas/Filiais",
-  canViewAllCompaniesHistory: "Visualizar Histórico e Auditoria de Todas as Empresas/Lojas (Rede)"
+  canViewAllCompaniesHistory: "Visualizar Histórico e Auditoria de Todas as Empresas/Lojas (Rede)",
+  accessProduction: "Módulo de Produção & PCP (Indústria)",
+  accessIndustrialDashboard: "Painel PCP & Indicadores Industriais",
+  accessProductionOrders: "Ordens de Produção (OP)",
+  accessBillOfMaterials: "Engenharia de Produto & Estruturas (BOM)",
+  accessIndustrialStock: "Estoque Operacional Industrial",
+  accessIndustrialCosts: "Análise de Custos Industriais & Scrap",
+  accessLots: "Rastreabilidade por Lotes de Fabricação",
+  accessProductionReports: "Relatórios de Produção e OPs",
+  accessIndustrialReports: "Relatórios Estratégicos Industriais",
+  accessCommercialReports: "Relatórios Comerciais e Faturamento",
+  productionOrderCreate: "Criar Novas Ordens de Produção",
+  productionOrderEdit: "Editar Ordens de Produção",
+  productionOrderApprove: "Aprovar e Liberar OP para Fábrica",
+  productionOrderCancel: "Cancelar Ordens de Produção",
+  productionOrderComplete: "Concluir e Apontar Produção / Lotes",
+  bomCreate: "Criar Nova Estrutura de Produto (BOM)",
+  bomEdit: "Editar Engenharia de Produto (BOM)"
 };
 
 export default function UserManagementView({ 
@@ -355,6 +382,8 @@ export default function UserManagementView({
   const [newCompEmail, setNewCompEmail] = useState('');
   const [newCompAddress, setNewCompAddress] = useState('');
   const [newCompFee, setNewCompFee] = useState(299.90);
+  const [newCompHasImplementationFee, setNewCompHasImplementationFee] = useState(false);
+  const [newCompImplementationFee, setNewCompImplementationFee] = useState(500.00);
   const [newCompLegalRepName, setNewCompLegalRepName] = useState('');
   const [newCompLegalRepCpf, setNewCompLegalRepCpf] = useState('');
   const [newCompLegalRepRg, setNewCompLegalRepRg] = useState('');
@@ -422,6 +451,14 @@ export default function UserManagementView({
   );
   const [compRequireAuthorizedFiscalBeforeRelease, setCompRequireAuthorizedFiscalBeforeRelease] = useState<boolean>(
     currentCompany?.requireAuthorizedFiscalBeforeRelease || false
+  );
+
+  // Configurações de Implantação e Treinamento do Sistema
+  const [compHasImplementationFee, setCompHasImplementationFee] = useState<boolean>(
+    currentCompany?.hasImplementationFee || false
+  );
+  const [compImplementationFee, setCompImplementationFee] = useState<number>(
+    currentCompany?.implementationFee !== undefined ? currentCompany.implementationFee : 500.00
   );
 
   // Modal de resultado das operações (Sucesso / Erro com botão OK)
@@ -548,14 +585,21 @@ export default function UserManagementView({
             <p>2.2. O suporte técnico relativo ao manuseio, esclarecimento de dúvidas e apoio operacional será prestado nos dias úteis e no período comercial estipulado: <strong>${compSupportBusinessHours}</strong>.</p>
             <p>2.3. Os serviços de suporte serão disponibilizados através do número oficial de WhatsApp do desenvolvedor/fornecedor: <strong>${compSupportWhatsapp}</strong>, contemplando envio de mensagens de texto/áudio, chamadas telefônicas diretas e agendamento de reuniões online por vídeo (via Microsoft Teams, Google Meet, Zoom ou aplicativo de conferência equivalente disponível).</p>
 
-            <div class="clause-title">CLÁUSULA TERCEIRA - DA SEGURANÇA E PROTEÇÃO DE DADOS (LGPD)</div>
-            <p>3.1. Em observância à <strong>Lei Geral de Proteção de Dados (Lei nº 13.709/2018 - LGPD)</strong>, a CONTRATADA declara que adota medidas técnicas, organizacionais e de criptografia para proteger os dados armazenados.</p>
-            <p>3.2. A CONTRATANTE declara-se titular dos dados operacionais e de seus clientes inseridos no sistema, cabendo à CONTRATADA apenas o papel de operadora de dados sob as diretrizes legais.</p>
+            <div class="clause-title">CLÁUSULA TERCEIRA - DA SEGURANÇA, CERTIFICADO DIGITAL A1, INTEGRAÇÃO BANCÁRIA E LGPD</div>
+            <p>3.1. <strong>Certificado Digital ICP-Brasil (Padrão A1):</strong> Para a emissão de documentos fiscais eletrônicos (NF-e Modelo 55, NFC-e Modelo 65 e NFS-e), a CONTRATANTE poderá realizar o upload seguro de seu Certificado Digital A1 (.pfx / .p12). A CONTRATADA compromete-se a armazenar o certificado e sua respectiva senha com <strong>criptografia de chave simétrica de ponta a ponta (AES-256)</strong> e isolamento lógico por tenant, sendo seu uso restrito e exclusivo à assinatura e transmissão de documentos fiscais perante a Secretaria da Fazenda Estadual (SEFAZ) e Prefeituras Municipais.</p>
+            <p>3.2. <strong>Dados Bancários, Boletos e PIX:</strong> As informações de contas bancárias, credenciais de API financeira, chaves PIX e carteiras de cobrança registradas pela CONTRATANTE destinam-se unicamente ao processamento de recebimentos e geração de boletos/PIX em favor da própria CONTRATANTE. O sistema <strong>não realiza transações de débito não autorizadas</strong> e opera sob rígidas travas de autenticação.</p>
+            <p>3.3. <strong>Arquitetura de Segurança e Prevenção de Intrusão (Anti-Invasão):</strong> A infraestrutura do <strong>MotorDesk</strong> implementa múltiplas camadas de proteção cibernética, incluindo tráfego 100% criptografado (TLS/HTTPS com certificados SSL modernos), proteção contra ataques DDoS e injeção de código (SQL Injection / XSS), controle de acesso por níveis de operador (RBAC), logs imutáveis de auditoria de operações e política automatizada de backups redundantes.</p>
+            <p>3.4. <strong>Conformidade com a LGPD (Lei nº 13.709/2018):</strong> A CONTRATANTE é a controladora titular dos dados cadastrais, operacionais e de seus clientes finais. A CONTRATADA atua estritamente como operadora tecnológica de tratamento de dados, garantindo sigilo absoluto, não comercialização e não compartilhamento de dados com terceiros não autorizados.</p>
 
-            <div class="clause-title">CLÁUSULA QUARTA - DOS VALORES, COMPOSIÇÃO MODULAR E PAGAMENTO</div>
-            <p>4.1. Pela prestação dos serviços e licença de uso acordada, a CONTRATANTE pagará à CONTRATADA a mensalidade global ajustada no valor de <strong>R$ ${subMonthlyFee.toFixed(2)} (${subMonthlyFee.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })})</strong>.</p>
-            <p>4.2. A mensalidade é composta pela taxa do Plano Básico (R$ ${basePlanFee.toFixed(2)}) acrescida dos módulos operacionais selecionados. Na eventual inclusão de novos módulos a pedido da CONTRATANTE, será emitido o correspondente <strong>Termo Aditivo ao Contrato</strong> com o devido acréscimo proporcional na mensalidade.</p>
-            <p>4.3. O inadimplemento da mensalidade por prazo superior a 15 (quinze) dias poderá acarretar a suspensão temporária dos acessos operacionais ao sistema até a devida regularização.</p>
+            <div class="clause-title">CLÁUSULA QUARTA - DOS VALORES, TAXA DE IMPLANTAÇÃO E CONDIÇÕES DE PAGAMENTO</div>
+            <p>4.1. <strong>Mensalidade do Sistema:</strong> Pela prestação dos serviços e licença de uso acordada, a CONTRATANTE pagará à CONTRATADA a mensalidade global ajustada no valor de <strong>R$ ${subMonthlyFee.toFixed(2)} (${subMonthlyFee.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })})</strong>.</p>
+            <p>4.2. <strong>Taxa de Implantação e Treinamento:</strong> ${
+              compHasImplementationFee
+                ? `Foi ajustada taxa de implantação, parametrização técnica inicial e treinamento da equipe no valor negociado de <strong>R$ ${(compImplementationFee || 0).toFixed(2)} (${(compImplementationFee || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })})</strong>, a ser quitada conforme acordado entre as partes na ativação da conta.`
+                : `Fica expressamente consignado que <strong>NÃO HOUVE COBRANÇA DE TAXA DE IMPLANTAÇÃO OU TREINAMENTO</strong> para a ativação da CONTRATANTE no sistema MotorDesk (isenção total de implantação concedida pela CONTRATADA).`
+            }</p>
+            <p>4.3. <strong>Composição Modular:</strong> A mensalidade é composta pela taxa do Plano Básico (R$ ${basePlanFee.toFixed(2)}) acrescida dos módulos operacionais selecionados. Na eventual inclusão de novos módulos a pedido da CONTRATANTE, será emitido o correspondente <strong>Termo Aditivo ao Contrato</strong> com o devido acréscimo proporcional na mensalidade.</p>
+            <p>4.4. <strong>Inadimplemento:</strong> O inadimplemento da mensalidade por prazo superior a 15 (quinze) dias poderá acarretar a suspensão temporária dos acessos operacionais ao sistema até a devida regularização financeira.</p>
 
             <div class="clause-title">CLÁUSULA QUINTA - DA VIGÊNCIA E RESCISÃO</div>
             <p>5.1. Este contrato entra em vigor na data da sua assinatura por prazo indeterminado, podendo ser rescindido por qualquer uma das partes mediante aviso prévio por escrito de no mínimo 30 (trinta) dias, sem incidência de multa rescisória.</p>
@@ -831,6 +875,9 @@ export default function UserManagementView({
 
   // Default Optional Module Prices
   const DEFAULT_OPTIONAL_MODULE_PRICES: { [key: string]: { label: string; defaultPrice: number; permKey: keyof UserPermissions } } = {
+    accessSales: { label: 'Vendas & Balcão (PDV / Comércio)', defaultPrice: 49.90, permKey: 'accessSales' },
+    accessUnitsOfMeasure: { label: 'Unidades de Medida & Cálculo Dimensional', defaultPrice: 19.90, permKey: 'accessUnitsOfMeasure' },
+    accessProduction: { label: 'Produção & PCP Industrial (BOM/OP/Lotes)', defaultPrice: 79.90, permKey: 'accessProduction' },
     accessParts: { label: 'Gestão de Peças & Estoque Avançado', defaultPrice: 39.90, permKey: 'accessParts' },
     accessQuotations: { label: 'Cotação de Preços & Fornecedores', defaultPrice: 29.90, permKey: 'accessQuotations' },
     accessAccountsReceivable: { label: 'Gestão de Contas a Receber', defaultPrice: 29.90, permKey: 'accessAccountsReceivable' },
@@ -1004,6 +1051,8 @@ export default function UserManagementView({
       setCompInterStorePaymentMode(comp.interStorePaymentMode || 'BOTH');
       setCompInterStoreFulfillmentMode(comp.interStoreFulfillmentMode || 'allow_customer_choice');
       setCompRequireAuthorizedFiscalBeforeRelease(comp.requireAuthorizedFiscalBeforeRelease || false);
+      setCompHasImplementationFee(comp.hasImplementationFee || false);
+      setCompImplementationFee(comp.implementationFee !== undefined ? comp.implementationFee : 500.00);
 
       if (comp.levelPermissions) {
         setLevelPermissions(comp.levelPermissions as any);
@@ -1092,6 +1141,8 @@ export default function UserManagementView({
       interStorePaymentMode: compInterStorePaymentMode,
       interStoreFulfillmentMode: compInterStoreFulfillmentMode,
       requireAuthorizedFiscalBeforeRelease: compRequireAuthorizedFiscalBeforeRelease,
+      hasImplementationFee: compHasImplementationFee,
+      implementationFee: compImplementationFee,
       contractAddendums: contractAddendums,
       levelPermissions: levelPermissions,
       reportPageOrientation: currentCompany?.reportPageOrientation,
@@ -1181,6 +1232,8 @@ export default function UserManagementView({
       legalRepresentativePhone: newCompLegalRepPhone.trim(),
       legalRepresentativeEmail: newCompLegalRepEmail.trim(),
       legalRepresentativeAddress: newCompLegalRepAddress.trim(),
+      hasImplementationFee: newCompHasImplementationFee,
+      implementationFee: newCompHasImplementationFee ? Number(newCompImplementationFee) : 0,
       contractStatus: 'pending',
       levelPermissions: DEFAULT_LEVEL_PERMISSIONS
     };
@@ -2414,8 +2467,10 @@ export default function UserManagementView({
               const permissionList: { key: keyof UserPermissions; label: string }[] = [
                 { key: 'accessDashboard', label: 'Painel Geral / KPIs' },
                 { key: 'accessSales', label: 'Vendas & Balcão (PDV)' },
-                { key: 'restrictToOwnSales', label: 'Restringir aos Próprios Pedidos de Venda' },
+                { key: 'accessWithdrawals', label: 'Retirada & Entrega (Expedição)' },
                 { key: 'accessCarriers', label: 'Cadastro de Transportadoras & Fretes' },
+                { key: 'accessUnitsOfMeasure', label: 'Unidades de Medida & Dimensões' },
+                { key: 'restrictToOwnSales', label: 'Restringir aos Próprios Pedidos de Venda' },
                 { key: 'accessClients', label: 'Cadastro de Clientes' },
                 { key: 'accessVehicles', label: 'Cadastro de Veículos' },
                 { key: 'accessParts', label: 'Catálogo de Peças' },
@@ -2430,6 +2485,12 @@ export default function UserManagementView({
                 { key: 'accessHistory', label: 'Histórico do Veículo' },
                 { key: 'accessReports', label: 'Relatórios Financeiros' },
                 { key: 'accessUserManagement', label: 'Controle de Colaboradores' },
+                { key: 'accessProduction', label: 'Produção & PCP (BOM/OP)' },
+                { key: 'accessIndustrialDashboard', label: 'Painel PCP & Indicadores' },
+                { key: 'accessProductionOrders', label: 'Ordens de Produção (OP)' },
+                { key: 'accessBillOfMaterials', label: 'Engenharia & Estruturas (BOM)' },
+                { key: 'accessLots', label: 'Rastreabilidade de Lotes' },
+                { key: 'accessIndustrialStock', label: 'Estoque Operacional Industrial' },
                 { key: 'accessQAPanel', label: 'Painel de Testes QA' },
                 { key: 'canViewOtherStoresStock', label: 'Estoque Outras Lojas (Rede)' },
                 { key: 'canSellOtherStoresStock', label: 'Venda de Peças Outra Loja' },
@@ -3037,7 +3098,7 @@ export default function UserManagementView({
 
                   <label 
                     className={`p-3.5 rounded-xl border-2 flex flex-col justify-between cursor-pointer transition ${
-                      compBusinessType === 'OFICINA_COMERCIO' 
+                      compBusinessType === 'INDUSTRIA' || compBusinessType === 'OFICINA_COMERCIO'
                         ? 'bg-slate-800 border-amber-500 ring-2 ring-amber-500/30 shadow-md text-white' 
                         : 'bg-slate-800/60 border-slate-700 text-slate-300 hover:border-slate-600'
                     }`}
@@ -3046,20 +3107,20 @@ export default function UserManagementView({
                       <input 
                         type="radio" 
                         name="compBusinessTypeRadio" 
-                        value="OFICINA_COMERCIO" 
-                        checked={compBusinessType === 'OFICINA_COMERCIO'} 
+                        value="INDUSTRIA" 
+                        checked={compBusinessType === 'INDUSTRIA' || compBusinessType === 'OFICINA_COMERCIO'} 
                         onChange={() => {
-                          setCompBusinessType('OFICINA_COMERCIO');
+                          setCompBusinessType('INDUSTRIA');
                           setHasUnsavedChanges(true);
                         }}
                         className="h-4 w-4 text-amber-500 border-slate-600 focus:ring-amber-500 cursor-pointer"
                       />
                       <span className="font-bold text-xs text-white flex items-center gap-1">
-                        <Building2 className="w-3.5 h-3.5 text-amber-400" /> Oficina + Comércio
+                        <Building2 className="w-3.5 h-3.5 text-amber-400" /> 🏭 Indústria & Produção (PCP)
                       </span>
                     </div>
                     <span className="text-[11px] text-slate-400 leading-normal">
-                      Estrutura Híbrida: Atende serviços automotivos (OS) e vendas diretas de peças no balcão.
+                      Operação industrial completa: Engenharia de Produto (BOM), Ordens de Produção (OP), Rastreabilidade de Lotes, Controle de Estoque Operacional e Custos.
                     </span>
                   </label>
                 </div>
@@ -3631,6 +3692,66 @@ export default function UserManagementView({
                 </div>
               </div>
 
+              {/* TAXA DE IMPLANTAÇÃO E TREINAMENTO DO SISTEMA (EMPRESA ATUAL) */}
+              <div className="p-4 rounded-xl border border-indigo-200 bg-indigo-50/40 space-y-3 sm:col-span-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <DollarSign className="w-5 h-5 text-indigo-600" />
+                    <div>
+                      <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wide">
+                        Taxa de Implantação & Treinamento do Sistema
+                      </h4>
+                      <p className="text-[11px] text-slate-500">
+                        Indique se houve cobrança de taxa de implantação/parametrização do sistema para esta empresa.
+                      </p>
+                    </div>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input
+                      id="comp-has-impl-fee-checkbox"
+                      type="checkbox"
+                      checked={compHasImplementationFee}
+                      onChange={e => {
+                        setCompHasImplementationFee(e.target.checked);
+                        setHasUnsavedChanges(true);
+                      }}
+                      className="sr-only peer"
+                    />
+                    <div className="w-11 h-6 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
+                  </label>
+                </div>
+
+                {compHasImplementationFee ? (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-white p-3.5 rounded-xl border border-indigo-200 animate-fade-in">
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-indigo-900 uppercase" htmlFor="comp-impl-fee-input">
+                        Valor Negociado da Implantação (R$) *
+                      </label>
+                      <input
+                        id="comp-impl-fee-input"
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        value={compImplementationFee}
+                        onChange={e => {
+                          setCompImplementationFee(Number(e.target.value));
+                          setHasUnsavedChanges(true);
+                        }}
+                        className="w-full text-xs p-2.5 border border-indigo-300 rounded-lg bg-indigo-50/30 font-mono font-bold text-indigo-950"
+                      />
+                    </div>
+                    <div className="flex items-center text-[11px] text-indigo-700 bg-indigo-50 p-2.5 rounded-lg border border-indigo-100 font-medium">
+                      Este valor será expresso na Cláusula 4.2 do Contrato de Prestação de Serviços para cobrança formal na entrada do cliente.
+                    </div>
+                  </div>
+                ) : (
+                  <div className="p-3 rounded-lg bg-slate-100/90 border border-slate-200 text-xs text-slate-600 font-medium flex items-center gap-2">
+                    <span>ℹ️</span>
+                    <span><strong>Isenção de Implantação:</strong> O contrato será emitido com cláusula explícita atestando que <strong>não foi cobrado valor de implantação/treinamento</strong>.</span>
+                  </div>
+                )}
+              </div>
+
               {/* MÓDULO DE CONTRATO DE PRESTAÇÃO DE SERVIÇOS SAAS & UPLOAD */}
               <div className="space-y-4 sm:col-span-2 bg-gradient-to-br from-indigo-900 via-slate-900 to-indigo-950 p-5 rounded-2xl text-white shadow-md border border-indigo-700/40 mt-2">
                 <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b border-indigo-700/50 pb-3">
@@ -4047,18 +4168,18 @@ export default function UserManagementView({
                     <span className="text-[10px] text-slate-500 font-normal pl-5">Vendas Balcão, PDV e Estoque de Peças</span>
                   </label>
 
-                  <label className={`p-2.5 rounded-lg border flex flex-col gap-1 cursor-pointer text-xs transition ${newCompBusinessType === 'OFICINA_COMERCIO' ? 'bg-purple-50 border-purple-600 text-purple-950 font-bold shadow-xs' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}>
+                  <label className={`p-2.5 rounded-lg border flex flex-col gap-1 cursor-pointer text-xs transition ${newCompBusinessType === 'INDUSTRIA' || newCompBusinessType === 'OFICINA_COMERCIO' ? 'bg-amber-50 border-amber-600 text-amber-950 font-bold shadow-xs' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}>
                     <div className="flex items-center gap-2">
                       <input 
                         type="radio" 
                         name="newCompBusinessTypeRadio" 
-                        value="OFICINA_COMERCIO"
-                        checked={newCompBusinessType === 'OFICINA_COMERCIO'} 
-                        onChange={() => setNewCompBusinessType('OFICINA_COMERCIO')} 
+                        value="INDUSTRIA"
+                        checked={newCompBusinessType === 'INDUSTRIA' || newCompBusinessType === 'OFICINA_COMERCIO'} 
+                        onChange={() => setNewCompBusinessType('INDUSTRIA')} 
                       />
-                      <span>⚡ Oficina + Comércio</span>
+                      <span>🏭 Indústria & Produção (PCP)</span>
                     </div>
-                    <span className="text-[10px] text-slate-500 font-normal pl-5">Híbrido completo: Serviços e Balcão</span>
+                    <span className="text-[10px] text-slate-500 font-normal pl-5">Engenharia BOM, Ordens de Produção e Lotes</span>
                   </label>
                 </div>
               </div>
@@ -4179,6 +4300,56 @@ export default function UserManagementView({
                     />
                   </div>
                 </div>
+              </div>
+
+              {/* Taxa de Implantação e Treinamento do Sistema */}
+              <div className="p-4 rounded-xl border border-indigo-100 bg-indigo-50/50 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <DollarSign className="w-4 h-4 text-indigo-600" />
+                    <span className="text-xs font-bold text-slate-800">
+                      Taxa de Implantação & Treinamento do Sistema
+                    </span>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input
+                      id="new-comp-has-impl-fee-checkbox"
+                      type="checkbox"
+                      checked={newCompHasImplementationFee}
+                      onChange={e => setNewCompHasImplementationFee(e.target.checked)}
+                      className="sr-only peer"
+                    />
+                    <div className="w-9 h-5 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-indigo-600"></div>
+                  </label>
+                </div>
+                <p className="text-[11px] text-slate-600">
+                  Indique se foi cobrada taxa de implantação, parametrização e treinamento inicial da equipe.
+                </p>
+
+                {newCompHasImplementationFee ? (
+                  <div className="space-y-1 animate-fade-in bg-white p-3 rounded-lg border border-indigo-200">
+                    <label className="text-[10px] font-bold text-indigo-900 uppercase" htmlFor="new-comp-impl-fee-input">
+                      Valor Negociado da Implantação (R$) *
+                    </label>
+                    <input
+                      id="new-comp-impl-fee-input"
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={newCompImplementationFee}
+                      onChange={e => setNewCompImplementationFee(Number(e.target.value))}
+                      placeholder="500,00"
+                      className="w-full text-xs p-2 border border-indigo-300 rounded-lg bg-indigo-50/30 font-mono font-bold text-indigo-950"
+                    />
+                    <p className="text-[10px] text-indigo-600 font-medium">
+                      Este valor constará formalmente discriminado na Cláusula Quarta do Contrato de Prestação de Serviços.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="p-2.5 rounded-lg bg-slate-100/80 border border-slate-200 text-[11px] text-slate-500 font-medium">
+                    ℹ️ Nenhuma taxa de implantação/treinamento será cobrada (isenção total registrada no contrato).
+                  </div>
+                )}
               </div>
 
               <PrivacyLgpdFooter
@@ -4366,26 +4537,39 @@ export default function UserManagementView({
               {/* Cláusula Terceira */}
               <div className="space-y-1.5">
                 <h3 className="font-bold text-slate-900 uppercase text-xs border-b border-slate-300 pb-1">
-                  CLÁUSULA TERCEIRA - DA SEGURANÇA E PROTEÇÃO DE DADOS (LGPD)
+                  CLÁUSULA TERCEIRA - DA SEGURANÇA, CERTIFICADO DIGITAL A1, INTEGRAÇÃO BANCÁRIA E LGPD
                 </h3>
                 <p>
-                  3.1. Em observância à <strong>Lei Geral de Proteção de Dados (Lei nº 13.709/2018 - LGPD)</strong>, a CONTRATADA declara que adota medidas técnicas, organizacionais e de criptografia para proteger os dados armazenados contra acessos não autorizados, vazamentos ou perda acidental.
+                  3.1. <strong>Certificado Digital ICP-Brasil (Padrão A1):</strong> Para a emissão de documentos fiscais eletrônicos (NF-e Modelo 55, NFC-e Modelo 65 e NFS-e), a CONTRATANTE poderá realizar o upload de seu Certificado Digital A1 (.pfx / .p12). A CONTRATADA compromete-se a armazenar o certificado e sua respectiva senha com <strong>criptografia de chave simétrica de ponta a ponta (AES-256)</strong> e isolamento lógico por tenant, sendo seu uso restrito e exclusivo à assinatura e transmissão de documentos fiscais perante a Secretaria da Fazenda Estadual (SEFAZ) e Prefeituras Municipais.
                 </p>
                 <p>
-                  3.2. A CONTRATANTE declara-se titular dos dados operacionais e de seus clientes inseridos no sistema, cabendo à CONTRATADA apenas o papel de operadora de dados sob as diretrizes legais.
+                  3.2. <strong>Dados Bancários, Boletos e PIX:</strong> As informações de contas bancárias, credenciais de API financeira, chaves PIX e carteiras de cobrança registradas pela CONTRATANTE destinam-se unicamente ao processamento de recebimentos e geração de boletos/PIX em favor da própria CONTRATANTE. O sistema <strong>não realiza transações de débito não autorizadas</strong> e opera sob rígidas travas de autenticação.
+                </p>
+                <p>
+                  3.3. <strong>Arquitetura de Segurança e Prevenção de Intrusão (Anti-Invasão):</strong> A infraestrutura do <strong>MotorDesk</strong> implementa múltiplas camadas de proteção cibernética, incluindo tráfego 100% criptografado (TLS/HTTPS com certificados SSL modernos), proteção contra ataques DDoS e injeção de código (SQL Injection / XSS), controle de acesso por níveis de operador (RBAC), logs imutáveis de auditoria de operações e política automatizada de backups redundantes.
+                </p>
+                <p>
+                  3.4. <strong>Conformidade com a LGPD (Lei nº 13.709/2018):</strong> A CONTRATANTE é a controladora titular dos dados cadastrais, operacionais e de seus clientes finais. A CONTRATADA atua estritamente como operadora tecnológica de tratamento de dados, garantindo sigilo absoluto, não comercialização e não compartilhamento de dados com terceiros não autorizados.
                 </p>
               </div>
 
               {/* Cláusula Quarta */}
               <div className="space-y-1.5">
                 <h3 className="font-bold text-slate-900 uppercase text-xs border-b border-slate-300 pb-1">
-                  CLÁUSULA QUARTA - DOS VALORES E CONDIÇÕES DE PAGAMENTO
+                  CLÁUSULA QUARTA - DOS VALORES, TAXA DE IMPLANTAÇÃO E CONDIÇÕES DE PAGAMENTO
                 </h3>
                 <p>
-                  4.1. Pela prestação dos serviços e licença de uso acordada, a CONTRATANTE pagará à CONTRATADA a mensalidade no valor ajustado de <strong>R$ {subMonthlyFee.toFixed(2)} ({subMonthlyFee.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })})</strong>.
+                  4.1. <strong>Mensalidade do Sistema:</strong> Pela prestação dos serviços e licença de uso acordada, a CONTRATANTE pagará à CONTRATADA a mensalidade global ajustada no valor de <strong>R$ {subMonthlyFee.toFixed(2)} ({subMonthlyFee.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })})</strong>.
                 </p>
                 <p>
-                  4.2. O inadimplemento da mensalidade por prazo superior a 15 (quinze) dias poderá acarretar a suspensão temporária dos acessos operacionais ao sistema até a devida regularização.
+                  4.2. <strong>Taxa de Implantação e Treinamento:</strong> {
+                    compHasImplementationFee
+                      ? <>Foi ajustada taxa de implantação, parametrização técnica inicial e treinamento da equipe no valor negociado de <strong>R$ {(compImplementationFee || 0).toFixed(2)} ({(compImplementationFee || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })})</strong>, a ser quitada conforme acordado entre as partes na ativação da conta.</>
+                      : <>Fica expressamente consignado que <strong>NÃO HOUVE COBRANÇA DE TAXA DE IMPLANTAÇÃO OU TREINAMENTO</strong> para a ativação da CONTRATANTE no sistema MotorDesk (isenção total de implantação concedida pela CONTRATADA).</>
+                  }
+                </p>
+                <p>
+                  4.3. <strong>Inadimplemento:</strong> O inadimplemento da mensalidade por prazo superior a 15 (quinze) dias poderá acarretar a suspensão temporária dos acessos operacionais ao sistema até a devida regularização financeira.
                 </p>
               </div>
 

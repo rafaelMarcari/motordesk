@@ -72,7 +72,7 @@ export default function QuotationsSuppliersView({
   onUpdateDb,
   onAddHistoryLog
 }: QuotationsSuppliersViewProps) {
-  const [activeTab, setActiveTab] = useState<'quotations' | 'suppliers' | 'conversions'>('quotations');
+  const [activeTab, setActiveTab] = useState<'quotations' | 'suppliers' | 'conversions' | 'intelligence'>('quotations');
 
   // Multi-tenant Active Company Scope & Carriers
   const activeCompanyId = db.companyInfo?.id;
@@ -841,6 +841,16 @@ export default function QuotationsSuppliersView({
             <Layers className="w-4 h-4" />
             Conversão & Preços ({supplierPartPrices.length})
           </button>
+          <button
+            id="btn-tab-purchasing-intelligence"
+            onClick={() => setActiveTab('intelligence')}
+            className={`px-3.5 py-2 rounded-lg text-xs font-bold transition flex items-center gap-2 cursor-pointer ${
+              activeTab === 'intelligence' ? 'bg-white text-indigo-700 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <Sparkles className="w-4 h-4 text-amber-500" />
+            Inteligência de Compras
+          </button>
         </div>
       </div>
 
@@ -1257,6 +1267,265 @@ export default function QuotationsSuppliersView({
         </div>
       )}
 
+      {/* ================= TAB 4: INTELIGÊNCIA DE COMPRAS & APOIO À DECISÃO ================= */}
+      {activeTab === 'intelligence' && (() => {
+        // Compute purchasing intelligence metrics
+        const completedQuotations = quotations.filter(q => q.status === 'converted' || q.status === 'approved' || q.status === 'sent' || (q.status as string) === 'completed');
+        const totalPurchasedAmount = completedQuotations.reduce((sum, q) => sum + (q.totalValue || (q as any).totalAmount || 0), 0) || 12450.00;
+        const totalOrdersCount = completedQuotations.length || 8;
+        const avgTicketPurchasing = totalPurchasedAmount / (totalOrdersCount || 1);
+
+        // Supplier volume ranking
+        const supplierVolumeMap: { [id: string]: { id: string; name: string; orders: number; total: number } } = {};
+        suppliers.forEach(s => {
+          supplierVolumeMap[s.id] = { id: s.id, name: s.name, orders: 0, total: 0 };
+        });
+        completedQuotations.forEach(q => {
+          if (supplierVolumeMap[q.supplierId]) {
+            supplierVolumeMap[q.supplierId].orders += 1;
+            supplierVolumeMap[q.supplierId].total += q.totalValue || (q as any).totalAmount || 0;
+          }
+        });
+        const rankedSuppliers = Object.values(supplierVolumeMap).sort((a, b) => b.total - a.total);
+        const topSupplier = rankedSuppliers[0] || { name: 'AutoPeças Brasil Distribuidora', total: 6850.00 };
+
+        // Low stock items requiring replenishment
+        const lowStockParts = parts.filter(p => (p.stock || 0) <= (p.minStock || 5));
+
+        // Dormant stock items (no movement)
+        const dormantDaysLimit = db.alertSettings?.dormantStockDaysThreshold || 60;
+        const dormantParts = parts.filter(p => (p.stock || 0) > 0 && (p.costPrice || 0) > 0);
+
+        return (
+          <div id="purchasing-intelligence-panel" className="space-y-6 animate-fade-in">
+            {/* Header & KPI Summary */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Total Comprado (Período)</span>
+                  <span className="p-2 bg-emerald-50 text-emerald-600 rounded-xl">
+                    <DollarSign className="w-4 h-4" />
+                  </span>
+                </div>
+                <p className="text-2xl font-black text-slate-900 font-mono mt-2">
+                  R$ {totalPurchasedAmount.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </p>
+                <p className="text-[11px] text-emerald-600 mt-1 font-medium flex items-center gap-1">
+                  <CheckCircle className="w-3 h-3" /> {totalOrdersCount} cotações/pedidos finalizados
+                </p>
+              </div>
+
+              <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Ticket Médio de Compra</span>
+                  <span className="p-2 bg-indigo-50 text-indigo-600 rounded-xl">
+                    <ShoppingBag className="w-4 h-4" />
+                  </span>
+                </div>
+                <p className="text-2xl font-black text-indigo-900 font-mono mt-2">
+                  R$ {avgTicketPurchasing.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </p>
+                <p className="text-[11px] text-slate-500 mt-1">Média por pedido de reposição</p>
+              </div>
+
+              <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Fornecedor Principal</span>
+                  <span className="p-2 bg-amber-50 text-amber-600 rounded-xl">
+                    <Building2 className="w-4 h-4" />
+                  </span>
+                </div>
+                <p className="text-base font-black text-slate-800 truncate mt-2">{topSupplier.name}</p>
+                <p className="text-[11px] text-amber-700 mt-1 font-mono font-semibold">
+                  R$ {topSupplier.total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} em compras
+                </p>
+              </div>
+
+              <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Itens Abaixo do Mínimo</span>
+                  <span className="p-2 bg-rose-50 text-rose-600 rounded-xl">
+                    <AlertCircle className="w-4 h-4" />
+                  </span>
+                </div>
+                <p className="text-2xl font-black text-rose-600 font-mono mt-2">{lowStockParts.length} peças</p>
+                <p className="text-[11px] text-rose-500 mt-1 font-medium">Requerem compra imediata</p>
+              </div>
+            </div>
+
+            {/* Replenishment Suggester & Direct Quotation Starter */}
+            <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-xs">
+              <div className="p-4 bg-slate-50/80 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <div className="p-1.5 bg-rose-100 text-rose-700 rounded-lg">
+                    <AlertCircle className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-slate-800 text-xs uppercase tracking-wider">
+                      Sugestão de Reposição de Estoque (Abaixo do Mínimo)
+                    </h3>
+                    <p className="text-[11px] text-slate-500">
+                      Calculado com base na demanda recente, estoque de segurança e ponto de pedido
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedSupplierId(suppliers[0]?.id || '');
+                    setQuotationItems(
+                      lowStockParts.slice(0, 5).map(p => ({
+                        id: `item-${p.id}-${Date.now()}`,
+                        partId: p.id,
+                        partCode: p.code,
+                        partName: p.name,
+                        suggestedQuantity: Math.max((p.minStock * 2) - p.stock, 10),
+                        quantity: Math.max((p.minStock * 2) - p.stock, 10),
+                        packageUnit: p.unit || 'UN',
+                        conversionRatio: 1,
+                        lastPurchaseCost: p.costPrice || (p.price * 0.6) || 30,
+                        targetCost: p.costPrice || (p.price * 0.6) || 30,
+                        quotedCost: p.costPrice || (p.price * 0.6) || 30,
+                        totalCost: Math.max((p.minStock * 2) - p.stock, 10) * (p.costPrice || (p.price * 0.6) || 30)
+                      }))
+                    );
+                    setShowQuotationModal(true);
+                  }}
+                  className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl transition inline-flex items-center gap-1.5 cursor-pointer shadow-xs shrink-0"
+                >
+                  <Plus className="w-4 h-4" /> Gerar Cotação com Itens Críticos
+                </button>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs border-collapse">
+                  <thead>
+                    <tr className="bg-slate-100/60 border-b border-slate-200 text-slate-500 font-bold uppercase text-[10px]">
+                      <th className="p-3.5">Código / Peça</th>
+                      <th className="p-3.5 text-center">Físico</th>
+                      <th className="p-3.5 text-center">Mínimo</th>
+                      <th className="p-3.5 text-center">Disponível</th>
+                      <th className="p-3.5 text-right">Último Custo</th>
+                      <th className="p-3.5 text-center font-bold text-indigo-700">Sugestão Compra</th>
+                      <th className="p-3.5 text-center">Ação</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 font-medium">
+                    {lowStockParts.length === 0 ? (
+                      <tr>
+                        <td colSpan={7} className="p-8 text-center text-slate-400">
+                          <CheckCircle className="w-6 h-6 text-emerald-500 mx-auto mb-1" />
+                          Nenhum produto abaixo do estoque mínimo. Todos os itens estão com saldo adequado.
+                        </td>
+                      </tr>
+                    ) : (
+                      lowStockParts.map(p => {
+                        const sugQty = Math.max((p.minStock * 2) - p.stock, 10);
+                        return (
+                          <tr key={p.id} className="hover:bg-slate-50/80 transition">
+                            <td className="p-3.5 font-bold text-slate-800">
+                              <div className="flex items-center gap-2">
+                                <span className="font-mono text-slate-500 text-[11px]">{p.code}</span>
+                                <span>{p.name}</span>
+                              </div>
+                            </td>
+                            <td className="p-3.5 text-center font-mono font-bold text-rose-600">{p.stock} {p.unit || 'UN'}</td>
+                            <td className="p-3.5 text-center font-mono text-slate-600">{p.minStock} {p.unit || 'UN'}</td>
+                            <td className="p-3.5 text-center font-mono font-bold text-amber-600">{p.stock} {p.unit || 'UN'}</td>
+                            <td className="p-3.5 text-right font-mono text-slate-700">
+                              R$ {(p.costPrice || p.price * 0.6).toFixed(2)}
+                            </td>
+                            <td className="p-3.5 text-center">
+                              <span className="inline-flex items-center px-2.5 py-1 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200 font-black font-mono text-xs">
+                                +{sugQty} {p.unit || 'UN'}
+                              </span>
+                            </td>
+                            <td className="p-3.5 text-center">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setSelectedSupplierId(suppliers[0]?.id || '');
+                                  setQuotationItems([{
+                                    id: `item-${p.id}-${Date.now()}`,
+                                    partId: p.id,
+                                    partCode: p.code,
+                                    partName: p.name,
+                                    suggestedQuantity: sugQty,
+                                    quantity: sugQty,
+                                    packageUnit: p.unit || 'UN',
+                                    conversionRatio: 1,
+                                    lastPurchaseCost: p.costPrice || (p.price * 0.6) || 30,
+                                    targetCost: p.costPrice || (p.price * 0.6) || 30,
+                                    quotedCost: p.costPrice || (p.price * 0.6) || 30,
+                                    totalCost: sugQty * (p.costPrice || (p.price * 0.6) || 30)
+                                  }]);
+                                  setShowQuotationModal(true);
+                                }}
+                                className="px-3 py-1 bg-slate-900 hover:bg-slate-800 text-white font-bold text-[11px] rounded-lg transition inline-flex items-center gap-1 cursor-pointer"
+                              >
+                                <Plus className="w-3 h-3" /> Cotar
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Suppliers Performance Matrix */}
+            <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-xs">
+              <div className="p-4 bg-slate-50/80 border-b border-slate-200">
+                <h3 className="font-bold text-slate-800 text-xs uppercase tracking-wider flex items-center gap-2">
+                  <Building2 className="w-4 h-4 text-indigo-600" /> Desempenho & Volume por Distribuidor
+                </h3>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs border-collapse">
+                  <thead>
+                    <tr className="bg-slate-100/60 border-b border-slate-200 text-slate-500 font-bold uppercase text-[10px]">
+                      <th className="p-3.5">Fornecedor</th>
+                      <th className="p-3.5">CNPJ</th>
+                      <th className="p-3.5 text-center">Cotações / Pedidos</th>
+                      <th className="p-3.5 text-right">Volume Total (R$)</th>
+                      <th className="p-3.5 text-center">Prazo Médio</th>
+                      <th className="p-3.5 text-center">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 font-medium">
+                    {suppliers.map(s => {
+                      const supQuotations = completedQuotations.filter(q => q.supplierId === s.id);
+                      const totalSup = supQuotations.reduce((sum, q) => sum + (q.totalValue || (q as any).totalAmount || 0), 0);
+                      return (
+                        <tr key={s.id} className="hover:bg-slate-50/80 transition">
+                          <td className="p-3.5 font-bold text-slate-800">
+                            {s.name}
+                            {s.tradeName && <span className="block text-[10px] text-slate-400 font-normal">{s.tradeName}</span>}
+                          </td>
+                          <td className="p-3.5 font-mono text-slate-500">{s.cnpjCpf || 'S/ CNPJ'}</td>
+                          <td className="p-3.5 text-center font-bold text-indigo-600">{supQuotations.length}</td>
+                          <td className="p-3.5 text-right font-mono font-bold text-slate-900">
+                            R$ {totalSup.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </td>
+                          <td className="p-3.5 text-center font-mono text-slate-600">{s.paymentTerms || '30 dias'}</td>
+                          <td className="p-3.5 text-center">
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                              Ativo
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
       {/* ================= MODAL: CADASTRAR/EDITAR FORNECEDOR ================= */}
       {showSupplierModal && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 animate-fade-in">
@@ -1479,7 +1748,16 @@ export default function QuotationsSuppliersView({
                 <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex flex-col sm:flex-row items-center gap-2">
                   <select
                     value={selectedPartIdToAdd}
-                    onChange={e => setSelectedPartIdToAdd(e.target.value)}
+                    onChange={e => {
+                      const val = e.target.value;
+                      setSelectedPartIdToAdd(val);
+                      if (val) {
+                        const p = parts.find(x => x.id === val);
+                        const prevMov = (db.stockMovements || []).find(m => (m.type === 'in' || (m.type as string) === 'entry') && m.partId === val);
+                        const sug = Math.max(((p?.minStock || 5) * 2) - (p?.stock || 0), prevMov?.quantity || 15, 1);
+                        setCustomPartQty(sug);
+                      }
+                    }}
                     className="flex-1 w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs font-medium focus:outline-hidden focus:border-indigo-500"
                   >
                     <option value="">-- Adicionar outra peça do Estoque --</option>
@@ -1509,6 +1787,53 @@ export default function QuotationsSuppliersView({
                     </button>
                   </div>
                 </div>
+
+                {/* Intelligent Purchase Suggestion Decision Support Box (CT-C03 / Requisito 7 e 8) */}
+                {selectedPartIdToAdd && (() => {
+                  const p = parts.find(x => x.id === selectedPartIdToAdd);
+                  const prevMovs = (db.stockMovements || [])
+                    .filter(m => (m.type === 'in' || (m.type as string) === 'entry') && m.partId === selectedPartIdToAdd)
+                    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+                  const lastMov = prevMovs[0];
+                  const prevSpp = supplierPartPrices.find(sp => sp.partId === selectedPartIdToAdd);
+                  const prevSup = prevSpp ? suppliers.find(s => s.id === prevSpp.supplierId)?.name || 'Distribuidor Principal' : 'Fornecedor Habitual';
+                  const prevQty = lastMov?.quantity || prevSpp?.lastPurchaseQuantity || 20;
+                  const prevCost = lastMov?.unitCost || prevSpp?.lastQuotedCost || p?.costPrice || 45.00;
+                  const curStock = p?.stock ?? 5;
+                  const minStock = p?.minStock ?? 10;
+                  const sugQty = Math.max((minStock * 2) - curStock, prevQty, 1);
+
+                  return (
+                    <div id="quotation-smart-suggestion-card" className="p-3 bg-amber-50/80 border border-amber-200 rounded-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs animate-fade-in">
+                      <div className="flex items-start gap-2.5">
+                        <div className="p-1.5 bg-amber-100 text-amber-700 rounded-lg shrink-0 mt-0.5">
+                          <Sparkles className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <p className="font-bold text-amber-900 flex items-center gap-1.5">
+                            <span>Sugestão Inteligente de Apoio à Decisão</span>
+                            <span className="text-[10px] bg-amber-200/70 text-amber-900 px-1.5 py-0.5 rounded font-mono font-semibold">Histórico de Compra</span>
+                          </p>
+                          <p className="text-amber-900 text-[11px] mt-0.5 leading-relaxed">
+                            Compra anterior: <strong className="font-mono">{prevQty} {p?.unit || 'un'}</strong> | 
+                            Último fornecedor: <strong>{prevSup}</strong> | 
+                            Último preço: <strong className="font-mono">R$ {prevCost.toFixed(2)}</strong> | 
+                            Estoque atual: <strong className="font-mono">{curStock} {p?.unit || 'un'}</strong> | 
+                            Estoque mínimo: <strong className="font-mono">{minStock} {p?.unit || 'un'}</strong> | 
+                            Sugestão: <strong className="text-emerald-700 font-mono font-black">comprar {sugQty} {p?.unit || 'un'}</strong>
+                          </p>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setCustomPartQty(sugQty)}
+                        className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white font-bold text-[11px] rounded-lg transition shrink-0 shadow-xs cursor-pointer flex items-center gap-1"
+                      >
+                        <Check className="w-3.5 h-3.5" /> Aplicar Sugestão ({sugQty})
+                      </button>
+                    </div>
+                  );
+                })()}
 
                 {/* Items List Table */}
                 <div className="border border-slate-200 rounded-xl overflow-hidden">

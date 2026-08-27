@@ -1,6 +1,6 @@
 {
   "name": "MotorDesk",
-  "description": "Sistema de gerenciamento de oficina mecânica e painel interativo de Portfólio QA (PRD, Casos de Teste, Matriz de Rastreabilidade e Automação Cypress).",
+  "description": "Sistema integrado de gestão para Oficina Mecânica, Comércio & Autopeças e Indústria & PCP, com controle modular RBAC, faturamento, estoque real e rastreabilidade operacional.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

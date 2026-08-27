@@ -71,7 +71,8 @@ import {
   ChevronRight, 
   Sparkles, 
   Wrench as ToolIcon,
-  Ruler
+  Ruler,
+  Factory
 } from 'lucide-react';
 
 // View Imports
@@ -98,6 +99,7 @@ import { SalesView } from './components/SalesView';
 import WithdrawalView from './components/WithdrawalView';
 import CarriersView from './components/CarriersView';
 import UnitsOfMeasureView from './components/UnitsOfMeasureView';
+import IndustrialView from './components/IndustrialView';
 import NotificationToastPopup from './components/NotificationToastPopup';
 import NotificationsModal from './components/NotificationsModal';
 import LandingPresentationView, { LandingContent } from './components/LandingPresentationView';
@@ -148,7 +150,8 @@ type ViewID =
   | 'users' 
   | 'profile' 
   | 'qa_panel'
-  | 'data_migration';
+  | 'data_migration'
+  | 'industry';
 
 const VIEW_PERMISSION_MAP: Record<ViewID, keyof UserPermissions | null> = {
   dashboard: 'accessDashboard',
@@ -173,7 +176,8 @@ const VIEW_PERMISSION_MAP: Record<ViewID, keyof UserPermissions | null> = {
   users: 'accessUserManagement',
   profile: null,
   qa_panel: 'accessQAPanel',
-  data_migration: 'accessQAPanel'
+  data_migration: 'accessQAPanel',
+  industry: 'accessProduction'
 };
 
 export default function App() {
@@ -353,6 +357,7 @@ export default function App() {
 
     const viewPermissionMap: Record<ViewID, keyof UserPermissions | null> = {
       dashboard: 'accessDashboard',
+      industry: 'accessIndustrialDashboard',
       sales: 'accessSales',
       withdrawals: 'accessWithdrawals',
       fiscal_conference: 'accessFiscal',
@@ -693,8 +698,13 @@ export default function App() {
       taxRules: db.taxRules || [],
       xmlImportRecords: db.xmlImportRecords || [],
       unitsOfMeasure: (db.unitsOfMeasure || []).filter(item => item.isGlobal || !item.companyId || (item.companyId || 'comp-1') === activeCompanyId),
+      boms: (db.boms || db.billOfMaterials || []).filter(item => !item.companyId || item.companyId === activeCompanyId || (activeBusinessType === 'INDUSTRIA' && !item.companyId)),
+      billOfMaterials: (db.boms || db.billOfMaterials || []).filter(item => !item.companyId || item.companyId === activeCompanyId || (activeBusinessType === 'INDUSTRIA' && !item.companyId)),
+      productionOrders: (db.productionOrders || []).filter(item => !item.companyId || item.companyId === activeCompanyId || (activeBusinessType === 'INDUSTRIA' && !item.companyId)),
+      productLots: (db.productLots || []).filter(item => !item.companyId || item.companyId === activeCompanyId || (activeBusinessType === 'INDUSTRIA' && !item.companyId)),
+      operationalAlerts: (db.operationalAlerts || []).filter(item => !item.companyId || item.companyId === activeCompanyId || (activeBusinessType === 'INDUSTRIA' && !item.companyId)),
     };
-  }, [db, activeCompanyId, activeCompanyObj]);
+  }, [db, activeCompanyId, activeCompanyObj, activeBusinessType]);
 
   // State Updaters passed to Views (Preserving multi-tenant data for other companies)
   const handleSaveUnitsOfMeasure = (units: UnitOfMeasure[]) => {
@@ -1196,6 +1206,7 @@ export default function App() {
       // Determine default accessible landing view based on user permissions
       const viewPermissionMap: Record<ViewID, keyof UserPermissions | null> = {
         dashboard: 'accessDashboard',
+        industry: 'accessIndustrialDashboard',
         sales: 'accessSales',
         withdrawals: 'accessWithdrawals',
         fiscal_conference: 'accessFiscal',
@@ -1757,7 +1768,7 @@ export default function App() {
               </button>
             )}
 
-            {(currentUser.permissions.accessWithdrawals ?? true) && isViewAllowedForBusinessType('withdrawals', activeBusinessType) && (
+            {Boolean(currentUser.permissions.accessWithdrawals) && isViewAllowedForBusinessType('withdrawals', activeBusinessType) && (
               <button 
                 id="menu-btn-withdrawals"
                 onClick={() => !isModuleLocked('accessWithdrawals') && navigateToView('withdrawals')}
@@ -1867,7 +1878,7 @@ export default function App() {
               </button>
             )}
 
-            {(currentUser.permissions.accessUnitsOfMeasure ?? (currentUser.role === 'admin' || currentUser.role === 'qa')) && (
+            {Boolean(currentUser.permissions.accessUnitsOfMeasure) && (
               <button 
                 id="menu-btn-units-of-measure"
                 onClick={() => navigateToView('units_of_measure')}
@@ -1906,7 +1917,7 @@ export default function App() {
             )}
 
             {/* MENU GRUPO FINANCEIRO COM SUBMENU AO PASSAR O MOUSE / HOVER */}
-            {(currentUser.permissions.accessFinancial || currentUser.permissions.accessAccountsReceivable || currentUser.permissions.accessAccountsPayable || (currentUser.permissions.accessFiscal ?? true)) && isViewAllowedForBusinessType('financial', activeBusinessType) && (
+            {Boolean(currentUser.permissions.accessFinancial || currentUser.permissions.accessAccountsReceivable || currentUser.permissions.accessAccountsPayable || currentUser.permissions.accessFiscal) && isViewAllowedForBusinessType('financial', activeBusinessType) && (
               <div 
                 className="relative space-y-1"
                 onMouseEnter={() => setIsFinSubmenuOpen(true)}
@@ -1978,7 +1989,7 @@ export default function App() {
                       </button>
                     )}
 
-                    {(currentUser.permissions.accessFiscal ?? true) && (
+                    {Boolean(currentUser.permissions.accessFiscal) && (
                       <button
                         id="submenu-btn-fiscal-conference"
                         onClick={() => !isModuleLocked('accessFiscal') && navigateToView('fiscal_conference')}
@@ -1992,7 +2003,7 @@ export default function App() {
                       </button>
                     )}
 
-                    {(currentUser.permissions.accessFiscal ?? true) && (
+                    {Boolean(currentUser.permissions.accessFiscal) && (
                       <button
                         id="submenu-btn-fiscal"
                         onClick={() => !isModuleLocked('accessFiscal') && navigateToView('fiscal')}
@@ -2071,6 +2082,28 @@ export default function App() {
                   {(!isSidebarCollapsed || isSidebarHovered) && <span className="truncate">Ordens de Serviço</span>}
                 </div>
                 {(!isSidebarCollapsed || isSidebarHovered) && activeCompanyModules.accessServiceOrders === false && (
+                  <span className="text-[9px] bg-amber-500/10 text-amber-500 px-1 py-0.2 rounded border border-amber-500/20 font-mono">🔒</span>
+                )}
+              </button>
+            )}
+
+            {(Boolean(currentUser.permissions.accessProduction) || Boolean(currentUser.permissions.accessIndustrialDashboard)) && isViewAllowedForBusinessType('industry', activeBusinessType) && (
+              <button 
+                id="menu-btn-industry"
+                onClick={() => !isModuleLocked('accessProduction') && navigateToView('industry')}
+                disabled={isModuleLocked('accessProduction')}
+                title="Produção & PCP (BOM/OP)"
+                className={`w-full flex items-center ${(!isSidebarCollapsed || isSidebarHovered) ? 'justify-between px-3' : 'justify-center px-2'} py-2.5 rounded-lg text-xs font-semibold tracking-wide transition ${
+                  isModuleLocked('accessProduction')
+                    ? 'opacity-40 cursor-not-allowed text-slate-500'
+                    : activeView === 'industry' ? 'bg-amber-500 text-slate-950 font-bold shadow-xs' : 'hover:bg-slate-800 text-slate-300 hover:text-slate-100'
+                }`}
+              >
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <Factory className="w-4 h-4 shrink-0 text-amber-400" />
+                  {(!isSidebarCollapsed || isSidebarHovered) && <span className="truncate">Produção & PCP (BOM/OP)</span>}
+                </div>
+                {(!isSidebarCollapsed || isSidebarHovered) && activeCompanyModules.accessProduction === false && (
                   <span className="text-[9px] bg-amber-500/10 text-amber-500 px-1 py-0.2 rounded border border-amber-500/20 font-mono">🔒</span>
                 )}
               </button>
@@ -2459,6 +2492,7 @@ export default function App() {
                 currentUser={currentUser}
                 onSaveTransactions={handleSaveTransactions}
                 onAddHistoryLog={handleAddHistoryLog}
+                onSaveAlertSettings={handleSaveAlertSettings}
               />
             )
           )}
@@ -2542,6 +2576,19 @@ export default function App() {
             )
           )}
 
+          {activeView === 'industry' && (Boolean(currentUser.permissions.accessProduction) || Boolean(currentUser.permissions.accessIndustrialDashboard)) && (
+            isModuleLocked('accessProduction') ? renderLockedScreen() : (
+              <IndustrialView
+                db={scopedDb}
+                currentUser={currentUser}
+                currentCompany={activeCompanyObj || db.companyInfo}
+                onUpdateDb={syncDb}
+                onAddHistoryLog={handleAddHistoryLog}
+                onNavigateToView={navigateToView}
+              />
+            )
+          )}
+
           {activeView === 'history' && currentUser.permissions.accessHistory && (
             isModuleLocked('accessHistory') ? renderLockedScreen() : (
               <HistoryView db={scopedDb} currentUser={currentUser} fullDb={db} />
@@ -2550,7 +2597,7 @@ export default function App() {
 
           {activeView === 'reports' && currentUser.permissions.accessReports && (
             isModuleLocked('accessReports') ? renderLockedScreen() : (
-              <ReportsView db={scopedDb} businessType={activeBusinessType} />
+              <ReportsView db={scopedDb} businessType={activeBusinessType} currentUser={currentUser} />
             )
           )}
 

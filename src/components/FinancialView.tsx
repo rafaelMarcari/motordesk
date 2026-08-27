@@ -6,27 +6,32 @@
 import React, { useState } from 'react';
 import { 
   TrendingUp, TrendingDown, DollarSign, Wallet, Calendar, 
-  Search, Plus, ArrowUpRight, ArrowDownRight, Tag, X, FileText, CheckCircle
+  Search, Plus, ArrowUpRight, ArrowDownRight, Tag, X, FileText, CheckCircle,
+  Bell, Sliders
 } from 'lucide-react';
-import { FinancialTransaction, User } from '../types';
-import { AppDatabase } from '../data/mockData';
+import { FinancialTransaction, User, AlertSettings } from '../types';
+import { AppDatabase, INITIAL_ALERT_SETTINGS } from '../data/mockData';
+import { FinancialAlertsConfigModal } from './FinancialAlertsConfigModal';
 
 interface FinancialViewProps {
   db: AppDatabase;
   currentUser: User;
   onSaveTransactions: (transactions: FinancialTransaction[]) => void;
   onAddHistoryLog: (type: 'budget' | 'service_order' | 'payment' | 'user_activity' | 'system', title: string, description: string, clientId: string, vehicleId: string) => void;
+  onSaveAlertSettings?: (settings: AlertSettings) => void;
 }
 
 export default function FinancialView({
   db,
   currentUser,
   onSaveTransactions,
-  onAddHistoryLog
+  onAddHistoryLog,
+  onSaveAlertSettings
 }: FinancialViewProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [typeFilter, setTypeFilter] = useState<'all' | 'income' | 'expense'>('all');
   const [periodFilter, setPeriodFilter] = useState<'all' | 'today' | 'month' | 'year'>('month');
+  const [isAlertsConfigOpen, setIsAlertsConfigOpen] = useState(false);
 
   // Manual Transaction Modal State
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -131,15 +136,24 @@ export default function FinancialView({
             Visão consolidada de receitas, despesas, saldo em caixa e projeção de entradas e saídas.
           </p>
         </div>
-        {!isFormOpen && (
-          <button 
-            id="btn-add-manual-tx"
-            onClick={() => setIsFormOpen(true)} 
-            className="mt-4 sm:mt-0 flex items-center justify-center gap-2 bg-indigo-600 text-white px-4 py-2.5 rounded-lg text-sm font-semibold hover:bg-indigo-700 transition shadow-xs"
+        <div className="flex items-center gap-2 mt-4 sm:mt-0">
+          <button
+            type="button"
+            onClick={() => setIsAlertsConfigOpen(true)}
+            className="flex items-center justify-center gap-1.5 bg-slate-100 text-slate-700 px-3 py-2 rounded-lg text-xs font-semibold hover:bg-slate-200 transition border border-slate-200 cursor-pointer shadow-2xs"
           >
-            <Plus className="w-4 h-4" /> Lançamento Avulso de Caixa
+            <Bell className="w-3.5 h-3.5 text-indigo-600" /> Parâmetros de Alerta
           </button>
-        )}
+          {!isFormOpen && (
+            <button 
+              id="btn-add-manual-tx"
+              onClick={() => setIsFormOpen(true)} 
+              className="flex items-center justify-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg text-xs font-semibold hover:bg-indigo-700 transition shadow-xs cursor-pointer"
+            >
+              <Plus className="w-4 h-4" /> Lançamento Avulso
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Main KPI Cards */}
@@ -468,6 +482,20 @@ export default function FinancialView({
           </div>
         )}
       </div>
+
+      {/* Financial Alerts Config Modal */}
+      {isAlertsConfigOpen && onSaveAlertSettings && (
+        <FinancialAlertsConfigModal
+          isOpen={isAlertsConfigOpen}
+          onClose={() => setIsAlertsConfigOpen(false)}
+          currentSettings={db.alertSettings || INITIAL_ALERT_SETTINGS}
+          currentUser={currentUser}
+          onSave={(newSettings) => {
+            onSaveAlertSettings(newSettings);
+            setIsAlertsConfigOpen(false);
+          }}
+        />
+      )}
     </div>
   );
 }

@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { User, Client, Vehicle, Part, Service, Budget, ServiceOrder, HistoryEntry, TestCase, StockMovement, CompanyInfo, SystemNotification, AlertSettings, Supplier, SupplierPartPrice, Quotation, AccountReceivable, AccountPayable, FinancialTransaction, MaintenanceLog, PaymentMethodOption, FiscalDocument, BoletoDocument, InterBranchSaleLogistics, SefazApiConfig, TaxOperationNature, TaxRule, XmlImportRecord, CommercialSale, Carrier, GoodsWithdrawalOrder, WithdrawalType, WithdrawalStatus, getDefaultModulesForBusinessType, UnitOfMeasure } from '../types';
+import { User, Client, Vehicle, Part, Service, Budget, ServiceOrder, HistoryEntry, TestCase, StockMovement, CompanyInfo, SystemNotification, AlertSettings, Supplier, SupplierPartPrice, Quotation, AccountReceivable, AccountPayable, FinancialTransaction, MaintenanceLog, PaymentMethodOption, FiscalDocument, BoletoDocument, InterBranchSaleLogistics, SefazApiConfig, TaxOperationNature, TaxRule, XmlImportRecord, CommercialSale, Carrier, GoodsWithdrawalOrder, WithdrawalType, WithdrawalStatus, getDefaultModulesForBusinessType, UnitOfMeasure, BillOfMaterials, ProductionOrder, ProductLot, OperationalAlert } from '../types';
 
 export const INITIAL_UNITS_OF_MEASURE: UnitOfMeasure[] = [
   { id: 'uom-un', name: 'Unidade', acronym: 'UN', category: 'QUANTIDADE', calculationType: 'SIMPLES', conversionFactor: 1, decimalPlaces: 0, active: true, isGlobal: true, notes: 'Contagem unitária inteira padrão' },
@@ -421,6 +421,19 @@ export const INITIAL_ALERT_SETTINGS: AlertSettings = {
   defaultDepositPercentage: 30,
   requireDepositToExecuteOS: true,
   allowPerClientPaymentOverride: true,
+
+  // Alertas Financeiros e Estoque Gerencial
+  enableReceivableDueAlerts: true,
+  receivableDueNoticeDays: 3, // Alertar títulos a vencer nos próximos 3 dias
+  enablePayableDueAlerts: true,
+  payableDueNoticeDays: 5, // Alertar contas a pagar nos próximos 5 dias
+  showFinancialAlertsOnDashboard: true,
+  showFinancialAlertsInModule: true,
+  financialAlertFrequency: 'daily',
+  enableDormantStockAlerts: true,
+  dormantStockDaysThreshold: 60, // 60 dias sem movimentação
+  enableCostIncreaseAlerts: true,
+  costIncreaseThresholdPercent: 10, // Aumento de 10%
 };
 
 export const INITIAL_NOTIFICATIONS: SystemNotification[] = [
@@ -554,6 +567,31 @@ export const INITIAL_COMPANIES: CompanyInfo[] = [
     legalRepresentativeCpf: '321.654.987-22',
     contractStatus: 'signed',
     notes: 'Empresa do segmento Comércio de Peças (Vendas Diretas / Balcão, Estoque e NF-e).'
+  },
+  {
+    id: 'comp-5',
+    name: 'MotorDesk Metalúrgica & Indústria de Autopeças - Indústria SP',
+    tradeName: 'MotorDesk Indústria',
+    cnpj: '55.666.777/0001-88',
+    companyType: 'matriz',
+    businessType: 'INDUSTRIA',
+    modules: getDefaultModulesForBusinessType('INDUSTRIA'),
+    phone: '(11) 4004-9800',
+    whatsapp: '11999995555',
+    email: 'pcp@motordesk-industria.com.br',
+    address: 'Av. Industrial das Nações, 1500 - Distrito Industrial, Mauá - SP',
+    welcomeMessage: 'MotorDesk Indústria - Fabricação seriada, PCP, BOM e Rastreabilidade Operacional.',
+    registeredAt: '2026-05-01T08:00:00Z',
+    subscriptionStatus: 'active',
+    startDate: '2026-05-01',
+    expirationDate: '2026-12-31',
+    monthlyFee: 599.90,
+    paymentStatus: 'paid',
+    lastPaymentDate: '2026-07-01',
+    legalRepresentativeName: 'Eng. Roberto Vasconcelos',
+    legalRepresentativeCpf: '444.555.666-77',
+    contractStatus: 'signed',
+    notes: 'Planta industrial com PCP ativo, Estrutura BOM multinível, rastreabilidade por Lotes e semáforo de estoque operacional.'
   }
 ];
 
@@ -588,6 +626,11 @@ export const INITIAL_USERS: User[] = [
       accessAccountsPayable: true,
       accessFinancial: true,
       accessFiscal: true,
+      accessFinancialReports: true,
+      accessPurchasingReports: true,
+      accessStockReports: true,
+      accessReportsExport: true,
+      accessFinancialAlertsConfig: true,
       canEditBudgets: true,
     }
   },
@@ -600,6 +643,10 @@ export const INITIAL_USERS: User[] = [
     companyId: 'comp-1',
     permissions: {
       accessDashboard: true,
+      accessSales: true,
+      accessWithdrawals: true,
+      accessCarriers: true,
+      accessUnitsOfMeasure: true,
       accessClients: true,
       accessVehicles: true,
       accessParts: true,
@@ -615,6 +662,18 @@ export const INITIAL_USERS: User[] = [
       accessAccountsReceivable: true,
       accessAccountsPayable: true,
       accessFinancial: true,
+      accessFiscal: true,
+      accessFinancialReports: true,
+      accessPurchasingReports: true,
+      accessStockReports: true,
+      accessReportsExport: true,
+      accessFinancialAlertsConfig: true,
+      canEditBudgets: true,
+      canCustomizePdf: true,
+      canViewOtherStoresStock: true,
+      canSellOtherStoresStock: true,
+      canViewAllCompaniesHistory: true,
+      restrictToOwnSales: false,
     }
   },
   {
@@ -626,6 +685,10 @@ export const INITIAL_USERS: User[] = [
     companyId: 'comp-1',
     permissions: {
       accessDashboard: true,
+      accessSales: true,
+      accessWithdrawals: true,
+      accessCarriers: true,
+      accessUnitsOfMeasure: false,
       accessClients: true,
       accessVehicles: true,
       accessParts: false,
@@ -641,6 +704,18 @@ export const INITIAL_USERS: User[] = [
       accessAccountsReceivable: true,
       accessAccountsPayable: false,
       accessFinancial: false,
+      accessFiscal: true,
+      accessFinancialReports: false, // Atendente não vê relatórios financeiros sigilosos
+      accessPurchasingReports: false,
+      accessStockReports: true,
+      accessReportsExport: true,
+      accessFinancialAlertsConfig: false,
+      canEditBudgets: true,
+      canCustomizePdf: true,
+      canViewOtherStoresStock: true,
+      canSellOtherStoresStock: false,
+      canViewAllCompaniesHistory: false,
+      restrictToOwnSales: false,
     }
   },
   {
@@ -652,6 +727,10 @@ export const INITIAL_USERS: User[] = [
     companyId: 'comp-1',
     permissions: {
       accessDashboard: true,
+      accessSales: false,
+      accessWithdrawals: false,
+      accessCarriers: false,
+      accessUnitsOfMeasure: false,
       accessClients: false,
       accessVehicles: false,
       accessParts: true,
@@ -660,6 +739,11 @@ export const INITIAL_USERS: User[] = [
       accessServiceOrders: true,
       accessHistory: true,
       accessReports: false,
+      accessFinancialReports: false,
+      accessPurchasingReports: false,
+      accessStockReports: false,
+      accessReportsExport: false,
+      accessFinancialAlertsConfig: false,
       accessUserManagement: false,
       accessQAPanel: true,
       accessQuotations: false,
@@ -667,6 +751,13 @@ export const INITIAL_USERS: User[] = [
       accessAccountsReceivable: false,
       accessAccountsPayable: false,
       accessFinancial: false,
+      accessFiscal: false,
+      canEditBudgets: false,
+      canCustomizePdf: false,
+      canViewOtherStoresStock: false,
+      canSellOtherStoresStock: false,
+      canViewAllCompaniesHistory: false,
+      restrictToOwnSales: false,
     }
   },
   {
@@ -678,6 +769,10 @@ export const INITIAL_USERS: User[] = [
     companyId: 'comp-1',
     permissions: {
       accessDashboard: true,
+      accessSales: true,
+      accessWithdrawals: true,
+      accessCarriers: true,
+      accessUnitsOfMeasure: true,
       accessClients: true,
       accessVehicles: true,
       accessParts: true,
@@ -686,6 +781,11 @@ export const INITIAL_USERS: User[] = [
       accessServiceOrders: true,
       accessHistory: true,
       accessReports: true,
+      accessFinancialReports: true,
+      accessPurchasingReports: true,
+      accessStockReports: true,
+      accessReportsExport: true,
+      accessFinancialAlertsConfig: true,
       accessUserManagement: true,
       accessQAPanel: true,
       accessQuotations: true,
@@ -693,7 +793,13 @@ export const INITIAL_USERS: User[] = [
       accessAccountsReceivable: true,
       accessAccountsPayable: true,
       accessFinancial: true,
+      accessFiscal: true,
       canEditBudgets: true,
+      canCustomizePdf: true,
+      canViewOtherStoresStock: true,
+      canSellOtherStoresStock: true,
+      canViewAllCompaniesHistory: true,
+      restrictToOwnSales: false,
     }
   },
   // Usuários Exclusivos de Precision Motors (comp-2)
@@ -706,6 +812,10 @@ export const INITIAL_USERS: User[] = [
     companyId: 'comp-2',
     permissions: {
       accessDashboard: true,
+      accessSales: true,
+      accessWithdrawals: true,
+      accessCarriers: true,
+      accessUnitsOfMeasure: true,
       accessClients: true,
       accessVehicles: true,
       accessParts: true,
@@ -714,6 +824,11 @@ export const INITIAL_USERS: User[] = [
       accessServiceOrders: true,
       accessHistory: true,
       accessReports: true,
+      accessFinancialReports: true,
+      accessPurchasingReports: true,
+      accessStockReports: true,
+      accessReportsExport: true,
+      accessFinancialAlertsConfig: true,
       accessUserManagement: true,
       accessQAPanel: true,
       accessQuotations: true,
@@ -721,7 +836,13 @@ export const INITIAL_USERS: User[] = [
       accessAccountsReceivable: true,
       accessAccountsPayable: true,
       accessFinancial: true,
+      accessFiscal: true,
       canEditBudgets: true,
+      canCustomizePdf: true,
+      canViewOtherStoresStock: true,
+      canSellOtherStoresStock: true,
+      canViewAllCompaniesHistory: true,
+      restrictToOwnSales: false,
     }
   },
   {
@@ -733,6 +854,10 @@ export const INITIAL_USERS: User[] = [
     companyId: 'comp-2',
     permissions: {
       accessDashboard: true,
+      accessSales: true,
+      accessWithdrawals: true,
+      accessCarriers: true,
+      accessUnitsOfMeasure: true,
       accessClients: true,
       accessVehicles: true,
       accessParts: true,
@@ -748,6 +873,13 @@ export const INITIAL_USERS: User[] = [
       accessAccountsReceivable: true,
       accessAccountsPayable: true,
       accessFinancial: true,
+      accessFiscal: true,
+      canEditBudgets: true,
+      canCustomizePdf: true,
+      canViewOtherStoresStock: true,
+      canSellOtherStoresStock: true,
+      canViewAllCompaniesHistory: true,
+      restrictToOwnSales: false,
     }
   },
   {
@@ -759,6 +891,10 @@ export const INITIAL_USERS: User[] = [
     companyId: 'comp-2',
     permissions: {
       accessDashboard: true,
+      accessSales: false,
+      accessWithdrawals: false,
+      accessCarriers: false,
+      accessUnitsOfMeasure: false,
       accessClients: false,
       accessVehicles: false,
       accessParts: true,
@@ -774,6 +910,13 @@ export const INITIAL_USERS: User[] = [
       accessAccountsReceivable: false,
       accessAccountsPayable: false,
       accessFinancial: false,
+      accessFiscal: false,
+      canEditBudgets: false,
+      canCustomizePdf: false,
+      canViewOtherStoresStock: false,
+      canSellOtherStoresStock: false,
+      canViewAllCompaniesHistory: false,
+      restrictToOwnSales: false,
     }
   },
   // Usuários Exclusivos de Centro Automotivo Express Repair (comp-3)
@@ -786,6 +929,10 @@ export const INITIAL_USERS: User[] = [
     companyId: 'comp-3',
     permissions: {
       accessDashboard: true,
+      accessSales: true,
+      accessWithdrawals: true,
+      accessCarriers: true,
+      accessUnitsOfMeasure: true,
       accessClients: true,
       accessVehicles: true,
       accessParts: true,
@@ -801,7 +948,13 @@ export const INITIAL_USERS: User[] = [
       accessAccountsReceivable: true,
       accessAccountsPayable: true,
       accessFinancial: true,
+      accessFiscal: true,
       canEditBudgets: true,
+      canCustomizePdf: true,
+      canViewOtherStoresStock: true,
+      canSellOtherStoresStock: true,
+      canViewAllCompaniesHistory: true,
+      restrictToOwnSales: false,
     }
   },
   {
@@ -813,6 +966,10 @@ export const INITIAL_USERS: User[] = [
     companyId: 'comp-3',
     permissions: {
       accessDashboard: true,
+      accessSales: true,
+      accessWithdrawals: true,
+      accessCarriers: true,
+      accessUnitsOfMeasure: true,
       accessClients: true,
       accessVehicles: true,
       accessParts: true,
@@ -828,6 +985,13 @@ export const INITIAL_USERS: User[] = [
       accessAccountsReceivable: true,
       accessAccountsPayable: true,
       accessFinancial: true,
+      accessFiscal: true,
+      canEditBudgets: true,
+      canCustomizePdf: true,
+      canViewOtherStoresStock: true,
+      canSellOtherStoresStock: true,
+      canViewAllCompaniesHistory: true,
+      restrictToOwnSales: false,
     }
   }
 ];
@@ -909,13 +1073,204 @@ export const INITIAL_VEHICLES: Vehicle[] = [
 
 // Initial Parts Inventory
 export const INITIAL_PARTS: Part[] = [
-  { id: 'prt-1', name: 'Pastilha de Freio Dianteira', code: 'PE-001', stock: 12, price: 180.00, costPrice: 110.00, minStock: 5, category: 'Freios', location: 'Prateleira A1', unit: 'PAR', ncm: '8708.30.90', lastSupplier: 'AutoPeças Brasil Ltda' },
-  { id: 'prt-2', name: 'Filtro de Óleo Lubrificante', code: 'PE-002', stock: 25, price: 45.00, costPrice: 22.50, minStock: 10, category: 'Filtros', location: 'Prateleira B3', unit: 'UN', ncm: '8421.23.00', lastSupplier: 'Distribuidora Mahle', isPeriodic: true, maintenanceControl: { enabled: true, category: 'oil_change', defaultIntervalKm: 10000, defaultIntervalDays: 180 } },
-  { id: 'prt-3', name: 'Óleo Motor Sintético 5W30 (1L)', code: 'PE-003', stock: 48, price: 65.00, costPrice: 38.00, minStock: 15, category: 'Óleos e Fluídos', location: 'Prateleira C2', unit: 'L', ncm: '2710.19.89', lastSupplier: 'Lubrificantes Mobil', isPeriodic: true, maintenanceControl: { enabled: true, category: 'oil_change', defaultIntervalKm: 10000, defaultIntervalDays: 180 }, isCrossSell: true, crossSellItems: [{ id: 'cs-1', type: 'service', itemId: 'srv-2', name: 'Troca de Óleo e Filtros', defaultQuantity: 1 }, { id: 'cs-2', type: 'part', itemId: 'prt-2', name: 'Filtro de Óleo Lubrificante', defaultQuantity: 1 }] },
-  { id: 'prt-4', name: 'Amortecedor Dianteiro Cofap', code: 'PE-004', stock: 4, price: 420.00, costPrice: 280.00, minStock: 6, category: 'Suspensão', location: 'Prateleira D1', unit: 'UN', ncm: '8708.80.00', lastSupplier: 'Cofap Distribuidora' },
-  { id: 'prt-5', name: 'Disco de Freio Dianteiro (Par)', code: 'PE-005', stock: 6, price: 290.00, costPrice: 175.00, minStock: 4, category: 'Freios', location: 'Prateleira A2', unit: 'PAR', ncm: '8708.30.90', lastSupplier: 'Fremax Componentes' },
-  { id: 'prt-6', name: 'Filtro de Ar do Motor', code: 'PE-006', stock: 15, price: 55.00, costPrice: 28.00, minStock: 8, category: 'Filtros', location: 'Prateleira B2', unit: 'UN', ncm: '8421.31.00', lastSupplier: 'Distribuidora Mahle', isPeriodic: true, maintenanceControl: { enabled: true, category: 'oil_change', defaultIntervalKm: 10000, defaultIntervalDays: 180 } },
-  { id: 'prt-7', name: 'Bateria Moura 60Ah', code: 'PE-007', stock: 3, price: 480.00, costPrice: 330.00, minStock: 5, category: 'Elétrica', location: 'Prateleira E1', unit: 'UN', ncm: '8507.10.10', lastSupplier: 'Moura Baterias S.A.' }
+  { id: 'prt-1', name: 'Pastilha de Freio Dianteira', code: 'PE-001', stock: 12, reservedStock: 0, price: 180.00, costPrice: 110.00, minStock: 5, category: 'Freios', location: 'Prateleira A1', unit: 'PAR', ncm: '8708.30.90', lastSupplier: 'AutoPeças Brasil Ltda', itemType: 'peca_veicular' },
+  { id: 'prt-2', name: 'Filtro de Óleo Lubrificante', code: 'PE-002', stock: 25, reservedStock: 0, price: 45.00, costPrice: 22.50, minStock: 10, category: 'Filtros', location: 'Prateleira B3', unit: 'UN', ncm: '8421.23.00', lastSupplier: 'Distribuidora Mahle', isPeriodic: true, maintenanceControl: { enabled: true, category: 'oil_change', defaultIntervalKm: 10000, defaultIntervalDays: 180 }, itemType: 'peca_veicular' },
+  { id: 'prt-3', name: 'Óleo Motor Sintético 5W30 (1L)', code: 'PE-003', stock: 48, reservedStock: 0, price: 65.00, costPrice: 38.00, minStock: 15, category: 'Óleos e Fluídos', location: 'Prateleira C2', unit: 'L', ncm: '2710.19.89', lastSupplier: 'Lubrificantes Mobil', isPeriodic: true, maintenanceControl: { enabled: true, category: 'oil_change', defaultIntervalKm: 10000, defaultIntervalDays: 180 }, isCrossSell: true, crossSellItems: [{ id: 'cs-1', type: 'service', itemId: 'srv-2', name: 'Troca de Óleo e Filtros', defaultQuantity: 1 }, { id: 'cs-2', type: 'part', itemId: 'prt-2', name: 'Filtro de Óleo Lubrificante', defaultQuantity: 1 }], itemType: 'peca_veicular' },
+  { id: 'prt-4', name: 'Amortecedor Dianteiro Cofap', code: 'PE-004', stock: 4, reservedStock: 0, price: 420.00, costPrice: 280.00, minStock: 6, category: 'Suspensão', location: 'Prateleira D1', unit: 'UN', ncm: '8708.80.00', lastSupplier: 'Cofap Distribuidora', itemType: 'peca_veicular' },
+  { id: 'prt-5', name: 'Disco de Freio Dianteiro (Par)', code: 'PE-005', stock: 6, reservedStock: 0, price: 290.00, costPrice: 175.00, minStock: 4, category: 'Freios', location: 'Prateleira A2', unit: 'PAR', ncm: '8708.30.90', lastSupplier: 'Fremax Componentes', itemType: 'peca_veicular' },
+  { id: 'prt-6', name: 'Filtro de Ar do Motor', code: 'PE-006', stock: 15, reservedStock: 0, price: 55.00, costPrice: 28.00, minStock: 8, category: 'Filtros', location: 'Prateleira B2', unit: 'UN', ncm: '8421.31.00', lastSupplier: 'Distribuidora Mahle', isPeriodic: true, maintenanceControl: { enabled: true, category: 'oil_change', defaultIntervalKm: 10000, defaultIntervalDays: 180 }, itemType: 'peca_veicular' },
+  { id: 'prt-7', name: 'Bateria Moura 60Ah', code: 'PE-007', stock: 3, reservedStock: 0, price: 480.00, costPrice: 330.00, minStock: 5, category: 'Elétrica', location: 'Prateleira E1', unit: 'UN', ncm: '8507.10.10', lastSupplier: 'Moura Baterias S.A.', itemType: 'peca_veicular' },
+
+  // ITENS INDUSTRIAIS (PRODUTOS ACABADOS, MATÉRIAS-PRIMAS, COMPONENTES E INSUMOS)
+  {
+    id: 'prt-ind-1',
+    name: 'Bomba Hidráulica de Direção Industrial HD-200',
+    code: 'PA-BH-200',
+    stock: 14,
+    reservedStock: 8,
+    inProductionStock: 15,
+    price: 580.00,
+    costPrice: 285.00,
+    minStock: 5,
+    category: 'Sistemas Hidráulicos',
+    location: 'Galpão 2 - Prateleira PA-01',
+    unit: 'UN',
+    ncm: '8413.60.19',
+    itemType: 'produto_acabado',
+    hasBom: true,
+    bomId: 'bom-1',
+    leadTimeDays: 4,
+    currentLotNumber: 'LOTE-BH-2026-01',
+    companyId: 'comp-5',
+    icmsRatePercent: 18,
+    pisRatePercent: 1.65,
+    cofinsRatePercent: 7.6,
+    ipiRatePercent: 5.0,
+  },
+  {
+    id: 'prt-ind-2',
+    name: 'Atuador Eletromecânico de Embreagem AT-50',
+    code: 'PA-AT-050',
+    stock: 4,
+    reservedStock: 10,
+    inProductionStock: 20,
+    price: 420.00,
+    costPrice: 195.00,
+    minStock: 8,
+    category: 'Mecatrônica & Atuadores',
+    location: 'Galpão 2 - Prateleira PA-02',
+    unit: 'UN',
+    ncm: '8501.31.10',
+    itemType: 'produto_acabado',
+    hasBom: true,
+    bomId: 'bom-2',
+    leadTimeDays: 6,
+    currentLotNumber: 'LOTE-AT-2026-02',
+    companyId: 'comp-5',
+    icmsRatePercent: 18,
+    pisRatePercent: 1.65,
+    cofinsRatePercent: 7.6,
+    ipiRatePercent: 4.0,
+  },
+  {
+    id: 'prt-ind-3',
+    name: 'Chapa de Aço Carbono SAE 1020 3mm',
+    code: 'MP-CH-1020',
+    stock: 45.5,
+    reservedStock: 12.0,
+    price: 95.00,
+    costPrice: 48.00,
+    minStock: 15.0,
+    category: 'Metais & Matérias-Primas',
+    location: 'Pátio MP - Racks 03',
+    unit: 'M²',
+    unitOfMeasureId: 'uom-m2',
+    unitName: 'Metro Quadrado',
+    dimensions: { calculationType: 'AREA', length: 2.0, width: 1.0, unitLength: 'm', unitWidth: 'm', calculatedQuantity: 2.0 },
+    ncm: '7208.51.00',
+    itemType: 'materia_prima',
+    leadTimeDays: 5,
+    lastSupplier: 'Gerdau Aços Especiais S.A.',
+    uomOrigin: 'NF_E_IMPORT',
+    unitCommercial: 'CHAPA',
+    unitTrib: 'M²',
+    conversionFactorTrib: 2.0,
+    currentLotNumber: 'LOT-GERD-992',
+    companyId: 'comp-5',
+  },
+  {
+    id: 'prt-ind-4',
+    name: 'Eixo Retificado Aço 4140 Ø 25mm',
+    code: 'MP-EX-4140',
+    stock: 28.0,
+    reservedStock: 8.0,
+    price: 72.00,
+    costPrice: 35.00,
+    minStock: 10.0,
+    category: 'Metais & Matérias-Primas',
+    location: 'Pátio MP - Barraqueira 01',
+    unit: 'M',
+    unitOfMeasureId: 'uom-m',
+    unitName: 'Metro Linear',
+    dimensions: { calculationType: 'LINEAR', length: 3.0, unitLength: 'm', calculatedQuantity: 3.0 },
+    ncm: '7228.30.00',
+    itemType: 'materia_prima',
+    leadTimeDays: 7,
+    lastSupplier: 'Villares Metals S.A.',
+    currentLotNumber: 'LOT-VIL-401',
+    companyId: 'comp-5',
+  },
+  {
+    id: 'prt-ind-5',
+    name: 'Rolamento de Esferas Blindado SKF 6205-2RS',
+    code: 'CP-RL-6205',
+    stock: 85,
+    reservedStock: 30,
+    price: 36.00,
+    costPrice: 18.50,
+    minStock: 25,
+    category: 'Rolamentos & Mancais',
+    location: 'Almoxarifado B - Gaveta 14',
+    unit: 'UN',
+    ncm: '8482.10.10',
+    itemType: 'componente',
+    leadTimeDays: 3,
+    lastSupplier: 'SKF do Brasil Ltda',
+    currentLotNumber: 'LOT-SKF-882',
+    companyId: 'comp-5',
+  },
+  {
+    id: 'prt-ind-6',
+    name: 'Retentor de Óleo Duplo Labirinto Viton 25x47x7',
+    code: 'CP-RT-2547',
+    stock: 120,
+    reservedStock: 20,
+    price: 24.00,
+    costPrice: 12.00,
+    minStock: 35,
+    category: 'Vedações Industriais',
+    location: 'Almoxarifado B - Gaveta 08',
+    unit: 'UN',
+    ncm: '4016.93.00',
+    itemType: 'componente',
+    leadTimeDays: 2,
+    lastSupplier: 'Sabó Vedações S.A.',
+    currentLotNumber: 'LOT-SAB-112',
+    companyId: 'comp-5',
+  },
+  {
+    id: 'prt-ind-7',
+    name: 'Micro Motor DC 24V 3500RPM com Encoder',
+    code: 'CP-MT-2435',
+    stock: 18,
+    reservedStock: 15,
+    price: 150.00,
+    costPrice: 75.00,
+    minStock: 15,
+    category: 'Mecatrônica & Motores',
+    location: 'Almoxarifado B - Prateleira Eletrônica',
+    unit: 'UN',
+    ncm: '8501.10.19',
+    itemType: 'componente',
+    leadTimeDays: 10,
+    lastSupplier: 'WEG Equipamentos Elétricos S.A.',
+    currentLotNumber: 'LOT-WEG-302',
+    companyId: 'comp-5',
+  },
+  {
+    id: 'prt-ind-8',
+    name: 'Fluido de Teste Hidráulico ISO VG 46',
+    code: 'INS-FL-VG46',
+    stock: 150.0,
+    reservedStock: 25.0,
+    price: 32.00,
+    costPrice: 16.00,
+    minStock: 40.0,
+    category: 'Insumos Industriais',
+    location: 'Depósito de Químicos - Tanque 02',
+    unit: 'L',
+    ncm: '2710.19.99',
+    itemType: 'insumo',
+    lastSupplier: 'Lubrificantes Mobil',
+    companyId: 'comp-5',
+  },
+  {
+    id: 'prt-ind-9',
+    name: 'Parafuso Sextavado Aço Inox M8x30 com Arruela',
+    code: 'INS-PF-M830',
+    stock: 25,
+    reservedStock: 5,
+    price: 45.00,
+    costPrice: 22.00,
+    minStock: 10,
+    category: 'Fixadores & Parafusos',
+    location: 'Almoxarifado A - Prateleira Fixadores',
+    unit: 'CX',
+    ncm: '7318.15.00',
+    itemType: 'insumo',
+    lastSupplier: 'Ciser Parafusos e Porcas',
+    companyId: 'comp-5',
+  }
 ];
 
 export const INITIAL_STOCK_MOVEMENTS: StockMovement[] = [
@@ -1881,6 +2236,346 @@ export const INITIAL_TEST_CASES: TestCase[] = [
     ],
     expectedResult: 'Isolamento absoluto multi-tenant garantido sem compartilhamento indevido entre empresas distintas.',
     status: 'passed'
+  },
+  // ==================== NOVOS TESTES OBRIGATÓRIOS (RELATÓRIOS, COMPRAS, ESTOQUE, FINANCEIRO, MULTIEMPRESA) ====================
+  // Compras
+  {
+    id: 'tc-c01',
+    code: 'CT-C01',
+    requirement: 'REQ-COMPRAS-01',
+    title: 'Histórico de Compras com Filtros e Métricas',
+    category: 'Compras',
+    preConditions: 'Usuário com permissão de relatórios de compras.',
+    steps: [
+      'Acessar o Relatório "Histórico de Compras".',
+      'Filtrar por período (Mês Atual), Fornecedor (AutoPeças Distribuidora Brasil) e Produto.',
+      'Verificar a exibição das colunas: Data, Fornecedor, Produto, Quantidade, Valor Unitário, Valor Total e NF/Pedido.',
+      'Conferir se os cards de KPI (Total Comprado, Qtd de Compras, Ticket Médio) são recalculados em tempo real.'
+    ],
+    expectedResult: 'O sistema lista com precisão todas as compras realizadas conforme os filtros aplicados e totaliza os valores corretamente.',
+    status: 'passed'
+  },
+  {
+    id: 'tc-c02',
+    code: 'CT-C02',
+    requirement: 'REQ-COMPRAS-02',
+    title: 'Comparativo Produto x Fornecedor e Variação de Preço',
+    category: 'Compras',
+    preConditions: 'Itens com histórico de compras em múltiplos fornecedores.',
+    steps: [
+      'Acessar o Relatório "Produto x Fornecedor".',
+      'Selecionar a peça "Filtro de Óleo Lubrificante" (PE-002).',
+      'Verificar o comparativo entre os fornecedores (Preço de compra, Última data, Frequência).',
+      'Checar o destaque do fornecedor com melhor condição e a taxa de variação percentual de preço.'
+    ],
+    expectedResult: 'O comparativo exibe o histórico de preços por fornecedor, permitindo ao comprador identificar aumentos abusivos e economias potenciais.',
+    status: 'passed'
+  },
+  {
+    id: 'tc-c03',
+    code: 'CT-C03',
+    requirement: 'REQ-COMPRAS-03',
+    title: 'Sugestão de Compra Baseada na Compra Anterior (Apoio à Decisão)',
+    category: 'Compras',
+    preConditions: 'Criação de nova cotação ou pedido de compra.',
+    steps: [
+      'Abrir o módulo "Cotações & Compras" e iniciar nova cotação.',
+      'Selecionar um produto que já possui compras anteriores.',
+      'Verificar o card inteligente de apoio: "Compra anterior: X un | Último fornecedor: Y | Último preço: R$ Z | Estoque atual: A | Sugestão: B un".',
+      'Confirmar que a sugestão preenche a quantidade de forma editável e não efetiva compras sem autorização manual.'
+    ],
+    expectedResult: 'O sistema fornece subsídios históricos imediatos para a decisão do comprador, sem automações forçadas.',
+    status: 'passed'
+  },
+  {
+    id: 'tc-c04',
+    code: 'CT-C04',
+    requirement: 'REQ-COMPRAS-04',
+    title: 'Identificação de Produtos Abaixo do Estoque Mínimo',
+    category: 'Compras',
+    preConditions: 'Produtos com saldo físico/disponível inferior ao estoque mínimo.',
+    steps: [
+      'Acessar o Relatório "Produtos para Reposição (Abaixo do Mínimo)".',
+      'Verificar itens com badge vermelho/amarelo de criticidade.',
+      'Checar se o sistema calcula a quantidade sugerida de compra para atingir o estoque seguro.',
+      'Clicar no botão "Gerar Cotação / Pedido" e verificar o direcionamento com itens pré-selecionados.'
+    ],
+    expectedResult: 'Os produtos críticos são listados com clareza e com fluxo ágil de reposição.',
+    status: 'passed'
+  },
+  {
+    id: 'tc-c05',
+    code: 'CT-C05',
+    requirement: 'REQ-COMPRAS-05',
+    title: 'Painel de Métricas e Inteligência do Comprador',
+    category: 'Compras',
+    preConditions: 'Módulo de Compras ativo com dados consolidados.',
+    steps: [
+      'Navegar até o painel "Inteligência de Compras" dentro de Cotações & Compras.',
+      'Verificar os indicadores: Total Comprado, Qtd de Pedidos, Ticket Médio, Fornecedor Líder, Produto Mais Comprado e Maior Variação de Preço.',
+      'Verificar a lista de produtos com aumentos de custo e economia potencial.'
+    ],
+    expectedResult: 'O comprador visualiza um panorama analítico 360° para negociar melhores condições comerciais.',
+    status: 'passed'
+  },
+  // Estoque
+  {
+    id: 'tc-e01',
+    code: 'CT-E01',
+    requirement: 'REQ-ESTOQUE-01',
+    title: 'Movimentação de Entrada de Estoque',
+    category: 'Estoque',
+    preConditions: 'Importação de XML de compra ou entrada manual de estoque.',
+    steps: [
+      'Registrar uma entrada de 10 unidades de Pastilha de Freio.',
+      'Consultar o Relatório de Movimentações de Estoque.',
+      'Verificar o registro com Tipo "Entrada", quantidade positiva (+10), custo unitário e saldo atualizado.'
+    ],
+    expectedResult: 'O saldo físico e disponível do produto aumentam em 10 unidades e o log de movimentação é gravado.',
+    status: 'passed'
+  },
+  {
+    id: 'tc-e02',
+    code: 'CT-E02',
+    requirement: 'REQ-ESTOQUE-02',
+    title: 'Movimentação de Saída de Estoque (Venda / OS)',
+    category: 'Estoque',
+    preConditions: 'Venda balcão ou Ordem de Serviço faturada/concluída.',
+    steps: [
+      'Concluir uma OS ou Venda Balcão consumindo 2 unidades de Óleo Motor 5W30.',
+      'Consultar o Relatório de Movimentações de Estoque.',
+      'Verificar o registro com Tipo "Saída", quantidade negativa (-2) e vínculo com o documento de origem.'
+    ],
+    expectedResult: 'O saldo de estoque é reduzido com rastreabilidade completa do documento gerador.',
+    status: 'passed'
+  },
+  {
+    id: 'tc-e03',
+    code: 'CT-E03',
+    requirement: 'REQ-ESTOQUE-03',
+    title: 'Reserva de Estoque em Orçamento / OS em Aberto',
+    category: 'Estoque',
+    preConditions: 'Configuração de reserva ativa na empresa.',
+    steps: [
+      'Gerar um orçamento com 2 unidades de Bateria Moura.',
+      'Consultar a posição do estoque da peça.',
+      'Verificar que o Saldo Físico permanece inalterado, a Reserva aumenta em 2 e o Saldo Disponível reduz em 2.'
+    ],
+    expectedResult: 'A reserva garante que o item não seja vendido em duplicidade para outro cliente enquanto o orçamento for válido.',
+    status: 'passed'
+  },
+  {
+    id: 'tc-e04',
+    code: 'CT-E04',
+    requirement: 'REQ-ESTOQUE-04',
+    title: 'Liberação de Reserva de Estoque por Cancelamento/Expiração',
+    category: 'Estoque',
+    preConditions: 'Orçamento com itens reservados cancelado ou expirado.',
+    steps: [
+      'Cancelar o orçamento pendente com itens reservados.',
+      'Consultar a posição do produto no estoque.',
+      'Verificar que a quantidade reservada é zerada e o Saldo Disponível retorna integralmente.'
+    ],
+    expectedResult: 'A liberação de reserva restaura a disponibilidade de venda imediata do produto.',
+    status: 'passed'
+  },
+  {
+    id: 'tc-e05',
+    code: 'CT-E05',
+    requirement: 'REQ-ESTOQUE-05',
+    title: 'Relatório de Produtos sem Movimentação (Capital Parado)',
+    category: 'Estoque',
+    preConditions: 'Itens no estoque sem movimentação por períodos de 30, 60, 90 ou mais dias.',
+    steps: [
+      'Acessar o Relatório "Produtos sem Movimentação (Capital Parado)".',
+      'Selecionar o filtro de corte temporal (ex: 60 dias sem giro).',
+      'Verificar a listagem de produtos, valor financeiro total imobilizado e data da última movimentação.'
+    ],
+    expectedResult: 'O gestor visualiza com exatidão o capital parado em estoque para criar promoções ou desovar itens parados.',
+    status: 'passed'
+  },
+  // Financeiro
+  {
+    id: 'tc-f01',
+    code: 'CT-F01',
+    requirement: 'REQ-FIN-01',
+    title: 'Relatório de Contas a Receber a Vencer',
+    category: 'Financeiro',
+    preConditions: 'Títulos a receber com data de vencimento futura.',
+    steps: [
+      'Acessar o Relatório de Contas a Receber.',
+      'Filtrar pelo status "A Vencer".',
+      'Verificar a listagem dos títulos, agrupamento por cliente e cálculo do total a receber projetado.'
+    ],
+    expectedResult: 'Apenas os títulos pendentes com vencimento futuro são exibidos com soma precisa do saldo devedor.',
+    status: 'passed'
+  },
+  {
+    id: 'tc-f02',
+    code: 'CT-F02',
+    requirement: 'REQ-FIN-02',
+    title: 'Relatório de Contas a Receber Vencidas',
+    category: 'Financeiro',
+    preConditions: 'Títulos pendentes com data de vencimento anterior à data atual.',
+    steps: [
+      'Acessar o Relatório de Contas a Receber.',
+      'Filtrar pelo status "Vencidas".',
+      'Verificar a sinalização em vermelho, contagem de dias em atraso e cálculo de juros/multa aplicáveis.'
+    ],
+    expectedResult: 'Os títulos vencidos são destacados com clareza para ações de cobrança ativa.',
+    status: 'passed'
+  },
+  {
+    id: 'tc-f03',
+    code: 'CT-F03',
+    requirement: 'REQ-FIN-03',
+    title: 'Relatório de Contas a Pagar a Vencer',
+    category: 'Financeiro',
+    preConditions: 'Obrigações com fornecedores com vencimento futuro.',
+    steps: [
+      'Acessar o Relatório de Contas a Pagar.',
+      'Filtrar pelo status "A Vencer".',
+      'Verificar a relação de títulos por fornecedor, datas e total de desembolso futuro previsto.'
+    ],
+    expectedResult: 'O sistema lista as obrigações a vencer permitindo o planejamento prévio do fluxo de caixa.',
+    status: 'passed'
+  },
+  {
+    id: 'tc-f04',
+    code: 'CT-F04',
+    requirement: 'REQ-FIN-04',
+    title: 'Relatório de Contas a Pagar Vencidas',
+    category: 'Financeiro',
+    preConditions: 'Títulos a pagar em atraso com fornecedores.',
+    steps: [
+      'Acessar o Relatório de Contas a Pagar.',
+      'Filtrar pelo status "Vencidas".',
+      'Verificar os títulos pendentes de pagamento já ultrapassados do prazo de vencimento e o montante em atraso.'
+    ],
+    expectedResult: 'O relatório alerta imediatamente sobre dívidas pendentes para evitar protestos e juros moratórios.',
+    status: 'passed'
+  },
+  {
+    id: 'tc-f05',
+    code: 'CT-F05',
+    requirement: 'REQ-FIN-05',
+    title: 'Filtro por Cliente no Contas a Receber e Inadimplência',
+    category: 'Financeiro',
+    preConditions: 'Múltiplos títulos de clientes distintos cadastrados.',
+    steps: [
+      'Acessar os Relatórios Financeiros.',
+      'Selecionar um cliente específico no dropdown de filtro.',
+      'Verificar se todos os títulos exibidos pertencem exclusivamente ao cliente selecionado.'
+    ],
+    expectedResult: 'O filtro isola com 100% de exatidão os lançamentos do cliente pesquisado.',
+    status: 'passed'
+  },
+  {
+    id: 'tc-f06',
+    code: 'CT-F06',
+    requirement: 'REQ-FIN-06',
+    title: 'Filtro por Fornecedor no Contas a Pagar',
+    category: 'Financeiro',
+    preConditions: 'Múltiplos títulos de fornecedores distintos.',
+    steps: [
+      'Acessar o Relatório de Contas a Pagar.',
+      'Selecionar um fornecedor no filtro de busca.',
+      'Verificar se a tabela e os cards de KPI consolidam apenas as obrigações do fornecedor em questão.'
+    ],
+    expectedResult: 'O filtro refina com precisão os lançamentos do fornecedor selecionado.',
+    status: 'passed'
+  },
+  {
+    id: 'tc-f07',
+    code: 'CT-F07',
+    requirement: 'REQ-FIN-07',
+    title: 'Filtro por Período em Relatórios Financeiros',
+    category: 'Financeiro',
+    preConditions: 'Lançamentos distribuídos em datas variadas.',
+    steps: [
+      'Acessar o Relatório de Contas a Receber / Contas a Pagar.',
+      'Selecionar período personalizado (Data Inicial e Data Final).',
+      'Verificar se apenas os títulos compreendidos no intervalo de vencimento/emissão são exibidos.'
+    ],
+    expectedResult: 'A filtragem por período é estrita e recalculada instantaneamente na interface.',
+    status: 'passed'
+  },
+  {
+    id: 'tc-f08',
+    code: 'CT-F08',
+    requirement: 'REQ-FIN-08',
+    title: 'Relatório Consolidado A Pagar x A Receber (Saldo Projetado)',
+    category: 'Financeiro',
+    preConditions: 'Títulos cadastrados em Contas a Receber e Contas a Pagar.',
+    steps: [
+      'Acessar o Relatório "Compromissos Financeiros Consolidados".',
+      'Verificar o bloco "A Receber", o bloco "A Pagar" e o indicador central "Saldo Projetado" (A Receber - A Pagar).',
+      'Checar o alerta visual se a projeção é Superavitária (Verde) ou Deficitária (Vermelho).'
+    ],
+    expectedResult: 'O relatório consolidado entrega a visão clara da saúde financeira futura da empresa.',
+    status: 'passed'
+  },
+  {
+    id: 'tc-f09',
+    code: 'CT-F09',
+    requirement: 'REQ-FIN-09',
+    title: 'Alertas de Vencimento Configuráveis (Dashboard e Módulos)',
+    category: 'Financeiro',
+    preConditions: 'Configuração de dias de antecedência para contas a vencer (ex: 3 dias para receber, 5 dias para pagar).',
+    steps: [
+      'Abrir o Modal de Configuração de Alertas Financeiros.',
+      'Alterar a antecedência de aviso para 5 dias e salvar.',
+      'Navegar ao Dashboard e aos módulos de Contas a Pagar / Receber.',
+      'Verificar a presença dos banners e cards de alerta clicáveis destacando os títulos prestes a vencer.'
+    ],
+    expectedResult: 'Os alertas visuais notificam ativamente os operadores antes do vencimento dos compromissos.',
+    status: 'passed'
+  },
+  {
+    id: 'tc-f10',
+    code: 'CT-F10',
+    requirement: 'REQ-FIN-10',
+    title: 'Bloqueio de Acesso para Usuário sem Permissão (RBAC)',
+    category: 'Segurança & RBAC',
+    preConditions: 'Usuário operador/atendente sem permissão de relatórios financeiros (`accessFinancialReports = false`).',
+    steps: [
+      'Efetuar login com o usuário "atendente" ou "mecanico".',
+      'Acessar a tela de Relatórios.',
+      'Verificar se as abas e relatórios de Contas a Pagar, Contas a Receber e DRE ficam ocultas ou bloqueadas com mensagem de permissão negada.'
+    ],
+    expectedResult: 'O sistema restringe estritamente a visualização de relatórios sigilosos conforme a matriz de permissões do usuário.',
+    status: 'passed'
+  },
+  // Multiempresa
+  {
+    id: 'tc-m01',
+    code: 'CT-M01',
+    requirement: 'REQ-MULTI-01',
+    title: 'Isolamento Multiempresa: Empresa A não visualiza dados da Empresa B',
+    category: 'Multiempresa',
+    preConditions: 'Dois tenants com estoques, clientes e financeiro cadastrados separadamente (comp-1 e comp-2).',
+    steps: [
+      'Logar na Empresa 1 (Oficina Matriz) e verificar os relatórios de estoque e financeiro.',
+      'Alternar para a Empresa 2 (Precision Motors).',
+      'Verificar os mesmos relatórios na Empresa 2 e constatar que nenhum título, peça ou movimentação da Empresa 1 aparece.'
+    ],
+    expectedResult: 'O isolamento de dados por companyId é total e inviolável em todos os módulos e relatórios.',
+    status: 'passed'
+  },
+  {
+    id: 'tc-m02',
+    code: 'CT-M02',
+    requirement: 'REQ-MULTI-02',
+    title: 'Indicadores e Métricas Isolados por companyId',
+    category: 'Multiempresa',
+    preConditions: 'Transações e KPIs independentes em cada empresa.',
+    steps: [
+      'Consultar os cards de KPI no Dashboard da Empresa 1 (Faturamento, Total em Estoque, Contas a Pagar).',
+      'Alternar para a Empresa 2.',
+      'Verificar que os valores totais dos KPIs refletem única e exclusivamente os registros pertencentes à Empresa 2.'
+    ],
+    expectedResult: 'Todos os cálculos agregados respeitam rigorosamente o escopo do tenant ativo.',
+    status: 'passed'
   }
 ];
 
@@ -2836,7 +3531,473 @@ export interface AppDatabase {
   taxRules?: TaxRule[];
   xmlImportRecords?: XmlImportRecord[];
   unitsOfMeasure?: UnitOfMeasure[];
+  boms?: BillOfMaterials[];
+  billOfMaterials?: BillOfMaterials[];
+  productionOrders?: ProductionOrder[];
+  productLots?: ProductLot[];
+  operationalAlerts?: OperationalAlert[];
 }
+
+export const INITIAL_BOMS: BillOfMaterials[] = [
+  {
+    id: 'bom-1',
+    companyId: 'comp-5',
+    finishedProductPartId: 'prt-ind-1',
+    finishedProductName: 'Bomba Hidráulica de Direção Industrial HD-200',
+    finishedProductCode: 'PA-BH-200',
+    version: 'v1.0',
+    active: true,
+    laborCost: 75.00,
+    indirectCost: 35.00,
+    totalMaterialCost: 175.00,
+    totalUnitCost: 285.00,
+    suggestedSalePrice: 580.00,
+    estimatedProductionHours: 2.5,
+    validityDate: '2027-12-31',
+    notes: 'Estrutura padrão de manufatura da Bomba Hidráulica HD-200 com teste de pressão estanqueidade.',
+    items: [
+      {
+        id: 'bom-i1',
+        componentPartId: 'prt-ind-3',
+        componentPartName: 'Chapa de Aço Carbono SAE 1020 3mm',
+        componentPartCode: 'MP-CH-1020',
+        quantity: 0.5,
+        unit: 'M²',
+        unitCost: 48.00,
+        lossPercentage: 5,
+        effectiveQuantity: 0.525,
+        totalCost: 25.20,
+        notes: 'Corte a laser e estampagem da carcaça frontal'
+      },
+      {
+        id: 'bom-i2',
+        componentPartId: 'prt-ind-4',
+        componentPartName: 'Eixo Retificado Aço 4140 Ø 25mm',
+        componentPartCode: 'MP-EX-4140',
+        quantity: 0.4,
+        unit: 'M',
+        unitCost: 35.00,
+        lossPercentage: 3,
+        effectiveQuantity: 0.412,
+        totalCost: 14.42,
+        notes: 'Usinagem CNC do eixo rotor'
+      },
+      {
+        id: 'bom-i3',
+        componentPartId: 'prt-ind-5',
+        componentPartName: 'Rolamento de Esferas Blindado SKF 6205-2RS',
+        componentPartCode: 'CP-RL-6205',
+        quantity: 2,
+        unit: 'UN',
+        unitCost: 18.50,
+        lossPercentage: 0,
+        effectiveQuantity: 2,
+        totalCost: 37.00,
+        notes: 'Rolamento de alta rotação para mancais'
+      },
+      {
+        id: 'bom-i4',
+        componentPartId: 'prt-ind-6',
+        componentPartName: 'Retentor de Óleo Duplo Labirinto Viton 25x47x7',
+        componentPartCode: 'CP-RT-2547',
+        quantity: 2,
+        unit: 'UN',
+        unitCost: 12.00,
+        lossPercentage: 2,
+        effectiveQuantity: 2.04,
+        totalCost: 24.48,
+        notes: 'Vedação resistente a altas temperaturas'
+      },
+      {
+        id: 'bom-i5',
+        componentPartId: 'prt-ind-8',
+        componentPartName: 'Fluido de Teste Hidráulico ISO VG 46',
+        componentPartCode: 'INS-FL-VG46',
+        quantity: 1.5,
+        unit: 'L',
+        unitCost: 16.00,
+        lossPercentage: 10,
+        effectiveQuantity: 1.65,
+        totalCost: 26.40,
+        notes: 'Abastecimento para teste dinâmico em bancada'
+      },
+      {
+        id: 'bom-i6',
+        componentPartId: 'prt-ind-9',
+        componentPartName: 'Parafuso Sextavado Aço Inox M8x30 com Arruela',
+        componentPartCode: 'INS-PF-M830',
+        quantity: 0.1,
+        unit: 'CX',
+        unitCost: 22.00,
+        lossPercentage: 0,
+        effectiveQuantity: 0.1,
+        totalCost: 2.20,
+        notes: '10 parafusos por conjunto'
+      }
+    ]
+  },
+  {
+    id: 'bom-2',
+    companyId: 'comp-5',
+    finishedProductPartId: 'prt-ind-2',
+    finishedProductName: 'Atuador Eletromecânico de Embreagem AT-50',
+    finishedProductCode: 'PA-AT-050',
+    version: 'v1.2',
+    active: true,
+    laborCost: 55.00,
+    indirectCost: 25.00,
+    totalMaterialCost: 115.00,
+    totalUnitCost: 195.00,
+    suggestedSalePrice: 420.00,
+    estimatedProductionHours: 1.8,
+    validityDate: '2027-12-31',
+    notes: 'Conjunto atuador servomotorizado para automação veicular e industrial.',
+    items: [
+      {
+        id: 'bom-i7',
+        componentPartId: 'prt-ind-7',
+        componentPartName: 'Micro Motor DC 24V 3500RPM com Encoder',
+        componentPartCode: 'CP-MT-2435',
+        quantity: 1,
+        unit: 'UN',
+        unitCost: 75.00,
+        lossPercentage: 0,
+        effectiveQuantity: 1,
+        totalCost: 75.00,
+        notes: 'Motor com encoder ótico'
+      },
+      {
+        id: 'bom-i8',
+        componentPartId: 'prt-ind-5',
+        componentPartName: 'Rolamento de Esferas Blindado SKF 6205-2RS',
+        componentPartCode: 'CP-RL-6205',
+        quantity: 1,
+        unit: 'UN',
+        unitCost: 18.50,
+        lossPercentage: 0,
+        effectiveQuantity: 1,
+        totalCost: 18.50
+      },
+      {
+        id: 'bom-i9',
+        componentPartId: 'prt-ind-4',
+        componentPartName: 'Eixo Retificado Aço 4140 Ø 25mm',
+        componentPartCode: 'MP-EX-4140',
+        quantity: 0.25,
+        unit: 'M',
+        unitCost: 35.00,
+        lossPercentage: 4,
+        effectiveQuantity: 0.26,
+        totalCost: 9.10
+      },
+      {
+        id: 'bom-i10',
+        componentPartId: 'prt-ind-9',
+        componentPartName: 'Parafuso Sextavado Aço Inox M8x30 com Arruela',
+        componentPartCode: 'INS-PF-M830',
+        quantity: 0.05,
+        unit: 'CX',
+        unitCost: 22.00,
+        lossPercentage: 0,
+        effectiveQuantity: 0.05,
+        totalCost: 1.10
+      }
+    ]
+  }
+];
+
+export const INITIAL_PRODUCTION_ORDERS: ProductionOrder[] = [
+  {
+    id: 'op-1',
+    code: 'OP-2026-001',
+    companyId: 'comp-5',
+    finishedProductPartId: 'prt-ind-1',
+    finishedProductName: 'Bomba Hidráulica de Direção Industrial HD-200',
+    finishedProductCode: 'PA-BH-200',
+    bomId: 'bom-1',
+    bomVersion: 'v1.0',
+    plannedQuantity: 15,
+    producedQuantity: 10,
+    scrappedQuantity: 0,
+    status: 'em_producao',
+    priority: 'alta',
+    lotNumber: 'LOTE-BH-2026-01',
+    plannedStartDate: '2026-08-01',
+    plannedEndDate: '2026-08-05',
+    actualStartDate: '2026-08-01 08:30:00',
+    estimatedUnitCost: 285.00,
+    estimatedTotalCost: 4275.00,
+    actualTotalCost: 2850.00,
+    operatorName: 'Operador Líder Silva',
+    customerName: 'Frotas Brasil Transportes Ltda',
+    commercialSaleCode: 'VEN-IND-01',
+    commercialBudgetId: 'bud-ind-1',
+    notes: 'Lote prioritário para atendimento de pedido de exportação e frota pesada.',
+    routingStages: [
+      {
+        id: 'stg-1',
+        sequence: 1,
+        workCenterName: 'Corte e Conformação Mecânica',
+        description: 'Corte a laser de chapas e corte de eixos',
+        estimatedMinutes: 45,
+        actualMinutes: 42,
+        status: 'concluido',
+        operatorName: 'Carlos Usinagem',
+        completedAt: '2026-08-01 12:00:00'
+      },
+      {
+        id: 'stg-2',
+        sequence: 2,
+        workCenterName: 'Usinagem CNC & Torno',
+        description: 'Retífica de precisão e fresamento de canais',
+        estimatedMinutes: 60,
+        actualMinutes: 58,
+        status: 'concluido',
+        operatorName: 'Marcos Torneiro',
+        completedAt: '2026-08-01 16:30:00'
+      },
+      {
+        id: 'stg-3',
+        sequence: 3,
+        workCenterName: 'Montagem de Conjuntos',
+        description: 'Prensagem de rolamentos, retentores e fechamento da carcaça',
+        estimatedMinutes: 50,
+        status: 'em_andamento',
+        operatorName: 'Líder Silva'
+      },
+      {
+        id: 'stg-4',
+        sequence: 4,
+        workCenterName: 'Bancada de Testes & Controle de Qualidade',
+        description: 'Teste de pressão 200 bar, teste estanqueidade e emissão de laudo CQ',
+        estimatedMinutes: 30,
+        status: 'pendente'
+      }
+    ],
+    allocatedMaterials: [
+      {
+        id: 'mat-1',
+        partId: 'prt-ind-3',
+        partName: 'Chapa de Aço Carbono SAE 1020 3mm',
+        partCode: 'MP-CH-1020',
+        plannedQuantity: 7.875,
+        consumedQuantity: 7.875,
+        unit: 'M²',
+        unitCost: 48.00,
+        totalCost: 378.00,
+        lotNumber: 'LOT-GERD-992',
+        allocated: true,
+        consumed: true
+      },
+      {
+        id: 'mat-2',
+        partId: 'prt-ind-4',
+        partName: 'Eixo Retificado Aço 4140 Ø 25mm',
+        partCode: 'MP-EX-4140',
+        plannedQuantity: 6.18,
+        consumedQuantity: 6.18,
+        unit: 'M',
+        unitCost: 35.00,
+        totalCost: 216.30,
+        lotNumber: 'LOT-VIL-401',
+        allocated: true,
+        consumed: true
+      },
+      {
+        id: 'mat-3',
+        partId: 'prt-ind-5',
+        partName: 'Rolamento SKF 6205-2RS',
+        partCode: 'CP-RL-6205',
+        plannedQuantity: 30,
+        consumedQuantity: 20,
+        unit: 'UN',
+        unitCost: 18.50,
+        totalCost: 370.00,
+        lotNumber: 'LOT-SKF-882',
+        allocated: true,
+        consumed: false
+      }
+    ],
+    createdAt: '2026-08-01T08:00:00Z',
+    updatedAt: '2026-08-02T16:00:00Z'
+  },
+  {
+    id: 'op-2',
+    code: 'OP-2026-002',
+    companyId: 'comp-5',
+    finishedProductPartId: 'prt-ind-2',
+    finishedProductName: 'Atuador Eletromecânico de Embreagem AT-50',
+    finishedProductCode: 'PA-AT-050',
+    bomId: 'bom-2',
+    bomVersion: 'v1.2',
+    plannedQuantity: 20,
+    producedQuantity: 0,
+    scrappedQuantity: 0,
+    status: 'planejada',
+    priority: 'critica',
+    lotNumber: 'LOTE-AT-2026-02',
+    plannedStartDate: '2026-08-08',
+    plannedEndDate: '2026-08-14',
+    estimatedUnitCost: 195.00,
+    estimatedTotalCost: 3900.00,
+    customerName: 'Autopeças São Paulo Matriz',
+    notes: 'Programada após recebimento de lote complementar de micromotores WEG.',
+    routingStages: [
+      {
+        id: 'stg-201',
+        sequence: 1,
+        workCenterName: 'Montagem Eletromecânica',
+        description: 'Acoplamento do motor, fiação e encoder',
+        estimatedMinutes: 60,
+        status: 'pendente'
+      },
+      {
+        id: 'stg-202',
+        sequence: 2,
+        workCenterName: 'Calibração Eletrônica & CQ',
+        description: 'Calibração de curso e teste de torque',
+        estimatedMinutes: 45,
+        status: 'pendente'
+      }
+    ],
+    allocatedMaterials: [],
+    createdAt: '2026-08-02T08:00:00Z',
+    updatedAt: '2026-08-02T14:30:00Z'
+  },
+  {
+    id: 'op-3',
+    code: 'OP-2026-003',
+    companyId: 'comp-5',
+    finishedProductPartId: 'prt-ind-1',
+    finishedProductName: 'Bomba Hidráulica de Direção Industrial HD-200',
+    finishedProductCode: 'PA-BH-200',
+    bomId: 'bom-1',
+    bomVersion: 'v1.0',
+    plannedQuantity: 25,
+    producedQuantity: 25,
+    scrappedQuantity: 1,
+    status: 'concluida',
+    priority: 'normal',
+    lotNumber: 'LOTE-BH-2026-00-HIST',
+    plannedStartDate: '2026-07-15',
+    plannedEndDate: '2026-07-20',
+    actualStartDate: '2026-07-15 07:00:00',
+    actualEndDate: '2026-07-20 16:30:00',
+    estimatedUnitCost: 285.00,
+    estimatedTotalCost: 7125.00,
+    actualTotalCost: 7240.00,
+    operatorName: 'Turno A - Usinagem',
+    notes: 'Lote histórico concluído com 100% de aprovação e estocado para expedição rápida.',
+    createdAt: '2026-07-15T07:00:00Z',
+    updatedAt: '2026-07-20T16:30:00Z'
+  }
+];
+
+export const INITIAL_PRODUCT_LOTS: ProductLot[] = [
+  {
+    id: 'lot-1',
+    lotNumber: 'LOTE-BH-2026-01',
+    partId: 'prt-ind-1',
+    partName: 'Bomba Hidráulica de Direção Industrial HD-200',
+    partCode: 'PA-BH-200',
+    companyId: 'comp-5',
+    manufactureDate: '2026-08-01',
+    expirationDate: '2029-08-01',
+    initialQuantity: 15,
+    currentQuantity: 14,
+    reservedQuantity: 8,
+    availableQuantity: 6,
+    unitCost: 285.00,
+    status: 'ativo',
+    qualityInspectionStatus: 'aprovado',
+    productionOrderId: 'op-1',
+    storageLocation: 'Galpão 2 - PA-01',
+    notes: 'Lote fabricado com laudo de teste dinâmico aprovado.'
+  },
+  {
+    id: 'lot-2',
+    lotNumber: 'LOTE-AT-2026-02',
+    partId: 'prt-ind-2',
+    partName: 'Atuador Eletromecânico de Embreagem AT-50',
+    partCode: 'PA-AT-050',
+    companyId: 'comp-5',
+    manufactureDate: '2026-08-08',
+    expirationDate: '2028-08-08',
+    initialQuantity: 20,
+    currentQuantity: 4,
+    reservedQuantity: 10,
+    availableQuantity: 0,
+    unitCost: 195.00,
+    status: 'quarentena',
+    qualityInspectionStatus: 'em_inspecao',
+    productionOrderId: 'op-2',
+    storageLocation: 'Galpão 2 - PA-02',
+    notes: 'Aguardando liberação do CQ para lote de pré-série.'
+  },
+  {
+    id: 'lot-3',
+    lotNumber: 'LOT-GERD-992',
+    partId: 'prt-ind-3',
+    partName: 'Chapa de Aço Carbono SAE 1020 3mm',
+    partCode: 'MP-CH-1020',
+    companyId: 'comp-5',
+    manufactureDate: '2026-06-10',
+    initialQuantity: 50.0,
+    currentQuantity: 45.5,
+    reservedQuantity: 12.0,
+    availableQuantity: 33.5,
+    unitCost: 48.00,
+    status: 'ativo',
+    qualityInspectionStatus: 'aprovado',
+    supplierLotNumber: 'NF-1042-GERD',
+    storageLocation: 'Pátio MP - Racks 03'
+  }
+];
+
+export const INITIAL_OPERATIONAL_ALERTS: OperationalAlert[] = [
+  {
+    id: 'alr-1',
+    companyId: 'comp-5',
+    type: 'FALTA_MATERIAL_OP',
+    severity: 'critica',
+    title: 'Risco de Parada: Micro Motor DC em Nível Crítico para OP-2026-002',
+    message: 'A OP-2026-002 (Atuador AT-50) requer 20 motores, porém há apenas 18 em estoque com 15 já reservados.',
+    entityType: 'OP',
+    entityId: 'op-2',
+    entityCode: 'OP-2026-002',
+    suggestedAction: 'Emitir cotação emergencial para fornecedor WEG ou postergar início em 3 dias.',
+    createdAt: '2026-08-02 09:15:00',
+    resolved: false
+  },
+  {
+    id: 'alr-2',
+    companyId: 'comp-5',
+    type: 'DESVIO_CUSTO_BOM',
+    severity: 'atencao',
+    title: 'Desvio de Custo Unitário na BOM HD-200',
+    message: 'O custo real dos últimos consumos superou a previsão em +4.2% devido à perda de usinagem na chapa SAE 1020.',
+    entityType: 'BOM',
+    entityId: 'bom-1',
+    entityCode: 'PA-BH-200',
+    suggestedAction: 'Recalcular perda técnica na BOM v1.1 ou reajustar preço sugerido.',
+    createdAt: '2026-08-02 11:30:00',
+    resolved: false
+  },
+  {
+    id: 'alr-3',
+    companyId: 'comp-5',
+    type: 'OP_ATRASADA',
+    severity: 'info',
+    title: 'OP-2026-001 em Fase Final de Montagem e Teste',
+    message: '10 de 15 unidades concluídas e testadas no dinamômetro com aprovação no CQ.',
+    entityType: 'OP',
+    entityId: 'op-1',
+    entityCode: 'OP-2026-001',
+    suggestedAction: 'Liberar lote para inspeção final e faturamento NF-e mod 55.',
+    createdAt: '2026-08-02 14:00:00',
+    resolved: false
+  }
+];
 
 export const STORAGE_KEY = 'motordesk_db_v1';
 
@@ -2877,6 +4038,11 @@ export function getDatabase(): AppDatabase {
       taxRules: INITIAL_TAX_RULES,
       xmlImportRecords: INITIAL_XML_IMPORT_RECORDS,
       unitsOfMeasure: INITIAL_UNITS_OF_MEASURE,
+      boms: INITIAL_BOMS,
+      billOfMaterials: INITIAL_BOMS,
+      productionOrders: INITIAL_PRODUCTION_ORDERS,
+      productLots: INITIAL_PRODUCT_LOTS,
+      operationalAlerts: INITIAL_OPERATIONAL_ALERTS,
     };
   } else {
     try {
@@ -2953,6 +4119,21 @@ export function getDatabase(): AppDatabase {
       if (!db.unitsOfMeasure || !Array.isArray(db.unitsOfMeasure) || db.unitsOfMeasure.length === 0) {
         db.unitsOfMeasure = INITIAL_UNITS_OF_MEASURE;
       }
+      if (!db.boms || !Array.isArray(db.boms) || db.boms.length === 0) {
+        db.boms = INITIAL_BOMS;
+      }
+      if (!db.billOfMaterials || !Array.isArray(db.billOfMaterials) || db.billOfMaterials.length === 0) {
+        db.billOfMaterials = db.boms || INITIAL_BOMS;
+      }
+      if (!db.productionOrders || !Array.isArray(db.productionOrders) || db.productionOrders.length === 0) {
+        db.productionOrders = INITIAL_PRODUCTION_ORDERS;
+      }
+      if (!db.productLots || !Array.isArray(db.productLots) || db.productLots.length === 0) {
+        db.productLots = INITIAL_PRODUCT_LOTS;
+      }
+      if (!db.operationalAlerts || !Array.isArray(db.operationalAlerts) || db.operationalAlerts.length === 0) {
+        db.operationalAlerts = INITIAL_OPERATIONAL_ALERTS;
+      }
       if (!db.landingContent) {
         try {
           const saved = localStorage.getItem('motordesk_landing_content_v2');
@@ -2998,6 +4179,12 @@ export function getDatabase(): AppDatabase {
         taxOperationNatures: INITIAL_TAX_OPERATION_NATURES,
         taxRules: INITIAL_TAX_RULES,
         xmlImportRecords: INITIAL_XML_IMPORT_RECORDS,
+        unitsOfMeasure: INITIAL_UNITS_OF_MEASURE,
+        boms: INITIAL_BOMS,
+        billOfMaterials: INITIAL_BOMS,
+        productionOrders: INITIAL_PRODUCTION_ORDERS,
+        productLots: INITIAL_PRODUCT_LOTS,
+        operationalAlerts: INITIAL_OPERATIONAL_ALERTS,
       };
     }
   }

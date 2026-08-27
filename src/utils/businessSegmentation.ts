@@ -12,26 +12,44 @@ export const WORKSHOP_EXCLUSIVE_VIEWS: ViewID[] = [
   'vehicles',
   'services',
   'serviceOrders',
-  'quotations',
 ];
 
 export const COMMERCE_EXCLUSIVE_VIEWS: ViewID[] = [
-  'sales',
   'withdrawals',
-  'carriers',
+];
+
+export const INDUSTRIAL_EXCLUSIVE_VIEWS: ViewID[] = [
+  'industry',
 ];
 
 export const WORKSHOP_EXCLUSIVE_PERMISSIONS: (keyof UserPermissions | string)[] = [
   'accessVehicles',
   'accessServices',
   'accessServiceOrders',
-  'accessQuotations',
 ];
 
 export const COMMERCE_EXCLUSIVE_PERMISSIONS: (keyof UserPermissions | string)[] = [
-  'accessSales',
   'accessWithdrawals',
-  'accessCarriers',
+];
+
+export const INDUSTRIAL_EXCLUSIVE_PERMISSIONS: (keyof UserPermissions | string)[] = [
+  'accessIndustrialDashboard',
+  'accessProduction',
+  'accessProductionOrders',
+  'accessBillOfMaterials',
+  'accessIndustrialStock',
+  'accessIndustrialCosts',
+  'accessLots',
+  'accessProductionReports',
+  'accessIndustrialReports',
+  'accessCommercialReports',
+  'productionOrderCreate',
+  'productionOrderEdit',
+  'productionOrderApprove',
+  'productionOrderCancel',
+  'productionOrderComplete',
+  'bomCreate',
+  'bomEdit',
 ];
 
 /**
@@ -61,6 +79,7 @@ export function normalizeUserPermissions(
   let defaultAccessPayable = false;
   let defaultAccessFinancial = false;
   let defaultAccessFiscal = false;
+  let defaultAccessIndustrial = false;
 
   switch (normalizedRole) {
     case 'admin':
@@ -80,6 +99,7 @@ export function normalizeUserPermissions(
       defaultAccessPayable = true;
       defaultAccessFinancial = true;
       defaultAccessFiscal = true;
+      defaultAccessIndustrial = true;
       break;
     case 'qa':
       defaultAccessSales = true;
@@ -98,6 +118,7 @@ export function normalizeUserPermissions(
       defaultAccessPayable = true;
       defaultAccessFinancial = true;
       defaultAccessFiscal = true;
+      defaultAccessIndustrial = true;
       break;
     case 'atendente':
       defaultAccessSales = true;
@@ -116,6 +137,7 @@ export function normalizeUserPermissions(
       defaultAccessPayable = false;
       defaultAccessFinancial = false;
       defaultAccessFiscal = true;
+      defaultAccessIndustrial = false;
       break;
     case 'mecanico':
       defaultAccessSales = false;
@@ -134,6 +156,7 @@ export function normalizeUserPermissions(
       defaultAccessPayable = false;
       defaultAccessFinancial = false;
       defaultAccessFiscal = false;
+      defaultAccessIndustrial = true; // Mecânico/Operador na indústria opera PCP
       break;
     default:
       defaultAccessSales = true;
@@ -166,6 +189,26 @@ export function normalizeUserPermissions(
     unitsOfMeasureCreate: permissions?.unitsOfMeasureCreate !== undefined ? Boolean(permissions.unitsOfMeasureCreate) : (normalizedRole === 'admin' || normalizedRole === 'qa'),
     unitsOfMeasureEdit: permissions?.unitsOfMeasureEdit !== undefined ? Boolean(permissions.unitsOfMeasureEdit) : (normalizedRole === 'admin' || normalizedRole === 'qa'),
     unitsOfMeasureToggleActive: permissions?.unitsOfMeasureToggleActive !== undefined ? Boolean(permissions.unitsOfMeasureToggleActive) : (normalizedRole === 'admin' || normalizedRole === 'qa'),
+    
+    // Industrial RBAC
+    accessIndustrialDashboard: permissions?.accessIndustrialDashboard !== undefined ? Boolean(permissions.accessIndustrialDashboard) : defaultAccessIndustrial,
+    accessProduction: permissions?.accessProduction !== undefined ? Boolean(permissions.accessProduction) : defaultAccessIndustrial,
+    accessProductionOrders: permissions?.accessProductionOrders !== undefined ? Boolean(permissions.accessProductionOrders) : defaultAccessIndustrial,
+    accessBillOfMaterials: permissions?.accessBillOfMaterials !== undefined ? Boolean(permissions.accessBillOfMaterials) : defaultAccessIndustrial,
+    accessIndustrialStock: permissions?.accessIndustrialStock !== undefined ? Boolean(permissions.accessIndustrialStock) : defaultAccessIndustrial,
+    accessIndustrialCosts: permissions?.accessIndustrialCosts !== undefined ? Boolean(permissions.accessIndustrialCosts) : defaultAccessIndustrial,
+    accessLots: permissions?.accessLots !== undefined ? Boolean(permissions.accessLots) : defaultAccessIndustrial,
+    accessProductionReports: permissions?.accessProductionReports !== undefined ? Boolean(permissions.accessProductionReports) : defaultAccessIndustrial,
+    accessIndustrialReports: permissions?.accessIndustrialReports !== undefined ? Boolean(permissions.accessIndustrialReports) : defaultAccessIndustrial,
+    accessCommercialReports: permissions?.accessCommercialReports !== undefined ? Boolean(permissions.accessCommercialReports) : defaultAccessIndustrial,
+    productionOrderCreate: permissions?.productionOrderCreate !== undefined ? Boolean(permissions.productionOrderCreate) : (normalizedRole === 'admin' || normalizedRole === 'qa'),
+    productionOrderEdit: permissions?.productionOrderEdit !== undefined ? Boolean(permissions.productionOrderEdit) : (normalizedRole === 'admin' || normalizedRole === 'qa'),
+    productionOrderApprove: permissions?.productionOrderApprove !== undefined ? Boolean(permissions.productionOrderApprove) : (normalizedRole === 'admin' || normalizedRole === 'qa'),
+    productionOrderCancel: permissions?.productionOrderCancel !== undefined ? Boolean(permissions.productionOrderCancel) : (normalizedRole === 'admin' || normalizedRole === 'qa'),
+    productionOrderComplete: permissions?.productionOrderComplete !== undefined ? Boolean(permissions.productionOrderComplete) : (normalizedRole === 'admin' || normalizedRole === 'qa' || normalizedRole === 'mecanico'),
+    bomCreate: permissions?.bomCreate !== undefined ? Boolean(permissions.bomCreate) : (normalizedRole === 'admin' || normalizedRole === 'qa'),
+    bomEdit: permissions?.bomEdit !== undefined ? Boolean(permissions.bomEdit) : (normalizedRole === 'admin' || normalizedRole === 'qa'),
+
     canEditBudgets: permissions?.canEditBudgets !== undefined ? Boolean(permissions.canEditBudgets) : (normalizedRole !== 'mecanico'),
     canCustomizePdf: permissions?.canCustomizePdf !== undefined ? Boolean(permissions.canCustomizePdf) : defaultCanCustomizePdf,
     canViewOtherStoresStock: permissions?.canViewOtherStoresStock !== undefined ? Boolean(permissions.canViewOtherStoresStock) : true,
@@ -187,7 +230,7 @@ export function normalizeUser(user: User): User {
 
 /**
  * Normaliza e padroniza qualquer valor recebido de tipo de negócio para o enum canônico BusinessType.
- * Trata variações de maiúsculas/minúsculas, acentuação ("COMÉRCIO", "Comércio") e sinônimos.
+ * Trata variações de maiúsculas/minúsculas, acentuação ("COMÉRCIO", "Comércio", "INDÚSTRIA") e sinônimos.
  */
 export function normalizeBusinessType(type?: string | null): BusinessType {
   if (!type) return 'OFICINA';
@@ -197,6 +240,9 @@ export function normalizeBusinessType(type?: string | null): BusinessType {
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "");
 
+  if (clean === 'INDUSTRIA' || clean === 'FABRICA' || clean === 'MANUFATURA' || clean === 'METALURGICA' || clean === 'PRODUCAO') {
+    return 'INDUSTRIA';
+  }
   if (clean === 'COMERCIO' || clean === 'COMERCIO / AUTOPECAS' || clean === 'LOJA' || clean === 'BALCAO') {
     return 'COMERCIO';
   }
@@ -223,6 +269,23 @@ export function getBusinessType(company?: CompanyInfo | null): BusinessType {
 }
 
 /**
+ * Verifica se a empresa atende operações industriais (PCP, BOM, OPs, Lotes, Estoque Industrial)
+ * Retorna true para 'INDUSTRIA' e 'OFICINA_COMERCIO'
+ */
+export function isIndustrialBusiness(businessType?: BusinessType | string | null): boolean {
+  const norm = normalizeBusinessType(businessType);
+  return norm === 'INDUSTRIA' || norm === 'OFICINA_COMERCIO';
+}
+
+/**
+ * Verifica se é estritamente uma indústria / manufatura
+ */
+export function isPureIndustrial(businessType?: BusinessType | string | null): boolean {
+  const norm = normalizeBusinessType(businessType);
+  return norm === 'INDUSTRIA';
+}
+
+/**
  * Verifica se a empresa atende operações de oficina mecânica (Ordem de Serviço, Veículos, etc.)
  * Retorna true para 'OFICINA' e 'OFICINA_COMERCIO'
  */
@@ -233,11 +296,11 @@ export function isWorkshopBusiness(businessType?: BusinessType | string | null):
 
 /**
  * Verifica se a empresa atende operações de comércio / balcão / PDV (Vendas rápidas, Balcão)
- * Retorna true para 'COMERCIO' e 'OFICINA_COMERCIO'
+ * Retorna true para 'COMERCIO', 'INDUSTRIA' e 'OFICINA_COMERCIO'
  */
 export function isCommerceBusiness(businessType?: BusinessType | string | null): boolean {
   const norm = normalizeBusinessType(businessType);
-  return norm === 'COMERCIO' || norm === 'OFICINA_COMERCIO';
+  return norm === 'COMERCIO' || norm === 'INDUSTRIA' || norm === 'OFICINA_COMERCIO';
 }
 
 /**
@@ -273,15 +336,22 @@ export function isViewAllowedForBusinessType(
 ): boolean {
   const type = normalizeBusinessType(businessType);
 
-  if (type === 'COMERCIO') {
+  if (type === 'INDUSTRIA') {
     if (WORKSHOP_EXCLUSIVE_VIEWS.includes(viewId)) {
       return false;
     }
     return true;
   }
 
+  if (type === 'COMERCIO') {
+    if (WORKSHOP_EXCLUSIVE_VIEWS.includes(viewId) || INDUSTRIAL_EXCLUSIVE_VIEWS.includes(viewId)) {
+      return false;
+    }
+    return true;
+  }
+
   if (type === 'OFICINA') {
-    if (COMMERCE_EXCLUSIVE_VIEWS.includes(viewId)) {
+    if (COMMERCE_EXCLUSIVE_VIEWS.includes(viewId) || INDUSTRIAL_EXCLUSIVE_VIEWS.includes(viewId)) {
       return false;
     }
     return true;
@@ -298,16 +368,23 @@ export function isModuleAllowedForBusinessType(
   permissionKey: string,
   businessType?: BusinessType | string | null
 ): boolean {
-  const type = businessType || 'OFICINA';
+  const type = normalizeBusinessType(businessType);
+
+  if (type === 'INDUSTRIA') {
+    if (WORKSHOP_EXCLUSIVE_PERMISSIONS.includes(permissionKey)) {
+      return false;
+    }
+    return true;
+  }
 
   if (type === 'COMERCIO') {
-    if (WORKSHOP_EXCLUSIVE_PERMISSIONS.includes(permissionKey)) {
+    if (WORKSHOP_EXCLUSIVE_PERMISSIONS.includes(permissionKey) || INDUSTRIAL_EXCLUSIVE_PERMISSIONS.includes(permissionKey)) {
       return false;
     }
   }
 
   if (type === 'OFICINA') {
-    if (COMMERCE_EXCLUSIVE_PERMISSIONS.includes(permissionKey)) {
+    if (COMMERCE_EXCLUSIVE_PERMISSIONS.includes(permissionKey) || INDUSTRIAL_EXCLUSIVE_PERMISSIONS.includes(permissionKey)) {
       return false;
     }
   }
@@ -321,12 +398,15 @@ export function isModuleAllowedForBusinessType(
 export function getAvailableViewsForBusinessType(businessType?: BusinessType | string | null): ViewID[] {
   const allViews: ViewID[] = [
     'dashboard',
+    'industry',
     'sales',
     'withdrawals',
+    'fiscal_conference',
     'carriers',
     'clients',
     'vehicles',
     'parts',
+    'units_of_measure',
     'quotations',
     'services',
     'budgets',
@@ -356,6 +436,9 @@ export function getFallbackViewForBusinessType(
   if (userPermissions?.accessDashboard !== false) {
     return 'dashboard';
   }
+  if (isIndustrialBusiness(businessType) && userPermissions?.accessIndustrialDashboard !== false) {
+    return 'industry';
+  }
   if (isCommerceBusiness(businessType) && userPermissions?.accessSales !== false) {
     return 'sales';
   }
@@ -370,6 +453,17 @@ export function getFallbackViewForBusinessType(
  */
 export function getSegmentMetadata(businessType?: BusinessType | string | null) {
   switch (businessType) {
+    case 'INDUSTRIA':
+      return {
+        label: 'Indústria & Manufatura',
+        shortLabel: 'Indústria',
+        badgeClass: 'bg-cyan-500/10 text-cyan-800 border-cyan-300',
+        activePillClass: 'bg-cyan-600 text-white',
+        description: 'PCP, Estrutura do Produto (BOM), Ordens de Produção (OP), Lotes, Custos e Estoque Operacional.',
+        isWorkshop: false,
+        isCommerce: true,
+        isIndustry: true,
+      };
     case 'COMERCIO':
       return {
         label: 'Comércio & Autopeças',
@@ -379,6 +473,7 @@ export function getSegmentMetadata(businessType?: BusinessType | string | null) 
         description: 'Vendas de Balcão (PDV), Estoque de Peças, Caixa e Emissão Fiscal.',
         isWorkshop: false,
         isCommerce: true,
+        isIndustry: false,
       };
     case 'OFICINA_COMERCIO':
       return {
@@ -389,6 +484,7 @@ export function getSegmentMetadata(businessType?: BusinessType | string | null) 
         description: 'Estrutura Completa: Ordens de Serviço, Veículos e Vendas de Balcão integradas.',
         isWorkshop: true,
         isCommerce: true,
+        isIndustry: true,
       };
     case 'OFICINA':
     default:
@@ -400,6 +496,7 @@ export function getSegmentMetadata(businessType?: BusinessType | string | null) 
         description: 'Ordens de Serviço, Veículos, Checklists, Orçamentos, Mecânicos e Serviços.',
         isWorkshop: true,
         isCommerce: false,
+        isIndustry: false,
       };
   }
 }

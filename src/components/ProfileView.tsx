@@ -213,7 +213,9 @@ export default function ProfileView({ currentUser, db, onSaveUsers, onAddHistory
             const PERMISSION_LABEL_MAP: { [K in keyof UserPermissions]: string } = {
               accessDashboard: "Dashboard Geral KPI",
               accessSales: "Vendas & Balcão (PDV)",
+              accessWithdrawals: "Retirada & Entrega (Expedição)",
               accessCarriers: "Transportadoras & Fretes",
+              accessUnitsOfMeasure: "Unidades de Medida & Dimensões",
               restrictToOwnSales: "Restringir aos Próprios Pedidos de Venda",
               accessClients: "Cadastro de Clientes",
               accessVehicles: "Cadastro de Veículos",

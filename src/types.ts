@@ -55,11 +55,24 @@ export interface AlertSettings {
   defaultDepositPercentage?: number; // % padrão de sinal/entrada (ex: 30%, 50%)
   requireDepositToExecuteOS?: boolean; // Bloquear/Alertar no semáforo se o sinal de entrada não foi pago antes de iniciar
   allowPerClientPaymentOverride?: boolean; // Permite regra de pagamento customizada por cliente
+
+  // Alertas Financeiros, de Compras e Estoque Gerencial
+  enableReceivableDueAlerts?: boolean; // Alerta de contas a receber a vencer
+  receivableDueNoticeDays?: number; // Dias de antecedência (padrão: 3 dias)
+  enablePayableDueAlerts?: boolean; // Alerta de contas a pagar a vencer
+  payableDueNoticeDays?: number; // Dias de antecedência (padrão: 5 dias)
+  showFinancialAlertsOnDashboard?: boolean; // Exibir avisos de vencimento no Dashboard
+  showFinancialAlertsInModule?: boolean; // Exibir banners nos módulos financeiro e contas a pagar/receber
+  financialAlertFrequency?: 'daily' | 'realtime' | 'always'; // Frequência da verificação
+  enableDormantStockAlerts?: boolean; // Alerta de produtos sem movimentação (capital parado)
+  dormantStockDaysThreshold?: number; // Limite de dias sem giro (ex: 30, 60, 90, 180, 365)
+  enableCostIncreaseAlerts?: boolean; // Alerta de aumento significativo no custo de aquisição
+  costIncreaseThresholdPercent?: number; // % de variação para disparar alerta (ex: 10%)
 }
 
 export type UserRole = 'admin' | 'atendente' | 'mecanico' | 'qa';
 
-export type BusinessType = "OFICINA" | "COMERCIO" | "OFICINA_COMERCIO" | "SERVICOS" | "OUTROS";
+export type BusinessType = "OFICINA" | "COMERCIO" | "INDUSTRIA" | "OFICINA_COMERCIO" | "SERVICOS" | "OUTROS";
 
 export type UnitCategory = 'QUANTIDADE' | 'COMPRIMENTO' | 'AREA' | 'VOLUME' | 'MASSA' | 'TEMPO' | 'OUTROS';
 
@@ -98,6 +111,7 @@ export interface UnitOfMeasure {
 
 export type ViewID = 
   | 'dashboard' 
+  | 'industry'
   | 'sales'
   | 'withdrawals'
   | 'fiscal_conference'
@@ -130,6 +144,8 @@ export interface CompanyModules {
   financial: boolean;
   fiscal: boolean;
   billing: boolean;
+  industry?: boolean;
+  production?: boolean;
 }
 
 export function getDefaultModulesForBusinessType(type: BusinessType = "OFICINA"): CompanyModules {
@@ -142,7 +158,21 @@ export function getDefaultModulesForBusinessType(type: BusinessType = "OFICINA")
         inventory: true,
         financial: true,
         fiscal: true,
-        billing: true
+        billing: true,
+        industry: false,
+        production: false,
+      };
+    case "INDUSTRIA":
+      return {
+        sales: true,
+        serviceOrders: false,
+        vehicles: false,
+        inventory: true,
+        financial: true,
+        fiscal: true,
+        billing: true,
+        industry: true,
+        production: true,
       };
     case "OFICINA":
     case "OFICINA_COMERCIO":
@@ -154,7 +184,9 @@ export function getDefaultModulesForBusinessType(type: BusinessType = "OFICINA")
         inventory: true,
         financial: true,
         fiscal: true,
-        billing: true
+        billing: true,
+        industry: type === 'OFICINA_COMERCIO',
+        production: type === 'OFICINA_COMERCIO',
       };
   }
 }
@@ -302,6 +334,10 @@ export interface CompanyInfo {
   enableInterStoreSales?: boolean; // Permite venda de produtos pertencentes a outra loja/filial
   interStorePaymentMode?: 'PURCHASE_STORE_ONLY' | 'FULFILLMENT_STORE_ONLY' | 'BOTH';
   interStoreFulfillmentMode?: 'pickup_at_stock_store' | 'transfer_to_origin_store' | 'allow_customer_choice';
+
+  // Taxa de Implantação e Treinamento do Sistema
+  hasImplementationFee?: boolean; // Se true, foi cobrada taxa de implantação/treinamento
+  implementationFee?: number; // Valor negociado da taxa de implantação (R$)
 }
 
 export interface UserPermissions {
@@ -379,6 +415,32 @@ export interface UserPermissions {
   financialEntry?: boolean;
   financialConfig?: boolean;
 
+  // Permissões Granulares - Relatórios Gerenciais & Operacionais
+  accessFinancialReports?: boolean; // Permite visualizar relatórios financeiros (A Receber, A Pagar, Compromissos, Inadimplência)
+  accessPurchasingReports?: boolean; // Permite visualizar relatórios de compras (Histórico, Peças Mais Usadas, Produto x Fornecedor, Fornecedores)
+  accessStockReports?: boolean; // Permite visualizar relatórios de estoque (Posição, Reposição, Capital Parado)
+  accessReportsExport?: boolean; // Permite exportar relatórios para PDF e CSV/Excel
+  accessFinancialAlertsConfig?: boolean; // Permite configurar prazos e parâmetros de alertas financeiros
+
+  // Permissões Granulares - Módulo Industrial (PCP, Produção, BOM, Lotes)
+  accessIndustrialDashboard?: boolean;
+  accessProduction?: boolean;
+  accessProductionOrders?: boolean;
+  accessBillOfMaterials?: boolean;
+  accessIndustrialStock?: boolean;
+  accessIndustrialCosts?: boolean;
+  accessLots?: boolean;
+  accessProductionReports?: boolean;
+  accessIndustrialReports?: boolean;
+  accessCommercialReports?: boolean;
+  productionOrderCreate?: boolean;
+  productionOrderEdit?: boolean;
+  productionOrderApprove?: boolean;
+  productionOrderCancel?: boolean;
+  productionOrderComplete?: boolean;
+  bomCreate?: boolean;
+  bomEdit?: boolean;
+
   canEditBudgets?: boolean; // Permissão para editar orçamentos existentes (adicionar itens e alterar dados)
   canCustomizePdf?: boolean; // Permissão para personalizar e editar layout de campos no PDF
   canViewOtherStoresStock?: boolean; // Permissão para visualizar estoque de outras lojas/filiais da rede
@@ -442,17 +504,25 @@ export interface CrossSellItem {
   defaultQuantity: number;
 }
 
+export type ItemBusinessType = 'produto_acabado' | 'materia_prima' | 'componente' | 'insumo' | 'mercadoria_revenda' | 'peca_veicular';
+
 export interface Part {
   id: string;
   name: string;
   code: string;
   stock: number;
+  stockQuantity?: number; // Compatibilidade de saldo de estoque
   reservedStock?: number; // Saldo de estoque físico reservado por vendas pendentes de retirada/entrega
+  separatedStock?: number; // Saldo em processo de separação física
+  dispatchedStock?: number; // Saldo despachado
+  deliveredStock?: number; // Saldo entregue
+  inProductionStock?: number; // Saldo em processo de produção através de OPs abertas
   price: number; // Preço de Venda
+  salePrice?: number; // Compatibilidade de Preço de Venda
   companyId?: string;
   costPrice?: number; // Preço de Custo / Compra
   minStock?: number; // Alerta de Estoque Mínimo
-  category?: string; // Categoria (Freios, Suspensão, Óleos, Filtros, Elétrica, Motor, etc.)
+  category?: string; // Categoria (Freios, Suspensão, Óleos, Estrutura Metálica, Motorização, etc.)
   location?: string; // Localização no Galpão/Prateleira
   unit?: string; // Unidade de Medida Sigla (UN, CX, L, KG, M, M², M³)
   unitOfMeasureId?: string; // Referência para a Unidade de Medida configurada
@@ -464,6 +534,17 @@ export interface Part {
   isCrossSell?: boolean; // Se possui venda casada (serviço ou produto vinculado)
   crossSellItems?: CrossSellItem[]; // Lista de itens casados automaticamente
   
+  // PARÂMETROS INDUSTRIAIS (BOM / MANUFATURA)
+  itemType?: ItemBusinessType; // Classificação do item na indústria
+  unitCommercial?: string; // Unidade Comercial lida do XML (ex: CX, ROLO, CHAPA)
+  unitTrib?: string; // Unidade Tributável do XML (ex: UN, KG)
+  conversionFactorTrib?: number; // Fator de conversão uCom -> uTrib
+  uomOrigin?: 'MANUAL' | 'NF_E_IMPORT' | 'SYSTEM'; // Origem do cadastro de unidade
+  hasBom?: boolean; // Se é produto acabado com estrutura de composição
+  bomId?: string; // ID da BOM ativa
+  leadTimeDays?: number; // Prazo de fornecimento ou ciclo de produção em dias
+  currentLotNumber?: string; // Lote ativo em estoque
+
   // CLASSIFICAÇÃO FISCAL DO PRODUTO (ARQUITETURA MOTOR DESK FISCAL)
   ncm?: string; // Código NCM Fiscal (Ex: 8708.29.99)
   cest?: string; // Código CEST (Substituição Tributária)
@@ -493,11 +574,327 @@ export interface StockMovement {
   type: 'in' | 'out' | 'adjustment';
   quantity: number;
   unitCost?: number;
-  reason: string; // Ex: "Importação NFe #1042", "Ajuste de Inventário", "Baixa por Ordem de Serviço OS-001"
+  reason: string; // Ex: "Importação NFe #1042", "Consumo OP-2026-001", "Entrada Produção Acabada OP-2026-001"
   description?: string;
+  lotNumber?: string;
+  productionOrderId?: string;
+  operatorName?: string;
+  userName?: string;
   supplierOrNFe?: string;
-  date: string;
-  userName: string;
+  sourceDocument?: string; // "NFe #1042", "OP-001", "Venda #V-100"
+  date?: string;
+  timestamp?: string;
+}
+
+/**
+ * ============================================================================
+ * ESTRUTURAS DO MÓDULO INDUSTRIAL (BOM, OP, LOTES, CUSTOS & RASTREABILIDADE)
+ * ============================================================================
+ */
+
+export interface BomItem {
+  id?: string;
+  componentPartId?: string;
+  componentPartName?: string;
+  componentPartCode?: string;
+  rawPartId?: string; // Compatibilidade com componentes
+  rawPartName?: string;
+  rawPartCode?: string;
+  quantity: number;
+  unit: string;
+  unitCost: number;
+  totalCost: number;
+  lossPercentage?: number; // Percentual de perda técnica (%)
+  scrapRatePercent?: number; // Compatibilidade
+  effectiveQuantity?: number; // Quantidade necessária considerando perda
+  substitutePartId?: string; // Componente substituto alternativo
+  substitutePartName?: string;
+  notes?: string;
+}
+
+export interface BillOfMaterials {
+  id: string;
+  companyId: string;
+  code?: string;
+  name?: string;
+  unit?: string;
+  standardBatchQuantity?: number;
+  estimatedCycleTimeMinutes?: number;
+  finishedProductPartId?: string;
+  finishedPartId?: string;
+  finishedProductName?: string;
+  finishedPartName?: string;
+  finishedProductCode?: string;
+  version: string; // Ex: "v1.0", "v2.1"
+  active: boolean;
+  items: BomItem[];
+  laborCost?: number; // Custo de Mão de Obra prevista por unidade
+  laborCostPerUnit?: number; // Compatibilidade
+  indirectCost?: number; // Custos Indiretos de Fabricação (CIF)
+  overheadCostPerUnit?: number; // Compatibilidade
+  totalMaterialCost?: number;
+  materialsCostPerUnit?: number; // Compatibilidade
+  totalUnitCost: number; // Custo previsto unitário (Material + MO + CIF)
+  suggestedSalePrice?: number;
+  estimatedProductionHours?: number;
+  validityDate?: string;
+  notes?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export type ProductionOrderStatus = 
+  | 'PLANEJADA' 
+  | 'LIBERADA' 
+  | 'EM_PRODUCAO' 
+  | 'PAUSADA' 
+  | 'CONCLUIDA' 
+  | 'CANCELADA'
+  | 'PLANNED'
+  | 'APPROVED'
+  | 'IN_PRODUCTION'
+  | 'SEPARATION'
+  | 'COMPLETED'
+  | 'PAUSED'
+  | 'CANCELED'
+  | 'planned' 
+  | 'approved' 
+  | 'in_progress' 
+  | 'completed' 
+  | 'canceled'
+  | 'planejada' 
+  | 'liberada' 
+  | 'em_producao' 
+  | 'pausada' 
+  | 'concluida' 
+  | 'cancelada';
+
+export interface MaterialConsumptionLog {
+  id: string;
+  productionOrderId: string;
+  partId: string;
+  partName: string;
+  partCode: string;
+  unit: string;
+  plannedQuantity: number;
+  consumedQuantity: number;
+  returnedQuantity: number;
+  lossQuantity: number;
+  unitCost: number;
+  totalCost: number;
+  lotNumber?: string;
+  operatorName: string;
+  timestamp: string;
+  companyId: string;
+  notes?: string;
+}
+
+export interface ProductionOrderMaterial {
+  partId: string;
+  partName: string;
+  partCode: string;
+  unit: string;
+  plannedQuantity: number;
+  consumedQuantity: number;
+  returnedQuantity: number;
+  lossQuantity: number;
+  unitCost: number;
+  availableStock: number;
+  availabilityStatus: 'SUFFICIENT' | 'PARTIAL' | 'INSUFFICIENT'; // 🟢 🟡 🔴
+  shortageQuantity: number;
+  lotNumber?: string;
+}
+
+export interface ProductionOrder {
+  id: string;
+  companyId: string;
+  code: string; // Ex: "OP-2026-001"
+  finishedProductPartId?: string;
+  finishedPartId?: string; // Compatibilidade
+  finishedProductName?: string;
+  finishedPartName?: string;
+  productName?: string;
+  finishedProductCode?: string;
+  bomId?: string;
+  billOfMaterialsId?: string; // Compatibilidade
+  bomVersion?: string;
+  status: ProductionOrderStatus;
+  priority?: 'BAIXA' | 'MEDIA' | 'ALTA' | 'URGENTE' | 'low' | 'medium' | 'high' | 'urgent' | string;
+  plannedQuantity: number;
+  targetQuantity?: number;
+  producedQuantity: number;
+  lostQuantity?: number;
+  scrapQuantity?: number;
+  scrappedQuantity?: number;
+  unit?: string;
+  unitOfMeasure?: string;
+  lotNumber?: string; // Lote gerado para o produto acabado
+  lotExpirationDate?: string;
+  responsibleOperator?: string;
+  assignedOperatorId?: string;
+  assignedOperatorName?: string;
+  assignedTo?: string;
+  operatorName?: string; // Compatibilidade
+  customerName?: string; // Compatibilidade
+  originType?: 'MANUAL' | 'SALE_ORDER' | 'BUDGET' | 'REPLENISHMENT' | string;
+  originReferenceId?: string; // ID da Venda ou Orçamento originador
+  commercialSaleCode?: string; // Compatibilidade
+  commercialBudgetId?: string; // Compatibilidade
+  clientName?: string; // Cliente vinculado à encomenda
+  routingStages?: Array<{
+    id: string;
+    sequence: number;
+    name?: string;
+    workCenter?: string;
+    workCenterName?: string;
+    description?: string;
+    standardMinutes?: number;
+    estimatedMinutes?: number;
+    actualMinutes?: number;
+    completedAt?: string;
+    status: 'pending' | 'in_progress' | 'completed' | 'pendente' | 'em_andamento' | 'concluido' | string;
+    operatorName?: string;
+  }>;
+  allocatedMaterials?: any[];
+  scheduledDate?: string;
+  startDate?: string;
+  endDate?: string;
+  plannedStartDate?: string;
+  plannedEndDate?: string;
+  actualStartDate?: string;
+  actualEndDate?: string;
+  
+  // Custos Industriais (Previsto vs Realizado)
+  unitEstimatedCost?: number;
+  estimatedUnitCost?: number; // Compatibilidade
+  estimatedTotalCost?: number; // Compatibilidade
+  plannedMaterialCost?: number;
+  plannedLaborCost?: number;
+  plannedIndirectCost?: number;
+  plannedTotalCost?: number;
+  actualMaterialCost?: number;
+  actualLaborCost?: number;
+  actualIndirectCost?: number;
+  actualTotalCost?: number;
+  totalEstimatedCost?: number;
+  costDeviationAmount?: number; // Desvio em R$ (actual - planned)
+  costDeviationPercentage?: number; // Desvio em %
+  
+  materials?: ProductionOrderMaterial[];
+  consumptionLogs?: MaterialConsumptionLog[];
+  observations?: string;
+  notes?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ProductLot {
+  id: string;
+  companyId: string;
+  lotNumber: string;
+  partId: string;
+  partName: string;
+  productName?: string;
+  partCode?: string;
+  itemType?: 'materia_prima' | 'produto_acabado' | 'componente' | string;
+  unit?: string;
+  unitOfMeasure?: string;
+  supplierName?: string;
+  supplierCnpj?: string;
+  supplierLotNumber?: string; // Compatibilidade
+  storageLocation?: string; // Compatibilidade
+  originNfeKey?: string;
+  originNfeNumber?: string;
+  originProductionOrderId?: string; // Se gerado por OP
+  productionOrderId?: string; // Compatibilidade
+  productionOrderCode?: string;
+  entryDate?: string;
+  manufactureDate?: string;
+  manufacturingDate?: string;
+  expirationDate?: string;
+  initialQuantity: number;
+  consumedQuantity?: number;
+  remainingQuantity?: number;
+  reservedQuantity?: number; // Saldo de lote reservado
+  currentQuantity?: number;
+  availableQuantity?: number; // Saldo de lote disponível
+  unitCost?: number;
+  status?: 'ACTIVE' | 'DEPLETED' | 'EXPIRED' | 'QUARANTINE' | 'ativo' | 'quarentena' | 'esgotado' | 'expirado' | string;
+  qualityStatus?: 'approved' | 'quarantine' | 'rejected' | 'aprovado' | 'rejeitado' | 'APPROVED' | 'REJECTED' | 'QUARANTINE' | string;
+  qualityInspectionStatus?: string; // Compatibilidade
+  qcStatus?: 'approved' | 'quarantine' | 'rejected' | 'aprovado' | 'rejeitado' | string;
+  inspectedBy?: string;
+  destinationSales?: Array<{
+    saleId: string;
+    saleCode: string;
+    clientName: string;
+    nfeKey?: string;
+    quantity: number;
+    date: string;
+  }>;
+  destinationProductionOrders?: Array<{
+    productionOrderId: string;
+    productionOrderCode: string;
+    quantity: number;
+    date: string;
+  }>;
+  notes?: string;
+  createdAt?: string;
+}
+
+export interface CommercialDemandVsIndustrialCapacity {
+  partId: string;
+  partName: string;
+  partCode: string;
+  unit: string;
+  pendingSalesOrdersCount: number;
+  orderedQuantity: number; // Total demandado por pedidos de clientes
+  physicalStock: number; // Estoque físico
+  reservedStock: number; // Estoque reservado para pedidos já faturados
+  availableStock: number; // Saldo disponível imediato
+  inProductionQuantity: number; // Em produção em OPs abertas
+  netBalance: number; // (Disponível + Em Produção) - Demandado
+  additionalProductionNeeded: number; // Necessidade real de produzir
+  leadTimeDays: number;
+  status: 'ADEQUATE' | 'IN_PRODUCTION' | 'CRITICAL_DEFICIT';
+  actionPlan: {
+    issue: string; // Problema
+    impact: string; // Impacto
+    action: string; // Ação recomendada
+  };
+}
+
+export interface OperationalAlert {
+  id: string;
+  companyId: string;
+  severity: 'CRITICAL' | 'WARNING' | 'INFO' | 'HIGH' | 'LOW' | 'critica' | 'atencao' | 'info' | string;
+  category?: 
+    | 'STOCK_CRITICAL' 
+    | 'OP_OVERDUE' 
+    | 'RAW_MATERIAL_SHORTAGE' 
+    | 'ORDER_DELAYED' 
+    | 'BUDGET_EXPIRING' 
+    | 'CLIENT_INACTIVE' 
+    | 'MARGIN_BELOW_MIN' 
+    | 'COST_OVERRUN' 
+    | 'LOT_EXPIRING' 
+    | 'PURCHASE_REQUIRED'
+    | string;
+  type?: string;
+  title: string;
+  detail?: string;
+  description?: string;
+  message?: string;
+  impact?: string;
+  recommendedAction?: string;
+  suggestedAction?: string;
+  entityType?: string;
+  entityId?: string;
+  entityCode?: string;
+  referenceId?: string;
+  referenceType?: 'OP' | 'PART' | 'SALE' | 'BUDGET' | 'LOT' | string;
+  createdAt: string;
+  resolved?: boolean;
 }
 
 export interface NFeItem {
@@ -838,7 +1235,7 @@ export interface TestCase {
   code: string; // CT001, CT002...
   requirement: string; // RF001, RN001...
   title: string;
-  category: 'Funcional' | 'Regra de Negócio' | 'Permissões' | 'Fluxo Principal' | 'Logística' | 'Fiscal' | 'Multiloja' | 'Segurança & Arquitetura';
+  category: 'Funcional' | 'Regra de Negócio' | 'Permissões' | 'Fluxo Principal' | 'Logística' | 'Fiscal' | 'Multiloja' | 'Segurança & Arquitetura' | 'Compras' | 'Estoque' | 'Financeiro' | 'Segurança & RBAC' | 'Multiempresa' | string;
   preConditions: string;
   steps: string[];
   expectedResult: string;
@@ -1552,6 +1949,50 @@ export interface GoodsWithdrawalOrder {
   notes?: string;
   assignedOperator?: string;
   history: GoodsWithdrawalHistoryEvent[];
+}
+
+export interface AppDatabase {
+  companyInfo: CompanyInfo;
+  registeredCompanies: CompanyInfo[];
+  users: User[];
+  clients: Client[];
+  vehicles: Vehicle[];
+  parts: Part[];
+  sales: CommercialSale[];
+  goodsWithdrawals: GoodsWithdrawalOrder[];
+  carriers: Carrier[];
+  stockMovements: StockMovement[];
+  services: Service[];
+  budgets: Budget[];
+  serviceOrders: ServiceOrder[];
+  history: HistoryEntry[];
+  testCases: TestCase[];
+  notifications: SystemNotification[];
+  alertSettings: AlertSettings;
+  suppliers: Supplier[];
+  supplierPartPrices: SupplierPartPrice[];
+  quotations: Quotation[];
+  accountsReceivable: AccountReceivable[];
+  accountsPayable: AccountPayable[];
+  financialTransactions: FinancialTransaction[];
+  paymentMethods: PaymentMethodOption[];
+  maintenanceLogs?: MaintenanceLog[];
+  fiscalDocuments: FiscalDocument[];
+  boletos: BoletoDocument[];
+  interBranchSales: InterBranchSaleLogistics[];
+  sefazConfig: SefazApiConfig;
+  taxOperationNatures: TaxOperationNature[];
+  taxRules: TaxRule[];
+  xmlImportRecords: XmlImportRecord[];
+  unitsOfMeasure: UnitOfMeasure[];
+  boms: BillOfMaterials[];
+  billOfMaterials?: BillOfMaterials[];
+  productionOrders: ProductionOrder[];
+  productLots: ProductLot[];
+  operationalAlerts: OperationalAlert[];
+  landingContent?: any;
+  globalModules?: { [key: string]: boolean };
+  loginHistory?: { username: string; name: string; role: string; lastAccess: string }[];
 }
 
 
