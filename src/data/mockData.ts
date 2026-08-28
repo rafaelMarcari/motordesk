@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { User, Client, Vehicle, Part, Service, Budget, ServiceOrder, HistoryEntry, TestCase, StockMovement, CompanyInfo, SystemNotification, AlertSettings, Supplier, SupplierPartPrice, Quotation, AccountReceivable, AccountPayable, FinancialTransaction, MaintenanceLog, PaymentMethodOption, FiscalDocument, BoletoDocument, InterBranchSaleLogistics, SefazApiConfig, TaxOperationNature, TaxRule, XmlImportRecord, CommercialSale, Carrier, GoodsWithdrawalOrder, WithdrawalType, WithdrawalStatus, getDefaultModulesForBusinessType, UnitOfMeasure, BillOfMaterials, ProductionOrder, ProductLot, OperationalAlert } from '../types';
+import { User, Client, Vehicle, Part, Service, Budget, ServiceOrder, HistoryEntry, TestCase, StockMovement, CompanyInfo, SystemNotification, AlertSettings, Supplier, SupplierPartPrice, Quotation, AccountReceivable, AccountPayable, FinancialTransaction, MaintenanceLog, PaymentMethodOption, FiscalDocument, BoletoDocument, InterBranchSaleLogistics, SefazApiConfig, TaxOperationNature, TaxRule, XmlImportRecord, CommercialSale, Carrier, GoodsWithdrawalOrder, WithdrawalType, WithdrawalStatus, getDefaultModulesForBusinessType, UnitOfMeasure, BillOfMaterials, ProductionOrder, ProductLot, OperationalAlert, InstalledEquipment, EquipmentMaintenancePlan, EquipmentMaintenanceOrder, ProductionScrapLog, ProductionReworkLog, PurchaseHistoryItem, BomRevision } from '../types';
 
 export const INITIAL_UNITS_OF_MEASURE: UnitOfMeasure[] = [
   { id: 'uom-un', name: 'Unidade', acronym: 'UN', category: 'QUANTIDADE', calculationType: 'SIMPLES', conversionFactor: 1, decimalPlaces: 0, active: true, isGlobal: true, notes: 'Contagem unitária inteira padrão' },
@@ -2576,6 +2576,556 @@ export const INITIAL_TEST_CASES: TestCase[] = [
     ],
     expectedResult: 'Todos os cálculos agregados respeitam rigorosamente o escopo do tenant ativo.',
     status: 'passed'
+  },
+  // MÓDULO INDUSTRIAL & PCP (CT-IND-01 a CT-IND-37)
+  {
+    id: 'tc-ind-01',
+    code: 'CT-IND-01',
+    requirement: 'REQ-IND-01',
+    title: 'Parametrização do Módulo Industrial por Empresa',
+    category: 'Industrial',
+    preConditions: 'Empresa cadastrada no segmento INDUSTRIA ou HIBRIDO.',
+    steps: [
+      'Acessar Empresas e selecionar empresa industrial.',
+      'Verificar a ativação dos módulos de Engenharia BOM, PCP, Rastreabilidade e Manutenção.',
+      'Confirmar que os menus industriais estão disponíveis no sidebar de navegação.'
+    ],
+    expectedResult: 'Os módulos e fluxos industriais são exibidos exclusivamente para empresas do ramo industrial.',
+    status: 'passed'
+  },
+  {
+    id: 'tc-ind-02',
+    code: 'CT-IND-02',
+    requirement: 'REQ-IND-02',
+    title: 'Cadastro de Estrutura do Produto (BOM) com Perda Técnica',
+    category: 'Industrial',
+    preConditions: 'Itens de matéria-prima e produto acabado cadastrados no catálogo.',
+    steps: [
+      'Navegar até a aba "Engenharia & BOM" no módulo Industrial.',
+      'Clicar em "Nova Estrutura (BOM)" e selecionar o produto acabado.',
+      'Adicionar matérias-primas com percentuais de perda técnica e insumos.',
+      'Definir custos de mão de obra e custos indiretos de fabricação (CIF).',
+      'Salvar a estrutura do produto.'
+    ],
+    expectedResult: 'Estrutura BOM salva com sucesso com cálculo exato de quantidade efetiva e custo unitário.',
+    status: 'passed'
+  },
+  {
+    id: 'tc-ind-03',
+    code: 'CT-IND-03',
+    requirement: 'REQ-IND-03',
+    title: 'Versionamento de BOM (v1.0 -> v1.1) e Rastreio de Histórico',
+    category: 'Industrial',
+    preConditions: 'Estrutura BOM v1.0 existente.',
+    steps: [
+      'Selecionar a BOM v1.0 e solicitar criação de nova versão.',
+      'Alterar a especificação de um componente ou percentual de perda técnica.',
+      'Salvar a nova versão v1.1.',
+      'Verificar que a versão anterior v1.0 é arquivada mantendo rastreabilidade para OPs passadas.'
+    ],
+    expectedResult: 'Novo registro de versão gerado mantendo histórico imutável das revisões anteriores.',
+    status: 'passed'
+  },
+  {
+    id: 'tc-ind-04',
+    code: 'CT-IND-04',
+    requirement: 'REQ-IND-04',
+    title: 'Cálculo Automático de Custo Unitário (Matéria-Prima + MOD + CIF)',
+    category: 'Industrial',
+    preConditions: 'BOM com itens de custo cadastrados.',
+    steps: [
+      'Consultar a composição de custo na tela de detalhes da BOM.',
+      'Verificar a somatória: Custo de Materiais + Custo de Mão de Obra + Custo Indireto.',
+      'Verificar o preço de venda sugerido com base na margem parametrizada.'
+    ],
+    expectedResult: 'O custo unitário e preço sugerido são calculados em tempo real com precisão decimal.',
+    status: 'passed'
+  },
+  {
+    id: 'tc-ind-05',
+    code: 'CT-IND-05',
+    requirement: 'REQ-IND-05',
+    title: 'Criação de Ordem de Produção (OP) a partir de BOM',
+    category: 'Industrial',
+    preConditions: 'BOM ativa cadastrada.',
+    steps: [
+      'Na aba "Ordens de Produção", clicar em "Nova OP".',
+      'Selecionar a BOM desejada, informar a quantidade planejada (ex: 20 un) e data de entrega.',
+      'Definir a prioridade e observações de fabricação.',
+      'Confirmar a abertura da OP.'
+    ],
+    expectedResult: 'OP gerada no status "Planejada" com código sequencial único e roteiro de produção herdado da BOM.',
+    status: 'passed'
+  },
+  {
+    id: 'tc-ind-06',
+    code: 'CT-IND-06',
+    requirement: 'REQ-IND-06',
+    title: 'Reserva Automática de Matéria-Prima na Abertura da OP',
+    category: 'Industrial',
+    preConditions: 'OP criada com quantidade planejada.',
+    steps: [
+      'Verificar os insumos necessários multiplicados pela quantidade da OP.',
+      'Consultar o módulo de Peças/Estoque para os insumos vinculados.',
+      'Confirmar que a quantidade calculada foi adicionada ao campo "Estoque Reservado".'
+    ],
+    expectedResult: 'Os materiais ficam reservados impedindo que sejam vendidos no balcão ou alocados em outra OP.',
+    status: 'passed'
+  },
+  {
+    id: 'tc-ind-07',
+    code: 'CT-IND-07',
+    requirement: 'REQ-IND-07',
+    title: 'Bloqueio de Início de OP por Falha/Falta de Matéria-Prima',
+    category: 'Industrial',
+    preConditions: 'Insumo essencial com saldo disponível inferior à necessidade da OP.',
+    steps: [
+      'Tentar iniciar a OP com material insuficiente.',
+      'O sistema exibe alerta crítico de falta de insumo.',
+      'Apresenta opção de gerar sugestão de compra emergencial.'
+    ],
+    expectedResult: 'O sistema sinaliza o risco de parada e orienta o gestor de PCP.',
+    status: 'passed'
+  },
+  {
+    id: 'tc-ind-08',
+    code: 'CT-IND-08',
+    requirement: 'REQ-IND-08',
+    title: 'Apontamento Parcial de Produção com Baixa Proporcional',
+    category: 'Industrial',
+    preConditions: 'OP no status "Em Produção".',
+    steps: [
+      'Abrir o modal de "Apontamento de Produção" da OP.',
+      'Informar 10 unidades produzidas de 20 planejadas.',
+      'Confirmar o apontamento.',
+      'Verificar que a OP é atualizada para 10/20 e o saldo proporcional de matéria-prima é baixado.'
+    ],
+    expectedResult: 'Apontamento registrado com sucesso e consumo proporcional de insumos debitado.',
+    status: 'passed'
+  },
+  {
+    id: 'tc-ind-09',
+    code: 'CT-IND-09',
+    requirement: 'REQ-IND-09',
+    title: 'Registro de Refugo/Sucata com Motivo e Custo Apropriado',
+    category: 'Industrial',
+    preConditions: 'Ocorrência de perda na linha de usinagem/montagem.',
+    steps: [
+      'No apontamento da OP, informar 1 unidade de refugo/sucata com motivo.',
+      'Confirmar o registro.',
+      'Verificar o log em "Histórico de Sucata / Refugos" com o custo financeiro apropriado.'
+    ],
+    expectedResult: 'Refugo registrado com motivo, operador e impacto no custo real da OP.',
+    status: 'passed'
+  },
+  {
+    id: 'tc-ind-10',
+    code: 'CT-IND-10',
+    requirement: 'REQ-IND-10',
+    title: 'Apontamento de Retrabalho com Horas Adicionais',
+    category: 'Industrial',
+    preConditions: 'Peça necessitando de retrabalho na bancada de ajuste.',
+    steps: [
+      'Registrar retrabalho informando etapa, motivo e horas adicionais de mão de obra.',
+      'Verificar a adição do custo de retrabalho ao custo total realizado da OP.'
+    ],
+    expectedResult: 'Retrabalho contabilizado sem duplicar contagem de unidades produzidas.',
+    status: 'passed'
+  },
+  {
+    id: 'tc-ind-11',
+    code: 'CT-IND-11',
+    requirement: 'REQ-IND-11',
+    title: 'Conclusão da OP e Geração Automática de Lote',
+    category: 'Industrial',
+    preConditions: 'Total planejado da OP atingido nos apontamentos.',
+    steps: [
+      'Finalizar a OP.',
+      'O sistema altera o status da OP para "Concluída".',
+      'Gera automaticamente um número de lote com rastreabilidade completa.'
+    ],
+    expectedResult: 'Lote gerado com data de fabricação, quantidade, operador responsável e status de CQ.',
+    status: 'passed'
+  },
+  {
+    id: 'tc-ind-12',
+    code: 'CT-IND-12',
+    requirement: 'REQ-IND-12',
+    title: 'Entrada Automática do Produto Acabado no Estoque Físico',
+    category: 'Industrial',
+    preConditions: 'OP concluída com lote gerado.',
+    steps: [
+      'Consultar o saldo em estoque do produto acabado fabricado.',
+      'Verificar que a quantidade produzida foi somada ao Estoque Físico e Disponível.'
+    ],
+    expectedResult: 'Estoque do produto acabado alimentado instantaneamente com registro de movimentação de entrada por produção.',
+    status: 'passed'
+  },
+  {
+    id: 'tc-ind-13',
+    code: 'CT-IND-13',
+    requirement: 'REQ-IND-13',
+    title: 'Rastreabilidade de Lote Ascendente (Produto -> MP/Fornecedor)',
+    category: 'Industrial',
+    preConditions: 'Lote de produto acabado existente.',
+    steps: [
+      'Na aba "Rastreabilidade por Lotes", pesquisar o número do lote.',
+      'Clicar na árvore genealógica do lote.',
+      'Visualizar os lotes de matéria-prima utilizados, notas fiscais de entrada e fornecedores de origem.'
+    ],
+    expectedResult: 'Árvore genealógica completa exibindo fornecedores, certificados de qualidade e operadores.',
+    status: 'passed'
+  },
+  {
+    id: 'tc-ind-14',
+    code: 'CT-IND-14',
+    requirement: 'REQ-IND-14',
+    title: 'Rastreabilidade de Lote Descendente (Lote MP -> OPs -> Clientes)',
+    category: 'Industrial',
+    preConditions: 'Lote de matéria-prima fornecido com defeito.',
+    steps: [
+      'Informar o lote da matéria-prima defeituosa no buscador de rastreabilidade.',
+      'O sistema identifica todas as OPs que utilizaram o lote e os lotes de produtos acabados gerados.',
+      'Exibe as vendas/faturamentos para recall direcionado.'
+    ],
+    expectedResult: 'Mapeamento instantâneo de todos os clientes e produtos impactados pelo lote de insumo.',
+    status: 'passed'
+  },
+  {
+    id: 'tc-ind-15',
+    code: 'CT-IND-15',
+    requirement: 'REQ-IND-15',
+    title: 'Bloqueio de Lote em Quarentena no Controle de Qualidade',
+    category: 'Industrial',
+    preConditions: 'Lote recebido ou produzido pendente de laudo laboratorial.',
+    steps: [
+      'Definir o status de qualidade do lote como "QUARENTENA".',
+      'Tentar faturar ou alocar o lote em uma OP ou Venda.',
+      'O sistema bloqueia a movimentação até aprovação pelo inspetor de qualidade.'
+    ],
+    expectedResult: 'Lotes em quarentena não podem ser consumidos ou comercializados.',
+    status: 'passed'
+  },
+  {
+    id: 'tc-ind-16',
+    code: 'CT-IND-16',
+    requirement: 'REQ-IND-16',
+    title: 'Semáforo de Estoque Operacional (Físico, Reservado, Disponível)',
+    category: 'Industrial',
+    preConditions: 'Itens industriais com movimentações ativas.',
+    steps: [
+      'Acessar a aba "Semáforo de Estoque & Tráfego".',
+      'Verificar as colunas: Físico, Reservado para OPs, Em Separação, Disponível e Ponto de Pedido.',
+      'Confirmar a sinalização por cores (Verde, Amarelo, Vermelho).'
+    ],
+    expectedResult: 'Visibilidade 360° da real disponibilidade de materiais para produção contínua.',
+    status: 'passed'
+  },
+  {
+    id: 'tc-ind-17',
+    code: 'CT-IND-17',
+    requirement: 'REQ-IND-17',
+    title: 'Cadastro de Equipamento Instalado com Número de Série e Garantia',
+    category: 'Industrial',
+    preConditions: 'Produto industrial vendido e entregue ao cliente.',
+    steps: [
+      'Na aba "Equipamentos & Manutenção", clicar em "Novo Equipamento Instalado".',
+      'Preencher TAG, Número de Série, Cliente, Endereço de Instalação e Vigência de Garantia.',
+      'Salvar o cadastro.'
+    ],
+    expectedResult: 'Equipamento registrado com controle de horímetro, ciclos e status operacional.',
+    status: 'passed'
+  },
+  {
+    id: 'tc-ind-18',
+    code: 'CT-IND-18',
+    requirement: 'REQ-IND-18',
+    title: 'Vinculação de Equipamento a Cliente e Endereço de Instalação',
+    category: 'Industrial',
+    preConditions: 'Equipamento instalado cadastrado.',
+    steps: [
+      'Consultar o dossiê do equipamento.',
+      'Verificar dados da empresa cliente, responsável técnico e geolocalização da fábrica parceira.'
+    ],
+    expectedResult: 'Rastreabilidade completa do parque fabril instalado de clientes.',
+    status: 'passed'
+  },
+  {
+    id: 'tc-ind-19',
+    code: 'CT-IND-19',
+    requirement: 'REQ-IND-19',
+    title: 'Criação de Plano de Manutenção Preventiva por Periodicidade/Horímetro',
+    category: 'Industrial',
+    preConditions: 'Equipamentos cadastrados.',
+    steps: [
+      'Criar Plano Preventivo definindo intervalo (dias ou horas de operação).',
+      'Configurar checklist padrão e peças de troca recomendadas.',
+      'Ativar o plano.'
+    ],
+    expectedResult: 'Plano preventivo ativo e associado aos modelos de máquinas industriais.',
+    status: 'passed'
+  },
+  {
+    id: 'tc-ind-20',
+    code: 'CT-IND-20',
+    requirement: 'REQ-IND-20',
+    title: 'Geração de Ordem de Manutenção (OM) Preventiva Automática',
+    category: 'Industrial',
+    preConditions: 'Data de manutenção próxima ou atingimento de horímetro limite.',
+    steps: [
+      'O sistema identifica equipamentos com revisão preventiva a vencer.',
+      'Gera a Ordem de Manutenção (OM) com checklist predefinido e notifica o responsável técnico.'
+    ],
+    expectedResult: 'OM preventiva aberta com prioridade e roteiro de inspeção associado.',
+    status: 'passed'
+  },
+  {
+    id: 'tc-ind-21',
+    code: 'CT-IND-21',
+    requirement: 'REQ-IND-21',
+    title: 'Execução de Checklist Técnico de Manutenção com Observações',
+    category: 'Industrial',
+    preConditions: 'OM no status "Em Andamento".',
+    steps: [
+      'O técnico preenche cada item do checklist (Conforme, Não Conforme, Ajustado).',
+      'Registra observações de calibração, pressão e temperatura.',
+      'Salva o progresso.'
+    ],
+    expectedResult: 'Checklist auditável preenchido com evidências técnicas.',
+    status: 'passed'
+  },
+  {
+    id: 'tc-ind-22',
+    code: 'CT-IND-22',
+    requirement: 'REQ-IND-22',
+    title: 'Apontamento de Peças Substituídas com Baixa no Almoxarifado',
+    category: 'Industrial',
+    preConditions: 'Substituição de peças de reposição durante a manutenção.',
+    steps: [
+      'Adicionar as peças substituídas na OM (ex: rolamentos, retentores, parafusos).',
+      'Informar motivo da troca (Preventiva ou Quebra).',
+      'Confirmar a baixa no estoque do almoxarifado.'
+    ],
+    expectedResult: 'Custo de peças somado à OM e saldo no almoxarifado debitado automaticamente.',
+    status: 'passed'
+  },
+  {
+    id: 'tc-ind-23',
+    code: 'CT-IND-23',
+    requirement: 'REQ-IND-23',
+    title: 'Registro de Desgaste de Componentes e Vida Útil Remanescente',
+    category: 'Industrial',
+    preConditions: 'Inspeção de barramentos, guias ou elementos de desgaste.',
+    steps: [
+      'Registrar componente avaliado com nível de desgaste (Leve, Moderado, Crítico) e % estimada.',
+      'Informar horas úteis remanescentes estimadas para próxima troca.'
+    ],
+    expectedResult: 'Histórico de desgaste registrado para planejamento preditivo de peças sobressalentes.',
+    status: 'passed'
+  },
+  {
+    id: 'tc-ind-24',
+    code: 'CT-IND-24',
+    requirement: 'REQ-IND-24',
+    title: 'Aprovação Técnica e Assinatura Digital do Laudo da OM',
+    category: 'Industrial',
+    preConditions: 'OM com checklist 100% concluído e horas apontadas.',
+    steps: [
+      'Técnico executor finaliza o laudo da OM.',
+      'Engenheiro/Gerente revisa e clica em "Aprovar Laudo Técnico".',
+      'O sistema registra o carimbo de aprovação, data/hora e responsável.'
+    ],
+    expectedResult: 'OM marcada como "Aprovada" com assinatura técnica digital registrada.',
+    status: 'passed'
+  },
+  {
+    id: 'tc-ind-25',
+    code: 'CT-IND-25',
+    requirement: 'REQ-IND-25',
+    title: 'Trava de Edição em OM Concluída e Aprovada (Imutabilidade)',
+    category: 'Industrial',
+    preConditions: 'OM aprovada pelo engenheiro responsável.',
+    steps: [
+      'Tentar editar valores de peças, checklist ou horas após aprovação.',
+      'O sistema bloqueia qualquer alteração direta, exigindo reabertura formal por perfil Admin.'
+    ],
+    expectedResult: 'Imutabilidade do laudo técnico garantida para fins de conformidade e auditoria ISO/NR.',
+    status: 'passed'
+  },
+  {
+    id: 'tc-ind-26',
+    code: 'CT-IND-26',
+    requirement: 'REQ-IND-26',
+    title: 'Sugestão Automática de Compras por Ponto de Pedido + Demanda de OPs',
+    category: 'Industrial',
+    preConditions: 'Insumos com demanda em OPs planejadas ou saldo abaixo do estoque mínimo.',
+    steps: [
+      'Acessar a aba "Sugestões de Compras & MRP".',
+      'Verificar as sugestões geradas automaticamente calculando Déficit = (Demanda OPs + Estoque Mínimo) - Saldo Disponível.',
+      'Visualizar a quantidade ideal de reposição.'
+    ],
+    expectedResult: 'Lista de compras prioritária gerada prevenindo desabastecimento na fábrica.',
+    status: 'passed'
+  },
+  {
+    id: 'tc-ind-27',
+    code: 'CT-IND-27',
+    requirement: 'REQ-IND-27',
+    title: 'Matriz Comparativa de Fornecedores e Histórico de Preços',
+    category: 'Industrial',
+    preConditions: 'Fornecedores e histórico de compras cadastrados.',
+    steps: [
+      'Na sugestão de compra, clicar em "Ver Fornecedores & Histórico".',
+      'Comparar os preços dos distribuidores e data da última aquisição.',
+      'Identificar o fornecedor com melhor custo-benefício e prazo de entrega.'
+    ],
+    expectedResult: 'Matriz de decisão de suprimentos clara e fundamentada em dados históricos.',
+    status: 'passed'
+  },
+  {
+    id: 'tc-ind-28',
+    code: 'CT-IND-28',
+    requirement: 'REQ-IND-28',
+    title: 'Conversão de Sugestão de Compra em Cotação Direta',
+    category: 'Industrial',
+    preConditions: 'Sugestão de compra de insumos aprovada pelo comprador.',
+    steps: [
+      'Selecionar os itens da sugestão de compra.',
+      'Clicar em "Gerar Cotação / Pedido de Compra".',
+      'Confirmar a abertura da cotação no módulo de Compras.'
+    ],
+    expectedResult: 'Cotação criada com os itens industriais integrados sem retrabalho de digitação.',
+    status: 'passed'
+  },
+  {
+    id: 'tc-ind-29',
+    code: 'CT-IND-29',
+    requirement: 'REQ-IND-29',
+    title: 'Análise de Custos Industriais Previsto vs Realizado',
+    category: 'Industrial',
+    preConditions: 'OP concluída com apontamentos de insumos, MOD e retrabalhos.',
+    steps: [
+      'Acessar a aba "Análise de Custos Industriais".',
+      'Comparar: Custo Unitário Previsto (BOM) vs Custo Unitário Realizado (Apontamentos).',
+      'Analisar desvios percentuais por categoria (Matéria-Prima, Mão de Obra, Insumos).'
+    ],
+    expectedResult: 'Divergências e desvios de custo apontados com clareza para calibração da margem.',
+    status: 'passed'
+  },
+  {
+    id: 'tc-ind-30',
+    code: 'CT-IND-30',
+    requirement: 'REQ-IND-30',
+    title: 'Alertas Operacionais de Risco de Parada e Desvio de Custo',
+    category: 'Industrial',
+    preConditions: 'Inconsistências ou gargalos na linha de produção.',
+    steps: [
+      'Consultar o painel de Alertas Operacionais no topo do PCP.',
+      'Verificar cartões de severidade crítica (Falta de Material, Atraso de Roteiro, Desvio de Custo).',
+      'Clicar na ação sugerida para resolução rápida.'
+    ],
+    expectedResult: 'Alertas ativos direcionam o gestor para ações preventivas imediatas.',
+    status: 'passed'
+  },
+  {
+    id: 'tc-ind-31',
+    code: 'CT-IND-31',
+    requirement: 'REQ-IND-31',
+    title: 'Controle Granular de Permissões Industriais (RBAC)',
+    category: 'Industrial',
+    preConditions: 'Usuários com diferentes papéis operacionais (Operador, PCP, Engenheiro, Gerente).',
+    steps: [
+      'Acessar com perfil Operador e verificar restrição de exclusão de BOMs e aprovação de laudos.',
+      'Acessar com perfil Engenheiro/Admin e verificar acesso total à edição de engenharia e laudos.'
+    ],
+    expectedResult: 'Permissões granulares de acesso aplicadas de acordo com a matriz de níveis de usuário.',
+    status: 'passed'
+  },
+  {
+    id: 'tc-ind-32',
+    code: 'CT-IND-32',
+    requirement: 'REQ-IND-32',
+    title: 'Isolamento Multitenant de Dados Industriais por CompanyId',
+    category: 'Industrial',
+    preConditions: 'Múltiplas empresas cadastradas no sistema.',
+    steps: [
+      'Criar uma OP e BOM na Indústria Matriz (comp-5).',
+      'Alternar para outra empresa cadastrada.',
+      'Verificar que os dados industriais da Indústria Matriz não são visíveis no outro tenant.'
+    ],
+    expectedResult: 'Isolamento estrito por companyId garantindo privacidade total entre empresas do grupo.',
+    status: 'passed'
+  },
+  {
+    id: 'tc-ind-33',
+    code: 'CT-IND-33',
+    requirement: 'REQ-IND-33',
+    title: 'Vínculo de OP a Pedido de Venda Comercial',
+    category: 'Industrial',
+    preConditions: 'Pedido de Venda Comercial ou Orçamento Comercial aprovado.',
+    steps: [
+      'Vincular o código do pedido de venda à OP.',
+      'Acompanhar o status da produção diretamente no espelho da venda comercial.'
+    ],
+    expectedResult: 'Integração transparente entre o departamento de vendas e a fábrica.',
+    status: 'passed'
+  },
+  {
+    id: 'tc-ind-34',
+    code: 'CT-IND-34',
+    requirement: 'REQ-IND-34',
+    title: 'Faturamento de Lote Produzido via NF-e Mod. 55 com Rastreio de Lote',
+    category: 'Industrial',
+    preConditions: 'Lote de produto acabado liberado pelo CQ.',
+    steps: [
+      'Gerar faturamento da venda do lote produzido.',
+      'Verificar a inclusão dos dados de lote (número, fabricação, validade) na tag rastro da NF-e Mod. 55.'
+    ],
+    expectedResult: 'Emissão fiscal em conformidade com exigências SEFAZ para produtos rastreáveis.',
+    status: 'passed'
+  },
+  {
+    id: 'tc-ind-35',
+    code: 'CT-IND-35',
+    requirement: 'REQ-IND-35',
+    title: 'Relatório Analítico de Eficiência OEE e Produtividade',
+    category: 'Industrial',
+    preConditions: 'Histórico de OPs executadas com apontamento de horas e perdas.',
+    steps: [
+      'Acessar "Relatórios Industriais" -> "Indicador OEE e Produtividade".',
+      'Verificar os índices de Disponibilidade, Desempenho e Qualidade.',
+      'Visualizar o percentual consolidado de OEE do parque fabril.'
+    ],
+    expectedResult: 'Métricas de classe mundial (OEE) consolidadas para apoio à tomada de decisão executiva.',
+    status: 'passed'
+  },
+  {
+    id: 'tc-ind-36',
+    code: 'CT-IND-36',
+    requirement: 'REQ-IND-36',
+    title: 'Relatório de Indicadores de Manutenção MTBF e MTTR',
+    category: 'Industrial',
+    preConditions: 'Histórico de ordens de manutenção preventivas e corretivas.',
+    steps: [
+      'Acessar "Relatórios Industriais" -> "Indicadores de Manutenção".',
+      'Verificar o Tempo Médio Entre Falhas (MTBF) e Tempo Médio de Reparo (MTTR) por equipamento.'
+    ],
+    expectedResult: 'Indicadores de confiabilidade e manutenibilidade calculados com exatidão.',
+    status: 'passed'
+  },
+  {
+    id: 'tc-ind-37',
+    code: 'CT-IND-37',
+    requirement: 'REQ-IND-37',
+    title: 'Exportação de Laudo Técnico e Dossiê de Produção em PDF',
+    category: 'Industrial',
+    preConditions: 'OM ou OP concluída e aprovada.',
+    steps: [
+      'Clicar na ação "Imprimir / Exportar Dossiê PDF".',
+      'Verificar o layout profissional contendo cabeçalho da empresa, dados técnicos, checklists, assinaturas e QR Code de autenticidade.'
+    ],
+    expectedResult: 'Dossiê técnico gerado com formatação de alta qualidade para entrega ao cliente ou auditoria.',
+    status: 'passed'
   }
 ];
 
@@ -3536,6 +4086,15 @@ export interface AppDatabase {
   productionOrders?: ProductionOrder[];
   productLots?: ProductLot[];
   operationalAlerts?: OperationalAlert[];
+  installedEquipment?: InstalledEquipment[];
+  equipment?: InstalledEquipment[];
+  equipmentMaintenancePlans?: EquipmentMaintenancePlan[];
+  maintenancePlans?: EquipmentMaintenancePlan[];
+  equipmentMaintenanceOrders?: EquipmentMaintenanceOrder[];
+  productionScrapLogs?: ProductionScrapLog[];
+  productionReworkLogs?: ProductionReworkLog[];
+  purchaseHistory?: PurchaseHistoryItem[];
+  bomRevisions?: BomRevision[];
 }
 
 export const INITIAL_BOMS: BillOfMaterials[] = [
@@ -3999,6 +4558,375 @@ export const INITIAL_OPERATIONAL_ALERTS: OperationalAlert[] = [
   }
 ];
 
+export const INITIAL_INSTALLED_EQUIPMENT: InstalledEquipment[] = [
+  {
+    id: 'eq-1',
+    companyId: 'comp-5',
+    serialNumber: 'SN-PR-2024-8891',
+    code: 'EQ-PR-150',
+    name: 'Prensa Hidráulica de Conformação 150T',
+    productId: 'prt-ind-1',
+    productName: 'Bomba Hidráulica de Direção Industrial HD-200',
+    clientId: 'cli-1',
+    clientName: 'Metalúrgica Paulista S/A',
+    city: 'São Paulo',
+    uf: 'SP',
+    installationAddress: 'Av. das Indústrias, 1200 - Galpão 4, São Paulo - SP',
+    manufactureDate: '2024-05-10',
+    installationDate: '2024-06-01',
+    warrantyExpirationDate: '2027-06-01',
+    isUnderWarranty: true,
+    technicalResponsible: 'Eng. Roberto Almeida (CREA 506987)',
+    status: 'OPERATIONAL',
+    runningHours: 1420,
+    operationCycles: 85400,
+    lastMaintenanceDate: '2026-06-15',
+    nextMaintenanceDate: '2026-09-15',
+    notes: 'Equipamento em regime contínuo de 2 turnos. Calibração de transdutor de pressão realizada.',
+    createdAt: '2024-06-01T10:00:00Z'
+  },
+  {
+    id: 'eq-2',
+    companyId: 'comp-5',
+    serialNumber: 'SN-CNC-2025-1042',
+    code: 'EQ-CNC-500',
+    name: 'Torno CNC de Precisão TC-500',
+    productId: 'prt-ind-2',
+    productName: 'Atuador Eletromecânico de Embreagem AT-50',
+    clientId: 'cli-2',
+    clientName: 'Auto Peças e Usinagem São Caetano',
+    city: 'São Caetano do Sul',
+    uf: 'SP',
+    installationAddress: 'Rua das Máquinas, 450, São Caetano do Sul - SP',
+    manufactureDate: '2025-02-20',
+    installationDate: '2025-03-05',
+    warrantyExpirationDate: '2027-03-05',
+    isUnderWarranty: true,
+    technicalResponsible: 'Téc. Marcos Vinicius',
+    status: 'OPERATIONAL',
+    runningHours: 860,
+    operationCycles: 42100,
+    lastMaintenanceDate: '2026-07-28',
+    nextMaintenanceDate: '2026-08-30',
+    notes: 'Troca de óleo do barramento em dia. Rotação do fuso balanceada.',
+    createdAt: '2025-03-05T09:00:00Z'
+  },
+  {
+    id: 'eq-3',
+    companyId: 'comp-5',
+    serialNumber: 'SN-DIN-2023-4412',
+    code: 'EQ-DIN-200',
+    name: 'Bancada de Teste Hidráulico e Dinamômetro Din-200',
+    clientId: 'cli-3',
+    clientName: 'Frotas Brasil Transportes Ltda',
+    city: 'Campinas',
+    uf: 'SP',
+    installationAddress: 'Rodovia Anhanguera, km 98, Campinas - SP',
+    manufactureDate: '2023-08-15',
+    installationDate: '2023-09-01',
+    warrantyExpirationDate: '2025-09-01',
+    isUnderWarranty: false,
+    technicalResponsible: 'Eng. Roberto Almeida',
+    status: 'MAINTENANCE',
+    runningHours: 3200,
+    operationCycles: 195000,
+    lastMaintenanceDate: '2026-05-10',
+    nextMaintenanceDate: '2026-08-10',
+    notes: 'Ordem de Manutenção Corretiva OM-2026-002 em andamento para substituição do manômetro digital.',
+    createdAt: '2023-09-01T14:00:00Z'
+  }
+];
+
+export const INITIAL_MAINTENANCE_PLANS: EquipmentMaintenancePlan[] = [
+  {
+    id: 'mp-1',
+    companyId: 'comp-5',
+    name: 'Plano Preventivo Trimestral - Linha Hidráulica Industrial',
+    equipmentModel: 'Prensas e Unidades Hidráulicas HD',
+    periodicityType: 'DAYS',
+    intervalValue: 90,
+    active: true,
+    defaultChecklist: [
+      { id: 'chk-1', description: 'Verificar nível e pressão de trabalho do fluido hidráulico (alvo: 180-200 bar)', category: 'MECANICA' },
+      { id: 'chk-2', description: 'Inspecionar mangueiras, conexões e vedações quanto a vazamentos ou estufamentos', category: 'DESGASTE' },
+      { id: 'chk-3', description: 'Reaperto de parafusos da mesa e colunas de sustentação com torquímetro calibrado', category: 'APERTO' },
+      { id: 'chk-4', description: 'Lubrificação de guias lineares e buchas com graxa de lítio EP-2', category: 'LUBRIFICACAO' },
+      { id: 'chk-5', description: 'Teste operacional de botão de emergência e cortina de luz de segurança', category: 'TESTE_OPERACIONAL' }
+    ],
+    recommendedParts: [
+      { partId: 'prt-ind-5', partName: 'Rolamento SKF 6205-2RS', defaultQty: 2, unit: 'UN' },
+      { partId: 'prt-ind-9', partName: 'Parafuso M8x30 Inox', defaultQty: 0.1, unit: 'CX' }
+    ],
+    notes: 'Plano padrão para garantia estendida e segurança NR-12.'
+  },
+  {
+    id: 'mp-2',
+    companyId: 'comp-5',
+    name: 'Plano Preventivo Mensal - Tornos e Centros CNC',
+    equipmentModel: 'Tornos CNC e Fresadoras',
+    periodicityType: 'DAYS',
+    intervalValue: 30,
+    active: true,
+    defaultChecklist: [
+      { id: 'chk-6', description: 'Limpeza de barramentos, bandeja de cavacos e filtros de refrigeração', category: 'LIMPEZA' },
+      { id: 'chk-7', description: 'Verificar concentração e pH do fluido refrigerante solúvel (alvo: 8.5 a 9.2)', category: 'CALIBRACAO' },
+      { id: 'chk-8', description: 'Inspeção visual do fuso de esferas e guias lineares dos eixos X e Z', category: 'DESGASTE' },
+      { id: 'chk-9', description: 'Teste de repetibilidade e folga de posicionamento micrométrico', category: 'TESTE_OPERACIONAL' }
+    ],
+    recommendedParts: [
+      { partId: 'prt-ind-5', partName: 'Rolamento SKF 6205-2RS', defaultQty: 1, unit: 'UN' }
+    ],
+    notes: 'Manutenção rápida com parada programada de até 2 horas.'
+  }
+];
+
+export const INITIAL_EQUIPMENT_MAINTENANCE_ORDERS: EquipmentMaintenanceOrder[] = [
+  {
+    id: 'om-1',
+    companyId: 'comp-5',
+    code: 'OM-2026-001',
+    equipmentId: 'eq-1',
+    equipmentName: 'Prensa Hidráulica de Conformação 150T',
+    serialNumber: 'SN-PR-2024-8891',
+    clientId: 'cli-1',
+    clientName: 'Metalúrgica Paulista S/A',
+    installationAddress: 'Av. das Indústrias, 1200 - Galpão 4, São Paulo - SP',
+    type: 'PREVENTIVA',
+    status: 'APROVADA',
+    priority: 'MEDIA',
+    scheduledDate: '2026-06-15',
+    startedAt: '2026-06-15 08:30:00',
+    completedAt: '2026-06-15 13:45:00',
+    technicalNotes: 'Revisão preventiva trimestral executada com sucesso. Substituídos retentores e filtro hidráulico.',
+    checklist: [
+      { id: 'ck-1', description: 'Verificar nível e pressão de trabalho do óleo hidráulico', category: 'MECANICA', checked: true, status: 'CONFORME', observations: 'Pressão estabilizada em 195 bar' },
+      { id: 'ck-2', description: 'Inspecionar mangueiras e conexões', category: 'DESGASTE', checked: true, status: 'CONFORME' },
+      { id: 'ck-3', description: 'Reaperto de parafusos da estrutura', category: 'APERTO', checked: true, status: 'CONFORME' },
+      { id: 'ck-4', description: 'Lubrificação de guias', category: 'LUBRIFICACAO', checked: true, status: 'CONFORME' },
+      { id: 'ck-5', description: 'Teste de parada de emergência e cortinas NR-12', category: 'TESTE_OPERACIONAL', checked: true, status: 'CONFORME', observations: 'Atuação em menos de 120ms' }
+    ],
+    replacedParts: [
+      {
+        id: 'rp-1',
+        partId: 'prt-ind-5',
+        partName: 'Rolamento de Esferas Blindado SKF 6205-2RS',
+        partCode: 'CP-RL-6205',
+        quantity: 2,
+        unit: 'UN',
+        unitCost: 18.50,
+        totalCost: 37.00,
+        replacementReason: 'PREVENTIVA',
+        stockDeducted: true
+      }
+    ],
+    wearRecords: [
+      {
+        id: 'wr-1',
+        componentName: 'Guia de Bronze do Martelo Superior',
+        wearLevel: 'DESGASTE_LEVE',
+        percentage: 18,
+        estimatedRemainingHours: 3500,
+        observations: 'Desgaste simétrico dentro da tolerância de fábrica.'
+      }
+    ],
+    laborHours: 5.25,
+    laborHourlyRate: 85.00,
+    laborCost: 446.25,
+    partsCost: 37.00,
+    totalCost: 483.25,
+    executorTechnicianName: 'Marcos Vinicius (Técnico de Campo)',
+    reportResponsibleName: 'Marcos Vinicius',
+    approverName: 'Eng. Roberto Almeida (Gerente Técnico)',
+    isApproved: true,
+    approvedAt: '2026-06-15 16:00:00',
+    isLocked: true,
+    createdAt: '2026-06-10T08:00:00Z',
+    updatedAt: '2026-06-15T16:00:00Z'
+  },
+  {
+    id: 'om-2',
+    companyId: 'comp-5',
+    code: 'OM-2026-002',
+    equipmentId: 'eq-3',
+    equipmentName: 'Bancada de Teste Hidráulico e Dinamômetro Din-200',
+    serialNumber: 'SN-DIN-2023-4412',
+    clientId: 'cli-3',
+    clientName: 'Frotas Brasil Transportes Ltda',
+    installationAddress: 'Rodovia Anhanguera, km 98, Campinas - SP',
+    type: 'CORRETIVA',
+    status: 'EM_ANDAMENTO',
+    priority: 'ALTA',
+    scheduledDate: '2026-08-02',
+    startedAt: '2026-08-02 09:00:00',
+    technicalNotes: 'Bancada oscilando medição no canal B. Em andamento para troca de célula de carga e acoplamento.',
+    rootCause: 'Pico de pressão gerado por golpe de aríete no retorno do dinamômetro.',
+    checklist: [
+      { id: 'ck-6', description: 'Calibração do manômetro e transdutor de pressão', category: 'CALIBRACAO', checked: true, status: 'NAO_CONFORME', observations: 'Desvio de 8.5 bar identificado' },
+      { id: 'ck-7', description: 'Inspeção do acoplamento elástico', category: 'MECANICA', checked: true, status: 'AJUSTADO' },
+      { id: 'ck-8', description: 'Teste de vazamento estático sob 250 bar', category: 'TESTE_OPERACIONAL', checked: false, status: 'CONFORME' }
+    ],
+    replacedParts: [
+      {
+        id: 'rp-2',
+        partId: 'prt-ind-9',
+        partName: 'Parafuso Sextavado Aço Inox M8x30 com Arruela',
+        partCode: 'INS-PF-M830',
+        quantity: 0.1,
+        unit: 'CX',
+        unitCost: 22.00,
+        totalCost: 2.20,
+        replacementReason: 'QUEBRA',
+        stockDeducted: true
+      }
+    ],
+    wearRecords: [
+      {
+        id: 'wr-2',
+        componentName: 'Acoplamento Flexível de Alumínio',
+        wearLevel: 'DESGASTE_MODERADO',
+        percentage: 45,
+        estimatedRemainingHours: 1200,
+        observations: 'Folga angular identificada nas chavetas.'
+      }
+    ],
+    laborHours: 3.5,
+    laborHourlyRate: 85.00,
+    laborCost: 297.50,
+    partsCost: 2.20,
+    totalCost: 299.70,
+    executorTechnicianName: 'Marcos Vinicius',
+    reportResponsibleName: 'Marcos Vinicius',
+    isApproved: false,
+    isLocked: false,
+    createdAt: '2026-08-02T08:30:00Z',
+    updatedAt: '2026-08-02T11:00:00Z'
+  }
+];
+
+export const INITIAL_PRODUCTION_SCRAP_LOGS: ProductionScrapLog[] = [
+  {
+    id: 'scrap-1',
+    companyId: 'comp-5',
+    productionOrderId: 'op-1',
+    productionOrderCode: 'OP-2026-001',
+    partId: 'prt-ind-3',
+    partName: 'Chapa de Aço Carbono SAE 1020 3mm',
+    partCode: 'MP-CH-1020',
+    quantity: 0.45,
+    unit: 'M²',
+    scrapType: 'CORTE',
+    reason: 'Apara técnica final e ponta de corte fora do esquadro no laser.',
+    unitCost: 48.00,
+    totalCost: 21.60,
+    operatorName: 'Carlos Usinagem',
+    date: '2026-08-01 11:30:00'
+  },
+  {
+    id: 'scrap-2',
+    companyId: 'comp-5',
+    productionOrderId: 'op-3',
+    productionOrderCode: 'OP-2026-003',
+    partId: 'prt-ind-5',
+    partName: 'Rolamento de Esferas Blindado SKF 6205-2RS',
+    partCode: 'CP-RL-6205',
+    quantity: 1,
+    unit: 'UN',
+    scrapType: 'DEFEITO',
+    reason: 'Ruído excessivo detectado no ensaio dinamométrico sob carga.',
+    unitCost: 18.50,
+    totalCost: 18.50,
+    operatorName: 'Turno A - Usinagem',
+    date: '2026-07-18 15:45:00'
+  }
+];
+
+export const INITIAL_PRODUCTION_REWORK_LOGS: ProductionReworkLog[] = [
+  {
+    id: 'rework-1',
+    companyId: 'comp-5',
+    productionOrderId: 'op-1',
+    productionOrderCode: 'OP-2026-001',
+    stageName: 'Usinagem CNC & Torno',
+    reworkReason: 'Rebaixamento de 0.05mm no canal da chaveta do eixo retificado para ajuste de folga H7.',
+    additionalHours: 1.5,
+    laborHourlyRate: 35.00,
+    additionalLaborCost: 52.50,
+    additionalMaterialsCost: 0,
+    totalAdditionalCost: 52.50,
+    responsibleOperator: 'Marcos Torneiro',
+    approvedBy: 'Operador Líder Silva',
+    date: '2026-08-01 16:00:00',
+    notes: 'Peças ajustadas e 100% aprovadas no controle de qualidade.'
+  }
+];
+
+export const INITIAL_PURCHASE_HISTORY: PurchaseHistoryItem[] = [
+  {
+    id: 'ph-1',
+    companyId: 'comp-5',
+    date: '2026-07-01',
+    supplierId: 'sup-1',
+    supplierName: 'Gerdau Aços Especiais S/A',
+    partId: 'prt-ind-3',
+    partName: 'Chapa de Aço Carbono SAE 1020 3mm',
+    partCode: 'MP-CH-1020',
+    quantity: 50.0,
+    unit: 'M²',
+    unitPrice: 48.00,
+    totalPrice: 2400.00,
+    paymentCondition: '28/56 dias',
+    documentNumber: 'NF-1042'
+  },
+  {
+    id: 'ph-2',
+    companyId: 'comp-5',
+    date: '2026-06-15',
+    supplierId: 'sup-1',
+    supplierName: 'Gerdau Aços Especiais S/A',
+    partId: 'prt-ind-4',
+    partName: 'Eixo Retificado Aço 4140 Ø 25mm',
+    partCode: 'MP-EX-4140',
+    quantity: 30.0,
+    unit: 'M',
+    unitPrice: 35.00,
+    totalPrice: 1050.00,
+    paymentCondition: '30 dias',
+    documentNumber: 'NF-0988'
+  },
+  {
+    id: 'ph-3',
+    companyId: 'comp-5',
+    date: '2026-07-10',
+    supplierId: 'sup-2',
+    supplierName: 'SKF do Brasil Distribuidora',
+    partId: 'prt-ind-5',
+    partName: 'Rolamento de Esferas Blindado SKF 6205-2RS',
+    partCode: 'CP-RL-6205',
+    quantity: 100,
+    unit: 'UN',
+    unitPrice: 18.50,
+    totalPrice: 1850.00,
+    paymentCondition: '21/42 dias',
+    documentNumber: 'NF-7741'
+  },
+  {
+    id: 'ph-4',
+    companyId: 'comp-5',
+    date: '2026-06-20',
+    supplierId: 'sup-3',
+    supplierName: 'WEG Motores Elétricos',
+    partId: 'prt-ind-7',
+    partName: 'Micro Motor DC 24V 3500RPM com Encoder',
+    partCode: 'CP-MT-2435',
+    quantity: 25,
+    unit: 'UN',
+    unitPrice: 75.00,
+    totalPrice: 1875.00,
+    paymentCondition: '30 dias',
+    documentNumber: 'NF-3321'
+  }
+];
+
 export const STORAGE_KEY = 'motordesk_db_v1';
 
 export function getDatabase(): AppDatabase {
@@ -4043,6 +4971,12 @@ export function getDatabase(): AppDatabase {
       productionOrders: INITIAL_PRODUCTION_ORDERS,
       productLots: INITIAL_PRODUCT_LOTS,
       operationalAlerts: INITIAL_OPERATIONAL_ALERTS,
+      installedEquipment: INITIAL_INSTALLED_EQUIPMENT,
+      equipmentMaintenancePlans: INITIAL_MAINTENANCE_PLANS,
+      equipmentMaintenanceOrders: INITIAL_EQUIPMENT_MAINTENANCE_ORDERS,
+      productionScrapLogs: INITIAL_PRODUCTION_SCRAP_LOGS,
+      productionReworkLogs: INITIAL_PRODUCTION_REWORK_LOGS,
+      purchaseHistory: INITIAL_PURCHASE_HISTORY,
     };
   } else {
     try {
@@ -4134,6 +5068,24 @@ export function getDatabase(): AppDatabase {
       if (!db.operationalAlerts || !Array.isArray(db.operationalAlerts) || db.operationalAlerts.length === 0) {
         db.operationalAlerts = INITIAL_OPERATIONAL_ALERTS;
       }
+      if (!db.installedEquipment || !Array.isArray(db.installedEquipment) || db.installedEquipment.length === 0) {
+        db.installedEquipment = INITIAL_INSTALLED_EQUIPMENT;
+      }
+      if (!db.equipmentMaintenancePlans || !Array.isArray(db.equipmentMaintenancePlans) || db.equipmentMaintenancePlans.length === 0) {
+        db.equipmentMaintenancePlans = INITIAL_MAINTENANCE_PLANS;
+      }
+      if (!db.equipmentMaintenanceOrders || !Array.isArray(db.equipmentMaintenanceOrders) || db.equipmentMaintenanceOrders.length === 0) {
+        db.equipmentMaintenanceOrders = INITIAL_EQUIPMENT_MAINTENANCE_ORDERS;
+      }
+      if (!db.productionScrapLogs || !Array.isArray(db.productionScrapLogs) || db.productionScrapLogs.length === 0) {
+        db.productionScrapLogs = INITIAL_PRODUCTION_SCRAP_LOGS;
+      }
+      if (!db.productionReworkLogs || !Array.isArray(db.productionReworkLogs) || db.productionReworkLogs.length === 0) {
+        db.productionReworkLogs = INITIAL_PRODUCTION_REWORK_LOGS;
+      }
+      if (!db.purchaseHistory || !Array.isArray(db.purchaseHistory) || db.purchaseHistory.length === 0) {
+        db.purchaseHistory = INITIAL_PURCHASE_HISTORY;
+      }
       if (!db.landingContent) {
         try {
           const saved = localStorage.getItem('motordesk_landing_content_v2');
@@ -4185,6 +5137,12 @@ export function getDatabase(): AppDatabase {
         productionOrders: INITIAL_PRODUCTION_ORDERS,
         productLots: INITIAL_PRODUCT_LOTS,
         operationalAlerts: INITIAL_OPERATIONAL_ALERTS,
+        installedEquipment: INITIAL_INSTALLED_EQUIPMENT,
+        equipmentMaintenancePlans: INITIAL_MAINTENANCE_PLANS,
+        equipmentMaintenanceOrders: INITIAL_EQUIPMENT_MAINTENANCE_ORDERS,
+        productionScrapLogs: INITIAL_PRODUCTION_SCRAP_LOGS,
+        productionReworkLogs: INITIAL_PRODUCTION_REWORK_LOGS,
+        purchaseHistory: INITIAL_PURCHASE_HISTORY,
       };
     }
   }

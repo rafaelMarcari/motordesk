@@ -206,6 +206,8 @@ export interface CompanyInfo {
   whatsapp: string; // WhatsApp Oficial de Atendimento da Oficina (com DDD)
   email: string; // E-mail da Oficina
   address: string; // Endereço Completo
+  city?: string;
+  state?: string;
   logoUrl?: string; // URL da Logomarca (Opcional)
   welcomeMessage?: string; // Mensagem Padrão de Envio de Orçamentos
   registeredAt: string; // Data de Cadastro da Empresa
@@ -422,17 +424,29 @@ export interface UserPermissions {
   accessReportsExport?: boolean; // Permite exportar relatórios para PDF e CSV/Excel
   accessFinancialAlertsConfig?: boolean; // Permite configurar prazos e parâmetros de alertas financeiros
 
-  // Permissões Granulares - Módulo Industrial (PCP, Produção, BOM, Lotes)
+  // Permissões Granulares - Módulo Industrial (PCP, Produção, BOM, Lotes, Manutenção de Equipamentos, Compras)
   accessIndustrialDashboard?: boolean;
   accessProduction?: boolean;
+  accessManufacturing?: boolean;
   accessProductionOrders?: boolean;
   accessBillOfMaterials?: boolean;
+  accessProductStructure?: boolean;
+  createProductStructure?: boolean;
+  editProductStructure?: boolean;
+  approveProductStructure?: boolean;
   accessIndustrialStock?: boolean;
+  accessIndustrialPurchasing?: boolean;
   accessIndustrialCosts?: boolean;
   accessLots?: boolean;
   accessProductionReports?: boolean;
   accessIndustrialReports?: boolean;
   accessCommercialReports?: boolean;
+  accessMaintenance?: boolean;
+  createMaintenance?: boolean;
+  editMaintenance?: boolean;
+  approveMaintenance?: boolean;
+  accessEquipment?: boolean;
+  accessIndustrialAudit?: boolean;
   productionOrderCreate?: boolean;
   productionOrderEdit?: boolean;
   productionOrderApprove?: boolean;
@@ -519,12 +533,14 @@ export interface Part {
   inProductionStock?: number; // Saldo em processo de produção através de OPs abertas
   price: number; // Preço de Venda
   salePrice?: number; // Compatibilidade de Preço de Venda
+  purchasePrice?: number; // Preço de compra compatível
   companyId?: string;
   costPrice?: number; // Preço de Custo / Compra
   minStock?: number; // Alerta de Estoque Mínimo
   category?: string; // Categoria (Freios, Suspensão, Óleos, Estrutura Metálica, Motorização, etc.)
   location?: string; // Localização no Galpão/Prateleira
   unit?: string; // Unidade de Medida Sigla (UN, CX, L, KG, M, M², M³)
+  unitOfMeasure?: string; // Compatibilidade de Sigla da unidade
   unitOfMeasureId?: string; // Referência para a Unidade de Medida configurada
   unitName?: string; // Nome descritivo da unidade (ex: Metro Linear, Metro Quadrado)
   dimensions?: ItemDimensionData; // Dimensões para cálculo geométrico (comprimento, largura, altura)
@@ -604,17 +620,37 @@ export interface BomItem {
   unit: string;
   unitCost: number;
   totalCost: number;
+  isMandatory?: boolean; // Componente obrigatório ou opcional
   lossPercentage?: number; // Percentual de perda técnica (%)
   scrapRatePercent?: number; // Compatibilidade
   effectiveQuantity?: number; // Quantidade necessária considerando perda
   substitutePartId?: string; // Componente substituto alternativo
   substitutePartName?: string;
+  usageSequence?: number; // Sequência de utilização na linha
+  stockLocation?: string; // Localização de almoxarifado/prateleira
   notes?: string;
+}
+
+export interface BomRevision {
+  id: string;
+  bomId: string;
+  revisionNumber: string; // Ex: "01", "02", "03"
+  reason: string; // Motivo da alteração/revisão
+  author: string; // Autor da revisão
+  date: string; // Data ISO
+  items: BomItem[]; // Snapshot dos itens nesta revisão
+  standardBatchQuantity?: number;
+  estimatedCycleTimeMinutes?: number;
+  laborCost?: number;
+  indirectCost?: number;
+  totalUnitCost: number;
+  changesSummary?: string;
+  status: 'active' | 'archived' | 'draft';
 }
 
 export interface BillOfMaterials {
   id: string;
-  companyId: string;
+  companyId?: string;
   code?: string;
   name?: string;
   unit?: string;
@@ -625,7 +661,8 @@ export interface BillOfMaterials {
   finishedProductName?: string;
   finishedPartName?: string;
   finishedProductCode?: string;
-  version: string; // Ex: "v1.0", "v2.1"
+  version: string; // Ex: "v1.0", "v2.1", "Rev 01"
+  revisions?: BomRevision[];
   active: boolean;
   items: BomItem[];
   laborCost?: number; // Custo de Mão de Obra prevista por unidade
@@ -638,6 +675,7 @@ export interface BillOfMaterials {
   suggestedSalePrice?: number;
   estimatedProductionHours?: number;
   validityDate?: string;
+  technicalDocs?: Array<{ name: string; url?: string; type?: string }>;
   notes?: string;
   createdAt?: string;
   updatedAt?: string;
@@ -695,19 +733,240 @@ export interface ProductionOrderMaterial {
   partCode: string;
   unit: string;
   plannedQuantity: number;
+  reservedQuantity?: number;
+  separatedQuantity?: number;
   consumedQuantity: number;
   returnedQuantity: number;
   lossQuantity: number;
   unitCost: number;
   availableStock: number;
+  physicalStock?: number;
   availabilityStatus: 'SUFFICIENT' | 'PARTIAL' | 'INSUFFICIENT'; // 🟢 🟡 🔴
   shortageQuantity: number;
   lotNumber?: string;
+  isSubstitute?: boolean;
+  originalPartId?: string;
+  changeJustification?: string;
+}
+
+export interface ProductionScrapLog {
+  id: string;
+  productionOrderId: string;
+  productionOrderCode: string;
+  partId: string;
+  partName: string;
+  partCode?: string;
+  quantity: number;
+  unit?: string;
+  scrapType?: 'CORTE' | 'QUEBRA' | 'DEFEITO' | 'ERRO_PRODUCAO' | 'AJUSTE' | 'OUTRO' | string;
+  reason: string;
+  unitCost?: number;
+  totalCost?: number;
+  operatorName?: string;
+  reportedBy?: string;
+  date?: string;
+  timestamp?: string;
+  companyId?: string;
+  notes?: string;
+}
+
+export interface ProductionReworkLog {
+  id: string;
+  productionOrderId: string;
+  productionOrderCode: string;
+  stageName?: string;
+  reworkReason?: string;
+  reason?: string;
+  additionalHours?: number;
+  hoursSpent?: number;
+  laborHourlyRate?: number;
+  additionalLaborCost?: number;
+  additionalMaterialsCost?: number;
+  totalAdditionalCost?: number;
+  responsibleOperator?: string;
+  technicianName?: string;
+  approvedBy?: string;
+  date?: string;
+  timestamp?: string;
+  companyId?: string;
+  additionalMaterials?: Array<{ partId: string; partName: string; quantity: number; unitCost: number; unit?: string }>;
+  notes?: string;
+}
+
+export interface InstalledEquipment {
+  id: string;
+  companyId?: string;
+  serialNumber: string; // Número de Série Único
+  code?: string; // Código de Patrimônio / Tag
+  tag?: string; // Tag compatível
+  name: string; // Nome do Equipamento
+  manufacturer?: string; // Fabricante do Equipamento
+  model?: string; // Modelo do Equipamento
+  location?: string; // Setor / Linha de Produção
+  productId?: string; // Vínculo ao Produto Fabricado
+  productName?: string;
+  clientId?: string; // Cliente proprietário/locatário
+  clientName?: string;
+  city?: string;
+  uf?: string;
+  installationAddress?: string;
+  manufactureDate?: string; // Data de Fabricação
+  installationDate: string; // Data de Instalação
+  warrantyExpirationDate: string; // Data Limite da Garantia
+  isUnderWarranty?: boolean;
+  technicalResponsible?: string; // Responsável Técnico
+  status: 'OPERATIONAL' | 'STOPPED' | 'MAINTENANCE' | 'DECOMMISSIONED' | string; // Em Operação, Parado, Em Manutenção, Desativado
+  runningHours?: number; // Horas de Funcionamento acumuladas
+  operatingHours?: number; // Horas operadas acumuladas (compatibilidade)
+  operationCycles?: number; // Ciclos de Operação acumulados
+  lastMaintenanceDate?: string;
+  nextMaintenanceDate?: string;
+  maintenancePlanId?: string;
+  notes?: string;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export interface EquipmentMaintenancePlan {
+  id: string;
+  companyId?: string;
+  name: string; // Ex: "Plano Preventivo Trimestral - Prensa Hidráulica"
+  description?: string; // Descrição detalhada do plano
+  equipmentModel?: string;
+  periodicityType: 'DAYS' | 'MONTHS' | 'HOURS' | 'CYCLES' | 'CUSTOM' | string;
+  intervalValue: number; // Ex: 90 dias, 500 horas, 1000 ciclos
+  periodicityDays?: number; // Periodicidade em dias (compatibilidade)
+  periodicityHours?: number; // Periodicidade em horas (compatibilidade)
+  defaultChecklist?: Array<{
+    id: string;
+    description: string;
+    category: 'LIMPEZA' | 'LUBRIFICACAO' | 'ELETRICA' | 'MECANICA' | 'APERTO' | 'DESGASTE' | 'TESTE_OPERACIONAL' | 'CALIBRACAO' | 'OUTROS' | string;
+  }>;
+  checklist?: any[]; // Checklist genérico compatível
+  recommendedParts?: Array<{
+    partId: string;
+    partName: string;
+    defaultQty: number;
+    unit?: string;
+  }>;
+  active: boolean;
+  notes?: string;
+}
+
+export interface MaintenanceChecklistItem {
+  id: string;
+  description?: string;
+  item?: string; // Descrição compatível
+  category?: 'LIMPEZA' | 'LUBRIFICACAO' | 'ELETRICA' | 'MECANICA' | 'APERTO' | 'DESGASTE' | 'TESTE_OPERACIONAL' | 'CALIBRACAO' | 'OUTROS' | string;
+  checked?: boolean;
+  completed?: boolean;
+  status?: 'CONFORME' | 'NAO_CONFORME' | 'AJUSTADO' | 'NAO_APLICAVEL' | string;
+  observations?: string;
+}
+
+export interface MaintenanceReplacedPart {
+  id: string;
+  partId: string;
+  partName: string;
+  partCode?: string;
+  quantity: number;
+  unit: string;
+  unitCost: number;
+  totalCost: number;
+  replacementReason: 'DESGASTE_NATURAL' | 'FALHA_PREMATURA' | 'QUEBRA' | 'PREVENTIVA' | 'OUTRO' | string;
+  stockDeducted?: boolean;
+}
+
+export interface ComponentWearRecord {
+  id: string;
+  componentName: string;
+  wearLevel: 'NORMAL' | 'ATENCAO' | 'DESGASTE_LEVE' | 'DESGASTE_MODERADO' | 'DESGASTE_CRITICO' | 'NECESSITA_SUBSTITUICAO' | string;
+  percentage: number; // 0 a 100%
+  estimatedRemainingHours?: number;
+  observations?: string;
+}
+
+export interface EquipmentMaintenanceOrder {
+  id: string;
+  companyId?: string;
+  code: string; // Ex: "OM-2026-001"
+  equipmentId: string;
+  equipmentName: string;
+  equipmentTag?: string; // Tag do equipamento
+  serialNumber?: string;
+  clientId?: string;
+  clientName?: string;
+  installationAddress?: string;
+  type: 'PREVENTIVA' | 'CORRETIVA' | 'INSPECAO' | 'VISITA_TECNICA' | 'GARANTIA' | 'PREDITIVA' | string;
+  status: 'AGENDADA' | 'EM_ANDAMENTO' | 'CONCLUIDA' | 'APROVADA' | 'CANCELADA' | 'ABERTA' | 'EM_EXECUCAO' | string;
+  priority: 'BAIXA' | 'MEDIA' | 'ALTA' | 'EMERGENCIAL' | 'CRITICA' | 'NORMAL' | string;
+  scheduledDate: string;
+  startedAt?: string;
+  completedAt?: string;
+  actualDurationMinutes?: number;
+  description?: string;
+  technicalNotes?: string;
+  closingNotes?: string;
+  rootCause?: string;
+  checklist?: MaintenanceChecklistItem[];
+  replacedParts?: MaintenanceReplacedPart[];
+  wearRecords?: ComponentWearRecord[];
+  laborHours?: number;
+  laborHourlyRate?: number;
+  laborCost?: number;
+  partsCost?: number;
+  totalCost?: number;
+  executorTechnicianName?: string;
+  assignedTechnician?: string;
+  reportResponsibleName?: string;
+  approverName?: string;
+  isApproved?: boolean;
+  approvedAt?: string;
+  isLocked?: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PurchaseSuggestion {
+  partId: string;
+  partName: string;
+  partCode: string;
+  unit: string;
+  currentStock: number;
+  minStock: number;
+  reservedStock: number;
+  availableStock: number;
+  monthlyAverageConsumption: number;
+  plannedProductionDemand: number;
+  suggestedQuantity: number;
+  lastPurchaseSupplier?: string;
+  lastPurchasePrice?: number;
+  lastPurchaseDate?: string;
+  lowestHistoricalPrice?: number;
+  urgency: 'CRITICA' | 'ALTA' | 'NORMAL';
+  reason: string;
+}
+
+export interface PurchaseHistoryItem {
+  id: string;
+  date: string;
+  supplierId: string;
+  supplierName: string;
+  partId: string;
+  partName: string;
+  partCode: string;
+  quantity: number;
+  unit: string;
+  unitPrice: number;
+  totalPrice: number;
+  paymentCondition?: string;
+  documentNumber?: string;
+  companyId?: string;
 }
 
 export interface ProductionOrder {
   id: string;
-  companyId: string;
+  companyId?: string;
   code: string; // Ex: "OP-2026-001"
   finishedProductPartId?: string;
   finishedPartId?: string; // Compatibilidade
@@ -790,8 +1049,9 @@ export interface ProductionOrder {
 
 export interface ProductLot {
   id: string;
-  companyId: string;
+  companyId?: string;
   lotNumber: string;
+  code?: string; // Código compatível
   partId: string;
   partName: string;
   productName?: string;
@@ -819,10 +1079,11 @@ export interface ProductLot {
   currentQuantity?: number;
   availableQuantity?: number; // Saldo de lote disponível
   unitCost?: number;
-  status?: 'ACTIVE' | 'DEPLETED' | 'EXPIRED' | 'QUARANTINE' | 'ativo' | 'quarentena' | 'esgotado' | 'expirado' | string;
+  status?: 'ACTIVE' | 'DEPLETED' | 'EXPIRED' | 'QUARANTINE' | 'ativo' | 'quarentena' | 'esgotado' | 'expirado' | 'APROVADO' | 'REJEITADO' | 'QUARENTENA' | string;
   qualityStatus?: 'approved' | 'quarantine' | 'rejected' | 'aprovado' | 'rejeitado' | 'APPROVED' | 'REJECTED' | 'QUARANTINE' | string;
   qualityInspectionStatus?: string; // Compatibilidade
   qcStatus?: 'approved' | 'quarantine' | 'rejected' | 'aprovado' | 'rejeitado' | string;
+  qcNotes?: string; // Parecer do controle de qualidade
   inspectedBy?: string;
   destinationSales?: Array<{
     saleId: string;
@@ -840,6 +1101,7 @@ export interface ProductLot {
   }>;
   notes?: string;
   createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface CommercialDemandVsIndustrialCapacity {
@@ -1319,6 +1581,7 @@ export interface Supplier {
   name: string; // Nome / Razão Social
   tradeName?: string; // Nome Fantasia
   cnpjCpf: string;
+  cnpj?: string; // Compatibilidade de CNPJ
   email: string;
   phone: string;
   companyId?: string;
@@ -1952,48 +2215,61 @@ export interface GoodsWithdrawalOrder {
 }
 
 export interface AppDatabase {
-  companyInfo: CompanyInfo;
-  registeredCompanies: CompanyInfo[];
+  companyInfo?: CompanyInfo;
+  registeredCompanies?: CompanyInfo[];
   users: User[];
   clients: Client[];
   vehicles: Vehicle[];
   parts: Part[];
-  sales: CommercialSale[];
-  goodsWithdrawals: GoodsWithdrawalOrder[];
-  carriers: Carrier[];
-  stockMovements: StockMovement[];
+  sales?: CommercialSale[];
+  goodsWithdrawals?: GoodsWithdrawalOrder[];
+  carriers?: Carrier[];
+  stockMovements?: StockMovement[];
   services: Service[];
   budgets: Budget[];
   serviceOrders: ServiceOrder[];
   history: HistoryEntry[];
   testCases: TestCase[];
-  notifications: SystemNotification[];
-  alertSettings: AlertSettings;
-  suppliers: Supplier[];
-  supplierPartPrices: SupplierPartPrice[];
-  quotations: Quotation[];
-  accountsReceivable: AccountReceivable[];
-  accountsPayable: AccountPayable[];
-  financialTransactions: FinancialTransaction[];
-  paymentMethods: PaymentMethodOption[];
+  notifications?: SystemNotification[];
+  alertSettings?: AlertSettings;
+  suppliers?: Supplier[];
+  supplierPartPrices?: SupplierPartPrice[];
+  quotations?: Quotation[];
+  accountsReceivable?: AccountReceivable[];
+  accountsPayable?: AccountPayable[];
+  financialTransactions?: FinancialTransaction[];
+  paymentMethods?: PaymentMethodOption[];
   maintenanceLogs?: MaintenanceLog[];
-  fiscalDocuments: FiscalDocument[];
-  boletos: BoletoDocument[];
-  interBranchSales: InterBranchSaleLogistics[];
-  sefazConfig: SefazApiConfig;
-  taxOperationNatures: TaxOperationNature[];
-  taxRules: TaxRule[];
-  xmlImportRecords: XmlImportRecord[];
-  unitsOfMeasure: UnitOfMeasure[];
-  boms: BillOfMaterials[];
+  fiscalDocuments?: FiscalDocument[];
+  boletos?: BoletoDocument[];
+  interBranchSales?: InterBranchSaleLogistics[];
+  sefazConfig?: SefazApiConfig;
+  taxOperationNatures?: TaxOperationNature[];
+  taxRules?: TaxRule[];
+  xmlImportRecords?: XmlImportRecord[];
+  unitsOfMeasure?: UnitOfMeasure[];
+  boms?: BillOfMaterials[];
   billOfMaterials?: BillOfMaterials[];
-  productionOrders: ProductionOrder[];
-  productLots: ProductLot[];
-  operationalAlerts: OperationalAlert[];
+  productionOrders?: ProductionOrder[];
+  productLots?: ProductLot[];
+  operationalAlerts?: OperationalAlert[];
+  installedEquipment?: InstalledEquipment[];
+  equipment?: InstalledEquipment[];
+  equipmentMaintenancePlans?: EquipmentMaintenancePlan[];
+  maintenancePlans?: EquipmentMaintenancePlan[];
+  equipmentMaintenanceOrders?: EquipmentMaintenanceOrder[];
+  productionScrapLogs?: ProductionScrapLog[];
+  productionReworkLogs?: ProductionReworkLog[];
+  purchaseHistory?: PurchaseHistoryItem[];
+  bomRevisions?: BomRevision[];
   landingContent?: any;
   globalModules?: { [key: string]: boolean };
   loginHistory?: { username: string; name: string; role: string; lastAccess: string }[];
+  levelPermissions?: any;
 }
+
+export type Company = CompanyInfo;
+
 
 
 
