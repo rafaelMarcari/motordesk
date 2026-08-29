@@ -306,6 +306,7 @@ export const SalesView: React.FC<SalesViewProps> = ({
       totalAmount: cartTotalAmount,
       paymentMethod,
       paymentStatus: isCreditOrBoleto ? 'pending' : 'paid',
+      financialStatus: isCreditOrBoleto ? 'PENDENTE_FATURAMENTO' : 'PAGA',
       fiscalStatus: 'pending_conference',
       installmentsCount: installments,
       notes: saleNotes,

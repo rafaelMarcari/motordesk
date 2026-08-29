@@ -960,7 +960,8 @@ export default function ServiceOrdersView({ db, currentUser, onSaveServiceOrders
           ...os,
           status: 'completed' as const,
           completedAt: os.completedAt || new Date().toISOString(),
-          paymentStatus: markPaidImmediately ? ('paid' as const) : ('pending' as const)
+          paymentStatus: markPaidImmediately ? ('paid' as const) : ('pending' as const),
+          financialStatus: markPaidImmediately ? ('PAGA' as const) : ('PENDENTE_FATURAMENTO' as const)
         };
       }
       return os;

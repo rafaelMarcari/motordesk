@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { User, Client, Vehicle, Part, Service, Budget, ServiceOrder, HistoryEntry, TestCase, StockMovement, CompanyInfo, SystemNotification, AlertSettings, Supplier, SupplierPartPrice, Quotation, AccountReceivable, AccountPayable, FinancialTransaction, MaintenanceLog, PaymentMethodOption, FiscalDocument, BoletoDocument, InterBranchSaleLogistics, SefazApiConfig, TaxOperationNature, TaxRule, XmlImportRecord, CommercialSale, Carrier, GoodsWithdrawalOrder, WithdrawalType, WithdrawalStatus, getDefaultModulesForBusinessType, UnitOfMeasure, BillOfMaterials, ProductionOrder, ProductLot, OperationalAlert, InstalledEquipment, EquipmentMaintenancePlan, EquipmentMaintenanceOrder, ProductionScrapLog, ProductionReworkLog, PurchaseHistoryItem, BomRevision } from '../types';
+import { User, Client, Vehicle, Part, Service, Budget, ServiceOrder, HistoryEntry, TestCase, StockMovement, CompanyInfo, SystemNotification, AlertSettings, Supplier, SupplierPartPrice, Quotation, AccountReceivable, AccountPayable, FinancialTransaction, MaintenanceLog, PaymentMethodOption, FiscalDocument, BoletoDocument, InterBranchSaleLogistics, SefazApiConfig, TaxOperationNature, TaxRule, XmlImportRecord, CommercialSale, Carrier, GoodsWithdrawalOrder, WithdrawalType, WithdrawalStatus, getDefaultModulesForBusinessType, UnitOfMeasure, BillOfMaterials, ProductionOrder, ProductLot, OperationalAlert, InstalledEquipment, EquipmentMaintenancePlan, EquipmentMaintenanceOrder, ProductionScrapLog, ProductionReworkLog, PurchaseHistoryItem, BomRevision, BillingClosingOrder, BankStatement, BankStatementItem, PaymentSplit } from '../types';
 
 export const INITIAL_UNITS_OF_MEASURE: UnitOfMeasure[] = [
   { id: 'uom-un', name: 'Unidade', acronym: 'UN', category: 'QUANTIDADE', calculationType: 'SIMPLES', conversionFactor: 1, decimalPlaces: 0, active: true, isGlobal: true, notes: 'Contagem unitária inteira padrão' },
@@ -1009,7 +1009,8 @@ export const INITIAL_CLIENTS: Client[] = [
     maxCreditLimit: 5000,
     currentDebt: 1250,
     paymentModeOverride: 'ADVANCE_DEPOSIT',
-    depositPercentageOverride: 30
+    depositPercentageOverride: 30,
+    billingPolicy: 'PER_SALE'
   },
   {
     id: 'cli-2',
@@ -1021,7 +1022,8 @@ export const INITIAL_CLIENTS: Client[] = [
     createdAt: '2026-06-15T14:30:00Z',
     maxCreditLimit: 3000,
     currentDebt: 0,
-    paymentModeOverride: 'AFTER_COMPLETION'
+    paymentModeOverride: 'AFTER_COMPLETION',
+    billingPolicy: 'PER_SALE'
   },
   {
     id: 'cli-3',
@@ -1033,7 +1035,65 @@ export const INITIAL_CLIENTS: Client[] = [
     createdAt: '2026-07-02T09:15:00Z',
     maxCreditLimit: 2000,
     currentDebt: 2450,
-    paymentModeOverride: 'FULL_ADVANCE'
+    paymentModeOverride: 'FULL_ADVANCE',
+    billingPolicy: 'PER_SALE'
+  },
+  {
+    id: 'cli-abc',
+    name: 'Empresa ABC Transportes e Frotas Ltda',
+    cpf: '11.222.333/0001-44',
+    cpfCnpj: '11.222.333/0001-44',
+    email: 'financeiro@empresaabc.com.br',
+    phone: '(11) 3456-7890',
+    address: 'Av. Marginal Tietê, 4500 - Vila Maria, São Paulo - SP',
+    createdAt: '2026-06-10T08:00:00Z',
+    maxCreditLimit: 25000,
+    currentDebt: 3450,
+    billingPolicy: 'CONSOLIDATED_PERIOD',
+    billingPeriodicity: 'SEMANAL',
+    billingClosingDayOfWeek: 5, // Sexta-feira
+    billingDueDaysAfter: 7, // 7 dias após o fechamento
+    paymentConditionType: 'A_PRAZO',
+    defaultPaymentMethod: 'Boleto',
+    paymentModeOverride: 'AFTER_COMPLETION',
+    notes: 'Cliente frotista com faturamento consolidado semanal às sextas-feiras e vencimento em 7 dias.'
+  },
+  {
+    id: 'cli-xyz',
+    name: 'Empresa XYZ Logística e Distribuição S.A.',
+    cpf: '33.444.555/0001-66',
+    cpfCnpj: '33.444.555/0001-66',
+    email: 'contasapagar@xyzlog.com.br',
+    phone: '(11) 4004-3322',
+    address: 'Rodovia dos Bandeirantes, km 38 - Cajamar - SP',
+    createdAt: '2026-06-20T09:30:00Z',
+    maxCreditLimit: 50000,
+    currentDebt: 8200,
+    billingPolicy: 'CONSOLIDATED_PERIOD',
+    billingPeriodicity: 'MENSAL',
+    billingClosingDayOfMonth: 30, // Dia 30
+    billingDueDayOfMonth: 10, // Dia 10 do mês seguinte
+    paymentConditionType: 'A_PRAZO',
+    defaultPaymentMethod: 'Boleto',
+    paymentModeOverride: 'AFTER_COMPLETION',
+    notes: 'Cliente corporativo com política de acumular compras: fechamento no dia 30 e vencimento no dia 10 do mês seguinte.'
+  },
+  {
+    id: 'cli-ind',
+    name: 'Metalúrgica Sul Industrial S.A.',
+    cpf: '77.888.999/0001-11',
+    cpfCnpj: '77.888.999/0001-11',
+    email: 'compras@metalurgicasul.ind.br',
+    phone: '(11) 4822-1100',
+    address: 'Av. Industrial, 800 - Sertãozinho, Mauá - SP',
+    createdAt: '2026-07-01T10:00:00Z',
+    maxCreditLimit: 100000,
+    currentDebt: 15400,
+    billingPolicy: 'PER_SALE',
+    paymentConditionType: 'A_PRAZO',
+    defaultPaymentMethod: 'Boleto',
+    paymentModeOverride: 'AFTER_COMPLETION',
+    notes: 'Cliente industrial de fornecimento sob encomenda (BOM / OPs) com faturamento por venda a prazo.'
   }
 ];
 
@@ -3126,6 +3186,476 @@ export const INITIAL_TEST_CASES: TestCase[] = [
     ],
     expectedResult: 'Dossiê técnico gerado com formatação de alta qualidade para entrega ao cliente ou auditoria.',
     status: 'passed'
+  },
+
+  // ==========================================
+  // MÓDULO FINANCEIRO & FATURAMENTO - OFICINA (CT-FIN-OFC-01 a 10)
+  // ==========================================
+  {
+    id: 'tc-fin-ofc-01',
+    code: 'CT-FIN-OFC-01',
+    requirement: 'REQ-FIN-OFC-01',
+    title: 'Abertura e Execução de OS com Forma de Pagamento e Condição Faturada',
+    category: 'Financeiro & Faturamento',
+    preConditions: 'Veículo no pátio e serviços/peças adicionados na OS.',
+    steps: [
+      'Na Ordem de Serviço, selecionar a forma de pagamento (ex: PIX, Boleto ou A Prazo).',
+      'Definir a condição de pagamento (À Vista ou A Prazo com parcelamento/faturamento).',
+      'Finalizar a OS.'
+    ],
+    expectedResult: 'OS finalizada com distinção clara entre forma e condição de pagamento, sem conflito de liquidez.',
+    status: 'passed'
+  },
+  {
+    id: 'tc-fin-ofc-02',
+    code: 'CT-FIN-OFC-02',
+    requirement: 'REQ-FIN-OFC-02',
+    title: 'Política de Faturamento Consolidado Semanal para Frotista (Empresa ABC)',
+    category: 'Financeiro & Faturamento',
+    preConditions: 'Cliente frotista cadastrado com política de Faturamento Semanal (Fechamento Sexta / Vencimento +7 dias).',
+    steps: [
+      'Abrir e finalizar múltiplas OSs para veículos da frota da Empresa ABC durante a semana.',
+      'Verificar que o sistema associa as OSs à política cadastrada do frotista.'
+    ],
+    expectedResult: 'OSs vinculadas à política de consolidação semanal sem exigir parametrização manual a cada atendimento.',
+    status: 'passed'
+  },
+  {
+    id: 'tc-fin-ofc-03',
+    code: 'CT-FIN-OFC-03',
+    requirement: 'REQ-FIN-OFC-03',
+    title: 'Opção "Acumular para Faturamento Consolidado" vs Faturamento Imediato por Venda',
+    category: 'Financeiro & Faturamento',
+    preConditions: 'Conclusão de OS de cliente conveniado.',
+    steps: [
+      'Na tela de fechamento da OS, selecionar "Acumular para Faturamento Consolidado".',
+      'Finalizar a OS.',
+      'Verificar que a OS recebe status de faturamento "Pendente de Fechamento".'
+    ],
+    expectedResult: 'OS acumulada na fila de fechamento periódico sem gerar títulos avulsos prematuros.',
+    status: 'passed'
+  },
+  {
+    id: 'tc-fin-ofc-04',
+    code: 'CT-FIN-OFC-04',
+    requirement: 'REQ-FIN-OFC-04',
+    title: 'Sinal Antecipado via PIX + Saldo Restante Faturado para Fechamento Periódico',
+    category: 'Financeiro & Faturamento',
+    preConditions: 'OS de alto valor (ex: retífica de motor).',
+    steps: [
+      'No fechamento, registrar entrada de 30% via PIX imediato.',
+      'Definir os 70% restantes para "Acumular para Faturamento Consolidado".',
+      'Confirmar a transação.'
+    ],
+    expectedResult: 'PIX lançado imediatamente no Caixa/Fluxo e saldo de 70% enfileirado para o próximo fechamento.',
+    status: 'passed'
+  },
+  {
+    id: 'tc-fin-ofc-05',
+    code: 'CT-FIN-OFC-05',
+    requirement: 'REQ-FIN-OFC-05',
+    title: 'Validação de Limite de Crédito do Cliente com Trava Gerencial',
+    category: 'Financeiro & Faturamento',
+    preConditions: 'Cliente com limite de crédito de R$ 5.000 e saldo devedor atual de R$ 4.200.',
+    steps: [
+      'Tentar finalizar uma OS faturada no valor de R$ 1.500 (total R$ 5.700).',
+      'O sistema identifica o estouro de limite (R$ 700 acima).',
+      'Bloqueia o faturamento automático e exige senha/autorização de Gerente.'
+    ],
+    expectedResult: 'Trava de segurança de limite de crédito atuando com precisão.',
+    status: 'passed'
+  },
+  {
+    id: 'tc-fin-ofc-06',
+    code: 'CT-FIN-OFC-06',
+    requirement: 'REQ-FIN-OFC-06',
+    title: 'Rastreabilidade Estrita entre OS, Título e Histórico Veicular',
+    category: 'Financeiro & Faturamento',
+    preConditions: 'OS faturada individualmente.',
+    steps: [
+      'Consultar o título a receber gerado no Contas a Receber.',
+      'Verificar os links bidirecionais: Código da OS, Placa do Veículo e Dossiê do Cliente.'
+    ],
+    expectedResult: 'Rastreabilidade 100% preservada da ordem até a conciliação.',
+    status: 'passed'
+  },
+  {
+    id: 'tc-fin-ofc-07',
+    code: 'CT-FIN-OFC-07',
+    requirement: 'REQ-FIN-OFC-07',
+    title: 'Execução de Fechamento Consolidado Semanal de OSs da Empresa ABC',
+    category: 'Financeiro & Faturamento',
+    preConditions: 'Chegada da sexta-feira com 3 OSs acumuladas da Empresa ABC.',
+    steps: [
+      'Acessar a aba "Fechamentos Consolidados" no Contas a Receber.',
+      'Filtrar pelo cliente "Empresa ABC" e selecionar as 3 OSs da semana.',
+      'Clicar em "Gerar Fechamento de Faturamento Consolidado".',
+      'O sistema calcula a data de vencimento (+7 dias).'
+    ],
+    expectedResult: 'Fechamento gerado (código FCH), OSs marcadas como faturadas e 1 Título Consolidado gerado.',
+    status: 'passed'
+  },
+  {
+    id: 'tc-fin-ofc-08',
+    code: 'CT-FIN-OFC-08',
+    requirement: 'REQ-FIN-OFC-08',
+    title: 'Emissão de Extrato / Espelho Consolidado de OSs para o Frotista',
+    category: 'Financeiro & Faturamento',
+    preConditions: 'Fechamento consolidado realizado.',
+    steps: [
+      'No fechamento, clicar em "Ver Espelho / Extrato de Faturamento".',
+      'Verificar o detalhamento: placas, datas, motoristas, serviços, peças e valor total consolidado.'
+    ],
+    expectedResult: 'Demonstrativo claro e pronto para auditoria do setor financeiro do cliente.',
+    status: 'passed'
+  },
+  {
+    id: 'tc-fin-ofc-09',
+    code: 'CT-FIN-OFC-09',
+    requirement: 'REQ-FIN-OFC-09',
+    title: 'Baixa de Título Consolidado com Entrada Automática no Fluxo de Caixa',
+    category: 'Financeiro & Faturamento',
+    preConditions: 'Título consolidado da Empresa ABC pendente de pagamento.',
+    steps: [
+      'Efetuar a baixa do título informando data de recebimento e conta bancária.',
+      'Consultar o Fluxo de Caixa e DRE.'
+    ],
+    expectedResult: 'Título liquidado e receita registrada com vínculo ao fechamento.',
+    status: 'passed'
+  },
+  {
+    id: 'tc-fin-ofc-10',
+    code: 'CT-FIN-OFC-10',
+    requirement: 'REQ-FIN-OFC-10',
+    title: 'Garantia de Idempotência e Bloqueio de Duplicação de Título ou Baixa',
+    category: 'Financeiro & Faturamento',
+    preConditions: 'OS já inclusa em fechamento consolidado ou faturada.',
+    steps: [
+      'Tentar faturar a mesma OS novamente ou incluí-la em um segundo fechamento.',
+      'O sistema bloqueia a ação informando que a OS já possui vínculo financeiro ativo.'
+    ],
+    expectedResult: 'Idempotência rigorosa garantida em todas as operações de faturamento.',
+    status: 'passed'
+  },
+
+  // ==========================================
+  // MÓDULO FINANCEIRO & FATURAMENTO - COMÉRCIO (CT-FIN-COM-01 a 10)
+  // ==========================================
+  {
+    id: 'tc-fin-com-01',
+    code: 'CT-FIN-COM-01',
+    requirement: 'REQ-FIN-COM-01',
+    title: 'Venda Balcão com Múltiplas Formas de Pagamento (Split de Pagamentos)',
+    category: 'Financeiro & Faturamento',
+    preConditions: 'Carrinho de compras com total de R$ 500,00.',
+    steps: [
+      'Selecionar a forma de pagamento "Múltiplas Formas de Pagamento".',
+      'Distribuir: R$ 100,00 no Dinheiro, R$ 200,00 no PIX e R$ 200,00 no Cartão em 2x.',
+      'Confirmar que a soma totaliza exatamente R$ 500,00.',
+      'Finalizar a venda.'
+    ],
+    expectedResult: 'Venda finalizada com múltiplos recebimentos registrados com exatidão.',
+    status: 'passed'
+  },
+  {
+    id: 'tc-fin-com-02',
+    code: 'CT-FIN-COM-02',
+    requirement: 'REQ-FIN-COM-02',
+    title: 'Validação de Soma dos Pagamentos (Divergência Não Justificada Bloqueia)',
+    category: 'Financeiro & Faturamento',
+    preConditions: 'Carrinho no valor de R$ 500,00 em modo Múltiplas Formas.',
+    steps: [
+      'Informar R$ 300,00 no PIX e R$ 100,00 no Cartão (Total R$ 400,00, diferença de R$ 100,00).',
+      'Tentar clicar em "Finalizar Venda".',
+      'O sistema exibe alerta de inconsistência e impede o fechamento.'
+    ],
+    expectedResult: 'Bloqueio estrito de finalização enquanto houver diferença não justificada.',
+    status: 'passed'
+  },
+  {
+    id: 'tc-fin-com-03',
+    code: 'CT-FIN-COM-03',
+    requirement: 'REQ-FIN-COM-03',
+    title: 'Venda Balcão para Cliente Faturado Mensal (Empresa XYZ - Fechamento 30 / Vencimento 10)',
+    category: 'Financeiro & Faturamento',
+    preConditions: 'Cliente Empresa XYZ selecionado no PDV.',
+    steps: [
+      'O sistema exibe a identificação da política: "Faturamento Mensal (Fechamento 30 / Vencimento dia 10)".',
+      'Forma de pagamento padrão ajustada para Boleto / A Prazo.',
+      'Finalizar a venda.'
+    ],
+    expectedResult: 'Venda balcão registrada com dados fiscais e financeiros configurados para a política corporativa.',
+    status: 'passed'
+  },
+  {
+    id: 'tc-fin-com-04',
+    code: 'CT-FIN-COM-04',
+    requirement: 'REQ-FIN-COM-04',
+    title: 'Opção "Acumular para Faturamento Consolidado" no Fechamento da Venda Balcão',
+    category: 'Financeiro & Faturamento',
+    preConditions: 'Venda no PDV para cliente corporativo.',
+    steps: [
+      'Marcar a opção "Acumular para Faturamento Consolidado".',
+      'Finalizar a venda.',
+      'Consultar a lista de vendas balcão.'
+    ],
+    expectedResult: 'Venda gravada com billingStatus "pending_billing", pronta para o fechamento mensal.',
+    status: 'passed'
+  },
+  {
+    id: 'tc-fin-com-05',
+    code: 'CT-FIN-COM-05',
+    requirement: 'REQ-FIN-COM-05',
+    title: 'Rastreamento Individual de Cada Venda Balcão Acumulada',
+    category: 'Financeiro & Faturamento',
+    preConditions: 'Múltiplas vendas efetuadas para a Empresa XYZ ao longo do mês.',
+    steps: [
+      'Consultar as vendas pendentes de faturamento da Empresa XYZ.',
+      'Verificar que cada venda mantém seu código VEN, operador, data/hora e itens preservados individualmente.'
+    ],
+    expectedResult: 'Rastreabilidade granular de cada venda mantida mesmo em modo acumulado.',
+    status: 'passed'
+  },
+  {
+    id: 'tc-fin-com-06',
+    code: 'CT-FIN-COM-06',
+    requirement: 'REQ-FIN-COM-06',
+    title: 'Fechamento Mensal Consolidado de Compras da Empresa XYZ (Dia 30)',
+    category: 'Financeiro & Faturamento',
+    preConditions: 'Fim do mês com 4 vendas acumuladas da Empresa XYZ.',
+    steps: [
+      'No Contas a Receber, selecionar todas as vendas pendentes da Empresa XYZ.',
+      'Clicar em "Gerar Fechamento de Faturamento Consolidado".',
+      'O sistema calcula a data de vencimento para o dia 10 do mês subsequente.'
+    ],
+    expectedResult: 'Fechamento consolidado gerado com vencimento exato no dia 10.',
+    status: 'passed'
+  },
+  {
+    id: 'tc-fin-com-07',
+    code: 'CT-FIN-COM-07',
+    requirement: 'REQ-FIN-COM-07',
+    title: 'Geração de Título Único Consolidado de Contas a Receber',
+    category: 'Financeiro & Faturamento',
+    preConditions: 'Fechamento mensal da Empresa XYZ concluído.',
+    steps: [
+      'Acessar a aba "Títulos a Receber".',
+      'Localizar o título único gerado pelo fechamento com a somatória exata das 4 vendas.'
+    ],
+    expectedResult: 'Título único consolidado emitido contendo o extrato e IDs de todas as vendas associadas.',
+    status: 'passed'
+  },
+  {
+    id: 'tc-fin-com-08',
+    code: 'CT-FIN-COM-08',
+    requirement: 'REQ-FIN-COM-08',
+    title: 'Emissão de Boleto Bancário Único do Fechamento Consolidado',
+    category: 'Financeiro & Faturamento',
+    preConditions: 'Título consolidado gerado.',
+    steps: [
+      'No título consolidado, clicar em "Emitir Boleto Bancário".',
+      'Verificar a geração do boleto com linha digitável, código de barras e demonstrativo das notas/vendas no corpo do boleto.'
+    ],
+    expectedResult: 'Boleto bancário único gerado sem necessidade de emitir um boleto por venda avulsa.',
+    status: 'passed'
+  },
+  {
+    id: 'tc-fin-com-09',
+    code: 'CT-FIN-COM-09',
+    requirement: 'REQ-FIN-COM-09',
+    title: 'Cancelamento / Estorno de Venda Acumulada antes do Fechamento',
+    category: 'Financeiro & Faturamento',
+    preConditions: 'Venda balcão acumulada ainda não faturada em fechamento.',
+    steps: [
+      'Solicitar o cancelamento da venda no módulo de Vendas.',
+      'Confirmar a devolução dos itens ao estoque e a remoção da venda da fila de fechamento.'
+    ],
+    expectedResult: 'Venda cancelada, itens estornados e fila de fechamento atualizada sem inconsistências.',
+    status: 'passed'
+  },
+  {
+    id: 'tc-fin-com-10',
+    code: 'CT-FIN-COM-10',
+    requirement: 'REQ-FIN-COM-10',
+    title: 'Trilha de Auditoria Imutável para Fechamentos e Baixas Financeiras',
+    category: 'Financeiro & Faturamento',
+    preConditions: 'Operações financeiras executadas por diferentes operadores.',
+    steps: [
+      'Acessar a Trilha de Auditoria no menu lateral.',
+      'Filtrar por eventos de Fechamento Consolidado, Split de Pagamento e Baixa de Títulos.'
+    ],
+    expectedResult: 'Logs imutáveis registrados com data/hora, IP, usuário e valores envolvidos.',
+    status: 'passed'
+  },
+
+  // ==========================================
+  // MÓDULO FINANCEIRO & FATURAMENTO - INDÚSTRIA & CONCILIAÇÃO (CT-FIN-IND-01 a 10)
+  // ==========================================
+  {
+    id: 'tc-fin-ind-01',
+    code: 'CT-FIN-IND-01',
+    requirement: 'REQ-FIN-IND-01',
+    title: 'Faturamento Consolidado de Pedidos de Produção e Fornecimento Seriado',
+    category: 'Financeiro & Faturamento',
+    preConditions: 'Entregas periódicas de lotes de peças industriais para a Metalúrgica Sul.',
+    steps: [
+      'Acumular 3 remessas de produção entregues na quinzena.',
+      'Executar o fechamento quinzenal gerando NF-e Mod. 55 e título único com rastreabilidade dos lotes.'
+    ],
+    expectedResult: 'Faturamento industrial consolidado com vínculo aos lotes e certificados de qualidade.',
+    status: 'passed'
+  },
+  {
+    id: 'tc-fin-ind-02',
+    code: 'CT-FIN-IND-02',
+    requirement: 'REQ-FIN-IND-02',
+    title: 'Condição de Pagamento 30/60/90 Dias com Cálculo Preciso de Parcelas',
+    category: 'Financeiro & Faturamento',
+    preConditions: 'Faturamento de pedido industrial no valor de R$ 30.000,00.',
+    steps: [
+      'Selecionar a condição "30/60/90 Dias".',
+      'O sistema gera 3 parcelas de R$ 10.000,00 com vencimentos escalonados a cada 30 dias.'
+    ],
+    expectedResult: 'Parcelamento calculado com exatidão e títulos provisionados no Contas a Receber.',
+    status: 'passed'
+  },
+  {
+    id: 'tc-fin-ind-03',
+    code: 'CT-FIN-IND-03',
+    requirement: 'REQ-FIN-IND-03',
+    title: 'Importação de Extrato Bancário (OFX / CSV) para Conciliação',
+    category: 'Financeiro & Faturamento',
+    preConditions: 'Extrato bancário contendo créditos e débitos da conta corrente.',
+    steps: [
+      'No módulo Financeiro, acessar "Conciliação Bancária".',
+      'Importar o arquivo de extrato bancário.',
+      'O sistema mapeia todas as linhas de lançamento.'
+    ],
+    expectedResult: 'Extrato carregado com identificação de data, documento, valor e descrição.',
+    status: 'passed'
+  },
+  {
+    id: 'tc-fin-ind-04',
+    code: 'CT-FIN-IND-04',
+    requirement: 'REQ-FIN-IND-04',
+    title: 'Casamento Automático de Lançamentos de Extrato com Títulos a Receber',
+    category: 'Financeiro & Faturamento',
+    preConditions: 'Lançamento de crédito de R$ 1.850,00 no extrato referente ao fechamento FCH-2026-0001.',
+    steps: [
+      'O motor de conciliação cruza valor e código do cliente.',
+      'Sugere o casamento com o título a receber correspondente.',
+      'Operador confirma a conciliação.'
+    ],
+    expectedResult: 'Título baixado automaticamente com conciliação bancária confirmada.',
+    status: 'passed'
+  },
+  {
+    id: 'tc-fin-ind-05',
+    code: 'CT-FIN-IND-05',
+    requirement: 'REQ-FIN-IND-05',
+    title: 'Tratamento de Divergência de Juros, Descontos e Tarifas Bancárias',
+    category: 'Financeiro & Faturamento',
+    preConditions: 'Título de R$ 1.000,00 recebido com juros por atraso no valor de R$ 1.035,00 no extrato.',
+    steps: [
+      'Na conciliação, identificar a diferença de R$ 35,00.',
+      'Classificar a diferença como "Receita de Juros / Multa".',
+      'Efetivar a baixa e o lançamento contábil.'
+    ],
+    expectedResult: 'Título liquidado a 100% e receita de juros contabilizada no DRE.',
+    status: 'passed'
+  },
+  {
+    id: 'tc-fin-ind-06',
+    code: 'CT-FIN-IND-06',
+    requirement: 'REQ-FIN-IND-06',
+    title: 'Idempotência de Conciliação Bancária (Impedir Reconciliação Dupla)',
+    category: 'Financeiro & Faturamento',
+    preConditions: 'Linha de extrato já conciliada com título.',
+    steps: [
+      'Tentar conciliar a mesma linha de extrato com um segundo título.',
+      'O sistema bloqueia a ação e sinaliza que o lançamento já foi conciliado.'
+    ],
+    expectedResult: 'Idempotência estrita protegendo o saldo bancário de duplicações.',
+    status: 'passed'
+  },
+  {
+    id: 'tc-fin-ind-07',
+    code: 'CT-FIN-IND-07',
+    requirement: 'REQ-FIN-IND-07',
+    title: 'Isolamento Multitenant Financeiro por CompanyId',
+    category: 'Financeiro & Faturamento',
+    preConditions: 'Múltiplas empresas cadastradas no MotorDesk.',
+    steps: [
+      'Gerar títulos e conciliações na empresa Matriz.',
+      'Alternar para a empresa Filial e verificar que os dados financeiros da Matriz são totalmente isolados.'
+    ],
+    expectedResult: 'Isolamento multi-empresa perfeito em todas as rotinas financeiras.',
+    status: 'passed'
+  },
+  {
+    id: 'tc-fin-ind-08',
+    code: 'CT-FIN-IND-08',
+    requirement: 'REQ-FIN-IND-08',
+    title: 'Demonstrativo DRE com Segregação de Venda Balcão, OS e Faturamento Periódico',
+    category: 'Financeiro & Faturamento',
+    preConditions: 'Movimentações financeiras realizadas em todos os segmentos.',
+    steps: [
+      'Acessar a aba "DRE & Resultados" no Financeiro.',
+      'Verificar a abertura das receitas: Vendas Balcão, Serviços Mecânicos de OS e Faturamentos Consolidados.'
+    ],
+    expectedResult: 'DRE consolidado com visualização transparente da margem e origem das receitas.',
+    status: 'passed'
+  },
+  {
+    id: 'tc-fin-ind-09',
+    code: 'CT-FIN-IND-09',
+    requirement: 'REQ-FIN-IND-09',
+    title: 'Trava de Edição em Títulos e Fechamentos Conciliados (Imutabilidade)',
+    category: 'Financeiro & Faturamento',
+    preConditions: 'Título com status "paid" e conciliação bancária confirmada.',
+    steps: [
+      'Tentar alterar valores ou excluir o título.',
+      'O sistema bloqueia a operação para preservar a conformidade contábil e fiscal.'
+    ],
+    expectedResult: 'Imutabilidade contábil garantida.',
+    status: 'passed'
+  },
+  {
+    id: 'tc-fin-ind-10',
+    code: 'CT-FIN-IND-10',
+    requirement: 'REQ-FIN-IND-10',
+    title: 'Exportação do Extrato de Fechamento Consolidado em PDF e Relatório Financeiro',
+    category: 'Financeiro & Faturamento',
+    preConditions: 'Fechamento consolidado realizado.',
+    steps: [
+      'Clicar em "Exportar Extrato PDF".',
+      'Verificar a formatação executiva contendo discriminação de vendas, impostos, vencimentos e QR Code de validação.'
+    ],
+    expectedResult: 'Documento PDF com layout corporativo de alta qualidade gerado com sucesso.',
+    status: 'passed'
+  },
+
+  // ==========================================
+  // TESTE FINAL PONTA A PONTA (CT-FIN-E2E-01)
+  // ==========================================
+  {
+    id: 'tc-fin-e2e-01',
+    code: 'CT-FIN-E2E-01',
+    requirement: 'REQ-FIN-E2E-01',
+    title: 'Fluxo Completo Ponta a Ponta: Vendas Múltiplas + OS + Fechamento + Boleto + Conciliação',
+    category: 'Financeiro & Faturamento',
+    preConditions: 'Ambiente com clientes corporativos, catálogo de peças e serviços.',
+    steps: [
+      '1. Realizar 2 vendas de peças no balcão para a Empresa ABC com a opção "Acumular para Faturamento".',
+      '2. Finalizar 1 Ordem de Serviço da frota da Empresa ABC também em modo "Acumular para Faturamento".',
+      '3. Executar o Fechamento Consolidado Semanal gerando 1 Título Único de Contas a Receber com vencimento em +7 dias.',
+      '4. Emitir o Boleto Bancário consolidado correspondente.',
+      '5. Simular a importação do extrato bancário com o crédito do valor total.',
+      '6. Efetuar o casamento e conciliação bancária com baixa automática e idempotente do título.',
+      '7. Verificar a atualização do Caixa, DRE e a impossibilidade de reprocessar qualquer uma das vendas.'
+    ],
+    expectedResult: 'Fluxo integrado de ponta a ponta executado com 100% de integridade, rastreabilidade e idempotência contábil.',
+    status: 'passed'
   }
 ];
 
@@ -3365,6 +3895,8 @@ export const INITIAL_SALES: CommercialSale[] = [
     totalAmount: 210.00,
     paymentMethod: 'PIX',
     paymentStatus: 'paid',
+    billingPolicy: 'PER_SALE',
+    billingStatus: 'billed',
     notes: 'Venda direta de balcão. Cliente retirou produtos na loja.',
     createdBy: 'Carlos Santos (Atendente)'
   },
@@ -3395,7 +3927,123 @@ export const INITIAL_SALES: CommercialSale[] = [
     totalAmount: 150.00,
     paymentMethod: 'Cartão de Crédito',
     paymentStatus: 'paid',
+    billingPolicy: 'PER_SALE',
+    billingStatus: 'billed',
     notes: 'Venda com desconto de fidelidade.',
+    createdBy: 'Carlos Santos (Atendente)'
+  },
+  {
+    id: 'sale-abc-1',
+    code: 'VEN-2026-0101',
+    clientId: 'cli-abc',
+    clientName: 'Empresa ABC Transportes e Frotas Ltda',
+    clientCpfCnpj: '11.222.333/0001-44',
+    companyId: 'comp-1',
+    createdAt: '2026-08-18T09:10:00Z',
+    items: [
+      {
+        id: 'sitem-abc-1',
+        partId: 'part-1',
+        partName: 'Óleo Motor 5W30 Sintético',
+        partCode: 'MOB-5W30',
+        quantity: 12,
+        unitPrice: 45.00,
+        discount: 0,
+        totalPrice: 540.00,
+        unit: 'L',
+        ncm: '2710.19.32'
+      },
+      {
+        id: 'sitem-abc-2',
+        partId: 'part-2',
+        partName: 'Filtro de Óleo Lubrificante',
+        partCode: 'FIL-1023',
+        quantity: 3,
+        unitPrice: 35.00,
+        discount: 0,
+        totalPrice: 105.00,
+        unit: 'UN',
+        ncm: '8421.23.00'
+      }
+    ],
+    subtotal: 645.00,
+    discount: 0,
+    totalAmount: 645.00,
+    paymentMethod: 'A Prazo',
+    paymentConditionType: 'A_PRAZO',
+    paymentStatus: 'pending',
+    billingPolicy: 'CONSOLIDATED_PERIOD',
+    billingStatus: 'pending_billing',
+    accumulateForBilling: true,
+    notes: 'Venda para manutenção de frota - Acumulado para Fechamento Semanal Sexta-Feira.',
+    createdBy: 'Carlos Santos (Atendente)'
+  },
+  {
+    id: 'sale-abc-2',
+    code: 'VEN-2026-0102',
+    clientId: 'cli-abc',
+    clientName: 'Empresa ABC Transportes e Frotas Ltda',
+    clientCpfCnpj: '11.222.333/0001-44',
+    companyId: 'comp-1',
+    createdAt: '2026-08-19T15:20:00Z',
+    items: [
+      {
+        id: 'sitem-abc-3',
+        partId: 'part-3',
+        partName: 'Jogo de Pastilhas de Freio Dianteira',
+        partCode: 'PST-9042',
+        quantity: 2,
+        unitPrice: 160.00,
+        discount: 0,
+        totalPrice: 320.00,
+        unit: 'JG',
+        ncm: '8708.30.90'
+      }
+    ],
+    subtotal: 320.00,
+    discount: 0,
+    totalAmount: 320.00,
+    paymentMethod: 'A Prazo',
+    paymentConditionType: 'A_PRAZO',
+    paymentStatus: 'pending',
+    billingPolicy: 'CONSOLIDATED_PERIOD',
+    billingStatus: 'pending_billing',
+    accumulateForBilling: true,
+    notes: 'Venda balcão expressa para frota Van Mercedes Sprinter.',
+    createdBy: 'Carlos Santos (Atendente)'
+  },
+  {
+    id: 'sale-xyz-1',
+    code: 'VEN-2026-0201',
+    clientId: 'cli-xyz',
+    clientName: 'Empresa XYZ Logística e Distribuição S.A.',
+    clientCpfCnpj: '33.444.555/0001-66',
+    companyId: 'comp-1',
+    createdAt: '2026-08-15T11:45:00Z',
+    items: [
+      {
+        id: 'sitem-xyz-1',
+        partId: 'part-1',
+        partName: 'Óleo Motor 5W30 Sintético',
+        partCode: 'MOB-5W30',
+        quantity: 20,
+        unitPrice: 45.00,
+        discount: 50.00,
+        totalPrice: 850.00,
+        unit: 'L',
+        ncm: '2710.19.32'
+      }
+    ],
+    subtotal: 900.00,
+    discount: 50.00,
+    totalAmount: 850.00,
+    paymentMethod: 'A Prazo',
+    paymentConditionType: 'A_PRAZO',
+    paymentStatus: 'pending',
+    billingPolicy: 'CONSOLIDATED_PERIOD',
+    billingStatus: 'pending_billing',
+    accumulateForBilling: true,
+    notes: 'Política de compras corporativas: Fechamento no dia 30 e vencimento no dia 10.',
     createdBy: 'Carlos Santos (Atendente)'
   }
 ];
@@ -4095,6 +4743,8 @@ export interface AppDatabase {
   productionReworkLogs?: ProductionReworkLog[];
   purchaseHistory?: PurchaseHistoryItem[];
   bomRevisions?: BomRevision[];
+  billingClosings?: BillingClosingOrder[];
+  bankStatements?: BankStatement[];
 }
 
 export const INITIAL_BOMS: BillOfMaterials[] = [
@@ -4927,6 +5577,125 @@ export const INITIAL_PURCHASE_HISTORY: PurchaseHistoryItem[] = [
   }
 ];
 
+export const INITIAL_BILLING_CLOSINGS: BillingClosingOrder[] = [
+  {
+    id: 'fch-2026-0001',
+    code: 'FCH-2026-0001',
+    companyId: 'comp-1',
+    clientId: 'cli-abc',
+    clientName: 'Empresa ABC Transportes e Frotas Ltda',
+    clientCpfCnpj: '11.222.333/0001-44',
+    periodicity: 'SEMANAL',
+    periodStartDate: '2026-08-01',
+    periodEndDate: '2026-08-08',
+    closingDate: '2026-08-08',
+    dueDate: '2026-08-15',
+    salesCount: 2,
+    serviceOrdersCount: 1,
+    subtotal: 1850.00,
+    discountAmount: 0,
+    totalAmount: 1850.00,
+    status: 'closed',
+    paymentStatus: 'paid',
+    accountReceivableId: 'cr-fch-1',
+    accountReceivableCode: 'CR-FCH-0001',
+    boletoId: 'bol-fch-1',
+    items: [
+      {
+        id: 'fch-it-1',
+        originType: 'SALE',
+        originId: 'sale-abc-prev-1',
+        originCode: 'VEN-2026-0098',
+        documentDate: '2026-08-03',
+        description: 'Venda de Peças para Manutenção Van 01',
+        amount: 450.00,
+        vehiclePlate: 'ABC-1234'
+      },
+      {
+        id: 'fch-it-2',
+        originType: 'SALE',
+        originId: 'sale-abc-prev-2',
+        originCode: 'VEN-2026-0099',
+        documentDate: '2026-08-05',
+        description: 'Filtros e Fluido de Freio DOT4',
+        amount: 200.00,
+        vehiclePlate: 'ABC-5678'
+      },
+      {
+        id: 'fch-it-3',
+        originType: 'SERVICE_ORDER',
+        originId: 'os-abc-prev-1',
+        originCode: 'OS-2026-0045',
+        documentDate: '2026-08-07',
+        description: 'Revisão Preventiva Freios e Suspensão',
+        amount: 1200.00,
+        vehiclePlate: 'ABC-1234'
+      }
+    ],
+    createdAt: '2026-08-08T18:00:00Z',
+    closedAt: '2026-08-08T18:00:00Z',
+    createdByName: 'Carlos Santos (Gerente)',
+    notes: 'Fechamento semanal faturamento período 01 a 08/08 quitado via conciliação bancária.'
+  }
+];
+
+export const INITIAL_BANK_STATEMENTS: BankStatement[] = [
+  {
+    id: 'stmt-2026-08',
+    companyId: 'comp-1',
+    bankName: 'Banco Itaú Unibanco',
+    accountNumber: '12345-6',
+    agency: '0450',
+    startDate: '2026-08-01',
+    endDate: '2026-08-31',
+    importedAt: '2026-08-16T10:00:00Z',
+    importedByName: 'Carlos Santos (Gerente)',
+    fileName: 'extrato_itau_ag0450_ago2026.ofx',
+    items: [
+      {
+        id: 'st-it-1',
+        fitId: 'ITAU-20260815-9921',
+        date: '2026-08-15',
+        description: 'LIQ. COBRANCA TIT FCH-2026-0001 EMPRESA ABC',
+        amount: 1850.00,
+        type: 'CREDIT',
+        reconciled: true,
+        reconciledAt: '2026-08-16T10:15:00Z',
+        reconciledAccountReceivableId: 'cr-fch-1',
+        reconciledBillingClosingId: 'fch-2026-0001'
+      },
+      {
+        id: 'st-it-2',
+        fitId: 'ITAU-20260816-4412',
+        date: '2026-08-16',
+        description: 'PIX RECEBIDO VEN-2026-0001 JOAO SILVA',
+        amount: 210.00,
+        type: 'CREDIT',
+        reconciled: true,
+        reconciledAt: '2026-08-16T10:20:00Z'
+      },
+      {
+        id: 'st-it-3',
+        fitId: 'ITAU-20260818-8831',
+        date: '2026-08-18',
+        description: 'TED RECEBIDA CLIENTE CORPORATIVO INDÚSTRIA',
+        amount: 3250.00,
+        type: 'CREDIT',
+        reconciled: false
+      },
+      {
+        id: 'st-it-4',
+        fitId: 'ITAU-20260819-1120',
+        date: '2026-08-19',
+        description: 'TARIFA BANCARIA MANUT CONTA CORRENTE',
+        amount: -45.00,
+        type: 'DEBIT',
+        reconciled: false
+      }
+    ]
+  }
+];
+
 export const STORAGE_KEY = 'motordesk_db_v1';
 
 export function getDatabase(): AppDatabase {
@@ -4977,6 +5746,8 @@ export function getDatabase(): AppDatabase {
       productionScrapLogs: INITIAL_PRODUCTION_SCRAP_LOGS,
       productionReworkLogs: INITIAL_PRODUCTION_REWORK_LOGS,
       purchaseHistory: INITIAL_PURCHASE_HISTORY,
+      billingClosings: INITIAL_BILLING_CLOSINGS,
+      bankStatements: INITIAL_BANK_STATEMENTS,
     };
   } else {
     try {
@@ -4989,6 +5760,12 @@ export function getDatabase(): AppDatabase {
       }
       if (!db.sales) {
         db.sales = INITIAL_SALES;
+      }
+      if (!db.billingClosings || !Array.isArray(db.billingClosings) || db.billingClosings.length === 0) {
+        db.billingClosings = INITIAL_BILLING_CLOSINGS;
+      }
+      if (!db.bankStatements || !Array.isArray(db.bankStatements) || db.bankStatements.length === 0) {
+        db.bankStatements = INITIAL_BANK_STATEMENTS;
       }
       if (!db.goodsWithdrawals) {
         db.goodsWithdrawals = INITIAL_GOODS_WITHDRAWALS;

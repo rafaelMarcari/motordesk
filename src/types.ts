@@ -412,10 +412,16 @@ export interface UserPermissions {
   sefazTest?: boolean;
   sefazConfig?: boolean;
 
-  // Permissões Granulares - Módulo Financeiro
+  // Permissões Granulares - Módulo Financeiro & Crédito
   financialView?: boolean;
   financialEntry?: boolean;
   financialConfig?: boolean;
+  financialBillingClosing?: boolean; // Permite realizar fechamentos de faturamento consolidado
+  financialReopenClosing?: boolean;  // Permite reabrir fechamento de faturamento consolidado
+  financialReconciliation?: boolean; // Permite realizar e desfazer conciliação bancária
+  financialUnreconcile?: boolean;    // Permite desfazer conciliações bancárias com justificativa
+  authorizeCreditLimitBypass?: boolean; // Permite autorizar faturamento acima do limite de crédito
+  accessBillingReports?: boolean; // Permite visualizar relatórios de vendas pendentes e faturamentos consolidados
 
   // Permissões Granulares - Relatórios Gerenciais & Operacionais
   accessFinancialReports?: boolean; // Permite visualizar relatórios financeiros (A Receber, A Pagar, Compromissos, Inadimplência)
@@ -494,6 +500,21 @@ export interface Client {
   isConsumidorFinal?: boolean; // Se é Consumidor Final (padrão true)
   ibgeCityCode?: string; // Código do Município IBGE
   uf?: string; // UF de destino (ex: SP, RJ, MG)
+
+  // POLÍTICA DE FATURAMENTO E CONDIÇÕES DE PAGAMENTO DO CLIENTE
+  billingPolicy?: 'PER_SALE' | 'CONSOLIDATED_PERIOD'; // 'PER_SALE' (Faturamento por venda) | 'CONSOLIDATED_PERIOD' (Faturamento consolidado por período)
+  paymentConditionType?: 'A_VISTA' | 'A_PRAZO' | '7_DIAS' | '14_DIAS' | '21_DIAS' | '28_DIAS' | '30_DIAS' | '30_60' | '30_60_90' | 'CUSTOM';
+  customPaymentTermsDays?: number[]; // Ex: [30, 60, 90] ou [7, 14]
+  billingPeriodicity?: 'DIARIO' | 'SEMANAL' | 'QUINZENAL' | 'MENSAL' | 'DATA_ESPECIFICA';
+  billingClosingDay?: number; // Ex: dia 25 do mês ou dia da semana (5 = Sexta-feira)
+  billingClosingDayOfWeek?: number; // 1 = Segunda, ..., 5 = Sexta
+  billingClosingDayOfMonth?: number; // Ex: dia 30
+  billingDueDaysAfter?: number; // Ex: 7 dias após o fechamento
+  billingDueDayOfMonth?: number; // Ex: dia 10 do mês seguinte
+  defaultPaymentMethod?: string;
+  preferredPaymentMethod?: string; // Ex: 'Boleto Bancário', 'PIX', 'Transferência', 'Dinheiro', 'Cartão'
+  blockIfOverdue?: boolean; // Bloquear novas vendas se tiver títulos vencidos
+  notes?: string;
 }
 
 export interface Vehicle {
@@ -1476,6 +1497,23 @@ export interface ServiceOrder {
   isDepositPaid?: boolean; // Se o sinal exigido foi pago
   depositPaidAt?: string; // Data da confirmação do sinal
   depositPaymentMethod?: string; // Método do sinal (PIX, Cartão, Dinheiro)
+  // Faturamento Consolidado & Financeiro
+  financialStatus?: FinancialSaleStatus; // 'PENDENTE_FATURAMENTO' | 'ACUMULADA' | 'FATURADA' | 'PAGA' | 'CANCELADA'
+  billingPolicy?: 'PER_SALE' | 'CONSOLIDATED_PERIOD';
+  billingStatus?: 'NONE' | 'AWAITING_CONSOLIDATION' | 'CONSOLIDATED' | 'INVOICED' | 'PAID' | 'pending_billing' | 'billed';
+  accumulateForBilling?: boolean;
+  billingPeriodStart?: string;
+  billingPeriodEnd?: string;
+  billingClosureId?: string; // Vínculo com fechamento consolidado
+  consolidatedBillingId?: string;
+  consolidatedBillingCode?: string;
+  accountReceivableId?: string;
+  receivableId?: string;
+  creditLimitExceeded?: boolean;
+  creditLimitAttempted?: number;
+  creditLimitApprovedBy?: string;
+  creditLimitBypassReason?: string;
+  creditLimitApprovedAt?: string;
 }
 
 export interface HistoryEntry {
@@ -1662,6 +1700,138 @@ export interface PaymentMethodOption {
   notes?: string;
 }
 
+export interface PaymentSplit {
+  id: string;
+  form: string; // 'PIX' | 'DINHEIRO' | 'CARTAO_DEBITO' | 'CARTAO_CREDITO' | 'BOLETO' | 'TRANSFERENCIA' | 'A_PRAZO' | 'FATURADO'
+  formLabel: string; // Ex: "PIX", "Cartão de Crédito"
+  amount: number;
+  installments?: number;
+  cardBrand?: string; // 'Visa', 'Mastercard', 'Elo', 'Hipercard', 'Amex'
+  cardType?: 'DEBITO' | 'CREDITO';
+  cardAcquirer?: string; // 'Cielo', 'Rede', 'Stone', 'PagBank', 'Getnet', 'Sicredi'
+  cardFeePercent?: number; // Taxa % maquininha
+  cardFeeAmount?: number; // R$ Taxa descontada
+  netAmount?: number; // R$ Líquido a receber
+  dueDate?: string;
+  notes?: string;
+  boletoId?: string;
+  pixTxId?: string;
+}
+
+export interface BillingClosingItem {
+  id: string;
+  originType: 'SALE' | 'SERVICE_ORDER' | 'PRODUCTION';
+  originId: string;
+  originCode: string;
+  documentDate: string;
+  description: string;
+  subtotal?: number;
+  discount?: number;
+  amount: number;
+  sellerName?: string;
+  paymentMethod?: string;
+  paymentCondition?: string;
+  vehiclePlate?: string;
+  itemsSummary?: string;
+}
+
+export interface BillingClosingOrder {
+  id: string;
+  code: string; // Ex: FCH-2026-0001
+  companyId: string;
+  clientId: string;
+  clientName: string;
+  clientCpfCnpj?: string;
+  periodicity?: 'DIARIO' | 'SEMANAL' | 'QUINZENAL' | 'MENSAL' | 'DATA_ESPECIFICA';
+  periodStart?: string; // YYYY-MM-DD
+  periodEnd?: string; // YYYY-MM-DD
+  periodStartDate?: string;
+  periodEndDate?: string;
+  closingDate: string; // YYYY-MM-DD
+  dueDate: string; // YYYY-MM-DD
+  linkedSaleIds?: string[];
+  linkedSaleCodes?: string[];
+  linkedServiceOrderIds?: string[];
+  linkedServiceOrderCodes?: string[];
+  salesCount: number;
+  serviceOrdersCount?: number;
+  subtotal?: number;
+  discountAmount?: number;
+  totalAmount: number;
+  paymentMethod?: string; // Ex: 'Boleto Bancário', 'PIX', 'Faturado', 'A Prazo'
+  paymentCondition?: string;
+  paymentStatus?: 'pending' | 'paid' | 'overdue' | 'canceled';
+  status: 'ABERTO' | 'FECHADO' | 'FATURADO' | 'PAGO' | 'CANCELADO' | 'open' | 'closed' | 'paid' | 'canceled';
+  accountReceivableId?: string;
+  accountReceivableCode?: string;
+  receivableId?: string;
+  receivableCode?: string;
+  boletoId?: string;
+  boletoBarcode?: string;
+  pixTxId?: string;
+  notes?: string;
+  items?: BillingClosingItem[];
+  createdAt?: string;
+  createdByName?: string;
+  closedBy?: string;
+  closedAt?: string;
+  reopenedBy?: string;
+  reopenedAt?: string;
+  reopenReason?: string;
+}
+
+export interface BankStatementItem {
+  id: string;
+  fitId?: string;
+  date: string; // YYYY-MM-DD
+  description: string;
+  amount: number;
+  type: 'CREDIT' | 'DEBIT';
+  reconciled?: boolean;
+  reconciledAt?: string;
+  reconciledBy?: string;
+  reconciledAccountReceivableId?: string;
+  reconciledBillingClosingId?: string;
+  notes?: string;
+}
+
+export interface BankStatement {
+  id: string;
+  companyId: string;
+  bankName: string;
+  accountNumber: string;
+  agency?: string;
+  startDate?: string;
+  endDate?: string;
+  importedAt: string;
+  importedByName: string;
+  fileName: string;
+  items: BankStatementItem[];
+}
+
+export interface BankStatementEntry {
+  id: string;
+  companyId: string;
+  bankName: string; // Ex: "Banco do Brasil", "Itaú", "Sicoob", "Bradesco"
+  accountNumber: string;
+  transactionDate: string; // YYYY-MM-DD
+  description: string;
+  amount: number;
+  type: 'CREDIT' | 'DEBIT'; // Entrada (+) ou Saída (-)
+  reconciliationStatus: 'PENDENTE' | 'CONCILIADO' | 'CONCILIADO_PARCIAL' | 'DIVERGENTE';
+  reconciledReceivableId?: string;
+  reconciledReceivableCode?: string;
+  reconciledPayableId?: string;
+  reconciledPayableCode?: string;
+  reconciledTransactionId?: string;
+  reconciledAmount?: number;
+  reconciledBy?: string;
+  reconciledAt?: string;
+  reconcileNotes?: string;
+  unreconcileReason?: string;
+  fitId?: string; // Identificador único da transação OFX/banco
+}
+
 export interface AccountInstallment {
   id: string;
   installmentNumber: number;
@@ -1708,8 +1878,19 @@ export interface AccountReceivable {
   // Linkages to NF-e, Boleto and Sale
   saleId?: string;
   saleCode?: string;
-  billingType?: 'immediate' | 'monthly_batch';
+  billingType?: 'immediate' | 'monthly_batch' | 'consolidated_closing';
   billingMonth?: string; // Ex: "2026-07"
+  isConsolidated?: boolean;
+  consolidatedBillingId?: string;
+  consolidatedBillingCode?: string;
+  linkedSaleIds?: string[];
+  linkedSaleCodes?: string[];
+  linkedServiceOrderIds?: string[];
+  linkedServiceOrderCodes?: string[];
+  paymentSplits?: PaymentSplit[];
+  reconciliationStatus?: 'PENDENTE' | 'CONCILIADO' | 'CONCILIADO_PARCIAL';
+  reconciliationDate?: string;
+  reconciledBy?: string;
   nfeId?: string;
   nfeCode?: string;
   nfeStatus?: 'authorized' | 'draft' | 'transmitting' | 'rejected' | 'canceled' | 'pending';
@@ -2091,6 +2272,13 @@ export interface CommercialSaleItem {
   ncm?: string;
 }
 
+export type FinancialSaleStatus = 
+  | 'PENDENTE_FATURAMENTO' 
+  | 'ACUMULADA' 
+  | 'FATURADA' 
+  | 'PAGA' 
+  | 'CANCELADA';
+
 export interface CommercialSale {
   id: string;
   code: string; // Ex: VEN-2026-0001
@@ -2103,10 +2291,30 @@ export interface CommercialSale {
   subtotal: number;
   discount: number;
   totalAmount: number;
-  paymentMethod: string; // Ex: "PIX", "Dinheiro", "Cartão de Crédito", "A Prazo"
+  paymentMethod: string; // Ex: "PIX", "Dinheiro", "Cartão de Crédito", "A Prazo", "Faturado", "Múltiplas Formas"
   paymentStatus: 'paid' | 'pending' | 'canceled';
+  financialStatus?: FinancialSaleStatus; // Status financeiro formal da venda
   installmentsCount?: number;
   receivableId?: string;
+  accountReceivableId?: string; // Título financeiro relacionado
+  // POLÍTICA DE FATURAMENTO DA VENDA
+  billingPolicy?: 'PER_SALE' | 'CONSOLIDATED_PERIOD';
+  billingStatus?: 'NONE' | 'AWAITING_CONSOLIDATION' | 'CONSOLIDATED' | 'INVOICED' | 'PAID' | 'pending_billing' | 'billed';
+  accumulateForBilling?: boolean;
+  paymentConditionType?: string;
+  billingPeriodStart?: string;
+  billingPeriodEnd?: string;
+  billingClosureId?: string; // Vínculo com fechamento consolidado
+  consolidatedBillingId?: string;
+  consolidatedBillingCode?: string;
+  paymentSplits?: PaymentSplit[];
+  paymentCondition?: string; // Ex: "À Vista", "30 dias", "30/60 dias", "Faturamento Semanal"
+  // Gestão de Limite de Crédito
+  creditLimitExceeded?: boolean;
+  creditLimitAttempted?: number;
+  creditLimitApprovedBy?: string;
+  creditLimitBypassReason?: string;
+  creditLimitApprovedAt?: string;
   fiscalDocumentId?: string;
   fiscalAccessKey?: string;
   fiscalStatus?: 'pending' | 'authorized' | 'rejected' | 'canceled' | 'pending_conference' | 'ready_for_emission' | 'ready_for_transmission' | 'emit_later' | 'transmitting' | 'error_transmission';
@@ -2238,6 +2446,9 @@ export interface AppDatabase {
   accountsReceivable?: AccountReceivable[];
   accountsPayable?: AccountPayable[];
   financialTransactions?: FinancialTransaction[];
+  billingClosings?: BillingClosingOrder[];
+  bankStatements?: (BankStatement | BankStatementEntry)[];
+  bankStatementEntries?: BankStatementEntry[];
   paymentMethods?: PaymentMethodOption[];
   maintenanceLogs?: MaintenanceLog[];
   fiscalDocuments?: FiscalDocument[];

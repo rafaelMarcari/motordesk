@@ -925,6 +925,38 @@ export default function App() {
     syncDb(prev => ({ ...prev, testCases }));
   };
 
+  const handleSaveDatabaseUpdates = (
+    updates: Partial<AppDatabase>,
+    auditLog?: {
+      type: 'budget' | 'service_order' | 'payment' | 'user_activity' | 'system';
+      title: string;
+      description: string;
+      clientId?: string;
+      vehicleId?: string;
+    }
+  ) => {
+    syncDb(prev => {
+      let nextDb = { ...prev, ...updates };
+      if (auditLog) {
+        const newHistoryEntry: HistoryEntry = {
+          id: `hist-${Date.now()}`,
+          vehicleId: auditLog.vehicleId || 'system',
+          clientId: auditLog.clientId || 'system',
+          companyId: activeCompanyId,
+          type: auditLog.type,
+          title: auditLog.title,
+          description: auditLog.description,
+          date: new Date().toISOString().replace('T', ' ').substring(0, 19),
+          userId: currentUser?.id || 'admin',
+          userName: currentUser?.name || 'Administrador',
+          metadata: { timestamp: new Date().toISOString() }
+        };
+        nextDb.history = [newHistoryEntry, ...(nextDb.history || [])];
+      }
+      return nextDb;
+    });
+  };
+
   const handleSaveCompanyInfo = (companyInfo: CompanyInfo) => {
     setDb(prev => {
       if (!prev) return prev;
@@ -2467,6 +2499,7 @@ export default function App() {
                 onSaveReceivables={handleSaveReceivables}
                 onSaveFiscalDocuments={handleSaveFiscalDocuments}
                 onSaveBoletos={handleSaveBoletos}
+                onSaveDatabaseUpdates={handleSaveDatabaseUpdates}
                 onAddHistoryLog={handleAddHistoryLog}
                 setUnsavedTask={setUnsavedTask}
               />

@@ -15,6 +15,7 @@ import { AppDatabase, INITIAL_PAYMENT_METHODS } from '../data/mockData';
 import ShareDocumentModal from './ShareDocumentModal';
 import PreTransmissionReviewModal, { PreTransmissionDocData } from './PreTransmissionReviewModal';
 import FiscalDocumentPrintModal from './FiscalDocumentPrintModal';
+import BillingAndReconciliationManager from './BillingAndReconciliationManager';
 
 interface AccountsReceivableViewProps {
   db: AppDatabase;
@@ -22,6 +23,7 @@ interface AccountsReceivableViewProps {
   onSaveReceivables: (receivables: AccountReceivable[], clients: Client[], transactions: FinancialTransaction[], notifications: SystemNotification[]) => void;
   onSaveFiscalDocuments?: (fiscalDocuments: FiscalDocument[]) => void;
   onSaveBoletos?: (boletos: BoletoDocument[]) => void;
+  onSaveDatabaseUpdates?: (updates: Partial<AppDatabase>, auditLog?: { type: 'budget' | 'service_order' | 'payment' | 'user_activity' | 'system'; title: string; description: string; clientId?: string; vehicleId?: string }) => void;
   onAddHistoryLog: (type: 'budget' | 'service_order' | 'payment' | 'user_activity' | 'system', title: string, description: string, clientId: string, vehicleId: string) => void;
   setUnsavedTask: (task: {
     type: 'client' | 'vehicle' | 'budget' | 'os' | 'user' | null;
@@ -36,12 +38,13 @@ export default function AccountsReceivableView({
   onSaveReceivables,
   onSaveFiscalDocuments,
   onSaveBoletos,
+  onSaveDatabaseUpdates,
   onAddHistoryLog,
   setUnsavedTask
 }: AccountsReceivableViewProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'partially_paid' | 'paid' | 'blocked_credit_limit'>('all');
-  const [activeTab, setActiveTab] = useState<'titles' | 'unexpected_analysis'>('titles');
+  const [activeTab, setActiveTab] = useState<'titles' | 'billing_closings' | 'pending_sales' | 'reconciliation' | 'credit_risk' | 'unexpected_analysis'>('titles');
   
   // Modals
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -765,17 +768,78 @@ export default function AccountsReceivableView({
         </button>
 
         <button
+          id="tab-btn-billing-closings"
+          type="button"
+          onClick={() => setActiveTab('billing_closings')}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-xs font-bold transition ${
+            activeTab === 'billing_closings'
+              ? 'bg-emerald-600 text-white shadow-xs'
+              : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+          }`}
+        >
+          <Calendar className="w-4 h-4" />
+          Faturamentos Consolidados
+          {(db.billingClosings?.length || 0) > 0 && (
+            <span className="bg-white/30 text-white text-[10px] px-1.5 py-0.2 rounded-full font-mono font-bold">
+              {db.billingClosings?.length}
+            </span>
+          )}
+        </button>
+
+        <button
+          id="tab-btn-pending-sales"
+          type="button"
+          onClick={() => setActiveTab('pending_sales')}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-xs font-bold transition ${
+            activeTab === 'pending_sales'
+              ? 'bg-amber-600 text-white shadow-xs'
+              : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+          }`}
+        >
+          <Clock className="w-4 h-4" />
+          Vendas Pendentes / Acumuladas
+        </button>
+
+        <button
+          id="tab-btn-reconciliation"
+          type="button"
+          onClick={() => setActiveTab('reconciliation')}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-xs font-bold transition ${
+            activeTab === 'reconciliation'
+              ? 'bg-blue-600 text-white shadow-xs'
+              : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+          }`}
+        >
+          <CreditCard className="w-4 h-4" />
+          Conciliação Bancária
+        </button>
+
+        <button
+          id="tab-btn-credit-risk"
+          type="button"
+          onClick={() => setActiveTab('credit_risk')}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-xs font-bold transition ${
+            activeTab === 'credit_risk'
+              ? 'bg-indigo-600 text-white shadow-xs'
+              : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+          }`}
+        >
+          <ShieldCheck className="w-4 h-4" />
+          Limites de Crédito & Risco
+        </button>
+
+        <button
           id="tab-btn-unexpected-values"
           type="button"
           onClick={() => setActiveTab('unexpected_analysis')}
           className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-xs font-bold transition ${
             activeTab === 'unexpected_analysis'
-              ? 'bg-indigo-600 text-white shadow-xs'
+              ? 'bg-purple-600 text-white shadow-xs'
               : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
           }`}
         >
           <TrendingUp className="w-4 h-4" />
-          Análise de Valores Não Esperados & Inadimplência (Tela Dividida)
+          Análise de Inadimplência (Tela Dividida)
           {unexpectedMissingOverdue > 0 && (
             <span className="bg-rose-500 text-white text-[10px] px-2 py-0.5 rounded-full font-mono font-bold animate-pulse">
               R$ {unexpectedMissingOverdue.toLocaleString('pt-BR', { minimumFractionDigits: 0 })}
@@ -783,6 +847,20 @@ export default function AccountsReceivableView({
           )}
         </button>
       </div>
+
+      {/* RENDER BILLING & RECONCILIATION MANAGER WHEN RELEVANT TAB SELECTED */}
+      {(activeTab === 'billing_closings' || activeTab === 'pending_sales' || activeTab === 'reconciliation' || activeTab === 'credit_risk') && (
+        <BillingAndReconciliationManager
+          db={db}
+          currentUser={currentUser}
+          activeSubTab={
+            activeTab === 'billing_closings' ? 'closings' :
+            activeTab === 'pending_sales' ? 'pending' :
+            activeTab === 'reconciliation' ? 'reconciliation' : 'credit_risk'
+          }
+          onSaveDatabaseUpdates={onSaveDatabaseUpdates || ((updates) => {})}
+        />
+      )}
 
       {/* TELA DIVIDIDA: ANÁLISE DE VALORES NÃO ESPERADOS */}
       {activeTab === 'unexpected_analysis' && (
@@ -1058,8 +1136,10 @@ export default function AccountsReceivableView({
         </div>
       )}
 
-      {/* KPI Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4" id="receivables-kpis">
+      {/* KPI Cards & Titles Content */}
+      {activeTab === 'titles' && (
+        <>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4" id="receivables-kpis">
         <div className="bg-white p-4 rounded-xl border border-slate-100 shadow-xs flex items-center gap-4">
           <div className="p-3 bg-emerald-50 rounded-lg text-emerald-600">
             <DollarSign className="w-6 h-6" />
@@ -1936,6 +2016,8 @@ export default function AccountsReceivableView({
             }
           }}
         />
+      )}
+      </>
       )}
 
       {/* BOLETO VISUALIZER / REPRINT MODAL */}
