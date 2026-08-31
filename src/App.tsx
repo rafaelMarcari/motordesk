@@ -95,6 +95,8 @@ import AccountsPayableView from './components/AccountsPayableView';
 import FinancialView from './components/FinancialView';
 import FiscalSefazView from './components/FiscalSefazView';
 import FiscalConferenceView from './components/FiscalConferenceView';
+import { TaxObligationsView } from './components/TaxObligationsView';
+import { AccessGroupsManagementView } from './components/AccessGroupsManagementView';
 import { SalesView } from './components/SalesView';
 import WithdrawalView from './components/WithdrawalView';
 import CarriersView from './components/CarriersView';
@@ -108,8 +110,8 @@ import FullDocumentationModal from './components/FullDocumentationModal';
 import PrivacyLgpdModal, { PrivacyLgpdFooter } from './components/PrivacyLgpdModal';
 import { sweepExpiredBudgets, checkLowStockAlerts } from './utils/stockUtils';
 import { syncServiceOrdersWithBudgets } from './utils/serviceOrderUtils';
-import { AccountReceivable, AccountPayable, FinancialTransaction, FiscalDocument, BoletoDocument, InterBranchSaleLogistics, SefazApiConfig } from './types';
-import { Globe, FileText, FileCheck2 } from 'lucide-react';
+import { AccountReceivable, AccountPayable, FinancialTransaction, FiscalDocument, BoletoDocument, InterBranchSaleLogistics, SefazApiConfig, TaxObligationGuide, AccessGroup, ViewID } from './types';
+import { Globe, FileText, FileCheck2, Scale, KeyRound, Shield } from 'lucide-react';
 import {
   getBusinessType,
   normalizeBusinessType,
@@ -127,32 +129,6 @@ import {
   normalizeUserPermissions
 } from './utils/businessSegmentation';
 
-type ViewID = 
-  | 'dashboard' 
-  | 'sales'
-  | 'withdrawals'
-  | 'fiscal_conference'
-  | 'carriers'
-  | 'units_of_measure'
-  | 'clients' 
-  | 'vehicles' 
-  | 'parts' 
-  | 'quotations'
-  | 'accounts_receivable'
-  | 'accounts_payable'
-  | 'financial'
-  | 'fiscal'
-  | 'services' 
-  | 'budgets' 
-  | 'serviceOrders' 
-  | 'history' 
-  | 'reports' 
-  | 'users' 
-  | 'profile' 
-  | 'qa_panel'
-  | 'data_migration'
-  | 'industry';
-
 const VIEW_PERMISSION_MAP: Record<ViewID, keyof UserPermissions | null> = {
   dashboard: 'accessDashboard',
   sales: 'accessSales',
@@ -168,6 +144,8 @@ const VIEW_PERMISSION_MAP: Record<ViewID, keyof UserPermissions | null> = {
   accounts_payable: 'accessAccountsPayable',
   financial: 'accessFinancial',
   fiscal: 'accessFiscal',
+  tax_obligations: 'accessFiscal',
+  access_groups: 'accessUserManagement',
   services: 'accessServices',
   budgets: 'accessBudgets',
   serviceOrders: 'accessServiceOrders',
@@ -371,6 +349,8 @@ export default function App() {
       accounts_payable: 'accessAccountsPayable',
       financial: 'accessFinancial',
       fiscal: 'accessFiscal',
+      tax_obligations: 'accessFiscal',
+      access_groups: 'accessAccessGroups',
       services: 'accessServices',
       budgets: 'accessBudgets',
       serviceOrders: 'accessServiceOrders',
@@ -694,6 +674,8 @@ export default function App() {
       carriers: (db.carriers || []).filter(item => (item.companyId || 'comp-1') === activeCompanyId),
       fiscalDocuments: (db.fiscalDocuments || []).filter(item => (item.companyId || 'comp-1') === activeCompanyId),
       boletos: (db.boletos || []).filter(item => (item.companyId || 'comp-1') === activeCompanyId),
+      taxObligationGuides: (db.taxObligationGuides || []).filter(item => (item.companyId || 'comp-1') === activeCompanyId),
+      accessGroups: (db.accessGroups || []).filter(item => !item.companyId || (item.companyId || 'comp-1') === activeCompanyId),
       taxOperationNatures: db.taxOperationNatures || [],
       taxRules: db.taxRules || [],
       xmlImportRecords: db.xmlImportRecords || [],
@@ -901,6 +883,25 @@ export default function App() {
 
   const handleSaveXmlImportRecords = (xmlImportRecords: XmlImportRecord[]) => {
     syncDb(prev => ({ ...prev, xmlImportRecords }));
+  };
+
+  const handleSaveTaxObligationGuides = (taxObligationGuides: TaxObligationGuide[]) => {
+    syncDb(prev => {
+      const other = (prev.taxObligationGuides || []).filter(item => (item.companyId || 'comp-1') !== activeCompanyId);
+      return { ...prev, taxObligationGuides: [...other, ...taxObligationGuides] };
+    });
+  };
+
+  const handleSaveAccessGroups = (accessGroups: AccessGroup[]) => {
+    syncDb(prev => {
+      const other = (prev.accessGroups || []).filter(item => item.companyId && item.companyId !== activeCompanyId);
+      return { ...prev, accessGroups: [...other, ...accessGroups] };
+    });
+  };
+
+  const handleSaveFullDatabase = (updatedDb: AppDatabase) => {
+    setDb(updatedDb);
+    dataProvider.saveDatabaseImmediate(updatedDb);
   };
 
   const handleSaveUsers = (users: User[]) => {
@@ -1252,6 +1253,8 @@ export default function App() {
         accounts_payable: 'accessAccountsPayable',
         financial: 'accessFinancial',
         fiscal: 'accessFiscal',
+        tax_obligations: 'accessFiscal',
+        access_groups: 'accessAccessGroups',
         services: 'accessServices',
         budgets: 'accessBudgets',
         serviceOrders: 'accessServiceOrders',
@@ -1960,7 +1963,7 @@ export default function App() {
                   onClick={() => setIsFinSubmenuOpen(prev => !prev)}
                   title="Módulo Financeiro & Fiscal"
                   className={`w-full flex items-center ${(!isSidebarCollapsed || isSidebarHovered) ? 'justify-between px-3' : 'justify-center px-2'} py-2.5 rounded-lg text-xs font-semibold tracking-wide transition ${
-                    ['financial', 'accounts_receivable', 'accounts_payable', 'fiscal', 'fiscal_conference'].includes(activeView)
+                    ['financial', 'accounts_receivable', 'accounts_payable', 'fiscal', 'fiscal_conference', 'tax_obligations'].includes(activeView)
                       ? 'bg-indigo-600 text-white font-bold shadow-xs'
                       : 'hover:bg-slate-800 text-slate-300 hover:text-slate-100'
                   }`}
@@ -1977,7 +1980,7 @@ export default function App() {
                 </button>
 
                 {/* SUBMENUS AO PASSAR O MOUSE / HOVER */}
-                {(isFinSubmenuOpen || ['financial', 'accounts_receivable', 'accounts_payable', 'fiscal', 'fiscal_conference'].includes(activeView)) && (!isSidebarCollapsed || isSidebarHovered) && (
+                {(isFinSubmenuOpen || ['financial', 'accounts_receivable', 'accounts_payable', 'fiscal', 'fiscal_conference', 'tax_obligations'].includes(activeView)) && (!isSidebarCollapsed || isSidebarHovered) && (
                   <div className="pl-4 pr-1 space-y-1 py-1 border-l-2 border-indigo-500/40 ml-4 animate-fade-in">
                     {currentUser.permissions.accessFinancial && (
                       <button
@@ -2046,6 +2049,20 @@ export default function App() {
                       >
                         <Receipt className="w-3.5 h-3.5 text-amber-400 shrink-0" />
                         <span className="truncate">Fiscal, Boletos & SEFAZ</span>
+                      </button>
+                    )}
+
+                    {Boolean(currentUser.permissions.accessFiscal) && (
+                      <button
+                        id="submenu-btn-tax-obligations"
+                        onClick={() => !isModuleLocked('accessFiscal') && navigateToView('tax_obligations')}
+                        disabled={isModuleLocked('accessFiscal')}
+                        className={`w-full text-left px-2.5 py-1.5 rounded-md text-[11px] font-medium transition flex items-center gap-2 cursor-pointer ${
+                          activeView === 'tax_obligations' ? 'bg-indigo-500/30 text-indigo-100 font-bold border border-indigo-500/40' : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+                        }`}
+                      >
+                        <Scale className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
+                        <span className="truncate">Obrigações & Guias Fiscais</span>
                       </button>
                     )}
                   </div>
@@ -2200,6 +2217,28 @@ export default function App() {
                 <div className="flex items-center gap-2.5 min-w-0">
                   <UserPlus className="w-4 h-4 shrink-0" />
                   {(!isSidebarCollapsed || isSidebarHovered) && <span className="truncate">Criar Usuários / Níveis</span>}
+                </div>
+                {(!isSidebarCollapsed || isSidebarHovered) && activeCompanyModules.accessUserManagement === false && (
+                  <span className="text-[9px] bg-amber-500/10 text-amber-500 px-1 py-0.2 rounded border border-amber-500/20 font-mono">🔒</span>
+                )}
+              </button>
+            )}
+
+            {currentUser.permissions.accessUserManagement && isViewAllowedForBusinessType('users', activeBusinessType) && (
+              <button 
+                id="menu-btn-access-groups"
+                onClick={() => !isModuleLocked('accessUserManagement') && navigateToView('access_groups')}
+                disabled={isModuleLocked('accessUserManagement')}
+                title="Grupos de Acesso (RBAC 2.0)"
+                className={`w-full flex items-center ${(!isSidebarCollapsed || isSidebarHovered) ? 'justify-between px-3' : 'justify-center px-2'} py-2.5 rounded-lg text-xs font-semibold tracking-wide transition ${
+                  isModuleLocked('accessUserManagement')
+                    ? 'opacity-40 cursor-not-allowed text-slate-500'
+                    : activeView === 'access_groups' ? 'bg-indigo-600 text-white font-bold' : 'hover:bg-slate-800 text-slate-400 hover:text-slate-100'
+                }`}
+              >
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <KeyRound className="w-4 h-4 shrink-0 text-indigo-400" />
+                  {(!isSidebarCollapsed || isSidebarHovered) && <span className="truncate">Grupos de Acesso (RBAC)</span>}
                 </div>
                 {(!isSidebarCollapsed || isSidebarHovered) && activeCompanyModules.accessUserManagement === false && (
                   <span className="text-[9px] bg-amber-500/10 text-amber-500 px-1 py-0.2 rounded border border-amber-500/20 font-mono">🔒</span>
@@ -2559,7 +2598,20 @@ export default function App() {
                 onSaveTaxOperationNatures={handleSaveTaxOperationNatures}
                 onSaveTaxRules={handleSaveTaxRules}
                 onSaveXmlImportRecords={handleSaveXmlImportRecords}
+                onSaveTaxObligationGuides={handleSaveTaxObligationGuides}
                 onAddHistoryLog={handleAddHistoryLog}
+              />
+            )
+          )}
+
+          {activeView === 'tax_obligations' && (currentUser.permissions.accessFiscal ?? true) && (
+            isModuleLocked('accessFiscal') ? renderLockedScreen() : (
+              <TaxObligationsView
+                db={scopedDb}
+                currentUser={currentUser}
+                currentCompany={activeCompanyObj || db.companyInfo}
+                onSaveDatabase={handleSaveFullDatabase}
+                onNavigate={(v: string) => setActiveView(v as ViewID)}
               />
             )
           )}
@@ -2647,6 +2699,17 @@ export default function App() {
                 onUpdateGlobalModules={handleUpdateGlobalModules}
                 onSwitchActiveCompany={handleSwitchCompanyWorkspace}
                 activeWorkspaceCompanyId={activeCompanyId}
+              />
+            )
+          )}
+
+          {activeView === 'access_groups' && currentUser.permissions.accessUserManagement && (
+            isModuleLocked('accessUserManagement') ? renderLockedScreen() : (
+              <AccessGroupsManagementView 
+                db={db}
+                currentUser={currentUser}
+                currentCompany={activeCompanyObj || db.companyInfo}
+                onSaveDatabase={handleSaveFullDatabase}
               />
             )
           )}

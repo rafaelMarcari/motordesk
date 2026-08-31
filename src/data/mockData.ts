@@ -3,7 +3,9 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { User, Client, Vehicle, Part, Service, Budget, ServiceOrder, HistoryEntry, TestCase, StockMovement, CompanyInfo, SystemNotification, AlertSettings, Supplier, SupplierPartPrice, Quotation, AccountReceivable, AccountPayable, FinancialTransaction, MaintenanceLog, PaymentMethodOption, FiscalDocument, BoletoDocument, InterBranchSaleLogistics, SefazApiConfig, TaxOperationNature, TaxRule, XmlImportRecord, CommercialSale, Carrier, GoodsWithdrawalOrder, WithdrawalType, WithdrawalStatus, getDefaultModulesForBusinessType, UnitOfMeasure, BillOfMaterials, ProductionOrder, ProductLot, OperationalAlert, InstalledEquipment, EquipmentMaintenancePlan, EquipmentMaintenanceOrder, ProductionScrapLog, ProductionReworkLog, PurchaseHistoryItem, BomRevision, BillingClosingOrder, BankStatement, BankStatementItem, PaymentSplit } from '../types';
+import { User, Client, Vehicle, Part, Service, Budget, ServiceOrder, HistoryEntry, TestCase, StockMovement, CompanyInfo, SystemNotification, AlertSettings, Supplier, SupplierPartPrice, Quotation, AccountReceivable, AccountPayable, FinancialTransaction, MaintenanceLog, PaymentMethodOption, FiscalDocument, BoletoDocument, InterBranchSaleLogistics, SefazApiConfig, TaxOperationNature, TaxRule, XmlImportRecord, CommercialSale, Carrier, GoodsWithdrawalOrder, WithdrawalType, WithdrawalStatus, getDefaultModulesForBusinessType, UnitOfMeasure, BillOfMaterials, ProductionOrder, ProductLot, OperationalAlert, InstalledEquipment, EquipmentMaintenancePlan, EquipmentMaintenanceOrder, ProductionScrapLog, ProductionReworkLog, PurchaseHistoryItem, BomRevision, BillingClosingOrder, BankStatement, BankStatementItem, PaymentSplit, AccessGroup, TaxObligationGuide, TaxObligationType, TaxObligationStatus, TaxCalculationMemory, AppDatabase } from '../types';
+
+export type { AppDatabase };
 
 export const INITIAL_UNITS_OF_MEASURE: UnitOfMeasure[] = [
   { id: 'uom-un', name: 'Unidade', acronym: 'UN', category: 'QUANTIDADE', calculationType: 'SIMPLES', conversionFactor: 1, decimalPlaces: 0, active: true, isGlobal: true, notes: 'Contagem unitária inteira padrão' },
@@ -595,6 +597,537 @@ export const INITIAL_COMPANIES: CompanyInfo[] = [
   }
 ];
 
+// ==========================================
+// GRUPOS DE ACESSO PADRÃO (RBAC v2.0)
+// ==========================================
+export const INITIAL_ACCESS_GROUPS: AccessGroup[] = [
+  {
+    id: 'grp-admin',
+    companyId: 'comp-1',
+    name: 'Administradores do Sistema',
+    description: 'Acesso irrestrito a todos os módulos, configurações fiscais, financeiras, RBAC e relatórios executivos.',
+    active: true,
+    isSystemDefault: true,
+    color: '#3b82f6',
+    createdAt: '2026-01-01 08:00:00',
+    updatedAt: '2026-08-01 10:00:00',
+    createdBy: 'Sistema',
+    permissions: {
+      accessDashboard: true,
+      accessSales: true,
+      accessWithdrawals: true,
+      accessCarriers: true,
+      accessUnitsOfMeasure: true,
+      unitsOfMeasureCreate: true,
+      unitsOfMeasureEdit: true,
+      unitsOfMeasureToggleActive: true,
+      accessClients: true,
+      accessVehicles: true,
+      accessParts: true,
+      accessServices: true,
+      accessBudgets: true,
+      canEditBudgets: true,
+      budgetApprove: true,
+      accessServiceOrders: true,
+      accessHistory: true,
+      accessReports: true,
+      accessUserManagement: true,
+      accessAccessGroups: true,
+      accessGroupsCreate: true,
+      accessGroupsEdit: true,
+      accessGroupsDelete: true,
+      accessQAPanel: true,
+      accessQuotations: true,
+      accessPurchasing: true,
+      accessPurchasingOrders: true,
+      accessPurchasingApprove: true,
+      accessNotifications: true,
+      accessAccountsReceivable: true,
+      accessAccountsPayable: true,
+      accessFinancial: true,
+      accessFiscal: true,
+      fiscalView: true,
+      fiscalConference: true,
+      fiscalEmit: true,
+      fiscalTransmit: true,
+      fiscalCancel: true,
+      fiscalGenerateGuides: true,
+      fiscalCancelGuides: true,
+      fiscalXml: true,
+      fiscalReprint: true,
+      fiscalConfig: true,
+      accessTaxObligationsReport: true,
+      accessBoletos: true,
+      boletoGenerate: true,
+      financialBillingClosing: true,
+      financialReopenClosing: true,
+      financialReconciliation: true,
+      financialUnreconcile: true,
+      authorizeCreditLimitBypass: true,
+      accessFinancialReports: true,
+      accessPurchasingReports: true,
+      accessStockReports: true,
+      accessReportsExport: true,
+      accessFinancialAlertsConfig: true,
+      canCustomizePdf: true,
+      canViewOtherStoresStock: true,
+      canSellOtherStoresStock: true,
+      canViewAllCompaniesHistory: true,
+      restrictToOwnSales: false
+    }
+  },
+  {
+    id: 'grp-manager',
+    companyId: 'comp-1',
+    name: 'Gerência Operacional & Pátio',
+    description: 'Gestão operacional de ordens de serviço, aprovação de orçamentos, vendas e relatórios de desempenho.',
+    active: true,
+    isSystemDefault: true,
+    color: '#8b5cf6',
+    createdAt: '2026-01-01 08:00:00',
+    updatedAt: '2026-08-01 10:00:00',
+    createdBy: 'Sistema',
+    permissions: {
+      accessDashboard: true,
+      accessSales: true,
+      accessWithdrawals: true,
+      accessCarriers: true,
+      accessUnitsOfMeasure: true,
+      accessClients: true,
+      accessVehicles: true,
+      accessParts: true,
+      accessServices: true,
+      accessBudgets: true,
+      canEditBudgets: true,
+      budgetApprove: true,
+      accessServiceOrders: true,
+      accessHistory: true,
+      accessReports: true,
+      accessUserManagement: false,
+      accessAccessGroups: false,
+      accessQAPanel: false,
+      accessQuotations: true,
+      accessPurchasing: true,
+      accessPurchasingOrders: true,
+      accessPurchasingApprove: true,
+      accessNotifications: true,
+      accessAccountsReceivable: true,
+      accessAccountsPayable: true,
+      accessFinancial: true,
+      accessFiscal: true,
+      fiscalView: true,
+      fiscalConference: true,
+      fiscalEmit: true,
+      fiscalTransmit: true,
+      fiscalCancel: false,
+      fiscalGenerateGuides: true,
+      fiscalCancelGuides: false,
+      fiscalXml: true,
+      fiscalReprint: true,
+      accessTaxObligationsReport: true,
+      accessBoletos: true,
+      boletoGenerate: true,
+      financialBillingClosing: true,
+      financialReopenClosing: false,
+      financialReconciliation: true,
+      financialUnreconcile: false,
+      authorizeCreditLimitBypass: true,
+      accessFinancialReports: true,
+      accessPurchasingReports: true,
+      accessStockReports: true,
+      accessReportsExport: true,
+      canCustomizePdf: true,
+      canViewOtherStoresStock: true,
+      canSellOtherStoresStock: true,
+      canViewAllCompaniesHistory: false,
+      restrictToOwnSales: false
+    }
+  },
+  {
+    id: 'grp-sales',
+    companyId: 'comp-1',
+    name: 'Vendas Balcão & Consultores',
+    description: 'Atendimento rápido ao cliente, orçamentos comerciais, vendas balcão (PDV) e emissão de NFC-e imediata.',
+    active: true,
+    isSystemDefault: true,
+    color: '#10b981',
+    createdAt: '2026-01-01 08:00:00',
+    updatedAt: '2026-08-01 10:00:00',
+    createdBy: 'Sistema',
+    permissions: {
+      accessDashboard: true,
+      accessSales: true,
+      accessWithdrawals: true,
+      accessCarriers: true,
+      accessUnitsOfMeasure: false,
+      accessClients: true,
+      accessVehicles: true,
+      accessParts: true,
+      accessServices: true,
+      accessBudgets: true,
+      canEditBudgets: true,
+      budgetApprove: true,
+      accessServiceOrders: true,
+      accessHistory: false,
+      accessReports: false,
+      accessUserManagement: false,
+      accessAccessGroups: false,
+      accessQAPanel: false,
+      accessQuotations: false,
+      accessPurchasing: false,
+      accessNotifications: true,
+      accessAccountsReceivable: false,
+      accessAccountsPayable: false,
+      accessFinancial: false,
+      accessFiscal: true,
+      fiscalView: true,
+      fiscalConference: false,
+      fiscalEmit: true,
+      fiscalTransmit: true,
+      fiscalCancel: false,
+      fiscalGenerateGuides: false,
+      fiscalCancelGuides: false,
+      fiscalXml: true,
+      fiscalReprint: true,
+      accessTaxObligationsReport: false,
+      accessBoletos: false,
+      financialBillingClosing: false,
+      financialReopenClosing: false,
+      financialReconciliation: false,
+      financialUnreconcile: false,
+      authorizeCreditLimitBypass: false,
+      canCustomizePdf: false,
+      canViewOtherStoresStock: true,
+      canSellOtherStoresStock: false,
+      canViewAllCompaniesHistory: false,
+      restrictToOwnSales: false
+    }
+  },
+  {
+    id: 'grp-fiscal',
+    companyId: 'comp-1',
+    name: 'Fiscal & Tributário SEFAZ',
+    description: 'Auditoria de notas fiscais, conferência pré-emissão, transmissão de lotes, apuração e emissão de Guias (GNRE/DARE).',
+    active: true,
+    isSystemDefault: true,
+    color: '#f59e0b',
+    createdAt: '2026-01-01 08:00:00',
+    updatedAt: '2026-08-01 10:00:00',
+    createdBy: 'Sistema',
+    permissions: {
+      accessDashboard: true,
+      accessSales: false,
+      accessWithdrawals: false,
+      accessCarriers: true,
+      accessUnitsOfMeasure: true,
+      accessClients: true,
+      accessVehicles: false,
+      accessParts: true,
+      accessServices: true,
+      accessBudgets: false,
+      accessServiceOrders: false,
+      accessHistory: true,
+      accessReports: true,
+      accessUserManagement: false,
+      accessAccessGroups: false,
+      accessQAPanel: false,
+      accessQuotations: false,
+      accessPurchasing: false,
+      accessNotifications: true,
+      accessAccountsReceivable: true,
+      accessAccountsPayable: false,
+      accessFinancial: true,
+      accessFiscal: true,
+      fiscalView: true,
+      fiscalConference: true,
+      fiscalEmit: true,
+      fiscalTransmit: true,
+      fiscalCancel: true,
+      fiscalGenerateGuides: true,
+      fiscalCancelGuides: true,
+      fiscalXml: true,
+      fiscalReprint: true,
+      fiscalConfig: true,
+      accessTaxObligationsReport: true,
+      accessBoletos: false,
+      financialBillingClosing: true,
+      financialReopenClosing: false,
+      financialReconciliation: false,
+      financialUnreconcile: false,
+      authorizeCreditLimitBypass: false,
+      accessFinancialReports: true,
+      accessPurchasingReports: false,
+      accessStockReports: true,
+      accessReportsExport: true,
+      canCustomizePdf: true,
+      canViewOtherStoresStock: true,
+      canSellOtherStoresStock: false,
+      canViewAllCompaniesHistory: false,
+      restrictToOwnSales: false
+    }
+  },
+  {
+    id: 'grp-financial',
+    companyId: 'comp-1',
+    name: 'Financeiro & Controladoria',
+    description: 'Gestão de contas a receber e pagar, faturamento consolidado por período, conciliação bancária e fluxo de caixa.',
+    active: true,
+    isSystemDefault: true,
+    color: '#06b6d4',
+    createdAt: '2026-01-01 08:00:00',
+    updatedAt: '2026-08-01 10:00:00',
+    createdBy: 'Sistema',
+    permissions: {
+      accessDashboard: true,
+      accessSales: false,
+      accessWithdrawals: false,
+      accessCarriers: true,
+      accessUnitsOfMeasure: false,
+      accessClients: true,
+      accessVehicles: false,
+      accessParts: false,
+      accessServices: false,
+      accessBudgets: false,
+      accessServiceOrders: false,
+      accessHistory: true,
+      accessReports: true,
+      accessUserManagement: false,
+      accessAccessGroups: false,
+      accessQAPanel: false,
+      accessQuotations: false,
+      accessPurchasing: false,
+      accessNotifications: true,
+      accessAccountsReceivable: true,
+      accessAccountsPayable: true,
+      accessFinancial: true,
+      accessFiscal: true,
+      fiscalView: true,
+      fiscalConference: false,
+      fiscalEmit: true,
+      fiscalTransmit: true,
+      fiscalCancel: false,
+      fiscalGenerateGuides: true,
+      fiscalCancelGuides: false,
+      fiscalXml: true,
+      fiscalReprint: true,
+      accessTaxObligationsReport: true,
+      accessBoletos: true,
+      boletoGenerate: true,
+      financialBillingClosing: true,
+      financialReopenClosing: true,
+      financialReconciliation: true,
+      financialUnreconcile: true,
+      authorizeCreditLimitBypass: true,
+      accessFinancialReports: true,
+      accessPurchasingReports: false,
+      accessStockReports: false,
+      accessReportsExport: true,
+      canCustomizePdf: true,
+      canViewOtherStoresStock: true,
+      canSellOtherStoresStock: false,
+      canViewAllCompaniesHistory: false,
+      restrictToOwnSales: false
+    }
+  },
+  {
+    id: 'grp-purchasing',
+    companyId: 'comp-1',
+    name: 'Estoque, Almoxarifado & Compras',
+    description: 'Gestão de catálogo de peças, cotações com fornecedores, entrada de notas XML e controle de estoque mínimo.',
+    active: true,
+    isSystemDefault: true,
+    color: '#ec4899',
+    createdAt: '2026-01-01 08:00:00',
+    updatedAt: '2026-08-01 10:00:00',
+    createdBy: 'Sistema',
+    permissions: {
+      accessDashboard: true,
+      accessSales: false,
+      accessWithdrawals: true,
+      accessCarriers: true,
+      accessUnitsOfMeasure: true,
+      unitsOfMeasureCreate: true,
+      unitsOfMeasureEdit: true,
+      unitsOfMeasureToggleActive: false,
+      accessClients: false,
+      accessVehicles: false,
+      accessParts: true,
+      accessServices: false,
+      accessBudgets: false,
+      accessServiceOrders: false,
+      accessHistory: false,
+      accessReports: true,
+      accessUserManagement: false,
+      accessAccessGroups: false,
+      accessQAPanel: false,
+      accessQuotations: true,
+      accessPurchasing: true,
+      accessPurchasingOrders: true,
+      accessPurchasingApprove: false,
+      accessNotifications: true,
+      accessAccountsReceivable: false,
+      accessAccountsPayable: false,
+      accessFinancial: false,
+      accessFiscal: false,
+      accessTaxObligationsReport: false,
+      accessStockReports: true,
+      accessPurchasingReports: true,
+      accessReportsExport: true,
+      canCustomizePdf: false,
+      canViewOtherStoresStock: true,
+      canSellOtherStoresStock: false,
+      canViewAllCompaniesHistory: false,
+      restrictToOwnSales: false
+    }
+  },
+  {
+    id: 'grp-mechanic',
+    companyId: 'comp-1',
+    name: 'Mecânicos & Chão de Oficina',
+    description: 'Execução de ordens de serviço, apontamento de tempo, consulta de peças e manutenção de ferramentas.',
+    active: true,
+    isSystemDefault: true,
+    color: '#64748b',
+    createdAt: '2026-01-01 08:00:00',
+    updatedAt: '2026-08-01 10:00:00',
+    createdBy: 'Sistema',
+    permissions: {
+      accessDashboard: false,
+      accessSales: false,
+      accessWithdrawals: false,
+      accessCarriers: false,
+      accessUnitsOfMeasure: false,
+      accessClients: false,
+      accessVehicles: false,
+      accessParts: true,
+      accessServices: true,
+      accessBudgets: false,
+      accessServiceOrders: true,
+      accessHistory: false,
+      accessReports: false,
+      accessUserManagement: false,
+      accessAccessGroups: false,
+      accessQAPanel: false,
+      accessQuotations: false,
+      accessPurchasing: false,
+      accessNotifications: true,
+      accessAccountsReceivable: false,
+      accessAccountsPayable: false,
+      accessFinancial: false,
+      accessFiscal: false,
+      accessTaxObligationsReport: false,
+      canCustomizePdf: false,
+      canViewOtherStoresStock: true,
+      canSellOtherStoresStock: false,
+      canViewAllCompaniesHistory: false,
+      restrictToOwnSales: false
+    }
+  }
+];
+
+// ==========================================
+// GUIAS E OBRIGAÇÕES FISCAIS INICIAIS
+// ==========================================
+export const INITIAL_TAX_OBLIGATION_GUIDES: TaxObligationGuide[] = [
+  {
+    id: 'guide-sample-1',
+    companyId: 'comp-1',
+    fiscalDocumentId: 'nfe-doc-104',
+    invoiceKey: '35260812345678000190550010000001041009837264',
+    nfeNumber: 104,
+    nfeSeries: '1',
+    obligationType: 'ICMS_ST',
+    obligationName: 'Guia ICMS-ST Favorecido RJ',
+    authority: 'RJ',
+    revenueCode: '10008-0',
+    calculationBase: 1250.00,
+    rate: 20.0,
+    calculatedAmount: 160.00,
+    totalAmount: 160.00,
+    dueDate: '2026-09-05',
+    issueDate: '2026-08-28',
+    guideNumber: 'ST-RJ-982341',
+    barcode: '85670000016000100080352608123456780001905500',
+    digitLine: '85670000016-0 00100080352-6 08123456780-0 01905500104-1',
+    pixCopyPaste: '00020126580014BR.GOV.BCB.PIX0114sefaz.rj@sefaz.gov.br0214SEFAZ RJ5204000053039865406160.005802BR5915SEFAZ RJ RECEITA6009BRASILIA62070503GNRE9823416304A1B2',
+    status: 'AGUARDANDO_PAGAMENTO',
+    generatedAt: '2026-08-28 14:30:00',
+    generatedBy: 'Carlos Santos (Gerente)',
+    clientName: 'Transportes e Autopeças Guanabara Ltda',
+    clientCpfCnpj: '44.555.666/0001-88',
+    clientStateRegistration: '88.999.001',
+    notes: 'GNRE de ICMS-ST para o Estado do Rio de Janeiro decorrente da NF-e 104.',
+    calculationMemory: {
+      steps: [
+        { label: 'Valor dos Produtos Sujeitos a ST', formula: 'Σ(Pastilhas + Discos de Freio)', value: 'R$ 892.86' },
+        { label: 'MVA Ajustada (Autopeças)', formula: 'Convênio ICMS 142/18', value: '40.00%' },
+        { label: 'Base de Cálculo ICMS-ST', formula: 'R$ 892.86 × (1 + 40%)', value: 'R$ 1.250,00' },
+        { label: 'Débito ICMS Destino (RJ - 20%)', formula: 'R$ 1.250,00 × 20%', value: 'R$ 250,00' },
+        { label: 'Crédito ICMS Próprio (SP - 12%)', formula: 'R$ 892.86 × 12%', value: 'R$ 90,00' },
+        { label: 'Valor Final a Recolher (ICMS-ST)', formula: 'Débito - Crédito', value: 'R$ 160,00' }
+      ],
+      legalBasis: 'Convênio ICMS 142/18 e Protocolo ICMS 41/08',
+      description: 'Recolhimento de ICMS Substituição Tributária na remessa interestadual SP -> RJ para contribuinte.',
+      ufOrigin: 'SP',
+      ufDestination: 'RJ',
+      cfop: '6.401',
+      ncm: '8708.30.90',
+      isInterstate: true,
+      isFinalConsumer: false,
+      recipientIeIndicator: '1'
+    }
+  },
+  {
+    id: 'guide-sample-2',
+    companyId: 'comp-1',
+    fiscalDocumentId: 'nfe-doc-103',
+    invoiceKey: '35260812345678000190550010000001031009837263',
+    nfeNumber: 103,
+    nfeSeries: '1',
+    obligationType: 'DIFAL',
+    obligationName: 'Guia DIFAL Partilha Destino (MG)',
+    authority: 'MG',
+    revenueCode: '10010-2',
+    calculationBase: 780.00,
+    rate: 6.0,
+    calculatedAmount: 46.80,
+    totalAmount: 46.80,
+    dueDate: '2026-09-02',
+    issueDate: '2026-08-25',
+    guideNumber: 'DIFAL-MG-776210',
+    barcode: '85670000004680100102352608123456780001905500',
+    digitLine: '85670000004-6 80100102352-6 08123456780-0 01905500103-2',
+    pixCopyPaste: '00020126580014BR.GOV.BCB.PIX0114sefaz.mg@sefaz.gov.br0214SEFAZ MG520400005303986540546.805802BR5915SEFAZ MG RECEITA6009BRASILIA62070503GNRE7762106304C3D4',
+    status: 'PAGA',
+    generatedAt: '2026-08-25 11:15:00',
+    generatedBy: 'Carlos Santos (Gerente)',
+    paidAt: '2026-08-26 09:40:00',
+    paidBy: 'Carlos Santos (Gerente)',
+    bankAuthentication: 'AUTH-BCO-ITAU-998822-CONFIRMADO',
+    clientName: 'Fernando Alencar Martins',
+    clientCpfCnpj: '123.456.789-00',
+    notes: 'DIFAL recolhido e quitado para SEFAZ/MG referente a venda a consumidor final.',
+    calculationMemory: {
+      steps: [
+        { label: 'Valor da Mercadoria / Base DIFAL', formula: 'Valor da Venda', value: 'R$ 780,00' },
+        { label: 'Alíquota Interna MG', formula: 'SEFAZ/MG', value: '18.00%' },
+        { label: 'Alíquota Interestadual (SP -> MG)', formula: 'Resolução Senado 22/89', value: '12.00%' },
+        { label: 'DIFAL Apurado', formula: '18% - 12% = 6%', value: '6.00%' },
+        { label: 'Valor do DIFAL Destino (MG)', formula: 'R$ 780,00 × 6%', value: 'R$ 46,80' }
+      ],
+      legalBasis: 'Emenda Constitucional 87/2015 e LC 190/2022',
+      description: 'Diferencial de alíquotas do ICMS devido a Minas Gerais.',
+      ufOrigin: 'SP',
+      ufDestination: 'MG',
+      cfop: '6.108',
+      ncm: '8708.29.99',
+      isInterstate: true,
+      isFinalConsumer: true,
+      recipientIeIndicator: '9'
+    }
+  }
+];
+
 // Initial Users
 export const INITIAL_USERS: User[] = [
   {
@@ -604,6 +1137,9 @@ export const INITIAL_USERS: User[] = [
     role: 'admin',
     passwordHash: 'Donatelo@123',
     companyId: 'comp-1',
+    groupId: 'grp-admin',
+    groupName: 'Administradores do Sistema',
+    active: true,
     permissions: {
       accessDashboard: true,
       accessSales: true,
@@ -619,13 +1155,30 @@ export const INITIAL_USERS: User[] = [
       accessHistory: true,
       accessReports: true,
       accessUserManagement: true,
+      accessAccessGroups: true,
+      accessGroupsCreate: true,
+      accessGroupsEdit: true,
+      accessGroupsDelete: true,
       accessQAPanel: true,
       accessQuotations: true,
+      accessPurchasing: true,
+      accessPurchasingOrders: true,
+      accessPurchasingApprove: true,
       accessNotifications: true,
       accessAccountsReceivable: true,
       accessAccountsPayable: true,
       accessFinancial: true,
       accessFiscal: true,
+      fiscalView: true,
+      fiscalConference: true,
+      fiscalEmit: true,
+      fiscalTransmit: true,
+      fiscalCancel: true,
+      fiscalGenerateGuides: true,
+      fiscalCancelGuides: true,
+      fiscalXml: true,
+      fiscalReprint: true,
+      accessTaxObligationsReport: true,
       accessFinancialReports: true,
       accessPurchasingReports: true,
       accessStockReports: true,
@@ -641,6 +1194,9 @@ export const INITIAL_USERS: User[] = [
     role: 'admin',
     passwordHash: 'Donatelo@123',
     companyId: 'comp-1',
+    groupId: 'grp-admin',
+    groupName: 'Administradores do Sistema',
+    active: true,
     permissions: {
       accessDashboard: true,
       accessSales: true,
@@ -656,13 +1212,30 @@ export const INITIAL_USERS: User[] = [
       accessHistory: true,
       accessReports: true,
       accessUserManagement: true,
+      accessAccessGroups: true,
+      accessGroupsCreate: true,
+      accessGroupsEdit: true,
+      accessGroupsDelete: true,
       accessQAPanel: true,
       accessQuotations: true,
+      accessPurchasing: true,
+      accessPurchasingOrders: true,
+      accessPurchasingApprove: true,
       accessNotifications: true,
       accessAccountsReceivable: true,
       accessAccountsPayable: true,
       accessFinancial: true,
       accessFiscal: true,
+      fiscalView: true,
+      fiscalConference: true,
+      fiscalEmit: true,
+      fiscalTransmit: true,
+      fiscalCancel: true,
+      fiscalGenerateGuides: true,
+      fiscalCancelGuides: true,
+      fiscalXml: true,
+      fiscalReprint: true,
+      accessTaxObligationsReport: true,
       accessFinancialReports: true,
       accessPurchasingReports: true,
       accessStockReports: true,
@@ -4690,63 +5263,6 @@ export const INITIAL_GOODS_WITHDRAWALS: GoodsWithdrawalOrder[] = [
   }))
 ];
 
-// Complete Database load/save management
-export interface AppDatabase {
-  landingContent?: any;
-  globalModules?: { [key: string]: boolean };
-  loginHistory?: { username: string; name: string; role: string; lastAccess: string }[];
-  levelPermissions?: any;
-  companyInfo?: CompanyInfo;
-  registeredCompanies?: CompanyInfo[];
-  users: User[];
-  clients: Client[];
-  vehicles: Vehicle[];
-  parts: Part[];
-  sales?: CommercialSale[];
-  goodsWithdrawals?: GoodsWithdrawalOrder[];
-  carriers?: Carrier[];
-  stockMovements?: StockMovement[];
-  services: Service[];
-  budgets: Budget[];
-  serviceOrders: ServiceOrder[];
-  history: HistoryEntry[];
-  testCases: TestCase[];
-  notifications?: SystemNotification[];
-  alertSettings?: AlertSettings;
-  suppliers?: Supplier[];
-  supplierPartPrices?: SupplierPartPrice[];
-  quotations?: Quotation[];
-  accountsReceivable?: AccountReceivable[];
-  accountsPayable?: AccountPayable[];
-  financialTransactions?: FinancialTransaction[];
-  maintenanceLogs?: MaintenanceLog[];
-  paymentMethods?: PaymentMethodOption[];
-  fiscalDocuments?: FiscalDocument[];
-  boletos?: BoletoDocument[];
-  interBranchSales?: InterBranchSaleLogistics[];
-  sefazConfig?: SefazApiConfig;
-  taxOperationNatures?: TaxOperationNature[];
-  taxRules?: TaxRule[];
-  xmlImportRecords?: XmlImportRecord[];
-  unitsOfMeasure?: UnitOfMeasure[];
-  boms?: BillOfMaterials[];
-  billOfMaterials?: BillOfMaterials[];
-  productionOrders?: ProductionOrder[];
-  productLots?: ProductLot[];
-  operationalAlerts?: OperationalAlert[];
-  installedEquipment?: InstalledEquipment[];
-  equipment?: InstalledEquipment[];
-  equipmentMaintenancePlans?: EquipmentMaintenancePlan[];
-  maintenancePlans?: EquipmentMaintenancePlan[];
-  equipmentMaintenanceOrders?: EquipmentMaintenanceOrder[];
-  productionScrapLogs?: ProductionScrapLog[];
-  productionReworkLogs?: ProductionReworkLog[];
-  purchaseHistory?: PurchaseHistoryItem[];
-  bomRevisions?: BomRevision[];
-  billingClosings?: BillingClosingOrder[];
-  bankStatements?: BankStatement[];
-}
-
 export const INITIAL_BOMS: BillOfMaterials[] = [
   {
     id: 'bom-1',
@@ -5728,6 +6244,8 @@ export function getDatabase(): AppDatabase {
       financialTransactions: INITIAL_FINANCIAL_TRANSACTIONS,
       paymentMethods: INITIAL_PAYMENT_METHODS,
       fiscalDocuments: INITIAL_FISCAL_DOCUMENTS,
+      taxObligationGuides: INITIAL_TAX_OBLIGATION_GUIDES,
+      accessGroups: INITIAL_ACCESS_GROUPS,
       boletos: INITIAL_BOLETOS,
       interBranchSales: INITIAL_INTER_BRANCH_SALES,
       sefazConfig: INITIAL_SEFAZ_CONFIG,
@@ -5808,6 +6326,12 @@ export function getDatabase(): AppDatabase {
       }
       if (!db.fiscalDocuments) {
         db.fiscalDocuments = INITIAL_FISCAL_DOCUMENTS;
+      }
+      if (!db.taxObligationGuides || !Array.isArray(db.taxObligationGuides) || db.taxObligationGuides.length === 0) {
+        db.taxObligationGuides = INITIAL_TAX_OBLIGATION_GUIDES;
+      }
+      if (!db.accessGroups || !Array.isArray(db.accessGroups) || db.accessGroups.length === 0) {
+        db.accessGroups = INITIAL_ACCESS_GROUPS;
       }
       if (!db.boletos) {
         db.boletos = INITIAL_BOLETOS;
@@ -5902,6 +6426,8 @@ export function getDatabase(): AppDatabase {
         paymentMethods: INITIAL_PAYMENT_METHODS,
         maintenanceLogs: INITIAL_MAINTENANCE_LOGS,
         fiscalDocuments: INITIAL_FISCAL_DOCUMENTS,
+        taxObligationGuides: INITIAL_TAX_OBLIGATION_GUIDES,
+        accessGroups: INITIAL_ACCESS_GROUPS,
         boletos: INITIAL_BOLETOS,
         interBranchSales: INITIAL_INTER_BRANCH_SALES,
         sefazConfig: INITIAL_SEFAZ_CONFIG,

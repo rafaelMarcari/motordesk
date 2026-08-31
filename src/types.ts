@@ -111,20 +111,21 @@ export interface UnitOfMeasure {
 
 export type ViewID = 
   | 'dashboard' 
-  | 'industry'
   | 'sales'
   | 'withdrawals'
   | 'fiscal_conference'
   | 'carriers'
+  | 'units_of_measure'
   | 'clients' 
   | 'vehicles' 
   | 'parts' 
-  | 'units_of_measure'
   | 'quotations'
   | 'accounts_receivable'
   | 'accounts_payable'
   | 'financial'
   | 'fiscal'
+  | 'tax_obligations'
+  | 'access_groups'
   | 'services' 
   | 'budgets' 
   | 'serviceOrders' 
@@ -133,7 +134,8 @@ export type ViewID =
   | 'users' 
   | 'profile' 
   | 'qa_panel'
-  | 'data_migration';
+  | 'data_migration'
+  | 'industry';
 
 export interface CompanyModules {
   sales: boolean;
@@ -467,16 +469,108 @@ export interface UserPermissions {
   canSellOtherStoresStock?: boolean; // Permissão para realizar venda / OS com peças do estoque de outras lojas/filiais
   canViewAllCompaniesHistory?: boolean; // Permissão para visualizar histórico e auditoria de todas as empresas
   restrictToOwnSales?: boolean; // Se ativo (true), o vendedor/usuário só visualiza seus próprios pedidos de venda. Se inativo (false), visualiza todos os pedidos da empresa.
+
+  // Permissões Granulares Fiscais Expandidas
+  fiscalViewNfe?: boolean;
+  fiscalCreateNfe?: boolean;
+  fiscalEditNfe?: boolean;
+  fiscalTransmit?: boolean;
+  fiscalDownloadXml?: boolean;
+  fiscalViewDanfe?: boolean;
+  fiscalGenerateGuides?: boolean;
+  fiscalCancelGuides?: boolean;
+  fiscalConsultSefaz?: boolean;
+
+  // Permissões Granulares de Compras e Estoque Expandidas
+  accessPurchasing?: boolean;
+  accessPurchasingViewStock?: boolean;
+  accessPurchasingMinStock?: boolean;
+  accessPurchasingQuotations?: boolean;
+  accessPurchasingSuppliers?: boolean;
+  accessPurchasingOrders?: boolean;
+  accessPurchasingApprove?: boolean;
+
+  // Permissões de Grupos de Acesso & Relatório de Obrigações
+  accessTaxObligationsReport?: boolean;
+  accessAccessGroups?: boolean;
+  accessGroupsCreate?: boolean;
+  accessGroupsEdit?: boolean;
+  accessGroupsDelete?: boolean;
+
+  // Granulares RBAC v2 Matrix (AGENTS.md)
+  exportDashboard?: boolean;
+  salesCreate?: boolean;
+  salesCancel?: boolean;
+  budgetsCreate?: boolean;
+  budgetsApprove?: boolean;
+  budgetsApplyDiscount?: boolean;
+  serviceOrdersCreate?: boolean;
+  serviceOrdersEdit?: boolean;
+  serviceOrdersComplete?: boolean;
+  serviceOrdersCancel?: boolean;
+  clientsCreate?: boolean;
+  clientsEdit?: boolean;
+  clientsDelete?: boolean;
+  vehiclesCreate?: boolean;
+  vehiclesEdit?: boolean;
+  vehiclesDelete?: boolean;
+  partsCreate?: boolean;
+  partsEdit?: boolean;
+  partsDelete?: boolean;
+  partsImportXml?: boolean;
+  fiscalInutilize?: boolean;
+  financialExport?: boolean;
+  accountsReceivableCreate?: boolean;
+  accountsReceivableSettle?: boolean;
+  accountsReceivableCancel?: boolean;
+  accountsPayableCreate?: boolean;
+  accountsPayableSettle?: boolean;
+  accountsPayableCancel?: boolean;
+  carriersCreate?: boolean;
+  carriersEdit?: boolean;
+  carriersDelete?: boolean;
+  reportsExport?: boolean;
+  historyExport?: boolean;
+  servicesCreate?: boolean;
+  servicesEdit?: boolean;
+  servicesDelete?: boolean;
+  quotationsCreate?: boolean;
+  quotationsApprove?: boolean;
+}
+
+export interface AccessGroup {
+  id: string;
+  companyId: string;
+  name: string;
+  code?: string;
+  description: string;
+  active: boolean;
+  isSystemDefault?: boolean;
+  permissions: UserPermissions;
+  usersCount?: number;
+  createdAt: string;
+  updatedAt: string;
+  createdBy?: string;
+  color?: string;
 }
 
 export interface User {
   id: string;
   username: string;
   name: string;
+  email?: string;
   role: UserRole;
   passwordHash: string; // Storing as plaintext/simulated hash for simple demo settings
   permissions: UserPermissions;
   companyId?: string; // ID da empresa/oficina à qual o usuário pertence
+  groupId?: string; // ID do Grupo de Acesso vinculado
+  accessGroupId?: string; // Compatibilidade de Grupo de Acesso
+  groupName?: string; // Nome do Grupo de Acesso
+  individualExceptions?: { [permissionKey: string]: boolean }; // Exceções individuais (override explícito de permissões)
+  customPermissions?: Partial<UserPermissions>; // Permissões customizadas
+  active?: boolean; // Status ativo do usuário (padrão true)
+  createdAt?: string;
+  lastLoginAt?: string;
 }
 
 export interface Client {
@@ -1518,15 +1612,21 @@ export interface ServiceOrder {
 
 export interface HistoryEntry {
   id: string;
-  vehicleId: string;
-  clientId: string;
+  vehicleId?: string;
+  clientId?: string;
   companyId?: string;
-  type: 'budget' | 'service_order' | 'payment' | 'user_activity' | 'system';
+  type: 'budget' | 'service_order' | 'payment' | 'user_activity' | 'system' | string;
   title: string;
   description: string;
   date: string;
-  userId: string;
-  userName: string;
+  timestamp?: string;
+  userId?: string;
+  userName?: string;
+  action?: string;
+  justification?: string;
+  targetRecordId?: string;
+  previousValue?: any;
+  newValue?: any;
   metadata?: any; // total values, item counts, etc.
 }
 
@@ -2002,9 +2102,19 @@ export interface FiscalDocument {
   // Detalhamento de impostos
   icmsBase?: number;
   icmsAmount?: number;
+  icmsStBase?: number;
+  icmsStAmount?: number;
+  fcpAmount?: number;
+  difalUfDestAmount?: number;
+  difalUfRemetAmount?: number;
   pisAmount?: number;
   cofinsAmount?: number;
   issAmount?: number;
+  taxObligationGuideIds?: string[];
+  hasAttachedTaxObligations?: boolean;
+  difalValue?: number;
+  fcpValue?: number;
+  icmsStValue?: number;
   
   // Totais da Reforma Tributária 2026
   totalIbs?: number;        // R$ Total IBS
@@ -2422,10 +2532,108 @@ export interface GoodsWithdrawalOrder {
   history: GoodsWithdrawalHistoryEvent[];
 }
 
+// ==========================================
+// MÓDULO DE OBRIGAÇÕES E GUIAS FISCAIS
+// ==========================================
+
+export type TaxObligationType = 
+  | 'ICMS_ST'    // Substituição Tributária Estadual
+  | 'FCP'        // Fundo de Combate à Pobreza
+  | 'DIFAL'      // Diferencial de Alíquota Interestadual (EC 87/15)
+  | 'GNRE'       // Guia Nacional de Recolhimento de Tributos Estaduais
+  | 'DARE'       // Documento de Arrecadação de Receitas Estaduais (ex: DARE-SP)
+  | 'DAE'        // Documento de Arrecadação Estadual (ex: DAE-MG, DAE-BA)
+  | 'SUFRAMA'    // Taxa de Controle de Incentivos Fiscais / PIN Suframa
+  | 'OTHER';     // Outras obrigações tributárias e taxas
+
+export type TaxObligationStatus = 
+  | 'PENDENTE'              // Identificada pelo motor, aguardando geração de guia
+  | 'CALCULADA'             // Base e alíquota consolidadas
+  | 'GERADA'                // Guia gerada com código de barras / linha digitável
+  | 'AGUARDANDO_PAGAMENTO'  // Guia emitida aguardando liquidação bancária
+  | 'PAGA'                  // Guia quitada com autenticação bancária
+  | 'VENCIDA'               // Data de vencimento ultrapassada
+  | 'CANCELADA'             // Guia cancelada ou estornada
+  | 'REJEITADA';            // Guia rejeitada pelo órgão arrecadador
+
+export interface TaxCalculationMemoryStep {
+  label: string;
+  formula: string;
+  value: number | string;
+  detail?: string;
+}
+
+export interface TaxCalculationMemory {
+  steps: TaxCalculationMemoryStep[];
+  legalBasis: string;
+  description: string;
+  ufOrigin: string;
+  ufDestination: string;
+  cfop: string;
+  ncm: string;
+  isInterstate: boolean;
+  isFinalConsumer: boolean;
+  recipientIeIndicator: string;
+  protocolAgreement?: string; // Protocolo / Convênio ICMS (ex: "Convênio ICMS 142/18", "Protocolo ICMS 41/08")
+}
+
+export interface TaxObligationGuide {
+  id: string;
+  companyId: string;
+  fiscalDocumentId?: string;
+  invoiceKey?: string; // Chave de Acesso da NF-e (44 dígitos)
+  nfeNumber?: string | number;
+  nfeSeries?: string;
+  saleId?: string;
+  saleCode?: string;
+  serviceOrderId?: string;
+  obligationType: TaxObligationType;
+  obligationName: string; // Ex: "ICMS-ST Interestadual", "FCP Destino", "DIFAL Consumidor Final"
+  authority: string; // UF Favorecida (ex: 'SP', 'RJ', 'MG', 'BA', 'AM')
+  revenueCode: string; // Código de Receita Oficial (ex: '10008-0' ICMS-ST, '10010-2' DIFAL, '10012-9' FCP, '046-2' DARE)
+  calculationBase: number; // Base de Cálculo em R$
+  rate: number; // Alíquota aplicada em %
+  calculatedAmount: number; // Valor apurado da obrigação em R$
+  fineAmount?: number; // Multa em R$
+  interestAmount?: number; // Juros de mora em R$
+  totalAmount: number; // Valor Total da Guia (Principal + Acréscimos)
+  dueDate: string; // Data de Vencimento YYYY-MM-DD
+  issueDate?: string; // Data de Emissão YYYY-MM-DD
+  guideNumber: string; // Número de controle da Guia / Nosso Número
+  barcode: string; // Código de Barras FEBRABAN
+  digitLine: string; // Linha Digitável formatada
+  qrCode?: string; // Payload QR Code
+  pixCopyPaste?: string; // Código PIX Copia e Cola EMV
+  status: TaxObligationStatus;
+  generatedAt?: string; // Timestamp de geração
+  generatedBy?: string; // Usuário que gerou
+  paidAt?: string; // Timestamp de liquidação
+  paidBy?: string; // Usuário que baixou
+  paymentMethod?: string;
+  bankAuthentication?: string; // Autenticação bancária / comprovante
+  canceledAt?: string; // Timestamp de cancelamento
+  canceledBy?: string;
+  cancellationReason?: string; // Justificativa obrigatória de cancelamento
+  documentFileReference?: string;
+  calculationMemory?: TaxCalculationMemory;
+  clientName?: string;
+  clientCpfCnpj?: string;
+  clientStateRegistration?: string;
+  notes?: string;
+  auditInfo?: {
+    createdAt: string;
+    createdBy: string;
+    lastUpdatedAt?: string;
+    lastUpdatedBy?: string;
+    changeLogs?: Array<{ timestamp: string; user: string; action: string; details: string }>;
+  };
+}
+
 export interface AppDatabase {
   companyInfo?: CompanyInfo;
   registeredCompanies?: CompanyInfo[];
   users: User[];
+  accessGroups?: AccessGroup[];
   clients: Client[];
   vehicles: Vehicle[];
   parts: Part[];
@@ -2447,11 +2655,12 @@ export interface AppDatabase {
   accountsPayable?: AccountPayable[];
   financialTransactions?: FinancialTransaction[];
   billingClosings?: BillingClosingOrder[];
-  bankStatements?: (BankStatement | BankStatementEntry)[];
+  bankStatements?: BankStatement[];
   bankStatementEntries?: BankStatementEntry[];
   paymentMethods?: PaymentMethodOption[];
   maintenanceLogs?: MaintenanceLog[];
   fiscalDocuments?: FiscalDocument[];
+  taxObligationGuides?: TaxObligationGuide[];
   boletos?: BoletoDocument[];
   interBranchSales?: InterBranchSaleLogistics[];
   sefazConfig?: SefazApiConfig;
@@ -2480,7 +2689,4 @@ export interface AppDatabase {
 }
 
 export type Company = CompanyInfo;
-
-
-
 

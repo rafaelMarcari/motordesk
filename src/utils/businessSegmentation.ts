@@ -241,11 +241,24 @@ export function normalizeUserPermissions(
   };
 }
 
+import { getEffectivePermissions } from './securityUtils';
+
 /**
  * Normaliza o objeto de usuário completo, garantindo permissões válidas e tipadas.
+ * Se fornecido o contexto do banco de dados (AppDatabase) e da empresa ativa (companyId),
+ * resolve dinamicamente a hierarquia RBAC (Status -> Papel -> Grupo de Acesso -> Exceções Individuais).
  */
-export function normalizeUser(user: User): User {
+export function normalizeUser(user: User, companyId?: string, db?: any): User {
   if (!user) return user;
+  
+  if (db && companyId) {
+    const effective = getEffectivePermissions(user, companyId, db);
+    return {
+      ...user,
+      permissions: effective,
+    };
+  }
+
   return {
     ...user,
     permissions: normalizeUserPermissions(user.permissions, user.role),

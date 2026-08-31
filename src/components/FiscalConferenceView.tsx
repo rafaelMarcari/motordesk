@@ -63,6 +63,7 @@ import { AppDatabase } from '../data/mockData';
 import FiscalDocumentPrintModal from './FiscalDocumentPrintModal';
 import { fiscalProvider, FiscalEmissionResult } from '../services/fiscalProvider';
 import { resolveItemTributacao } from '../utils/taxUtils';
+import { identifyTaxObligations } from '../utils/taxObligationEngine';
 
 const defaultFallbackCompany: CompanyInfo = {
   id: 'comp-1',
@@ -502,7 +503,46 @@ export default function FiscalConferenceView({
 
         // 3. Add or update fiscal documents list
         const existingFisc = (prev.fiscalDocuments || []).filter(d => d.id !== result.fiscalDocument.id && d.accessKey !== result.accessKey);
-        const updatedFisc = [result.fiscalDocument, ...existingFisc];
+        
+        let newDoc = result.fiscalDocument;
+        let newGuides: any[] = [];
+        if (result.status === 'authorized') {
+          const clientObj = prev.clients?.find(c => c.id === sale.clientId) || null;
+          const obligationResult = identifyTaxObligations({
+            company: currentCompany,
+            client: clientObj,
+            clientUf: (sale as any).clientUf || clientObj?.uf || currentCompany.uf || 'SP',
+            items: (emissionItems || []).map((i: any) => ({
+              name: i.name || i.description || 'Item Fiscal',
+              ncm: i.ncm,
+              cest: i.cest,
+              cfop: i.cfop,
+              cstCsosn: i.cstCsosn,
+              quantity: i.quantity || 1,
+              unitPrice: i.unitPrice || i.unitCost || 0,
+              totalPrice: i.totalPrice || ((i.quantity || 1) * (i.unitPrice || 0)),
+              type: i.type === 'service' ? 'service' : 'part'
+            })),
+            invoiceKey: result.accessKey,
+            nfeNumber: newDoc.code,
+            saleId: sale.id,
+            saleCode: sale.code
+          });
+
+          if (obligationResult.guides && obligationResult.guides.length > 0) {
+            newGuides = obligationResult.guides;
+            newDoc = {
+              ...newDoc,
+              taxObligationGuideIds: obligationResult.guides.map(g => g.id),
+              hasAttachedTaxObligations: true,
+              difalValue: obligationResult.guides.find(g => g.obligationType === 'DIFAL')?.totalAmount,
+              fcpValue: obligationResult.guides.find(g => g.obligationType === 'FCP')?.totalAmount,
+              icmsStValue: obligationResult.guides.find(g => g.obligationType === 'ICMS_ST')?.totalAmount
+            };
+          }
+        }
+
+        const updatedFisc = [newDoc, ...existingFisc];
 
         // 4. Update next document number in sefazConfig
         const updatedSefazConfig: SefazApiConfig = {
@@ -516,6 +556,7 @@ export default function FiscalConferenceView({
           sales: updatedSales,
           accountsReceivable: updatedReceivables,
           fiscalDocuments: updatedFisc,
+          taxObligationGuides: [...newGuides, ...(prev.taxObligationGuides || [])],
           sefazConfig: updatedSefazConfig
         };
       });

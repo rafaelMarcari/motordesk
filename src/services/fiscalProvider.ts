@@ -313,15 +313,15 @@ export function generateSefazXml(
 ${xmlItems}
       <total>
         <ICMSTot>
-          <vBC>${doc.totalProducts.toFixed(2)}</vBC>
+          <vBC>${(doc.icmsBase ?? doc.totalProducts).toFixed(2)}</vBC>
           <vICMS>${(doc.icmsAmount || 0).toFixed(2)}</vICMS>
           <vICMSDeson>0.00</vICMSDeson>
-          <vFCPUFDest>0.00</vFCPUFDest>
-          <vICMSUFDest>0.00</vICMSUFDest>
-          <vICMSUFRemet>0.00</vICMSUFRemet>
+          <vFCPUFDest>${(doc.fcpAmount || 0).toFixed(2)}</vFCPUFDest>
+          <vICMSUFDest>${(doc.difalUfDestAmount || 0).toFixed(2)}</vICMSUFDest>
+          <vICMSUFRemet>${(doc.difalUfRemetAmount || 0).toFixed(2)}</vICMSUFRemet>
           <vFCP>0.00</vFCP>
-          <vBCST>0.00</vBCST>
-          <vST>0.00</vST>
+          <vBCST>${(doc.icmsStBase || 0).toFixed(2)}</vBCST>
+          <vST>${(doc.icmsStAmount || 0).toFixed(2)}</vST>
           <vFCPST>0.00</vFCPST>
           <vFCPSTRet>0.00</vFCPSTRet>
           <vProd>${doc.totalProducts.toFixed(2)}</vProd>

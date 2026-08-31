@@ -84,6 +84,7 @@ import {
   parseXmlNFeString
 } from '../utils/taxUtils';
 import { fiscalProvider } from '../services/fiscalProvider';
+import { identifyTaxObligations } from '../utils/taxObligationEngine';
 
 interface FiscalSefazViewProps {
   db: AppDatabase;
@@ -100,6 +101,7 @@ interface FiscalSefazViewProps {
   onSaveTaxOperationNatures?: (natures: TaxOperationNature[]) => void;
   onSaveTaxRules?: (rules: TaxRule[]) => void;
   onSaveXmlImportRecords?: (records: XmlImportRecord[]) => void;
+  onSaveTaxObligationGuides?: (guides: any[]) => void;
   onAddHistoryLog?: (
     type: 'budget' | 'service_order' | 'payment' | 'user_activity' | 'system',
     title: string,
@@ -125,6 +127,7 @@ export default function FiscalSefazView({
   onSaveTaxOperationNatures,
   onSaveTaxRules,
   onSaveXmlImportRecords,
+  onSaveTaxObligationGuides,
   onAddHistoryLog
 }: FiscalSefazViewProps) {
   const [activeTab, setActiveTab] = useState<'nfe' | 'tax_engine' | 'tax_rules' | 'xml_import' | 'monthly_batch' | 'inter_branch' | 'boletos' | 'fiscal_config' | 'sefaz_api' | 'webservices_routing' | 'guide'>('nfe');
@@ -1599,7 +1602,7 @@ export default function FiscalSefazView({
     setPreTxData(draftDocData);
 
     setPendingTxAction(() => () => {
-      const newDoc: FiscalDocument = {
+      let newDoc: FiscalDocument = {
         id: `fisc-${Date.now()}`,
         code: newNfeType === 'nfse_service' ? `NFSE-${Math.floor(10000 + Math.random() * 90000)}` : `NFE-${Math.floor(100000 + Math.random() * 900000)}`,
         type: newNfeType,
@@ -1625,6 +1628,54 @@ export default function FiscalSefazView({
         sefazStatusMessage: '100 - Autorizado o uso da NF-e / NFS-e na SEFAZ',
         environment: sefazConfig.environment
       };
+
+      const fullCompany = (currentTargetCompany || registeredCompanies.find(c => c.id === company.id) || db.companyInfo || {
+        id: 'comp-1',
+        name: 'Matriz Pinheiros',
+        cnpj: '12.345.678/0001-90',
+        uf: 'SP',
+        address: 'Av. Brigadeiro Faria Lima, 1200 - São Paulo/SP',
+        phone: '(11) 3045-8900',
+        whatsapp: '11999998888',
+        email: 'contato@motordesk.com.br',
+        registeredAt: new Date().toISOString()
+      }) as CompanyInfo;
+
+      const clientObj = db.clients?.find(c => c.name.toLowerCase() === newNfeClientName.toLowerCase() || c.cpf === newNfeClientCpf) || null;
+
+      const obligationResult = identifyTaxObligations({
+        company: fullCompany,
+        client: clientObj,
+        clientUf: clientObj?.uf || fullCompany.uf || 'SP',
+        items: newNfeItemList.map((i: any) => ({
+          name: i.name || i.description || 'Item Fiscal',
+          ncm: i.ncm,
+          cest: i.cest,
+          cfop: i.cfop,
+          cstCsosn: i.cstCsosn,
+          quantity: i.quantity || 1,
+          unitPrice: i.unitPrice || 0,
+          totalPrice: i.totalPrice || ((i.quantity || 1) * (i.unitPrice || 0)),
+          type: i.type === 'service' ? 'service' : 'part'
+        })),
+        invoiceKey: randomAccessKey,
+        nfeNumber: newDoc.code
+      });
+
+      if (obligationResult.guides && obligationResult.guides.length > 0) {
+        newDoc = {
+          ...newDoc,
+          taxObligationGuideIds: obligationResult.guides.map(g => g.id),
+          hasAttachedTaxObligations: true,
+          difalValue: obligationResult.guides.find(g => g.obligationType === 'DIFAL')?.totalAmount,
+          fcpValue: obligationResult.guides.find(g => g.obligationType === 'FCP')?.totalAmount,
+          icmsStValue: obligationResult.guides.find(g => g.obligationType === 'ICMS_ST')?.totalAmount
+        };
+
+        if (onSaveTaxObligationGuides) {
+          onSaveTaxObligationGuides([...obligationResult.guides, ...(db.taxObligationGuides || [])]);
+        }
+      }
 
       const updated = [newDoc, ...fiscalDocs];
       onSaveFiscalDocuments(updated);
