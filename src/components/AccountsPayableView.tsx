@@ -1,15 +1,22 @@
 /**
  * @license
  * SPDX-License-Identifier: Apache-2.0
+ * MOTOR DESK - MÓDULO DE CONTAS A PAGAR, GESTÃO DE BOLETOS, NOTAS FISCAIS E BAIXAS DE PARCELAS
  */
 
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { 
   Plus, Search, DollarSign, AlertCircle, CheckCircle, 
-  CreditCard, Calendar, X, FileText, ArrowDownRight, Tag, Eye
+  CreditCard, Calendar, X, FileText, ArrowDownRight, Tag, Eye,
+  Upload, Paperclip, Receipt, FileCode, Check, Copy, Download,
+  Layers, Clock, ArrowRight, ShieldCheck, ChevronDown, ChevronUp,
+  FileCheck, Printer
 } from 'lucide-react';
-import { AccountPayable, AccountInstallment, Supplier, User, FinancialTransaction } from '../types';
+import { AccountPayable, AccountInstallment, AccountPayableAttachment, Supplier, User, FinancialTransaction } from '../types';
 import { AppDatabase } from '../data/mockData';
+import { getBankMetadata } from '../utils/boletoEngine';
+import AccountPayableDocumentModal from './AccountPayableDocumentModal';
+import AccountPayableSettleModal from './AccountPayableSettleModal';
 
 interface AccountsPayableViewProps {
   db: AppDatabase;
@@ -39,25 +46,39 @@ export default function AccountsPayableView({
   const [selectedPayable, setSelectedPayable] = useState<AccountPayable | null>(null);
   const [isPayModalOpen, setIsPayModalOpen] = useState(false);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
+  const [isDocModalOpen, setIsDocModalOpen] = useState(false);
 
   // New Payable Form State
   const [supplierId, setSupplierId] = useState('');
   const [supplierNameInput, setSupplierNameInput] = useState('');
+  const [supplierCnpj, setSupplierCnpj] = useState('');
   const [description, setDescription] = useState('');
   const [category, setCategory] = useState('Peças / Fornecedores');
   const [totalAmount, setTotalAmount] = useState('');
   const [installmentsCount, setInstallmentsCount] = useState('1');
   const [firstDueDate, setFirstDueDate] = useState(new Date().toISOString().split('T')[0]);
   const [notes, setNotes] = useState('');
+  
+  // Fiscal & Boleto Extra Fields
+  const [nfeNumber, setNfeNumber] = useState('');
+  const [nfeSeries, setNfeSeries] = useState('1');
+  const [nfeAccessKey, setNfeAccessKey] = useState('');
+  const [boletoLinhaDigitavel, setBoletoLinhaDigitavel] = useState('');
+  const [boletoBarcode, setBoletoBarcode] = useState('');
+  const [boletoBankName, setBoletoBankName] = useState('');
+  const [paymentCondition, setPaymentCondition] = useState('');
+  const [formAttachments, setFormAttachments] = useState<AccountPayableAttachment[]>([]);
+  const [customInstallments, setCustomInstallments] = useState<AccountInstallment[]>([]);
 
-  // Payment State
-  const [paymentAmount, setPaymentAmount] = useState('');
-  const [paymentMethod, setPaymentMethod] = useState('PIX');
-  const [paymentDate, setPaymentDate] = useState(new Date().toISOString().split('T')[0]);
+  // Expanded Row IDs (for viewing installments inline in table)
+  const [expandedRowIds, setExpandedRowIds] = useState<Record<string, boolean>>({});
 
   // Messages
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
+
+  const xmlFileInputRef = useRef<HTMLInputElement>(null);
+  const attachmentInputRef = useRef<HTMLInputElement>(null);
 
   const payables = db.accountsPayable || [];
   const suppliers = db.suppliers || [];
@@ -74,11 +95,21 @@ export default function AccountsPayableView({
     'Outras Despesas'
   ];
 
+  // Helper to toggle expanded row
+  const toggleRowExpansion = (id: string) => {
+    setExpandedRowIds(prev => ({
+      ...prev,
+      [id]: !prev[id]
+    }));
+  };
+
   // Filter List
   const filteredPayables = payables.filter(item => {
     const matchesSearch = item.supplierName.toLowerCase().includes(searchQuery.toLowerCase()) ||
       item.code.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      item.description.toLowerCase().includes(searchQuery.toLowerCase());
+      item.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (item.nfeNumber && item.nfeNumber.includes(searchQuery)) ||
+      (item.boletoLinhaDigitavel && item.boletoLinhaDigitavel.includes(searchQuery));
     
     const matchesStatus = statusFilter === 'all' || item.status === statusFilter;
     const matchesCat = categoryFilter === 'all' || item.category === categoryFilter;
@@ -94,12 +125,22 @@ export default function AccountsPayableView({
   const resetForm = () => {
     setSupplierId('');
     setSupplierNameInput('');
+    setSupplierCnpj('');
     setDescription('');
     setCategory('Peças / Fornecedores');
     setTotalAmount('');
     setInstallmentsCount('1');
     setFirstDueDate(new Date().toISOString().split('T')[0]);
     setNotes('');
+    setNfeNumber('');
+    setNfeSeries('1');
+    setNfeAccessKey('');
+    setBoletoLinhaDigitavel('');
+    setBoletoBarcode('');
+    setBoletoBankName('');
+    setPaymentCondition('');
+    setFormAttachments([]);
+    setCustomInstallments([]);
     setErrorMsg('');
     setIsFormOpen(false);
     setUnsavedTask(null);
@@ -131,11 +172,161 @@ export default function AccountsPayableView({
         amount: amount,
         paidAmount: 0,
         dueDate: instDueDate.toISOString().split('T')[0],
-        status: 'pending'
+        status: 'pending',
+        boletoLinhaDigitavel: boletoLinhaDigitavel || undefined,
+        boletoBarcode: boletoBarcode || undefined,
+        boletoBankName: boletoBankName || undefined
       });
     }
 
     return list;
+  };
+
+  // XML NF-e File Parser
+  const handleXmlImport = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    const file = files[0];
+    const reader = new FileReader();
+
+    reader.onload = (event) => {
+      try {
+        const xmlContent = event.target?.result as string;
+        const parser = new DOMParser();
+        const xmlDoc = parser.parseFromString(xmlContent, 'text/xml');
+
+        if (xmlDoc.getElementsByTagName('parsererror').length > 0) {
+          setErrorMsg('O arquivo fornecido não é um XML de NF-e válido.');
+          return;
+        }
+
+        // 1. Supplier Name & CNPJ
+        let supName = '';
+        let supCnpj = '';
+        const emitEl = xmlDoc.querySelector('emit');
+        if (emitEl) {
+          supName = emitEl.querySelector('xNome')?.textContent || emitEl.querySelector('xFant')?.textContent || '';
+          supCnpj = emitEl.querySelector('CNPJ')?.textContent || emitEl.querySelector('CPF')?.textContent || '';
+        }
+
+        // 2. Invoice Number, Series & Access Key
+        const ideEl = xmlDoc.querySelector('ide');
+        let nNF = ideEl?.querySelector('nNF')?.textContent || '';
+        let serie = ideEl?.querySelector('serie')?.textContent || '1';
+        
+        const infNFeEl = xmlDoc.querySelector('infNFe');
+        let accessKey = infNFeEl?.getAttribute('Id')?.replace(/\D/g, '') || '';
+
+        // 3. Total Amount
+        const vNF = xmlDoc.querySelector('total ICMSTot vNF')?.textContent || '0';
+        const totalVal = parseFloat(vNF) || 0;
+
+        // 4. Duplicate Installments (<cobr><dup>)
+        const dupEls = xmlDoc.querySelectorAll('cobr dup');
+        const extractedInstallments: AccountInstallment[] = [];
+
+        if (dupEls.length > 0) {
+          dupEls.forEach((dup, idx) => {
+            const nDup = dup.querySelector('nDup')?.textContent || String(idx + 1);
+            const dVenc = dup.querySelector('dVenc')?.textContent || new Date().toISOString().split('T')[0];
+            const vDup = parseFloat(dup.querySelector('vDup')?.textContent || '0') || (totalVal / dupEls.length);
+
+            extractedInstallments.push({
+              id: `parc-xml-${Date.now()}-${idx + 1}`,
+              installmentNumber: idx + 1,
+              totalInstallments: dupEls.length,
+              amount: vDup,
+              paidAmount: 0,
+              dueDate: dVenc,
+              status: 'pending',
+              nfeNumber: nNF
+            });
+          });
+        }
+
+        // Apply Extracted Data to Form
+        if (supName) setSupplierNameInput(supName);
+        if (supCnpj) setSupplierCnpj(supCnpj);
+        if (nNF) setNfeNumber(nNF);
+        if (serie) setNfeSeries(serie);
+        if (accessKey) setNfeAccessKey(accessKey);
+        if (totalVal > 0) setTotalAmount(totalVal.toFixed(2));
+        setDescription(`Compra de Peças / Insumos - NF-e #${nNF} (${supName})`);
+        setCategory('Peças / Fornecedores');
+
+        if (extractedInstallments.length > 0) {
+          setInstallmentsCount(String(extractedInstallments.length));
+          setFirstDueDate(extractedInstallments[0].dueDate);
+          setCustomInstallments(extractedInstallments);
+          setPaymentCondition(`${extractedInstallments.length}x Duplicatas NF-e`);
+        }
+
+        // Add XML file to attachments
+        const xmlAttachment: AccountPayableAttachment = {
+          id: `att-xml-${Date.now()}`,
+          name: file.name,
+          type: 'nfe',
+          fileSize: `${Math.round(file.size / 1024)} KB`,
+          uploadedAt: new Date().toISOString(),
+          uploadedByName: currentUser.name,
+          nfeNumber: nNF,
+          nfeAccessKey: accessKey,
+          amount: totalVal
+        };
+
+        setFormAttachments(prev => [xmlAttachment, ...prev]);
+        setSuccessMsg(`XML da NF-e #${nNF} importado com sucesso! Dados do fornecedor e ${extractedInstallments.length || 1} duplicata(s) carregados.`);
+        setTimeout(() => setSuccessMsg(''), 5000);
+      } catch (err) {
+        console.error('Erro ao ler XML:', err);
+        setErrorMsg('Falha ao processar arquivo XML.');
+      }
+    };
+
+    reader.readAsText(file);
+  };
+
+  // Linha Digitável Parser (Detect Bank & Due Date)
+  const handleLinhaDigitavelChange = (val: string) => {
+    setBoletoLinhaDigitavel(val);
+    const clean = val.replace(/\D/g, '');
+    if (clean.length >= 3) {
+      const bankCode = clean.slice(0, 3);
+      const meta = getBankMetadata(bankCode);
+      setBoletoBankName(meta.name);
+    }
+  };
+
+  // General Attachment Upload in Form
+  const handleFormAttachmentUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    const file = files[0];
+    const reader = new FileReader();
+
+    reader.onload = (event) => {
+      const result = event.target?.result as string;
+      const sizeFormatted = file.size > 1024 * 1024 
+        ? `${(file.size / (1024 * 1024)).toFixed(2)} MB` 
+        : `${Math.round(file.size / 1024)} KB`;
+
+      const newAtt: AccountPayableAttachment = {
+        id: `att-form-${Date.now()}`,
+        name: file.name,
+        type: file.name.toLowerCase().includes('nfe') || file.name.toLowerCase().includes('danfe') ? 'nfe' : 'boleto',
+        fileUrl: result,
+        fileType: file.type,
+        fileSize: sizeFormatted,
+        uploadedAt: new Date().toISOString(),
+        uploadedByName: currentUser.name
+      };
+
+      setFormAttachments(prev => [...prev, newAtt]);
+    };
+
+    reader.readAsDataURL(file);
   };
 
   // Save New Payable
@@ -160,7 +351,11 @@ export default function AccountsPayableView({
 
     const numInstallments = parseInt(installmentsCount) || 1;
     const newCode = `CP-${new Date().getFullYear()}-${String(payables.length + 1).padStart(3, '0')}`;
-    const newInstallments = generateInstallments(val, numInstallments, firstDueDate);
+    
+    // Use custom installments if loaded from XML, otherwise generate
+    const finalInstallments = customInstallments.length > 0 && customInstallments.length === numInstallments
+      ? customInstallments
+      : generateInstallments(val, numInstallments, firstDueDate);
 
     const newPayable: AccountPayable = {
       id: `cp-${Date.now()}`,
@@ -173,144 +368,241 @@ export default function AccountsPayableView({
       paidAmount: 0,
       remainingAmount: val,
       status: 'pending',
-      dueDate: newInstallments[newInstallments.length - 1].dueDate,
+      dueDate: finalInstallments[finalInstallments.length - 1].dueDate,
       createdAt: new Date().toISOString(),
-      installments: newInstallments,
-      notes: notes.trim() ? notes : undefined
+      installments: finalInstallments,
+      notes: notes.trim() ? notes : undefined,
+      nfeNumber: nfeNumber.trim() || undefined,
+      nfeSeries: nfeSeries.trim() || undefined,
+      nfeAccessKey: nfeAccessKey.trim() || undefined,
+      boletoLinhaDigitavel: boletoLinhaDigitavel.trim() || undefined,
+      boletoBarcode: boletoBarcode.trim() || undefined,
+      boletoBankName: boletoBankName.trim() || undefined,
+      paymentCondition: paymentCondition.trim() || (numInstallments > 1 ? `${numInstallments}x Parcelado` : '1x À Vista / Boleto'),
+      attachments: formAttachments.length > 0 ? formAttachments : undefined
     };
 
     const updatedPayablesList = [newPayable, ...payables];
     onSavePayables(updatedPayablesList, db.financialTransactions || []);
-    onAddHistoryLog('payment', 'Conta a Pagar Lançada', `Título de despesa ${newCode} no valor de R$ ${val.toFixed(2)} registrado (${category}).`, '', '');
+    onAddHistoryLog(
+      'payment', 
+      'Conta a Pagar Lançada', 
+      `Título de despesa ${newCode} no valor de R$ ${val.toFixed(2)} registrado (${category} - ${nameToUse}).`, 
+      '', 
+      ''
+    );
 
     setSuccessMsg(`Conta a pagar ${newCode} cadastrada com sucesso!`);
     setTimeout(() => setSuccessMsg(''), 4000);
     resetForm();
   };
 
-  // Open Payment Modal
-  const openPayModal = (item: AccountPayable) => {
+  // Open Settle Modal
+  const openSettleModal = (item: AccountPayable) => {
     setSelectedPayable(item);
-    setPaymentAmount(String(item.remainingAmount));
-    setPaymentMethod('PIX');
-    setPaymentDate(new Date().toISOString().split('T')[0]);
-    setErrorMsg('');
     setIsPayModalOpen(true);
   };
 
-  // Execute Payment
-  const handleExecutePayment = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedPayable) return;
+  // Open Document Modal (Boleto / DANFE / PDF)
+  const openDocModal = (item: AccountPayable) => {
+    setSelectedPayable(item);
+    setIsDocModalOpen(true);
+  };
 
-    const amountToAbate = parseFloat(paymentAmount);
-    if (isNaN(amountToAbate) || amountToAbate <= 0) {
-      setErrorMsg('Informe um valor de pagamento maior que zero.');
-      return;
+  // Open Detail Modal
+  const openDetailModal = (item: AccountPayable) => {
+    setSelectedPayable(item);
+    setIsDetailModalOpen(true);
+  };
+
+  // Execute Payment from Settle Modal
+  const handleConfirmPayment = (
+    payableId: string,
+    data: {
+      mode: 'installment' | 'total';
+      installmentId?: string;
+      installmentNumber?: number;
+      amountPaid: number;
+      paymentDate: string;
+      paymentMethod: string;
+      bankAccount?: string;
+      receiptNotes?: string;
+      receiptAttachment?: AccountPayableAttachment;
+    }
+  ) => {
+    const target = payables.find(p => p.id === payableId);
+    if (!target) return;
+
+    let updatedInstallments = [...target.installments];
+    let remainingToApply = data.amountPaid;
+
+    if (data.mode === 'installment' && data.installmentId) {
+      // Settle specific installment
+      updatedInstallments = updatedInstallments.map(inst => {
+        if (inst.id === data.installmentId) {
+          return {
+            ...inst,
+            paidAmount: inst.amount,
+            status: 'paid' as const,
+            paymentDate: data.paymentDate,
+            paymentMethod: data.paymentMethod,
+            receiptNotes: data.receiptNotes,
+            paymentReceiptUrl: data.receiptAttachment?.fileUrl,
+            paidAt: new Date().toISOString()
+          };
+        }
+        return inst;
+      });
+    } else {
+      // Sequential distribution across unpaid installments
+      updatedInstallments = updatedInstallments.map(inst => {
+        if (remainingToApply <= 0 || inst.status === 'paid') return inst;
+
+        const instRemaining = inst.amount - inst.paidAmount;
+        if (remainingToApply >= instRemaining) {
+          remainingToApply -= instRemaining;
+          return {
+            ...inst,
+            paidAmount: inst.amount,
+            status: 'paid' as const,
+            paymentDate: data.paymentDate,
+            paymentMethod: data.paymentMethod,
+            receiptNotes: data.receiptNotes,
+            paidAt: new Date().toISOString()
+          };
+        } else {
+          const partial = inst.paidAmount + remainingToApply;
+          remainingToApply = 0;
+          return {
+            ...inst,
+            paidAmount: partial,
+            status: 'partially_paid' as const,
+            paymentDate: data.paymentDate,
+            paymentMethod: data.paymentMethod,
+            receiptNotes: data.receiptNotes
+          };
+        }
+      });
     }
 
-    if (amountToAbate > selectedPayable.remainingAmount + 0.01) {
-      setErrorMsg(`O valor informado (R$ ${amountToAbate.toFixed(2)}) ultrapassa o saldo restante (R$ ${selectedPayable.remainingAmount.toFixed(2)}).`);
-      return;
+    const newTotalPaid = updatedInstallments.reduce((sum, inst) => sum + (inst.paidAmount || 0), 0);
+    const newRemaining = Math.max(0, target.totalAmount - newTotalPaid);
+    const allPaid = updatedInstallments.every(inst => inst.status === 'paid');
+    const newStatus = allPaid || newRemaining <= 0.01 ? 'paid' : 'partially_paid';
+
+    // Append receipt attachment to payable if provided
+    let newAttachments = target.attachments || [];
+    if (data.receiptAttachment) {
+      newAttachments = [...newAttachments, data.receiptAttachment];
     }
-
-    const newPaidAmount = selectedPayable.paidAmount + amountToAbate;
-    const newRemainingAmount = Math.max(0, selectedPayable.totalAmount - newPaidAmount);
-    const newStatus = newRemainingAmount <= 0.01 ? 'paid' : 'partially_paid';
-
-    // Abate installments sequentially
-    let remainingToDistribute = amountToAbate;
-    const updatedInstallments = selectedPayable.installments.map(inst => {
-      if (remainingToDistribute <= 0) return inst;
-
-      const instRemaining = inst.amount - inst.paidAmount;
-      if (instRemaining <= 0) return inst;
-
-      if (remainingToDistribute >= instRemaining) {
-        remainingToDistribute -= instRemaining;
-        return {
-          ...inst,
-          paidAmount: inst.amount,
-          status: 'paid' as const,
-          paymentDate: paymentDate,
-          paymentMethod: paymentMethod
-        };
-      } else {
-        const partialPaid = inst.paidAmount + remainingToDistribute;
-        remainingToDistribute = 0;
-        return {
-          ...inst,
-          paidAmount: partialPaid,
-          status: 'partially_paid' as const,
-          paymentDate: paymentDate,
-          paymentMethod: paymentMethod
-        };
-      }
-    });
 
     const updatedPayable: AccountPayable = {
-      ...selectedPayable,
-      paidAmount: newPaidAmount,
-      remainingAmount: newRemainingAmount,
+      ...target,
+      paidAmount: newTotalPaid,
+      remainingAmount: newRemaining,
       status: newStatus,
-      installments: updatedInstallments
+      installments: updatedInstallments,
+      attachments: newAttachments
     };
 
-    const updatedPayablesList = payables.map(p => p.id === selectedPayable.id ? updatedPayable : p);
+    const updatedList = payables.map(p => p.id === payableId ? updatedPayable : p);
 
-    // Create Financial Transaction (Cash Flow Expense Entry)
+    // Register Financial Transaction in Cash Flow
     const newTransaction: FinancialTransaction = {
       id: `ft-${Date.now()}`,
       type: 'expense',
-      category: selectedPayable.category,
-      description: `Pagamento ${selectedPayable.code} - ${selectedPayable.supplierName}`,
-      amount: amountToAbate,
-      date: new Date(paymentDate).toISOString(),
-      paymentMethod: paymentMethod,
-      referenceId: selectedPayable.id,
-      supplierId: selectedPayable.supplierId,
+      category: target.category,
+      description: `Pagamento ${data.installmentNumber ? `Parc. ${data.installmentNumber}` : 'Despesa'} ${target.code} - ${target.supplierName}`,
+      amount: data.amountPaid,
+      date: new Date(data.paymentDate).toISOString(),
+      paymentMethod: data.paymentMethod,
+      referenceId: target.id,
+      supplierId: target.supplierId,
       createdByName: currentUser.name
     };
 
     const updatedTransactions = [newTransaction, ...(db.financialTransactions || [])];
 
-    onSavePayables(updatedPayablesList, updatedTransactions);
-    onAddHistoryLog('payment', 'Pagamento de Despesa Registrado', `Saída de R$ ${amountToAbate.toFixed(2)} via ${paymentMethod} referente ao título ${selectedPayable.code} (${selectedPayable.supplierName}).`, '', '');
+    onSavePayables(updatedList, updatedTransactions);
+    onAddHistoryLog(
+      'payment',
+      'Pagamento de Despesa Registrado',
+      `Baixa de R$ ${data.amountPaid.toFixed(2)} (${data.paymentMethod}) no título ${target.code} (${target.supplierName}).`,
+      '',
+      ''
+    );
 
-    setSuccessMsg(`Pagamento de R$ ${amountToAbate.toLocaleString('pt-BR', {minimumFractionDigits: 2})} registrado nas despesas com sucesso!`);
+    setSuccessMsg(`Pagamento de R$ ${data.amountPaid.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} efetuado e registrado nas despesas!`);
     setTimeout(() => setSuccessMsg(''), 4000);
-    setIsPayModalOpen(false);
-    setSelectedPayable(null);
+  };
+
+  // Add Attachment to existing payable
+  const handleAddAttachment = (payableId: string, attachment: AccountPayableAttachment) => {
+    const updatedList = payables.map(p => {
+      if (p.id === payableId) {
+        const atts = p.attachments || [];
+        return {
+          ...p,
+          attachments: [...atts, attachment]
+        };
+      }
+      return p;
+    });
+
+    onSavePayables(updatedList, db.financialTransactions || []);
+    if (selectedPayable && selectedPayable.id === payableId) {
+      setSelectedPayable(updatedList.find(p => p.id === payableId) || null);
+    }
+  };
+
+  // Delete Attachment
+  const handleDeleteAttachment = (payableId: string, attachmentId: string) => {
+    const updatedList = payables.map(p => {
+      if (p.id === payableId) {
+        const atts = (p.attachments || []).filter(a => a.id !== attachmentId);
+        return {
+          ...p,
+          attachments: atts
+        };
+      }
+      return p;
+    });
+
+    onSavePayables(updatedList, db.financialTransactions || []);
+    if (selectedPayable && selectedPayable.id === payableId) {
+      setSelectedPayable(updatedList.find(p => p.id === payableId) || null);
+    }
   };
 
   return (
     <div className="space-y-6 animate-fade-in" id="accounts-payable-container">
+      
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between border-b border-slate-100 pb-5">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-slate-800 font-display flex items-center gap-2">
             <ArrowDownRight className="w-6 h-6 text-rose-600" />
-            Contas a Pagar & Despesas
+            Contas a Pagar & Gestão de Boletos
           </h1>
           <p className="text-sm text-slate-500">
-            Controle de boletos, contas de fornecedores, impostos e despesas operacionais da oficina.
+            Controle integrado de despesas, importação de XML de NF-e, visualização/download de boletos em PDF e baixa detalhada de parcelas.
           </p>
         </div>
         {!isFormOpen && (
           <button 
             id="btn-add-payable"
             onClick={handleOpenNewForm} 
-            className="mt-4 sm:mt-0 flex items-center justify-center gap-2 bg-rose-600 text-white px-4 py-2.5 rounded-lg text-sm font-semibold hover:bg-rose-700 transition shadow-xs"
+            className="mt-4 sm:mt-0 flex items-center justify-center gap-2 bg-rose-600 text-white px-4 py-2.5 rounded-xl text-sm font-semibold hover:bg-rose-700 transition shadow-xs cursor-pointer"
           >
-            <Plus className="w-4 h-4" /> Lançar Conta a Pagar
+            <Plus className="w-4 h-4" /> Lançar Conta a Pagar / Importar NF-e
           </button>
         )}
       </div>
 
       {/* KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4" id="payables-kpis">
-        <div className="bg-white p-4 rounded-xl border border-slate-100 shadow-xs flex items-center gap-4">
-          <div className="p-3 bg-rose-50 rounded-lg text-rose-600">
+        <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-xs flex items-center gap-4">
+          <div className="p-3 bg-rose-50 rounded-xl text-rose-600">
             <DollarSign className="w-6 h-6" />
           </div>
           <div>
@@ -321,8 +613,8 @@ export default function AccountsPayableView({
           </div>
         </div>
 
-        <div className="bg-white p-4 rounded-xl border border-slate-100 shadow-xs flex items-center gap-4">
-          <div className="p-3 bg-emerald-50 rounded-lg text-emerald-600">
+        <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-xs flex items-center gap-4">
+          <div className="p-3 bg-emerald-50 rounded-xl text-emerald-600">
             <CheckCircle className="w-6 h-6" />
           </div>
           <div>
@@ -333,12 +625,12 @@ export default function AccountsPayableView({
           </div>
         </div>
 
-        <div className="bg-white p-4 rounded-xl border border-slate-100 shadow-xs flex items-center gap-4">
-          <div className="p-3 bg-amber-50 rounded-lg text-amber-600">
+        <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-xs flex items-center gap-4">
+          <div className="p-3 bg-amber-50 rounded-xl text-amber-600">
             <ArrowDownRight className="w-6 h-6" />
           </div>
           <div>
-            <p className="text-xs text-slate-400 font-medium">A Pagar (Saldo Devedor Perto do Vencimento)</p>
+            <p className="text-xs text-slate-400 font-medium">Saldo Restante a Pagar</p>
             <p className="text-lg font-bold text-rose-600 font-mono">
               R$ {totalRemaining.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
             </p>
@@ -348,39 +640,82 @@ export default function AccountsPayableView({
 
       {/* Notifications */}
       {successMsg && (
-        <div id="payables-success-alert" className="p-4 bg-emerald-50 text-emerald-800 text-sm rounded-lg flex items-center gap-2 border border-emerald-200 animate-slide-up">
-          <CheckCircle className="w-5 h-5 flex-shrink-0" />
-          <p className="font-medium">{successMsg}</p>
+        <div id="payables-success-alert" className="p-4 bg-emerald-50 text-emerald-800 text-sm rounded-xl flex items-center gap-2 border border-emerald-200 animate-slide-up">
+          <CheckCircle className="w-5 h-5 shrink-0 text-emerald-600" />
+          <p className="font-semibold">{successMsg}</p>
         </div>
       )}
 
-      {/* Form Section */}
+      {/* FORM SECTION (LANÇAMENTO & IMPORTAÇÃO DE XML / BOLETOS) */}
       {isFormOpen && (
-        <div className="bg-white p-6 rounded-xl border border-rose-200 shadow-md animate-slide-up" id="payable-form-panel">
-          <div className="flex items-center justify-between border-b border-slate-100 pb-3 mb-5">
-            <h3 className="font-semibold text-slate-800 font-display text-base flex items-center gap-2">
-              <FileText className="w-5 h-5 text-rose-600" />
-              Lançamento de Despesa / Conta a Pagar
-            </h3>
+        <div className="bg-white p-6 rounded-3xl border border-rose-200 shadow-xl animate-slide-up space-y-6" id="payable-form-panel">
+          
+          <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center font-bold">
+                <FileText className="w-4 h-4" />
+              </div>
+              <h3 className="font-bold text-slate-800 font-display text-base">
+                Lançamento de Despesa, Importação de XML & Boletos
+              </h3>
+            </div>
             <button 
               id="btn-close-payable-form"
               onClick={resetForm} 
-              className="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-50 transition"
+              className="text-slate-400 hover:text-slate-600 p-1.5 rounded-xl hover:bg-slate-100 transition cursor-pointer"
             >
               <X className="w-5 h-5" />
             </button>
           </div>
 
           {errorMsg && (
-            <div id="payable-error-alert" className="mb-4 p-4 bg-rose-50 text-rose-800 text-xs rounded-lg flex items-center gap-2 border border-rose-100">
-              <AlertCircle className="w-4 h-4 flex-shrink-0" />
-              <p className="font-medium">{errorMsg}</p>
+            <div id="payable-error-alert" className="p-4 bg-rose-50 text-rose-800 text-xs rounded-xl flex items-center gap-2 border border-rose-200">
+              <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
+              <p className="font-semibold">{errorMsg}</p>
             </div>
           )}
 
+          {/* Quick Import Box: XML de NF-e */}
+          <div className="bg-gradient-to-r from-rose-50/70 to-indigo-50/70 p-4 rounded-2xl border border-rose-200/80 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-rose-600 text-white flex items-center justify-center shadow-xs">
+                <FileCode className="w-5 h-5" />
+              </div>
+              <div>
+                <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider">
+                  Importar XML da Nota Fiscal (NF-e de Compra)
+                </h4>
+                <p className="text-xs text-slate-500">
+                  Carrega automaticamente o fornecedor, CNPJ, valor total, número da nota e duplicatas/parcelas de cobrança.
+                </p>
+              </div>
+            </div>
+            
+            <div className="flex gap-2">
+              <input
+                type="file"
+                ref={xmlFileInputRef}
+                onChange={handleXmlImport}
+                accept=".xml"
+                className="hidden"
+                id="xml-nfe-input"
+              />
+              <button
+                type="button"
+                onClick={() => xmlFileInputRef.current?.click()}
+                className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-xl transition flex items-center gap-1.5 cursor-pointer shadow-xs"
+              >
+                <Upload className="w-3.5 h-3.5" /> Selecionar XML NF-e
+              </button>
+            </div>
+          </div>
+
+          {/* Form Fields */}
           <form onSubmit={handleSavePayable} className="grid grid-cols-1 md:grid-cols-2 gap-4" id="form-payable">
+            
+            {/* Fornecedor */}
             <div className="space-y-1.5 col-span-1 md:col-span-2">
-              <label className="text-xs font-semibold text-slate-600" htmlFor="payable-supplier-select">Fornecedor / Favorecido *</label>
+              <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">Fornecedor / Favorecido *</label>
               {suppliers.length > 0 ? (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   <select 
@@ -389,9 +724,12 @@ export default function AccountsPayableView({
                     onChange={e => {
                       setSupplierId(e.target.value);
                       const selectedSup = suppliers.find(s => s.id === e.target.value);
-                      if (selectedSup) setSupplierNameInput(selectedSup.name);
+                      if (selectedSup) {
+                        setSupplierNameInput(selectedSup.name);
+                        setSupplierCnpj(selectedSup.cnpjCpf || '');
+                      }
                     }}
-                    className="text-sm px-3 py-2 border border-slate-200 rounded-lg focus:outline-hidden focus:border-rose-500 transition"
+                    className="text-xs px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-hidden focus:border-rose-500 font-medium"
                   >
                     <option value="">-- Selecione do Cadastro de Fornecedores --</option>
                     {suppliers.map(s => (
@@ -404,7 +742,8 @@ export default function AccountsPayableView({
                     value={supplierNameInput}
                     onChange={e => { setSupplierNameInput(e.target.value); setSupplierId(''); }}
                     placeholder="Ou digite o nome do Fornecedor / Empresa"
-                    className="text-sm px-3 py-2 border border-slate-200 rounded-lg focus:outline-hidden focus:border-rose-500 transition"
+                    className="text-xs px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-hidden focus:border-rose-500 font-medium"
+                    required
                   />
                 </div>
               ) : (
@@ -414,19 +753,20 @@ export default function AccountsPayableView({
                   value={supplierNameInput}
                   onChange={e => setSupplierNameInput(e.target.value)}
                   placeholder="Nome da empresa ou fornecedor (Ex: Enel Energia, AutoPeças Brasil)" 
-                  className="w-full text-sm px-3 py-2 border border-slate-200 rounded-lg focus:outline-hidden focus:border-rose-500 transition"
+                  className="w-full text-xs px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-hidden focus:border-rose-500 font-medium"
                   required
                 />
               )}
             </div>
 
+            {/* Categoria */}
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-slate-600" htmlFor="payable-category-select">Categoria da Despesa *</label>
+              <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">Categoria da Despesa *</label>
               <select 
                 id="payable-category-select"
                 value={category}
                 onChange={e => setCategory(e.target.value)}
-                className="w-full text-sm px-3 py-2 border border-slate-200 rounded-lg focus:outline-hidden focus:border-rose-500 transition"
+                className="w-full text-xs px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-hidden focus:border-rose-500 font-semibold"
               >
                 {CATEGORIES.map(cat => (
                   <option key={cat} value={cat}>{cat}</option>
@@ -434,23 +774,25 @@ export default function AccountsPayableView({
               </select>
             </div>
 
+            {/* Descrição */}
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-slate-600" htmlFor="payable-description-input">Descrição da Conta *</label>
+              <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">Descrição da Conta *</label>
               <input 
                 id="payable-description-input"
                 type="text" 
                 value={description}
                 onChange={e => setDescription(e.target.value)}
                 placeholder="Ex: Lote de Amortecedores e Óleo NFe #5502" 
-                className="w-full text-sm px-3 py-2 border border-slate-200 rounded-lg focus:outline-hidden focus:border-rose-500 transition"
+                className="w-full text-xs px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-hidden focus:border-rose-500 font-medium"
                 required
               />
             </div>
 
+            {/* Valor Total */}
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-slate-600" htmlFor="payable-amount-input">Valor Total (R$) *</label>
+              <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">Valor Total (R$) *</label>
               <div className="relative">
-                <span className="absolute left-3 top-2.5 text-xs text-slate-400 font-semibold">R$</span>
+                <span className="absolute left-3 top-2.5 text-xs text-slate-400 font-bold">R$</span>
                 <input 
                   id="payable-amount-input"
                   type="number" 
@@ -459,65 +801,176 @@ export default function AccountsPayableView({
                   value={totalAmount}
                   onChange={e => setTotalAmount(e.target.value)}
                   placeholder="850.00" 
-                  className="w-full text-sm pl-9 pr-3 py-2 border border-slate-200 rounded-lg focus:outline-hidden focus:border-rose-500 transition font-mono font-semibold"
+                  className="w-full text-xs pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-hidden focus:border-rose-500 font-mono font-bold text-slate-800"
                   required
                 />
               </div>
             </div>
 
+            {/* Parcelamento */}
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-slate-600" htmlFor="payable-installments-select">Parcelamento *</label>
+              <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">Parcelamento & Boletos *</label>
               <select 
                 id="payable-installments-select"
                 value={installmentsCount}
-                onChange={e => setInstallmentsCount(e.target.value)}
-                className="w-full text-sm px-3 py-2 border border-slate-200 rounded-lg focus:outline-hidden focus:border-rose-500 transition font-medium"
+                onChange={e => {
+                  setInstallmentsCount(e.target.value);
+                  setCustomInstallments([]);
+                }}
+                className="w-full text-xs px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-hidden focus:border-rose-500 font-semibold"
               >
                 <option value="1">1x Parcela Única / Boleto À Vista</option>
-                <option value="2">2x Parcelado</option>
-                <option value="3">3x Parcelado</option>
-                <option value="6">6x Parcelado</option>
-                <option value="12">12x Parcelado</option>
+                <option value="2">2x Parcelado (2 Boletos)</option>
+                <option value="3">3x Parcelado (3 Boletos)</option>
+                <option value="4">4x Parcelado (4 Boletos)</option>
+                <option value="5">5x Parcelado (5 Boletos)</option>
+                <option value="6">6x Parcelado (6 Boletos)</option>
+                <option value="12">12x Parcelado (12 Boletos)</option>
               </select>
             </div>
 
+            {/* Vencimento da 1ª Parcela */}
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-slate-600" htmlFor="payable-due-date-input">Vencimento da 1ª Parcela *</label>
+              <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">Vencimento da 1ª Parcela *</label>
               <input 
                 id="payable-due-date-input"
                 type="date" 
                 value={firstDueDate}
                 onChange={e => setFirstDueDate(e.target.value)}
-                className="w-full text-sm px-3 py-2 border border-slate-200 rounded-lg focus:outline-hidden focus:border-rose-500 transition font-mono"
+                className="w-full text-xs px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-hidden focus:border-rose-500 font-mono font-semibold"
                 required
               />
             </div>
 
+            {/* Linha Digitável do Boleto */}
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-slate-600" htmlFor="payable-notes-input">Observações</label>
+              <label className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center justify-between">
+                <span>Linha Digitável do Boleto (47/48 dígitos)</span>
+                {boletoBankName && <span className="text-rose-600 font-semibold">{boletoBankName}</span>}
+              </label>
+              <input 
+                id="payable-linha-digitavel-input"
+                type="text" 
+                value={boletoLinhaDigitavel}
+                onChange={e => handleLinhaDigitavelChange(e.target.value)}
+                placeholder="Ex: 34191.09008 00000.123450 00000.000000 1 98760000045000" 
+                className="w-full text-xs px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-hidden focus:border-rose-500 font-mono"
+              />
+            </div>
+
+            {/* Dados Fiscais da NF-e (Opcional) */}
+            <div className="space-y-1.5 sm:col-span-2 bg-slate-50/80 p-3 rounded-2xl border border-slate-200 grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div>
+                <label className="text-[11px] font-bold text-slate-600 uppercase block">Número da NF-e</label>
+                <input
+                  type="text"
+                  value={nfeNumber}
+                  onChange={e => setNfeNumber(e.target.value)}
+                  placeholder="Ex: 5502"
+                  className="w-full text-xs px-3 py-1.5 bg-white border border-slate-200 rounded-lg focus:outline-hidden focus:border-rose-500 font-mono"
+                />
+              </div>
+
+              <div>
+                <label className="text-[11px] font-bold text-slate-600 uppercase block">Série</label>
+                <input
+                  type="text"
+                  value={nfeSeries}
+                  onChange={e => setNfeSeries(e.target.value)}
+                  placeholder="1"
+                  className="w-full text-xs px-3 py-1.5 bg-white border border-slate-200 rounded-lg focus:outline-hidden focus:border-rose-500 font-mono"
+                />
+              </div>
+
+              <div>
+                <label className="text-[11px] font-bold text-slate-600 uppercase block">Chave de Acesso (44 dígitos)</label>
+                <input
+                  type="text"
+                  value={nfeAccessKey}
+                  onChange={e => setNfeAccessKey(e.target.value.replace(/\D/g, ''))}
+                  placeholder="3526071234567800019055001..."
+                  maxLength={44}
+                  className="w-full text-xs px-3 py-1.5 bg-white border border-slate-200 rounded-lg focus:outline-hidden focus:border-rose-500 font-mono"
+                />
+              </div>
+            </div>
+
+            {/* Anexos (PDFs de Boletos, Imagens, Recibos) */}
+            <div className="space-y-2 col-span-1 md:col-span-2">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                  <Paperclip className="w-3.5 h-3.5 text-rose-500" /> Anexos de Boletos e Notas Fiscais (PDF / Imagem)
+                </label>
+                <input
+                  type="file"
+                  ref={attachmentInputRef}
+                  onChange={handleFormAttachmentUpload}
+                  accept=".pdf,.png,.jpg,.jpeg,.xml"
+                  className="hidden"
+                  id="doc-attachment-input"
+                />
+                <button
+                  type="button"
+                  onClick={() => attachmentInputRef.current?.click()}
+                  className="px-3 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg transition flex items-center gap-1 cursor-pointer"
+                >
+                  <Upload className="w-3 h-3" /> Anexar Arquivo
+                </button>
+              </div>
+
+              {formAttachments.length > 0 ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {formAttachments.map((att, idx) => (
+                    <div key={att.id || idx} className="p-2.5 bg-slate-50 rounded-xl border border-slate-200 flex items-center justify-between text-xs">
+                      <div className="flex items-center gap-2 truncate">
+                        <FileText className="w-4 h-4 text-rose-500 shrink-0" />
+                        <span className="font-semibold text-slate-800 truncate">{att.name}</span>
+                        <span className="text-[10px] text-slate-400 font-mono">({att.fileSize || 'PDF'})</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setFormAttachments(prev => prev.filter((_, i) => i !== idx))}
+                        className="text-slate-400 hover:text-rose-600 p-1 cursor-pointer"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-[11px] text-slate-400 italic">
+                  Nenhum arquivo anexado ainda. Você pode anexar boletos em PDF para visualização e download posterior.
+                </p>
+              )}
+            </div>
+
+            {/* Observações */}
+            <div className="space-y-1.5 col-span-1 md:col-span-2">
+              <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">Observações Gerais</label>
               <input 
                 id="payable-notes-input"
                 type="text" 
                 value={notes}
                 onChange={e => setNotes(e.target.value)}
-                placeholder="Ex: Código de barras do boleto enviado no e-mail" 
-                className="w-full text-sm px-3 py-2 border border-slate-200 rounded-lg focus:outline-hidden focus:border-rose-500 transition"
+                placeholder="Ex: Boleto com 5% de desconto para pagamento até o dia 05." 
+                className="w-full text-xs px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-hidden focus:border-rose-500 font-medium"
               />
             </div>
 
+            {/* Action Buttons */}
             <div className="pt-2 flex gap-3 col-span-1 md:col-span-2">
               <button 
                 id="btn-save-payable-submit"
                 type="submit" 
-                className="bg-rose-600 text-white text-sm font-semibold px-5 py-2.5 rounded-lg hover:bg-rose-700 transition"
+                className="bg-rose-600 text-white text-xs font-bold px-6 py-3 rounded-xl hover:bg-rose-700 transition cursor-pointer shadow-md flex items-center gap-2"
               >
-                Lançar Conta a Pagar
+                <Check className="w-4 h-4" /> Salvar Conta a Pagar
               </button>
               <button 
                 id="btn-cancel-payable"
                 type="button" 
                 onClick={resetForm} 
-                className="bg-slate-100 hover:bg-slate-200 text-slate-600 text-sm font-semibold px-5 py-2.5 rounded-lg transition"
+                className="bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-semibold px-5 py-3 rounded-xl transition cursor-pointer"
               >
                 Cancelar
               </button>
@@ -526,20 +979,21 @@ export default function AccountsPayableView({
         </div>
       )}
 
-      {/* Main Table & Controls */}
+      {/* MAIN TABLE & CONTROLS */}
       {!isFormOpen && (
-        <div className="bg-white border border-slate-100 rounded-xl shadow-xs overflow-hidden" id="payables-list-panel">
-          {/* Controls Header */}
+        <div className="bg-white border border-slate-100 rounded-3xl shadow-xs overflow-hidden" id="payables-list-panel">
+          
+          {/* Controls Bar */}
           <div className="p-4 border-b border-slate-100 bg-slate-50 flex flex-col sm:flex-row items-center justify-between gap-3">
             <div className="relative w-full max-w-md">
               <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
               <input 
                 id="payable-search-input"
                 type="text" 
-                placeholder="Buscar por fornecedor, código (CP-001) ou descrição..." 
+                placeholder="Buscar por fornecedor, código (CP-001), NF-e ou descrição..." 
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
-                className="w-full text-sm pl-10 pr-4 py-2 bg-white border border-slate-200 rounded-lg focus:outline-hidden focus:border-rose-500 transition"
+                className="w-full text-xs pl-10 pr-4 py-2 bg-white border border-slate-200 rounded-xl focus:outline-hidden focus:border-rose-500 transition font-medium"
               />
             </div>
 
@@ -548,7 +1002,7 @@ export default function AccountsPayableView({
                 id="payable-category-filter"
                 value={categoryFilter}
                 onChange={e => setCategoryFilter(e.target.value)}
-                className="text-xs px-3 py-2 bg-white border border-slate-200 rounded-lg focus:outline-hidden focus:border-rose-500 transition font-medium"
+                className="text-xs px-3 py-2 bg-white border border-slate-200 rounded-xl focus:outline-hidden focus:border-rose-500 transition font-semibold"
               >
                 <option value="all">Todas as Categorias</option>
                 {CATEGORIES.map(cat => (
@@ -560,7 +1014,7 @@ export default function AccountsPayableView({
                 id="payable-status-filter"
                 value={statusFilter}
                 onChange={e => setStatusFilter(e.target.value as any)}
-                className="text-xs px-3 py-2 bg-white border border-slate-200 rounded-lg focus:outline-hidden focus:border-rose-500 transition font-medium"
+                className="text-xs px-3 py-2 bg-white border border-slate-200 rounded-xl focus:outline-hidden focus:border-rose-500 transition font-semibold"
               >
                 <option value="all">Todos os Status</option>
                 <option value="pending">Pendentes</option>
@@ -570,10 +1024,12 @@ export default function AccountsPayableView({
             </div>
           </div>
 
-          {/* Table */}
+          {/* Payables Table */}
           {filteredPayables.length === 0 ? (
-            <div className="p-8 text-center text-slate-400" id="payables-empty-state">
-              Nenhuma conta a pagar encontrada com os filtros selecionados.
+            <div className="p-12 text-center text-slate-400" id="payables-empty-state">
+              <FileText className="w-10 h-10 text-slate-300 mx-auto mb-2" />
+              <p className="font-semibold text-slate-600 text-sm">Nenhuma conta a pagar encontrada com os filtros atuais.</p>
+              <p className="text-xs text-slate-400">Clique no botão "Lançar Conta a Pagar" para registrar novas despesas ou boletos.</p>
             </div>
           ) : (
             <div className="overflow-x-auto">
@@ -581,11 +1037,10 @@ export default function AccountsPayableView({
                 <thead>
                   <tr className="border-b border-slate-100 text-xs font-semibold uppercase text-slate-400 bg-slate-50/50">
                     <th className="p-4">Código / Fornecedor</th>
-                    <th className="p-4">Categoria & Descrição</th>
-                    <th className="p-4">Vencimento</th>
+                    <th className="p-4">Despesa & Documentos</th>
+                    <th className="p-4">Parcelamento & Status</th>
                     <th className="p-4">Valor Total</th>
                     <th className="p-4">Pago / Saldo</th>
-                    <th className="p-4">Status</th>
                     <th className="p-4 text-right">Ações</th>
                   </tr>
                 </thead>
@@ -593,72 +1048,249 @@ export default function AccountsPayableView({
                   {filteredPayables.map(item => {
                     const isPaid = item.status === 'paid';
                     const isPartial = item.status === 'partially_paid';
+                    const isExpanded = Boolean(expandedRowIds[item.id]);
+
+                    const installments = item.installments || [];
+                    const paidCount = installments.filter(inst => inst.status === 'paid').length;
+                    const totalInst = installments.length || 1;
 
                     return (
-                      <tr key={item.id} className="hover:bg-slate-50/50 transition duration-150" id={`payable-row-${item.id}`}>
-                        <td className="p-4">
-                          <p className="font-mono text-xs font-bold text-rose-600">{item.code}</p>
-                          <p className="font-semibold text-slate-800 text-sm">{item.supplierName}</p>
-                        </td>
-                        <td className="p-4">
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-slate-100 text-slate-700 text-[11px] font-medium rounded-md mb-1">
-                            <Tag className="w-3 h-3 text-slate-400" /> {item.category}
-                          </span>
-                          <p className="text-xs text-slate-600">{item.description}</p>
-                        </td>
-                        <td className="p-4 font-mono text-xs text-slate-600">
-                          <span className="flex items-center gap-1">
-                            <Calendar className="w-3 h-3 text-slate-400" /> {item.dueDate}
-                          </span>
-                        </td>
-                        <td className="p-4 font-mono font-semibold text-slate-800">
-                          R$ {item.totalAmount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                        </td>
-                        <td className="p-4 font-mono text-xs">
-                          <p className="text-emerald-600 font-semibold">
-                            Pago: R$ {item.paidAmount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                          </p>
-                          <p className={`font-semibold ${item.remainingAmount > 0 ? 'text-rose-600' : 'text-slate-400'}`}>
-                            Resta: R$ {item.remainingAmount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                          </p>
-                        </td>
-                        <td className="p-4">
-                          {isPaid ? (
-                            <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-emerald-100 text-emerald-800 text-xs font-semibold rounded-full">
-                              <CheckCircle className="w-3.5 h-3.5" /> Quitada
+                      <React.Fragment key={item.id}>
+                        <tr className="hover:bg-slate-50/60 transition duration-150" id={`payable-row-${item.id}`}>
+                          
+                          {/* Código & Fornecedor */}
+                          <td className="p-4 align-top">
+                            <p className="font-mono text-xs font-black text-rose-600">{item.code}</p>
+                            <p className="font-bold text-slate-900 text-sm">{item.supplierName}</p>
+                            <span className="text-[11px] text-slate-400 font-mono">
+                              Criado em: {new Date(item.createdAt).toLocaleDateString('pt-BR')}
                             </span>
-                          ) : isPartial ? (
-                            <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-amber-100 text-amber-800 text-xs font-semibold rounded-full">
-                              Parcialmente Paga
-                            </span>
-                          ) : (
-                            <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-rose-50 text-rose-700 text-xs font-semibold rounded-full border border-rose-100">
-                              Pendente
-                            </span>
-                          )}
-                        </td>
-                        <td className="p-4 text-right space-x-2">
-                          {!isPaid && (
-                            <button
-                              id={`btn-pay-payable-${item.id}`}
-                              onClick={() => openPayModal(item)}
-                              className="text-rose-700 hover:text-rose-900 bg-rose-50 hover:bg-rose-100 font-semibold px-2.5 py-1 rounded-md transition text-xs border border-rose-200 inline-flex items-center gap-1"
-                              title="Pagar / Abater Despesa"
-                            >
-                              <CreditCard className="w-3.5 h-3.5" /> Pagar Conta
-                            </button>
-                          )}
+                          </td>
 
-                          <button
-                            id={`btn-view-payable-details-${item.id}`}
-                            onClick={() => { setSelectedPayable(item); setIsDetailModalOpen(true); }}
-                            className="text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 font-medium px-2 py-1 rounded-md transition text-xs inline-flex items-center gap-1"
-                            title="Ver Detalhes do Parcelamento"
-                          >
-                            <Eye className="w-3.5 h-3.5" />
-                          </button>
-                        </td>
-                      </tr>
+                          {/* Categoria, Descrição & Tags de Documento */}
+                          <td className="p-4 align-top space-y-1.5">
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-slate-100 text-slate-700 text-[11px] font-semibold rounded-md">
+                                <Tag className="w-3 h-3 text-slate-400" /> {item.category}
+                              </span>
+
+                              {item.nfeNumber && (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-indigo-50 text-indigo-700 border border-indigo-200 text-[11px] font-bold rounded-md">
+                                  <FileCode className="w-3 h-3" /> NF-e #{item.nfeNumber}
+                                </span>
+                              )}
+
+                              {(item.boletoLinhaDigitavel || item.boletoBarcode) && (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-rose-50 text-rose-700 border border-rose-200 text-[11px] font-bold rounded-md">
+                                  <Receipt className="w-3 h-3" /> Boleto {item.boletoBankName ? `(${item.boletoBankName})` : ''}
+                                </span>
+                              )}
+
+                              {item.attachments && item.attachments.length > 0 && (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-emerald-50 text-emerald-700 border border-emerald-200 text-[11px] font-bold rounded-md">
+                                  <Paperclip className="w-3 h-3" /> {item.attachments.length} Anexo(s)
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-xs text-slate-600">{item.description}</p>
+                          </td>
+
+                          {/* Parcelamento & Status das Parcelas */}
+                          <td className="p-4 align-top space-y-2">
+                            {/* Visual Progress Pill */}
+                            <div className="flex items-center justify-between text-xs">
+                              <span className="font-semibold text-slate-800">
+                                {paidCount} de {totalInst} Parcela(s) Paga(s)
+                              </span>
+                              <span className="font-mono text-[11px] font-bold text-slate-500">
+                                {Math.round((paidCount / totalInst) * 100)}%
+                              </span>
+                            </div>
+
+                            {/* Mini Progress Bar */}
+                            <div className="w-full bg-slate-200 h-1.5 rounded-full overflow-hidden">
+                              <div 
+                                className={`h-full transition-all duration-300 ${
+                                  isPaid ? 'bg-emerald-500' : 'bg-rose-500'
+                                }`}
+                                style={{ width: `${Math.min(100, Math.round((paidCount / totalInst) * 100))}%` }}
+                              />
+                            </div>
+
+                            {/* Individual Installment Status Chips */}
+                            <div className="flex items-center gap-1 flex-wrap">
+                              {installments.map((inst) => {
+                                const isInstPaid = inst.status === 'paid';
+                                const isInstOverdue = !isInstPaid && new Date(inst.dueDate + 'T23:59:59Z') < new Date();
+
+                                return (
+                                  <span
+                                    key={inst.id}
+                                    title={`Parcela ${inst.installmentNumber}: R$ ${inst.amount.toFixed(2)} - Venc: ${inst.dueDate}${isInstPaid ? ` (Pago via ${inst.paymentMethod || 'PIX'})` : ''}`}
+                                    className={`px-2 py-0.5 rounded-lg text-[10px] font-bold flex items-center gap-1 border ${
+                                      isInstPaid
+                                        ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                                        : isInstOverdue
+                                        ? 'bg-red-50 text-red-800 border-red-300 animate-pulse'
+                                        : 'bg-amber-50 text-amber-800 border-amber-200'
+                                    }`}
+                                  >
+                                    <span>P{inst.installmentNumber}:</span>
+                                    {isInstPaid ? (
+                                      <Check className="w-2.5 h-2.5 text-emerald-600" />
+                                    ) : (
+                                      <span>R$ {inst.amount.toFixed(0)}</span>
+                                    )}
+                                  </span>
+                                );
+                              })}
+
+                              {installments.length > 1 && (
+                                <button
+                                  type="button"
+                                  onClick={() => toggleRowExpansion(item.id)}
+                                  className="text-[10px] text-rose-600 hover:text-rose-800 font-bold ml-1 flex items-center cursor-pointer"
+                                >
+                                  {isExpanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                                </button>
+                              )}
+                            </div>
+                          </td>
+
+                          {/* Valor Total */}
+                          <td className="p-4 align-top font-mono font-bold text-slate-900 text-sm">
+                            R$ {item.totalAmount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                          </td>
+
+                          {/* Pago / Saldo Restante */}
+                          <td className="p-4 align-top font-mono text-xs">
+                            <p className="text-emerald-600 font-bold">
+                              Pago: R$ {item.paidAmount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                            </p>
+                            <p className={`font-bold ${item.remainingAmount > 0 ? 'text-rose-600' : 'text-slate-400'}`}>
+                              Resta: R$ {item.remainingAmount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                            </p>
+                          </td>
+
+                          {/* Botões de Ação */}
+                          <td className="p-4 align-top text-right space-y-1.5">
+                            <div className="flex items-center justify-end gap-1.5 flex-wrap">
+                              
+                              {/* Botão Pagar / Baixar Parcela */}
+                              {!isPaid && (
+                                <button
+                                  id={`btn-settle-payable-${item.id}`}
+                                  onClick={() => openSettleModal(item)}
+                                  className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-xl transition text-xs flex items-center gap-1 cursor-pointer shadow-xs"
+                                  title="Baixar Parcela / Pagar Conta"
+                                >
+                                  <CreditCard className="w-3.5 h-3.5" /> Pagar Parcela
+                                </button>
+                              )}
+
+                              {/* Botão Visualizar Documentos / Baixar PDF */}
+                              <button
+                                id={`btn-view-doc-${item.id}`}
+                                onClick={() => openDocModal(item)}
+                                className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold rounded-xl transition text-xs flex items-center gap-1 cursor-pointer"
+                                title="Visualizar Boleto, DANFE e Baixar em PDF"
+                              >
+                                <FileText className="w-3.5 h-3.5 text-slate-600" /> Documentos / PDF
+                              </button>
+
+                              {/* Detalhes do Registro */}
+                              <button
+                                id={`btn-view-details-${item.id}`}
+                                onClick={() => openDetailModal(item)}
+                                className="p-1.5 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100 transition cursor-pointer"
+                                title="Ver Detalhes do Registro"
+                              >
+                                <Eye className="w-4 h-4" />
+                              </button>
+
+                            </div>
+                          </td>
+                        </tr>
+
+                        {/* EXPANDED SUB-ROW FOR DETAILED INSTALLMENTS */}
+                        {isExpanded && (
+                          <tr className="bg-slate-50/80">
+                            <td colSpan={6} className="p-4 pl-8 border-b border-slate-200 space-y-3">
+                              <div className="flex items-center justify-between">
+                                <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                                  <Layers className="w-4 h-4 text-rose-500" /> Detalhamento das Parcelas ({item.code})
+                                </h4>
+                                <span className="text-xs text-slate-500 font-mono">
+                                  {installments.length} parcela(s) vinculadas
+                                </span>
+                              </div>
+
+                              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5">
+                                {installments.map((inst) => {
+                                  const isInstPaid = inst.status === 'paid';
+                                  const isInstOverdue = !isInstPaid && new Date(inst.dueDate + 'T23:59:59Z') < new Date();
+
+                                  return (
+                                    <div
+                                      key={inst.id}
+                                      className={`p-3 rounded-2xl border text-xs flex flex-col justify-between space-y-1.5 ${
+                                        isInstPaid
+                                          ? 'bg-emerald-50/60 border-emerald-200'
+                                          : isInstOverdue
+                                          ? 'bg-red-50/60 border-red-200'
+                                          : 'bg-white border-slate-200'
+                                      }`}
+                                    >
+                                      <div className="flex items-center justify-between font-bold">
+                                        <span>Parcela {inst.installmentNumber} de {inst.totalInstallments}</span>
+                                        {isInstPaid ? (
+                                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-600 text-white flex items-center gap-1 font-bold">
+                                            <Check className="w-2.5 h-2.5" /> Paga
+                                          </span>
+                                        ) : isInstOverdue ? (
+                                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-red-600 text-white font-bold">
+                                            Vencida
+                                          </span>
+                                        ) : (
+                                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500 text-white font-bold">
+                                            Em Aberto
+                                          </span>
+                                        )}
+                                      </div>
+
+                                      <div className="flex justify-between font-mono text-slate-700">
+                                        <span>Valor:</span>
+                                        <span className="font-bold">R$ {inst.amount.toFixed(2)}</span>
+                                      </div>
+
+                                      <div className="flex justify-between font-mono text-slate-500 text-[11px]">
+                                        <span>Vencimento:</span>
+                                        <span>{new Date(inst.dueDate + 'T12:00:00Z').toLocaleDateString('pt-BR')}</span>
+                                      </div>
+
+                                      {isInstPaid ? (
+                                        <div className="pt-1 border-t border-emerald-200 text-[10px] text-emerald-800 font-mono">
+                                          Pago em {inst.paymentDate ? new Date(inst.paymentDate).toLocaleDateString('pt-BR') : '-'} ({inst.paymentMethod || 'PIX'})
+                                        </div>
+                                      ) : (
+                                        <div className="pt-1 border-t border-slate-100 flex justify-end">
+                                          <button
+                                            type="button"
+                                            onClick={() => openSettleModal(item)}
+                                            className="text-rose-600 hover:text-rose-800 font-bold text-[11px] flex items-center gap-1 cursor-pointer"
+                                          >
+                                            Dar Baixa <ArrowRight className="w-3 h-3" />
+                                          </button>
+                                        </div>
+                                      )}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </React.Fragment>
                     );
                   })}
                 </tbody>
@@ -668,139 +1300,65 @@ export default function AccountsPayableView({
         </div>
       )}
 
-      {/* MODAL 1: Pagar Conta / Abater */}
-      {isPayModalOpen && selectedPayable && (
-        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs z-50 flex items-center justify-center p-4 animate-fade-in" id="modal-pay-payable">
-          <div className="bg-white rounded-xl shadow-xl max-w-lg w-full p-6 border border-slate-100">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3 mb-4">
-              <h3 className="font-bold text-slate-800 flex items-center gap-2">
-                <CreditCard className="w-5 h-5 text-rose-600" />
-                Registrar Pagamento de Despesa
-              </h3>
-              <button onClick={() => setIsPayModalOpen(false)} className="text-slate-400 hover:text-slate-600 p-1">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
+      {/* MODAL: VISUALIZADOR DE DOCUMENTOS, BOLETOS & DOWNLOAD PDF */}
+      <AccountPayableDocumentModal
+        isOpen={isDocModalOpen}
+        onClose={() => { setIsDocModalOpen(false); setSelectedPayable(null); }}
+        payable={selectedPayable}
+        companyInfo={db.companyInfo}
+        currentUser={currentUser}
+        onAddAttachment={handleAddAttachment}
+        onDeleteAttachment={handleDeleteAttachment}
+      />
 
-            <div className="bg-slate-50 p-3 rounded-lg border border-slate-200/60 mb-4 text-xs space-y-1">
-              <p><span className="font-semibold text-slate-700">Título:</span> {selectedPayable.code} - {selectedPayable.description}</p>
-              <p><span className="font-semibold text-slate-700">Favorecido:</span> {selectedPayable.supplierName}</p>
-              <div className="flex justify-between font-mono pt-1 text-slate-800">
-                <span>Valor Total: R$ {selectedPayable.totalAmount.toFixed(2)}</span>
-                <span className="text-emerald-600">Pago: R$ {selectedPayable.paidAmount.toFixed(2)}</span>
-                <span className="text-rose-600 font-bold">Resta a Pagar: R$ {selectedPayable.remainingAmount.toFixed(2)}</span>
-              </div>
-            </div>
+      {/* MODAL: BAIXA E PAGAMENTO DE PARCELAS */}
+      <AccountPayableSettleModal
+        isOpen={isPayModalOpen}
+        onClose={() => { setIsPayModalOpen(false); setSelectedPayable(null); }}
+        payable={selectedPayable}
+        currentUser={currentUser}
+        companyInfo={db.companyInfo}
+        onConfirmPayment={handleConfirmPayment}
+      />
 
-            {errorMsg && (
-              <div className="mb-4 p-3 bg-rose-50 text-rose-800 text-xs rounded-lg border border-rose-100 flex items-center gap-2">
-                <AlertCircle className="w-4 h-4 flex-shrink-0" />
-                <span>{errorMsg}</span>
-              </div>
-            )}
-
-            <form onSubmit={handleExecutePayment} className="space-y-4">
-              <div>
-                <label className="text-xs font-semibold text-slate-600">Valor Efetivamente Pago (R$) *</label>
-                <div className="relative mt-1">
-                  <span className="absolute left-3 top-2.5 text-xs text-slate-400 font-semibold">R$</span>
-                  <input 
-                    type="number" 
-                    step="0.01"
-                    min="0.01"
-                    max={selectedPayable.remainingAmount}
-                    value={paymentAmount}
-                    onChange={e => setPaymentAmount(e.target.value)}
-                    className="w-full text-sm pl-9 pr-3 py-2 border border-slate-200 rounded-lg focus:outline-hidden focus:border-rose-500 font-mono font-bold text-slate-800"
-                    required
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs font-semibold text-slate-600">Forma de Saída *</label>
-                  <select 
-                    value={paymentMethod}
-                    onChange={e => setPaymentMethod(e.target.value)}
-                    className="w-full text-sm mt-1 px-3 py-2 border border-slate-200 rounded-lg focus:outline-hidden focus:border-rose-500"
-                  >
-                    <option value="PIX">PIX</option>
-                    <option value="Boleto Bancário">Boleto Bancário</option>
-                    <option value="Transferência / TED">Transferência / TED</option>
-                    <option value="Cartão de Crédito">Cartão de Crédito Corporativo</option>
-                    <option value="Dinheiro">Dinheiro (Caixa Interno)</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="text-xs font-semibold text-slate-600">Data do Pagamento *</label>
-                  <input 
-                    type="date" 
-                    value={paymentDate}
-                    onChange={e => setPaymentDate(e.target.value)}
-                    className="w-full text-sm mt-1 px-3 py-2 border border-slate-200 rounded-lg focus:outline-hidden focus:border-rose-500 font-mono"
-                    required
-                  />
-                </div>
-              </div>
-
-              <div className="pt-3 flex gap-2 justify-end">
-                <button 
-                  type="button" 
-                  onClick={() => setIsPayModalOpen(false)}
-                  className="px-4 py-2 bg-slate-100 text-slate-600 rounded-lg text-xs font-semibold hover:bg-slate-200 transition"
-                >
-                  Cancelar
-                </button>
-                <button 
-                  type="submit" 
-                  className="px-4 py-2 bg-rose-600 text-white rounded-lg text-xs font-semibold hover:bg-rose-700 transition"
-                >
-                  Confirmar Pagamento
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL 2: Detalhes do Parcelamento */}
+      {/* MODAL: DETALHES GERAIS DO REGISTRO */}
       {isDetailModalOpen && selectedPayable && (
-        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs z-50 flex items-center justify-center p-4 animate-fade-in" id="modal-payable-details">
-          <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full p-6 border border-slate-100">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3 mb-4">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-4 animate-fade-in" id="modal-payable-details">
+          <div className="bg-white rounded-3xl shadow-2xl max-w-2xl w-full p-6 border border-slate-100 space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div>
                 <h3 className="font-bold text-slate-800 text-base">
-                  Detalhamento de Despesa - {selectedPayable.code}
+                  Detalhamento de Despesa • {selectedPayable.code}
                 </h3>
                 <p className="text-xs text-slate-500">{selectedPayable.description} ({selectedPayable.supplierName})</p>
               </div>
-              <button onClick={() => setIsDetailModalOpen(false)} className="text-slate-400 hover:text-slate-600 p-1">
+              <button onClick={() => setIsDetailModalOpen(false)} className="text-slate-400 hover:text-slate-600 p-1.5 rounded-xl hover:bg-slate-100 cursor-pointer">
                 <X className="w-5 h-5" />
               </button>
             </div>
 
             <div className="space-y-3">
-              <div className="p-3 bg-slate-50 rounded-lg border border-slate-200/60 flex justify-between text-xs font-mono">
-                <div>Valor Total: R$ {selectedPayable.totalAmount.toFixed(2)}</div>
+              <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200/60 flex justify-between text-xs font-mono">
+                <div>Valor Total: <strong className="text-slate-900">R$ {selectedPayable.totalAmount.toFixed(2)}</strong></div>
                 <div className="text-emerald-600 font-bold">Pago: R$ {selectedPayable.paidAmount.toFixed(2)}</div>
                 <div className="text-rose-600 font-bold">Resta: R$ {selectedPayable.remainingAmount.toFixed(2)}</div>
               </div>
 
-              <div className="max-h-60 overflow-y-auto divide-y divide-slate-100 border border-slate-100 rounded-lg">
+              <div className="max-h-60 overflow-y-auto divide-y divide-slate-100 border border-slate-200 rounded-2xl">
                 {selectedPayable.installments.map(inst => (
                   <div key={inst.id} className="p-3 text-xs flex items-center justify-between hover:bg-slate-50">
                     <div>
-                      <p className="font-bold text-slate-700">Parcela {inst.installmentNumber} / {inst.totalInstallments}</p>
-                      <p className="text-slate-400 font-mono">Vencimento: {inst.dueDate}</p>
+                      <p className="font-bold text-slate-700">Parcela {inst.installmentNumber} de {inst.totalInstallments}</p>
+                      <p className="text-slate-400 font-mono text-[11px]">Vencimento: {inst.dueDate}</p>
                     </div>
                     <div className="text-right font-mono">
                       <p className="font-bold text-slate-800">R$ {inst.amount.toFixed(2)}</p>
                       {inst.status === 'paid' ? (
-                        <p className="text-emerald-600 font-semibold text-[11px]">Pago ({inst.paymentMethod})</p>
+                        <p className="text-emerald-600 font-bold text-[11px] flex items-center gap-1 justify-end">
+                          <Check className="w-3 h-3" /> Paga ({inst.paymentMethod})
+                        </p>
                       ) : (
-                        <p className="text-rose-600 text-[11px]">Pendente</p>
+                        <p className="text-rose-600 font-bold text-[11px]">Em Aberto</p>
                       )}
                     </div>
                   </div>
@@ -808,10 +1366,21 @@ export default function AccountsPayableView({
               </div>
             </div>
 
-            <div className="pt-4 flex justify-end">
+            <div className="pt-3 border-t border-slate-100 flex items-center justify-between">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsDetailModalOpen(false);
+                  openDocModal(selectedPayable);
+                }}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs rounded-xl transition flex items-center gap-1.5 cursor-pointer"
+              >
+                <FileText className="w-3.5 h-3.5" /> Abrir Documentos & Boletos PDF
+              </button>
+
               <button 
                 onClick={() => setIsDetailModalOpen(false)}
-                className="px-4 py-2 bg-slate-100 text-slate-700 rounded-lg text-xs font-semibold hover:bg-slate-200 transition"
+                className="px-5 py-2 bg-slate-800 text-white rounded-xl text-xs font-bold hover:bg-slate-900 transition cursor-pointer"
               >
                 Fechar
               </button>
@@ -819,6 +1388,7 @@ export default function AccountsPayableView({
           </div>
         </div>
       )}
+
     </div>
   );
 }

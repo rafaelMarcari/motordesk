@@ -4527,6 +4527,33 @@ export const INITIAL_ACCOUNTS_PAYABLE: AccountPayable[] = [
     status: 'paid',
     dueDate: '2026-07-15',
     createdAt: '2026-06-25T09:00:00Z',
+    nfeNumber: '4012',
+    nfeSeries: '1',
+    nfeAccessKey: '35260612345678000190550010000040121000040129',
+    boletoBankName: 'Banco do Brasil',
+    boletoLinhaDigitavel: '00190.00009 01234.567802 00000.000171 1 97750000185000',
+    boletoBarcode: '00191977500001850000000001234567800000000017',
+    attachments: [
+      {
+        id: 'att-1',
+        name: 'Boleto_BB_Amortecedores_CP-001.pdf',
+        type: 'boleto',
+        fileSize: '245 KB',
+        uploadedAt: '2026-06-25T09:15:00Z',
+        uploadedByName: 'Carlos Santos (Gerente)',
+        amount: 1850.00,
+        dueDate: '2026-07-15'
+      },
+      {
+        id: 'att-2',
+        name: 'Comprovante_Pix_Quitacao_1850.pdf',
+        type: 'receipt',
+        fileSize: '180 KB',
+        uploadedAt: '2026-07-15T14:20:00Z',
+        uploadedByName: 'Carlos Santos (Gerente)',
+        amount: 1850.00
+      }
+    ],
     installments: [
       {
         id: 'parc-p1-1',
@@ -4537,7 +4564,10 @@ export const INITIAL_ACCOUNTS_PAYABLE: AccountPayable[] = [
         dueDate: '2026-07-15',
         status: 'paid',
         paymentDate: '2026-07-15T14:20:00Z',
-        paymentMethod: 'Transferência / PIX'
+        paymentMethod: 'Transferência / PIX',
+        boletoLinhaDigitavel: '00190.00009 01234.567802 00000.000171 1 97750000185000',
+        boletoBarcode: '00191977500001850000000001234567800000000017',
+        boletoBankName: 'Banco do Brasil'
       }
     ]
   },
@@ -4546,34 +4576,189 @@ export const INITIAL_ACCOUNTS_PAYABLE: AccountPayable[] = [
     code: 'CP-2026-002',
     supplierId: 'sup-2',
     supplierName: 'EletroAuto Soluções Elétricas',
-    description: 'Baterias Moura 60Ah e Cabos de Velas',
+    description: 'Baterias Moura 60Ah e Cabos de Velas NGK (NFe #5502)',
     category: 'Peças / Fornecedores',
-    totalAmount: 920.00,
+    totalAmount: 1380.00,
     paidAmount: 460.00,
-    remainingAmount: 460.00,
+    remainingAmount: 920.00,
     status: 'partially_paid',
-    dueDate: '2026-08-10',
+    dueDate: '2026-09-10',
     createdAt: '2026-07-10T11:00:00Z',
+    nfeNumber: '5502',
+    nfeSeries: '1',
+    nfeAccessKey: '35260712345678000190550010000055021000055024',
+    boletoBankName: 'Itaú Unibanco',
+    boletoLinhaDigitavel: '34191.09008 00000.123450 00000.000000 1 98010000046000',
+    boletoBarcode: '34191980100000460001090000000123450000000000',
+    paymentCondition: '3x Boletos Bancários (30/60/90 dias)',
+    attachments: [
+      {
+        id: 'att-3',
+        name: 'DANFE_NFe_5502_EletroAuto.pdf',
+        type: 'nfe',
+        fileSize: '310 KB',
+        uploadedAt: '2026-07-10T11:05:00Z',
+        uploadedByName: 'Ana Lima (Atendimento)',
+        nfeNumber: '5502',
+        nfeAccessKey: '35260712345678000190550010000055021000055024'
+      },
+      {
+        id: 'att-4',
+        name: 'Boleto_Itau_Parc1_EletroAuto.pdf',
+        type: 'boleto',
+        fileSize: '190 KB',
+        uploadedAt: '2026-07-10T11:05:00Z',
+        uploadedByName: 'Ana Lima (Atendimento)',
+        amount: 460.00,
+        installmentNumber: 1,
+        dueDate: '2026-07-10'
+      },
+      {
+        id: 'att-5',
+        name: 'Boleto_Itau_Parc2_EletroAuto.pdf',
+        type: 'boleto',
+        fileSize: '190 KB',
+        uploadedAt: '2026-07-10T11:05:00Z',
+        uploadedByName: 'Ana Lima (Atendimento)',
+        amount: 460.00,
+        installmentNumber: 2,
+        dueDate: '2026-08-10'
+      },
+      {
+        id: 'att-6',
+        name: 'Boleto_Itau_Parc3_EletroAuto.pdf',
+        type: 'boleto',
+        fileSize: '190 KB',
+        uploadedAt: '2026-07-10T11:05:00Z',
+        uploadedByName: 'Ana Lima (Atendimento)',
+        amount: 460.00,
+        installmentNumber: 3,
+        dueDate: '2026-09-10'
+      },
+      {
+        id: 'att-7',
+        name: 'Comprovante_Pagto_Parc1_PIX.pdf',
+        type: 'receipt',
+        fileSize: '140 KB',
+        uploadedAt: '2026-07-10T11:30:00Z',
+        uploadedByName: 'Carlos Santos (Gerente)',
+        amount: 460.00,
+        installmentNumber: 1
+      }
+    ],
     installments: [
       {
         id: 'parc-p2-1',
         installmentNumber: 1,
-        totalInstallments: 2,
+        totalInstallments: 3,
         amount: 460.00,
         paidAmount: 460.00,
         dueDate: '2026-07-10',
         status: 'paid',
         paymentDate: '2026-07-10T11:30:00Z',
-        paymentMethod: 'Cartão de Crédito'
+        paymentMethod: 'PIX Bancário',
+        boletoLinhaDigitavel: '34191.09008 00000.123450 00000.000000 1 98010000046000',
+        boletoBarcode: '34191980100000460001090000000123450000000000',
+        boletoBankName: 'Itaú Unibanco'
       },
       {
         id: 'parc-p2-2',
         installmentNumber: 2,
-        totalInstallments: 2,
+        totalInstallments: 3,
         amount: 460.00,
         paidAmount: 0,
         dueDate: '2026-08-10',
-        status: 'pending'
+        status: 'pending',
+        boletoLinhaDigitavel: '34191.09008 00000.123468 00000.000000 1 98320000046000',
+        boletoBarcode: '34191983200000460001090000000123460000000000',
+        boletoBankName: 'Itaú Unibanco'
+      },
+      {
+        id: 'parc-p2-3',
+        installmentNumber: 3,
+        totalInstallments: 3,
+        amount: 460.00,
+        paidAmount: 0,
+        dueDate: '2026-09-10',
+        status: 'pending',
+        boletoLinhaDigitavel: '34191.09008 00000.123476 00000.000000 1 98630000046000',
+        boletoBarcode: '34191986300000460001090000000123470000000000',
+        boletoBankName: 'Itaú Unibanco'
+      }
+    ]
+  },
+  {
+    id: 'cp-3',
+    code: 'CP-2026-003',
+    supplierId: 'sup-3',
+    supplierName: 'Distribuidora Central de Pneus & Freios',
+    description: 'Lote de Pneus Pirelli 205/55R16 e Discos Fremax (NFe #8912)',
+    category: 'Peças / Fornecedores',
+    totalAmount: 2400.00,
+    paidAmount: 1200.00,
+    remainingAmount: 1200.00,
+    status: 'partially_paid',
+    dueDate: '2026-09-20',
+    createdAt: '2026-07-20T14:00:00Z',
+    nfeNumber: '8912',
+    nfeSeries: '2',
+    nfeAccessKey: '35260799887766000188550020000089121000089128',
+    boletoBankName: 'Bradesco',
+    boletoLinhaDigitavel: '23790.09006 90000.123452 00000.000000 2 98110000120000',
+    boletoBarcode: '23792981100001200000090000000123450000000000',
+    paymentCondition: '2x Boletos Bradesco',
+    attachments: [
+      {
+        id: 'att-8',
+        name: 'DANFE_NFe_8912_Pneus.pdf',
+        type: 'nfe',
+        fileSize: '420 KB',
+        uploadedAt: '2026-07-20T14:10:00Z',
+        uploadedByName: 'Carlos Santos (Gerente)'
+      },
+      {
+        id: 'att-9',
+        name: 'Boleto_Bradesco_Parc1_Pneus.pdf',
+        type: 'boleto',
+        fileSize: '210 KB',
+        uploadedAt: '2026-07-20T14:10:00Z',
+        uploadedByName: 'Carlos Santos (Gerente)'
+      },
+      {
+        id: 'att-10',
+        name: 'Boleto_Bradesco_Parc2_Pneus.pdf',
+        type: 'boleto',
+        fileSize: '210 KB',
+        uploadedAt: '2026-07-20T14:10:00Z',
+        uploadedByName: 'Carlos Santos (Gerente)'
+      }
+    ],
+    installments: [
+      {
+        id: 'parc-p3-1',
+        installmentNumber: 1,
+        totalInstallments: 2,
+        amount: 1200.00,
+        paidAmount: 1200.00,
+        dueDate: '2026-08-20',
+        status: 'paid',
+        paymentDate: '2026-08-20T10:15:00Z',
+        paymentMethod: 'Boleto Bancário',
+        boletoLinhaDigitavel: '23790.09006 90000.123452 00000.000000 2 98110000120000',
+        boletoBarcode: '23792981100001200000090000000123450000000000',
+        boletoBankName: 'Bradesco'
+      },
+      {
+        id: 'parc-p3-2',
+        installmentNumber: 2,
+        totalInstallments: 2,
+        amount: 1200.00,
+        paidAmount: 0,
+        dueDate: '2026-09-20',
+        status: 'pending',
+        boletoLinhaDigitavel: '23790.09006 90000.123460 00000.000000 2 98420000120000',
+        boletoBarcode: '23792984200001200000090000000123460000000000',
+        boletoBankName: 'Bradesco'
       }
     ]
   }

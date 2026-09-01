@@ -1941,6 +1941,27 @@ export interface BankStatementEntry {
   fitId?: string; // Identificador único da transação OFX/banco
 }
 
+export interface AccountPayableAttachment {
+  id: string;
+  name: string;
+  type: 'boleto' | 'nfe' | 'receipt' | 'invoice' | 'contract' | 'other';
+  fileUrl?: string; // Data URL / Base64 / Blob URL
+  fileType?: string; // Ex: 'application/pdf', 'image/png', 'application/xml'
+  fileSize?: string; // Ex: '350 KB'
+  uploadedAt: string;
+  uploadedByName?: string;
+  nfeAccessKey?: string;
+  nfeNumber?: string;
+  nfeSeries?: string;
+  barcode?: string;
+  linhaDigitavel?: string;
+  bankName?: string;
+  dueDate?: string;
+  amount?: number;
+  installmentNumber?: number;
+  notes?: string;
+}
+
 export interface AccountInstallment {
   id: string;
   installmentNumber: number;
@@ -1950,8 +1971,21 @@ export interface AccountInstallment {
   dueDate: string;
   status: 'pending' | 'partially_paid' | 'paid' | 'overdue';
   paymentDate?: string;
-  paymentMethod?: string; // PIX, Cartão, Dinheiro, Boleto
+  paymentMethod?: string; // PIX, Cartão, Dinheiro, Boleto, TED, Transferência
   receiptNotes?: string;
+  // Integração de Boleto & Documentos por Parcela
+  nfeNumber?: string;
+  boletoBarcode?: string;
+  boletoLinhaDigitavel?: string;
+  boletoBankName?: string;
+  boletoOurNumber?: string; // Nosso Número
+  attachmentUrl?: string;
+  attachmentName?: string;
+  attachmentType?: string;
+  paymentReceiptUrl?: string;
+  paymentReceiptName?: string;
+  paidAt?: string;
+  bankAccount?: string;
 }
 
 export interface AccountReceivable {
@@ -2029,6 +2063,18 @@ export interface AccountPayable {
   createdAt: string;
   installments: AccountInstallment[];
   notes?: string;
+  // Integração de Documentos, Boletos e NF-e
+  attachments?: AccountPayableAttachment[];
+  nfeAccessKey?: string; // Chave de acesso 44 dígitos
+  nfeNumber?: string;
+  nfeSeries?: string;
+  nfeIssueDate?: string;
+  nfeXmlContent?: string;
+  boletoBarcode?: string;
+  boletoLinhaDigitavel?: string;
+  boletoBankName?: string;
+  paymentCondition?: string; // Ex: '1x Boleto À Vista', '3x Boletos', '30/60/90'
+  documentType?: 'boleto' | 'nfe' | 'fatura' | 'recibo' | 'contrato' | 'diversos';
 }
 
 export interface FinancialTransaction {
