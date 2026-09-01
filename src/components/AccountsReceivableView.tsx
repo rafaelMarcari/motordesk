@@ -15,7 +15,9 @@ import { AppDatabase, INITIAL_PAYMENT_METHODS } from '../data/mockData';
 import ShareDocumentModal from './ShareDocumentModal';
 import PreTransmissionReviewModal, { PreTransmissionDocData } from './PreTransmissionReviewModal';
 import FiscalDocumentPrintModal from './FiscalDocumentPrintModal';
+import BoletoPrintModal from './BoletoPrintModal';
 import BillingAndReconciliationManager from './BillingAndReconciliationManager';
+import { buildBoletoDocument } from '../utils/boletoEngine';
 
 interface AccountsReceivableViewProps {
   db: AppDatabase;
@@ -240,47 +242,34 @@ export default function AccountsReceivableView({
   // Quick Generate Boleto for title with Pre-transmission review
   const handleQuickGenerateBoleto = (item: AccountReceivable) => {
     const existingBoletos = db.boletos || [];
-    const bolNumber = existingBoletos.length + 1;
-    const boletoCode = `BOL-${new Date().getFullYear()}-${String(bolNumber).padStart(3, '0')}`;
-    const barcodeNumber = `34191.${Math.floor(10000 + Math.random() * 90000)} ${Math.floor(10000 + Math.random() * 90000)}.${Math.floor(100000 + Math.random() * 900000)} ${Math.floor(10000 + Math.random() * 90000)}.${Math.floor(100000 + Math.random() * 900000)} 1 ${Math.floor(1000000000 + Math.random() * 9000000000)}`;
+    const client = (db.clients || []).find(c => c.id === item.clientId);
+    
+    // Gerar documento oficial estruturado via boletoEngine
+    const createdBoleto = buildBoletoDocument({
+      receivable: item,
+      companyInfo: db.companyInfo,
+      client,
+      bankConfig: db.companyInfo?.bankBoletoConfig,
+      pixConfig: db.companyInfo?.pixConfig
+    });
 
     const draftData: PreTransmissionDocData = {
       type: 'boleto',
-      title: `Conferência Pré-Emissão: Boleto Bancário #${boletoCode}`,
-      boletoCode,
-      bankName: 'Itaú Unibanco (341)',
-      bankCode: '341',
-      barcodeNumber,
-      dueDate: item.dueDate,
-      payerName: item.clientName,
-      payerCpfCnpj: item.clientCpf || '000.000.000-00',
-      totalAmount: item.remainingAmount > 0 ? item.remainingAmount : item.totalAmount,
+      title: `Conferência Pré-Emissão: Boleto Bancário #${createdBoleto.code}`,
+      boletoCode: createdBoleto.code,
+      bankName: createdBoleto.bankName,
+      bankCode: createdBoleto.bankCode,
+      barcodeNumber: createdBoleto.barcodeNumber,
+      dueDate: createdBoleto.dueDate,
+      payerName: createdBoleto.payerName,
+      payerCpfCnpj: createdBoleto.payerCpfCnpj,
+      totalAmount: createdBoleto.amount,
       companyName: db.companyInfo?.tradeName || db.companyInfo?.name || 'Oficina Mecânica',
       companyCnpj: db.companyInfo?.cnpj || '00.000.000/0001-91'
     };
 
     setPreTxData(draftData);
     setPendingTxAction(() => () => {
-      const createdBoleto: BoletoDocument = {
-        id: `bol-${Date.now()}`,
-        code: boletoCode,
-        bankCode: '341',
-        bankName: 'Itaú Unibanco',
-        barcodeNumber,
-        pixQrCodeUrl: `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=00020126580014BR.GOV.BCB.PIX0136pix@oficina.com.br520400005303986540${item.remainingAmount.toFixed(2)}5802BR5915OFICINA%20MECANICA6009SAO%20PAULO62070503***6304`,
-        pixCopiaECola: `00020126580014BR.GOV.BCB.PIX0136pix@oficina.com.br520400005303986540${item.remainingAmount.toFixed(2)}5802BR5915OFICINA%20MECANICA6009SAO%20PAULO62070503***6304`,
-        payerName: item.clientName,
-        payerCpfCnpj: item.clientCpf || '000.000.000-00',
-        amount: item.remainingAmount > 0 ? item.remainingAmount : item.totalAmount,
-        dueDate: item.dueDate,
-        issueDate: new Date().toISOString().split('T')[0],
-        status: item.status === 'paid' ? 'paid' : 'registered',
-        companyId: currentUser.companyId || 'company-001',
-        serviceOrderId: item.serviceOrderId,
-        receivableId: item.id,
-        nfeAccessKey: item.nfeAccessKey
-      };
-
       if (onSaveBoletos) {
         onSaveBoletos([createdBoleto, ...existingBoletos]);
       }
@@ -295,11 +284,117 @@ export default function AccountsReceivableView({
 
       const updatedReceivablesList = (db.accountsReceivable || []).map(r => r.id === item.id ? updatedReceivable : r);
       onSaveReceivables(updatedReceivablesList, db.clients || [], db.financialTransactions || [], db.notifications || []);
-      onAddHistoryLog('user_activity', 'Boleto Gerado no Contas a Receber', `Boleto ${createdBoleto.code} gerado com sucesso para o título ${item.code} (${item.clientName}).`, item.clientId, '');
+      onAddHistoryLog('user_activity', 'Boleto Gerado no Contas a Receber', `Boleto ${createdBoleto.code} (${createdBoleto.bankName}) gerado com sucesso para o título ${item.code} (${item.clientName}).`, item.clientId, '');
 
-      setSuccessMsg(`Boleto ${createdBoleto.code} registrado para o título ${item.code}!`);
+      setSuccessMsg(`Boleto ${createdBoleto.code} gerado para o título ${item.code}!`);
       setTimeout(() => setSuccessMsg(''), 4000);
     });
+  };
+
+  // Registrar Boleto no Banco (Transição de Simulado/Aguardando para Registrado)
+  const handleRegisterBoleto = (boleto: BoletoDocument) => {
+    const existingBoletos = db.boletos || [];
+    const updatedBoletos = existingBoletos.map(b => b.id === boleto.id ? { ...b, status: 'registered' as const } : b);
+    
+    if (onSaveBoletos) {
+      onSaveBoletos(updatedBoletos);
+    }
+    
+    // Atualizar no Contas a Receber
+    const updatedReceivablesList = (db.accountsReceivable || []).map(r => {
+      if (r.id === boleto.receivableId || r.boletoId === boleto.id) {
+        return { ...r, boletoStatus: 'registered' as const };
+      }
+      return r;
+    });
+    
+    onSaveReceivables(updatedReceivablesList, db.clients || [], db.financialTransactions || [], db.notifications || []);
+    onAddHistoryLog('user_activity', 'Boleto Registrado no Banco', `Boleto ${boleto.code} registrado com sucesso no banco emissor ${boleto.bankName}.`, boleto.payerCpfCnpj || '', '');
+    
+    setSelectedBoletoForView(prev => prev ? { ...prev, status: 'registered' } : null);
+    setSuccessMsg(`Boleto ${boleto.code} registrado no banco com sucesso!`);
+    setTimeout(() => setSuccessMsg(''), 4000);
+  };
+
+  // Cancelar Boleto Bancário
+  const handleCancelBoleto = (boleto: BoletoDocument, reason: string) => {
+    const existingBoletos = db.boletos || [];
+    const updatedBoletos = existingBoletos.map(b => b.id === boleto.id ? { ...b, status: 'canceled' as const, instructions: `[CANCELADO] ${reason}` } : b);
+    
+    if (onSaveBoletos) {
+      onSaveBoletos(updatedBoletos);
+    }
+    
+    // Atualizar no Contas a Receber
+    const updatedReceivablesList = (db.accountsReceivable || []).map(r => {
+      if (r.id === boleto.receivableId || r.boletoId === boleto.id) {
+        return { ...r, boletoStatus: 'canceled' as const };
+      }
+      return r;
+    });
+    
+    onSaveReceivables(updatedReceivablesList, db.clients || [], db.financialTransactions || [], db.notifications || []);
+    onAddHistoryLog('user_activity', 'Boleto Cancelado', `Boleto ${boleto.code} cancelado. Motivo: "${reason}".`, boleto.payerCpfCnpj || '', '');
+    
+    setSelectedBoletoForView(prev => prev ? { ...prev, status: 'canceled' } : null);
+    setSuccessMsg(`Boleto ${boleto.code} cancelado.`);
+    setTimeout(() => setSuccessMsg(''), 4000);
+  };
+
+  // Liquidar Boleto (Baixa Imediata do Título e Cobrança)
+  const handleSettleBoleto = (boleto: BoletoDocument) => {
+    const targetReceivable = (db.accountsReceivable || []).find(r => r.id === boleto.receivableId || r.boletoId === boleto.id || r.boletoCode === boleto.code);
+    if (!targetReceivable) return;
+
+    // Atualizar boleto
+    const existingBoletos = db.boletos || [];
+    const updatedBoletos = existingBoletos.map(b => b.id === boleto.id ? { ...b, status: 'paid' as const } : b);
+    if (onSaveBoletos) {
+      onSaveBoletos(updatedBoletos);
+    }
+
+    // Criar movimentação financeira de entrada
+    const newTx: FinancialTransaction = {
+      id: `tx-${Date.now()}`,
+      description: `Liquidação Boleto #${boleto.code} - ${targetReceivable.title}`,
+      amount: boleto.amount,
+      type: 'income',
+      category: 'Serviços & Vendas',
+      date: new Date().toISOString().split('T')[0],
+      paymentMethod: 'Boleto Bancário',
+      referenceId: targetReceivable.id,
+      companyId: targetReceivable.companyId || currentUser.companyId || 'comp-1',
+      createdByName: currentUser.name || 'Sistema'
+    };
+
+    const existingTxs = db.financialTransactions || [];
+    const updatedTxs = [newTx, ...existingTxs];
+
+    // Atualizar parcelas e título
+    const updatedInstallments: AccountInstallment[] = (targetReceivable.installments || []).map(inst => ({
+      ...inst,
+      status: 'paid' as const,
+      paidAmount: inst.amount,
+      paymentDate: new Date().toISOString().split('T')[0],
+      paymentMethod: 'Boleto Bancário'
+    }));
+
+    const updatedReceivable: AccountReceivable = {
+      ...targetReceivable,
+      status: 'paid',
+      paidAmount: targetReceivable.totalAmount,
+      remainingAmount: 0,
+      boletoStatus: 'paid',
+      installments: updatedInstallments
+    };
+
+    const updatedReceivablesList = (db.accountsReceivable || []).map(r => r.id === targetReceivable.id ? updatedReceivable : r);
+    onSaveReceivables(updatedReceivablesList, db.clients || [], updatedTxs, db.notifications || []);
+    onAddHistoryLog('payment', 'Boleto Bancário Liquidado', `Recebimento de R$ ${boleto.amount.toFixed(2)} registrado via liquidação do Boleto #${boleto.code} para o título ${targetReceivable.code}.`, targetReceivable.clientId, '');
+
+    setSelectedBoletoForView(prev => prev ? { ...prev, status: 'paid' } : null);
+    setSuccessMsg(`Boleto ${boleto.code} e título ${targetReceivable.code} liquidados com sucesso!`);
+    setTimeout(() => setSuccessMsg(''), 4000);
   };
 
   // PDF Receipt & Share Modal State
@@ -1566,27 +1661,22 @@ export default function AccountsReceivableView({
                                   type="button"
                                   onClick={() => {
                                     const foundBoleto = (db.boletos || []).find(b => b.id === item.boletoId || b.code === item.boletoCode);
-                                    const fallbackBoleto: BoletoDocument = foundBoleto || {
-                                      id: item.boletoId || `bol-${Date.now()}`,
-                                      code: item.boletoCode || 'BOL-001',
-                                      bankCode: '341',
-                                      bankName: 'Itaú Unibanco',
-                                      barcodeNumber: item.boletoBarcode || '34191.09008 00000.123456 78901.234567 1 90000000010000',
-                                      pixQrCodeUrl: `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=00020126580014BR.GOV.BCB.PIX0136pix@oficina.com.br520400005303986540${item.remainingAmount.toFixed(2)}5802BR5915OFICINA%20MECANICA6009SAO%20PAULO62070503***6304`,
-                                      pixCopiaECola: `00020126580014BR.GOV.BCB.PIX0136pix@oficina.com.br520400005303986540${item.remainingAmount.toFixed(2)}5802BR5915OFICINA%20MECANICA6009SAO%20PAULO62070503***6304`,
-                                      payerName: item.clientName,
-                                      payerCpfCnpj: item.clientCpf || '000.000.000-00',
-                                      amount: item.remainingAmount > 0 ? item.remainingAmount : item.totalAmount,
-                                      dueDate: item.dueDate,
-                                      issueDate: new Date().toISOString().split('T')[0],
-                                      status: item.status === 'paid' ? 'paid' : 'registered',
-                                      companyId: item.companyId || currentUser.companyId || 'company-001',
-                                      receivableId: item.id
-                                    };
-                                    setSelectedBoletoForView(fallbackBoleto);
+                                    if (foundBoleto) {
+                                      setSelectedBoletoForView(foundBoleto);
+                                    } else {
+                                      const client = (db.clients || []).find(c => c.id === item.clientId);
+                                      const fallbackBoleto = buildBoletoDocument({
+                                        receivable: item,
+                                        companyInfo: db.companyInfo,
+                                        client,
+                                        bankConfig: db.companyInfo?.bankBoletoConfig,
+                                        pixConfig: db.companyInfo?.pixConfig
+                                      });
+                                      setSelectedBoletoForView(fallbackBoleto);
+                                    }
                                   }}
                                   className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 hover:bg-emerald-200 transition cursor-pointer"
-                                  title="Visualizar / Reimprimir Boleto"
+                                  title="Visualizar / Reimprimir Boleto Bancário Oficial"
                                 >
                                   Ver / Imprimir
                                 </button>
@@ -2020,132 +2110,18 @@ export default function AccountsReceivableView({
       </>
       )}
 
-      {/* BOLETO VISUALIZER / REPRINT MODAL */}
-      {selectedBoletoForView && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-4 animate-fade-in" id="modal-boleto-view">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full p-6 border border-slate-200 overflow-hidden flex flex-col max-h-[90vh]">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3 mb-4">
-              <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold text-base border border-emerald-100">
-                  📄
-                </div>
-                <div>
-                  <h3 className="font-bold text-slate-800 text-base">
-                    Boleto Bancário Híbrido (Boleto + PIX)
-                  </h3>
-                  <p className="text-xs text-slate-500 font-mono">
-                    {selectedBoletoForView.bankName || 'Banco Emissor'} • #{selectedBoletoForView.code}
-                  </p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setSelectedBoletoForView(null)}
-                className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-100 transition cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="overflow-y-auto flex-1 space-y-4 pr-1">
-              {/* Status Header */}
-              <div className="p-3 bg-emerald-50/70 rounded-xl border border-emerald-200/80 flex items-center justify-between text-xs">
-                <div className="flex items-center gap-2 text-emerald-800 font-semibold">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                  <span>Boleto Registrado e Válido para Pagamento</span>
-                </div>
-                <span className="font-bold font-mono text-emerald-700 bg-white px-2 py-0.5 rounded border border-emerald-200">
-                  Vencimento: {selectedBoletoForView.dueDate}
-                </span>
-              </div>
-
-              {/* Payer and Value Info */}
-              <div className="grid grid-cols-2 gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200 text-xs">
-                <div>
-                  <span className="text-slate-400 block text-[10px] uppercase font-bold">Sacado / Pagador</span>
-                  <span className="font-bold text-slate-800">{selectedBoletoForView.payerName}</span>
-                  <span className="text-slate-500 block font-mono text-[11px]">CPF/CNPJ: {selectedBoletoForView.payerCpfCnpj}</span>
-                </div>
-                <div className="text-right">
-                  <span className="text-slate-400 block text-[10px] uppercase font-bold">Valor do Documento</span>
-                  <span className="font-black text-slate-900 text-lg font-mono">
-                    R$ {selectedBoletoForView.amount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                  </span>
-                </div>
-              </div>
-
-              {/* Barcode / Linha Digitável */}
-              <div className="p-3 bg-slate-900 text-white rounded-xl space-y-2">
-                <div className="flex items-center justify-between text-[11px] text-slate-300">
-                  <span className="font-semibold uppercase tracking-wide">Linha Digitável (Código de Barras)</span>
-                  <button
-                    type="button"
-                    onClick={() => handleCopyText(selectedBoletoForView.barcodeNumber, 'barcode')}
-                    className="text-xs bg-slate-800 hover:bg-slate-700 text-emerald-400 px-2.5 py-1 rounded font-mono font-bold transition flex items-center gap-1 cursor-pointer"
-                  >
-                    <Copy className="w-3 h-3" />
-                    {copiedText === 'barcode' ? 'Copiado!' : 'Copiar Linha'}
-                  </button>
-                </div>
-                <div className="font-mono text-xs text-amber-300 tracking-wider break-all bg-slate-950/80 p-2 rounded border border-slate-800">
-                  {selectedBoletoForView.barcodeNumber}
-                </div>
-              </div>
-
-              {/* PIX QR Code if Hybrid */}
-              {selectedBoletoForView.pixQrCodeUrl && (
-                <div className="p-3 bg-indigo-50/60 rounded-xl border border-indigo-200/80 flex flex-col sm:flex-row items-center gap-4">
-                  <img
-                    src={selectedBoletoForView.pixQrCodeUrl}
-                    alt="QR Code Pix"
-                    className="w-24 h-24 rounded-lg bg-white p-1 border border-indigo-200 shrink-0"
-                  />
-                  <div className="flex-1 space-y-1.5 text-center sm:text-left">
-                    <span className="text-xs font-bold text-indigo-900 flex items-center justify-center sm:justify-start gap-1">
-                      <QrCode className="w-4 h-4 text-indigo-600" /> Pix Copia e Cola Integrado
-                    </span>
-                    <p className="text-[11px] text-indigo-700">
-                      O cliente pode pagar instantaneamente escaneando o QR Code ou colando o código Pix.
-                    </p>
-                    {selectedBoletoForView.pixCopiaECola && (
-                      <button
-                        type="button"
-                        onClick={() => handleCopyText(selectedBoletoForView.pixCopiaECola || '', 'pix')}
-                        className="text-xs bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1 rounded-lg font-semibold transition inline-flex items-center gap-1 cursor-pointer"
-                      >
-                        <Copy className="w-3 h-3" />
-                        {copiedText === 'pix' ? 'Pix Copiado!' : 'Copiar Código Pix'}
-                      </button>
-                    )}
-                  </div>
-                </div>
-              )}
-            </div>
-
-            <div className="border-t border-slate-100 pt-3 mt-3 flex justify-between items-center">
-              <span className="text-[11px] text-slate-400">
-                Emissão segura MotorDesk Banking
-              </span>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => window.print()}
-                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-xs"
-                >
-                  <Printer className="w-4 h-4" /> Imprimir Boleto
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setSelectedBoletoForView(null)}
-                  className="px-4 py-2 bg-slate-100 text-slate-700 rounded-xl text-xs font-semibold hover:bg-slate-200 transition cursor-pointer"
-                >
-                  Fechar
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* OFFICIAL FEBRABAN & HYBRID PIX BOLETO PRINT MODAL */}
+      <BoletoPrintModal
+        isOpen={!!selectedBoletoForView}
+        onClose={() => setSelectedBoletoForView(null)}
+        boleto={selectedBoletoForView}
+        companyInfo={db.companyInfo}
+        bankConfig={db.companyInfo?.bankBoletoConfig}
+        pixConfig={db.companyInfo?.pixConfig}
+        onRegisterBoleto={handleRegisterBoleto}
+        onCancelBoleto={handleCancelBoleto}
+        onSettleBoleto={handleSettleBoleto}
+      />
 
       {/* DANFE / NF-E / NFC-E / NFS-E OFFICIAL PRINT VISUALIZER MODAL */}
       <FiscalDocumentPrintModal

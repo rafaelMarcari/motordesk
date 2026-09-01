@@ -8,6 +8,7 @@ import {
   getDatabase, 
   saveDatabase, 
   resetDatabase, 
+  INITIAL_ALERT_SETTINGS,
   AppDatabase 
 } from './data/mockData';
 import { dataProvider } from './services/dataProvider';
@@ -108,7 +109,7 @@ import LandingPresentationView, { LandingContent } from './components/LandingPre
 import motordeskLogoImg from './assets/images/motordesk_logo_1786534067989.jpg';
 import FullDocumentationModal from './components/FullDocumentationModal';
 import PrivacyLgpdModal, { PrivacyLgpdFooter } from './components/PrivacyLgpdModal';
-import { sweepExpiredBudgets, checkLowStockAlerts } from './utils/stockUtils';
+import { sweepExpiredBudgets, checkLowStockAlerts, checkFinancialDueAlerts } from './utils/stockUtils';
 import { syncServiceOrdersWithBudgets } from './utils/serviceOrderUtils';
 import { AccountReceivable, AccountPayable, FinancialTransaction, FiscalDocument, BoletoDocument, InterBranchSaleLogistics, SefazApiConfig, TaxObligationGuide, AccessGroup, ViewID } from './types';
 import { Globe, FileText, FileCheck2, Scale, KeyRound, Shield } from 'lucide-react';
@@ -128,6 +129,7 @@ import {
   normalizeUser,
   normalizeUserPermissions
 } from './utils/businessSegmentation';
+import { getEffectivePermissions, isModuleContractedForCompany } from './utils/securityUtils';
 
 const VIEW_PERMISSION_MAP: Record<ViewID, keyof UserPermissions | null> = {
   dashboard: 'accessDashboard',
@@ -159,8 +161,8 @@ const VIEW_PERMISSION_MAP: Record<ViewID, keyof UserPermissions | null> = {
 };
 
 export default function App() {
-  // 1. Core DB State
-  const [db, setDb] = useState<AppDatabase | null>(null);
+  // 1. Core DB State (Instant Local Cache + Silent Async Cloud Sync)
+  const [db, setDb] = useState<AppDatabase>(() => getDatabase());
   
   // 2. Auth State
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -500,15 +502,17 @@ export default function App() {
     };
   }, []);
 
-  // Run automatic budget expiration sweep, OS auto-sync and low stock checks
+  // Run automatic budget expiration sweep, OS auto-sync, financial due alerts and low stock checks
   useEffect(() => {
     if (db && db.budgets && db.parts) {
       const sweepRes = sweepExpiredBudgets(db);
       const lowStockNotifs = checkLowStockAlerts(db);
+      const financialDueNotifs = checkFinancialDueAlerts(db);
       const osSyncRes = db.serviceOrders ? syncServiceOrdersWithBudgets(db.serviceOrders, db.budgets) : { updatedOrders: db.serviceOrders, hasChanges: false };
 
-      if (sweepRes.expiredCount > 0 || lowStockNotifs.length > 0 || osSyncRes.hasChanges) {
+      if (sweepRes.expiredCount > 0 || lowStockNotifs.length > 0 || financialDueNotifs.length > 0 || osSyncRes.hasChanges) {
         const mergedNotifications = [
+          ...financialDueNotifs,
           ...lowStockNotifs,
           ...sweepRes.newNotifications,
           ...(db.notifications || [])
@@ -532,7 +536,7 @@ export default function App() {
         });
       }
     }
-  }, [db?.budgets?.length, db?.parts?.length, db?.serviceOrders?.length]);
+  }, [db?.budgets?.length, db?.parts?.length, db?.serviceOrders?.length, db?.accountsReceivable?.length, db?.accountsPayable?.length]);
 
   // Keep currentUser permissions in sync with db.users in real time
   useEffect(() => {
@@ -607,6 +611,17 @@ export default function App() {
   const activeBusinessType = getBusinessType(activeCompanyObj);
   const activeSegmentMeta = getSegmentMetadata(activeBusinessType);
 
+  const isModuleLocked = React.useCallback((permissionKey: string) => {
+    if (permissionKey === 'accessUserManagement' || permissionKey === 'accessDashboard') return false;
+
+    // Strict centralized licensing & segmentation check
+    if (!isModuleContractedForCompany(permissionKey, activeCompanyObj, activeBusinessType)) {
+      return true;
+    }
+
+    return activeCompanyModules[permissionKey as keyof typeof activeCompanyModules] === false;
+  }, [activeCompanyObj, activeBusinessType, activeCompanyModules]);
+
   // Auto-redirect if active view is not supported by current company business type
   useEffect(() => {
     if (!currentUser) return;
@@ -640,7 +655,7 @@ export default function App() {
     }
   };
 
-  // Scoped database view providing strict multi-tenant isolation
+  // Scoped database view providing strict multi-tenant isolation and zero-leakage security (CT-LIC-15, CT-LIC-17)
   const scopedDb = React.useMemo<AppDatabase>(() => {
     if (!db) {
       return {
@@ -649,44 +664,60 @@ export default function App() {
       };
     }
 
+    const canClients = !isModuleLocked('accessClients') && Boolean(currentUser?.permissions?.accessClients);
+    const canVehicles = !isModuleLocked('accessVehicles') && Boolean(currentUser?.permissions?.accessVehicles);
+    const canParts = !isModuleLocked('accessParts') && Boolean(currentUser?.permissions?.accessParts);
+    const canServices = !isModuleLocked('accessServices') && Boolean(currentUser?.permissions?.accessServices);
+    const canBudgets = !isModuleLocked('accessBudgets') && Boolean(currentUser?.permissions?.accessBudgets);
+    const canServiceOrders = !isModuleLocked('accessServiceOrders') && Boolean(currentUser?.permissions?.accessServiceOrders);
+    const canQuotations = !isModuleLocked('accessQuotations') && Boolean(currentUser?.permissions?.accessQuotations);
+    const canAccountsReceivable = !isModuleLocked('accessAccountsReceivable') && Boolean(currentUser?.permissions?.accessAccountsReceivable);
+    const canAccountsPayable = !isModuleLocked('accessAccountsPayable') && Boolean(currentUser?.permissions?.accessAccountsPayable);
+    const canFinancial = !isModuleLocked('accessFinancial') && Boolean(currentUser?.permissions?.accessFinancial);
+    const canSales = !isModuleLocked('accessSales') && Boolean(currentUser?.permissions?.accessSales);
+    const canFiscal = !isModuleLocked('accessFiscal') && Boolean(currentUser?.permissions?.accessFiscal);
+    const canCarriers = !isModuleLocked('accessCarriers') && Boolean(currentUser?.permissions?.accessCarriers);
+    const canUnits = !isModuleLocked('accessUnitsOfMeasure') && Boolean(currentUser?.permissions?.accessUnitsOfMeasure);
+    const canProduction = !isModuleLocked('accessProduction') && (Boolean(currentUser?.permissions?.accessProduction) || Boolean(currentUser?.permissions?.accessIndustrialDashboard));
+
     return {
       ...db,
       companyInfo: activeCompanyObj || db.companyInfo,
       sefazConfig: activeCompanyObj?.sefazConfig || db.sefazConfig,
-      clients: (db.clients || []).filter(item => (item.companyId || 'comp-1') === activeCompanyId),
-      vehicles: (db.vehicles || []).filter(item => (item.companyId || 'comp-1') === activeCompanyId),
-      parts: (db.parts || []).filter(item => (item.companyId || 'comp-1') === activeCompanyId),
-      services: (db.services || []).filter(item => (item.companyId || 'comp-1') === activeCompanyId),
-      budgets: (db.budgets || []).filter(item => (item.companyId || 'comp-1') === activeCompanyId),
-      serviceOrders: (db.serviceOrders || []).filter(item => (item.companyId || 'comp-1') === activeCompanyId),
+      clients: canClients ? (db.clients || []).filter(item => (item.companyId || 'comp-1') === activeCompanyId) : [],
+      vehicles: canVehicles ? (db.vehicles || []).filter(item => (item.companyId || 'comp-1') === activeCompanyId) : [],
+      parts: canParts ? (db.parts || []).filter(item => (item.companyId || 'comp-1') === activeCompanyId) : [],
+      services: canServices ? (db.services || []).filter(item => (item.companyId || 'comp-1') === activeCompanyId) : [],
+      budgets: canBudgets ? (db.budgets || []).filter(item => (item.companyId || 'comp-1') === activeCompanyId) : [],
+      serviceOrders: canServiceOrders ? (db.serviceOrders || []).filter(item => (item.companyId || 'comp-1') === activeCompanyId) : [],
       history: (db.history || []).filter(item => (item.companyId || 'comp-1') === activeCompanyId),
-      suppliers: (db.suppliers || []).filter(item => (item.companyId || 'comp-1') === activeCompanyId),
-      quotations: (db.quotations || []).filter(item => (item.companyId || 'comp-1') === activeCompanyId),
-      accountsReceivable: (db.accountsReceivable || []).filter(item => (item.companyId || 'comp-1') === activeCompanyId),
-      accountsPayable: (db.accountsPayable || []).filter(item => (item.companyId || 'comp-1') === activeCompanyId),
-      financialTransactions: (db.financialTransactions || []).filter(item => (item.companyId || 'comp-1') === activeCompanyId),
+      suppliers: (canQuotations || canParts) ? (db.suppliers || []).filter(item => (item.companyId || 'comp-1') === activeCompanyId) : [],
+      quotations: canQuotations ? (db.quotations || []).filter(item => (item.companyId || 'comp-1') === activeCompanyId) : [],
+      accountsReceivable: canAccountsReceivable ? (db.accountsReceivable || []).filter(item => (item.companyId || 'comp-1') === activeCompanyId) : [],
+      accountsPayable: canAccountsPayable ? (db.accountsPayable || []).filter(item => (item.companyId || 'comp-1') === activeCompanyId) : [],
+      financialTransactions: canFinancial ? (db.financialTransactions || []).filter(item => (item.companyId || 'comp-1') === activeCompanyId) : [],
       users: (db.users || []).filter(item => (item.companyId || 'comp-1') === activeCompanyId),
       notifications: (db.notifications || []).filter(item => (item.companyId || 'comp-1') === activeCompanyId),
-      stockMovements: (db.stockMovements || []).filter(item => (item.companyId || 'comp-1') === activeCompanyId),
-      supplierPartPrices: (db.supplierPartPrices || []).filter(item => (item.companyId || 'comp-1') === activeCompanyId),
-      maintenanceLogs: (db.maintenanceLogs || []).filter(item => (item.companyId || 'comp-1') === activeCompanyId),
-      sales: (db.sales || []).filter(item => (item.companyId || 'comp-1') === activeCompanyId),
-      carriers: (db.carriers || []).filter(item => (item.companyId || 'comp-1') === activeCompanyId),
-      fiscalDocuments: (db.fiscalDocuments || []).filter(item => (item.companyId || 'comp-1') === activeCompanyId),
-      boletos: (db.boletos || []).filter(item => (item.companyId || 'comp-1') === activeCompanyId),
-      taxObligationGuides: (db.taxObligationGuides || []).filter(item => (item.companyId || 'comp-1') === activeCompanyId),
+      stockMovements: canParts ? (db.stockMovements || []).filter(item => (item.companyId || 'comp-1') === activeCompanyId) : [],
+      supplierPartPrices: (canQuotations || canParts) ? (db.supplierPartPrices || []).filter(item => (item.companyId || 'comp-1') === activeCompanyId) : [],
+      maintenanceLogs: (canVehicles || canServiceOrders) ? (db.maintenanceLogs || []).filter(item => (item.companyId || 'comp-1') === activeCompanyId) : [],
+      sales: canSales ? (db.sales || []).filter(item => (item.companyId || 'comp-1') === activeCompanyId) : [],
+      carriers: canCarriers ? (db.carriers || []).filter(item => (item.companyId || 'comp-1') === activeCompanyId) : [],
+      fiscalDocuments: canFiscal ? (db.fiscalDocuments || []).filter(item => (item.companyId || 'comp-1') === activeCompanyId) : [],
+      boletos: (canAccountsReceivable || canFiscal) ? (db.boletos || []).filter(item => (item.companyId || 'comp-1') === activeCompanyId) : [],
+      taxObligationGuides: canFiscal ? (db.taxObligationGuides || []).filter(item => (item.companyId || 'comp-1') === activeCompanyId) : [],
       accessGroups: (db.accessGroups || []).filter(item => !item.companyId || (item.companyId || 'comp-1') === activeCompanyId),
       taxOperationNatures: db.taxOperationNatures || [],
       taxRules: db.taxRules || [],
       xmlImportRecords: db.xmlImportRecords || [],
-      unitsOfMeasure: (db.unitsOfMeasure || []).filter(item => item.isGlobal || !item.companyId || (item.companyId || 'comp-1') === activeCompanyId),
-      boms: (db.boms || db.billOfMaterials || []).filter(item => !item.companyId || item.companyId === activeCompanyId || (activeBusinessType === 'INDUSTRIA' && !item.companyId)),
-      billOfMaterials: (db.boms || db.billOfMaterials || []).filter(item => !item.companyId || item.companyId === activeCompanyId || (activeBusinessType === 'INDUSTRIA' && !item.companyId)),
-      productionOrders: (db.productionOrders || []).filter(item => !item.companyId || item.companyId === activeCompanyId || (activeBusinessType === 'INDUSTRIA' && !item.companyId)),
-      productLots: (db.productLots || []).filter(item => !item.companyId || item.companyId === activeCompanyId || (activeBusinessType === 'INDUSTRIA' && !item.companyId)),
+      unitsOfMeasure: canUnits ? (db.unitsOfMeasure || []).filter(item => item.isGlobal || !item.companyId || (item.companyId || 'comp-1') === activeCompanyId) : [],
+      boms: canProduction ? (db.boms || db.billOfMaterials || []).filter(item => !item.companyId || item.companyId === activeCompanyId || (activeBusinessType === 'INDUSTRIA' && !item.companyId)) : [],
+      billOfMaterials: canProduction ? (db.boms || db.billOfMaterials || []).filter(item => !item.companyId || item.companyId === activeCompanyId || (activeBusinessType === 'INDUSTRIA' && !item.companyId)) : [],
+      productionOrders: canProduction ? (db.productionOrders || []).filter(item => !item.companyId || item.companyId === activeCompanyId || (activeBusinessType === 'INDUSTRIA' && !item.companyId)) : [],
+      productLots: canProduction ? (db.productLots || []).filter(item => !item.companyId || item.companyId === activeCompanyId || (activeBusinessType === 'INDUSTRIA' && !item.companyId)) : [],
       operationalAlerts: (db.operationalAlerts || []).filter(item => !item.companyId || item.companyId === activeCompanyId || (activeBusinessType === 'INDUSTRIA' && !item.companyId)),
     };
-  }, [db, activeCompanyId, activeCompanyObj, activeBusinessType]);
+  }, [db, activeCompanyId, activeCompanyObj, activeBusinessType, currentUser?.permissions, isModuleLocked]);
 
   // State Updaters passed to Views (Preserving multi-tenant data for other companies)
   const handleSaveUnitsOfMeasure = (units: UnitOfMeasure[]) => {
@@ -1672,17 +1703,6 @@ export default function App() {
       </div>
     );
   }
-
-  const isModuleLocked = (permissionKey: string) => {
-    if (permissionKey === 'accessUserManagement' || permissionKey === 'accessDashboard') return false;
-
-    // Strict centralized segmentation check
-    if (!isModuleAllowedForBusinessType(permissionKey, activeBusinessType)) {
-      return true;
-    }
-
-    return activeCompanyModules[permissionKey as keyof typeof activeCompanyModules] === false;
-  };
 
   const renderLockedScreen = () => (
     <div className="flex flex-col items-center justify-center p-12 text-center bg-white rounded-2xl border border-slate-200/80 my-12 animate-fade-in shadow-xs" id="locked-module-screen">
@@ -2841,17 +2861,16 @@ export default function App() {
         isOpen={showNotificationsModal}
         onClose={() => setShowNotificationsModal(false)}
         notifications={scopedDb.notifications || []}
-        alertSettings={db.alertSettings || {
-          enableBudgetCreatedAlerts: true,
-          enableServiceOrderCreatedAlerts: true,
-          enableBudgetConvertedAlerts: true,
-          enableLowStockAlerts: true,
-          enableStockReservedExpirationAlerts: true,
-          defaultBudgetValidityDays: 10
-        }}
+        alertSettings={db.alertSettings || INITIAL_ALERT_SETTINGS}
         onMarkAllAsRead={handleMarkAllNotificationsRead}
         onClearNotifications={handleClearNotifications}
         onSaveAlertSettings={handleSaveAlertSettings}
+        businessType={activeCompanyObj?.businessType || 'OFICINA'}
+        currentUser={currentUser}
+        onNavigateToView={(view) => {
+          setShowNotificationsModal(false);
+          navigateToView(view as ViewID);
+        }}
       />
 
       {/* FULL DOCUMENTATION PDF MODAL (ACESSO EXCLUSIVO QA / ADMIN) */}

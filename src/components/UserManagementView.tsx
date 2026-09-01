@@ -1161,6 +1161,24 @@ export default function UserManagementView({
       onSaveCompanyInfo(updatedCompany);
     }
 
+    // Auditoria de alteração de módulos contratuais / licença (CT-LIC-16)
+    if (onAddHistoryLog) {
+      const prevMods = currentCompany?.globalModules || {};
+      const newMods = companyGlobalModules || {};
+      const allKeys = Array.from(new Set([...Object.keys(prevMods), ...Object.keys(newMods)]));
+      const changedKeys = allKeys.filter(k => prevMods[k] !== newMods[k]);
+      if (changedKeys.length > 0) {
+        const changesSummary = changedKeys.map(k => `${k}: ${prevMods[k] ? 'Contratado' : 'Não Contratado'} -> ${newMods[k] ? 'Contratado' : 'Não Contratado'}`).join(', ');
+        onAddHistoryLog(
+          'system',
+          `Alteração de Módulos Contratados (${updatedCompany.name})`,
+          `Licença/Módulos alterados pelo administrador ${currentUser.name}: ${changesSummary}`,
+          'N/A',
+          'N/A'
+        );
+      }
+    }
+
     setHasUnsavedChanges(false);
     return updatedCompany;
   };

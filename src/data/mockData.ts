@@ -416,7 +416,9 @@ export const INITIAL_ALERT_SETTINGS: AlertSettings = {
   enableLowStockAlerts: true,
   enableBudgetCreatedAlerts: true,
   enableServiceOrderCreatedAlerts: true,
+  enableSalesCreatedAlerts: true,
   enableBudgetConvertedAlerts: true,
+  enableBudgetConvertedToSaleAlerts: true,
   enableStockReservedExpirationAlerts: true,
   defaultBudgetValidityDays: 10,
   defaultPaymentRequirementMode: 'ADVANCE_DEPOSIT',
@@ -436,6 +438,7 @@ export const INITIAL_ALERT_SETTINGS: AlertSettings = {
   dormantStockDaysThreshold: 60, // 60 dias sem movimentação
   enableCostIncreaseAlerts: true,
   costIncreaseThresholdPercent: 10, // Aumento de 10%
+  enableCreditLimitAlerts: true,
 };
 
 export const INITIAL_NOTIFICATIONS: SystemNotification[] = [
@@ -468,6 +471,67 @@ export const INITIAL_NOTIFICATIONS: SystemNotification[] = [
       conversionType: 'TOTAL',
       itemsCount: 3,
       totalItemsCount: 3
+    }
+  },
+  {
+    id: 'notif-3',
+    companyId: 'comp-4',
+    type: 'receivable_due',
+    title: 'Fatura a Vencer em 3 dia(s)',
+    message: 'A fatura #REC-2026-003 do cliente Auto Mecânica Silva no valor de R$ 1.850,00 vence em breve (2026-07-25).',
+    date: '2026-07-22T08:00:00Z',
+    read: false,
+    metadata: {
+      receivableId: 'rec-3',
+      clientName: 'Auto Mecânica Silva',
+      amount: 1850.00,
+      dueDate: '2026-07-25',
+      daysDiff: 3
+    }
+  },
+  {
+    id: 'notif-4',
+    companyId: 'comp-4',
+    type: 'stock_low',
+    title: 'Ponto de Pedido Atingido',
+    message: 'O produto "Óleo 5W30 Sintético Castrol 1L" (OL-5W30) atingiu o estoque mínimo de 10 unidades (Saldo atual: 8 un).',
+    date: '2026-07-22T08:15:00Z',
+    read: false,
+    metadata: {
+      partId: 'prt-1',
+      partName: 'Óleo 5W30 Sintético Castrol 1L',
+      availableStock: 8,
+      minStock: 10
+    }
+  },
+  {
+    id: 'notif-5',
+    companyId: 'comp-4',
+    type: 'sale_created',
+    title: 'Nova Venda Balcão Concluída',
+    message: 'Venda Balcão #VD-2026-004 faturada com sucesso no valor de R$ 340,00 (Cliente Balcão Avulso).',
+    date: '2026-07-22T09:00:00Z',
+    read: true,
+    metadata: {
+      saleId: 'sale-4',
+      clientName: 'Cliente Balcão Avulso',
+      amount: 340.00
+    }
+  },
+  {
+    id: 'notif-6',
+    companyId: 'comp-4',
+    type: 'payable_due',
+    title: 'Conta a Pagar a Vencer em 5 dia(s)',
+    message: 'A duplicata #DUP-8899 do fornecedor Distribuidora Paulista no valor de R$ 4.200,00 vence em 2026-07-27.',
+    date: '2026-07-22T09:30:00Z',
+    read: false,
+    metadata: {
+      payableId: 'pay-2',
+      supplierName: 'Distribuidora Paulista',
+      amount: 4200.00,
+      dueDate: '2026-07-27',
+      daysDiff: 5
     }
   }
 ];
@@ -4228,6 +4292,132 @@ export const INITIAL_TEST_CASES: TestCase[] = [
       '7. Verificar a atualização do Caixa, DRE e a impossibilidade de reprocessar qualquer uma das vendas.'
     ],
     expectedResult: 'Fluxo integrado de ponta a ponta executado com 100% de integridade, rastreabilidade e idempotência contábil.',
+    status: 'passed'
+  },
+  {
+    id: 'tc-lic-11',
+    code: 'CT-LIC-11',
+    requirement: 'RN-LIC-01 / RBAC-01',
+    title: 'Módulo retirado do contrato → acesso imediatamente bloqueado',
+    category: 'Licenciamento & Multi-tenant',
+    preConditions: 'Empresa com módulo anteriormente contratado (ex: Fiscal ou Orçamentos) e usuários com permissões ativas.',
+    steps: [
+      '1. Desativar o módulo no contrato/assinatura da empresa na Gestão Multi-Empresa.',
+      '2. Salvar as alterações da empresa.',
+      '3. Tentar acessar o módulo ou rota com qualquer usuário da empresa (inclusive Administrador).',
+      '4. Verificar bloqueio imediato com tela de módulo bloqueado/não contratado e ausência do item no menu.'
+    ],
+    expectedResult: 'O acesso ao módulo é bloqueado instantaneamente para todos os usuários da empresa ao ser desativado na licença.',
+    status: 'passed'
+  },
+  {
+    id: 'tc-lic-12',
+    code: 'CT-LIC-12',
+    requirement: 'RN-LIC-02 / DATA-01',
+    title: 'Módulo retirado → dados históricos permanecem preservados',
+    category: 'Licenciamento & Integridade de Dados',
+    preConditions: 'Empresa com registros existentes (ex: Ordens de Serviço ou Títulos Fiscais).',
+    steps: [
+      '1. Cadastrar registros no módulo ativo.',
+      '2. Remover o módulo do contrato da empresa.',
+      '3. Verificar no banco de dados / reativar o módulo posteriormente.',
+      '4. Confirmar que nenhum registro histórico foi deletado ou corrompido.'
+    ],
+    expectedResult: 'Os dados históricos são 100% preservados no banco de dados e tornam-se acessíveis novamente quando o módulo for recontratado.',
+    status: 'passed'
+  },
+  {
+    id: 'tc-lic-13',
+    code: 'CT-LIC-13',
+    requirement: 'RN-LIC-03 / SAAS-01',
+    title: 'Novo módulo contratado → licença ativada',
+    category: 'Licenciamento & Multi-tenant',
+    preConditions: 'Empresa com módulo não contratado.',
+    steps: [
+      '1. Acessar a Gestão Multi-Empresa e marcar o módulo como contratado.',
+      '2. Emitir o Termo Aditivo / Salvar a assinatura.',
+      '3. Acessar com usuário Administrador.',
+      '4. Verificar que a licença está ativa e o módulo disponível para configuração de acessos.'
+    ],
+    expectedResult: 'A licença do módulo é ativada imediatamente na empresa após a contratação.',
+    status: 'passed'
+  },
+  {
+    id: 'tc-lic-14',
+    code: 'CT-LIC-14',
+    requirement: 'RN-LIC-04 / RBAC-02',
+    title: 'Novo módulo contratado → administrador consegue liberar para grupo',
+    category: 'Licenciamento & RBAC',
+    preConditions: 'Novo módulo contratado pela empresa na licença.',
+    steps: [
+      '1. Administrador acessa a Gestão de Grupos de Acesso (RBAC).',
+      '2. Seleciona o grupo desejado (ex: Consultores Técnicos).',
+      '3. Marca a permissão do módulo recém-contratado.',
+      '4. Usuários membros do grupo passam a acessar as funcionalidades operacionais liberadas.'
+    ],
+    expectedResult: 'O administrador consegue delegar permissões granulares do módulo contratado para grupos de acesso com sucesso.',
+    status: 'passed'
+  },
+  {
+    id: 'tc-lic-15',
+    code: 'CT-LIC-15',
+    requirement: 'RN-LIC-05 / TENANT-01',
+    title: 'Empresa A não consegue acessar licença da Empresa B',
+    category: 'Multi-tenant & Isolamento',
+    preConditions: 'Empresa A possui módulo contratado (ex: Fiscal) e Empresa B NÃO possui.',
+    steps: [
+      '1. Logar com usuário da Empresa B.',
+      '2. Tentar visualizar ou executar rotinas do módulo pertencente à Empresa A.',
+      '3. Inspecionar o scoped database e permissões efetivas.',
+      '4. Verificar isolamento estrito de licença e dados entre os tenants.'
+    ],
+    expectedResult: 'Isolamento rigoroso: a Empresa B não herda e não acessa licenças ou dados da Empresa A.',
+    status: 'passed'
+  },
+  {
+    id: 'tc-lic-16',
+    code: 'CT-LIC-16',
+    requirement: 'RN-LIC-06 / AUDIT-01',
+    title: 'Alteração de módulo gera auditoria',
+    category: 'Auditoria & Segurança',
+    preConditions: 'Administrador logado.',
+    steps: [
+      '1. Alterar a contratação de um módulo na empresa.',
+      '2. Salvar a assinatura.',
+      '3. Acessar a Trilha de Auditoria do sistema.',
+      '4. Verificar o registro de log com operador, timestamp, valores anteriores e novos valores.'
+    ],
+    expectedResult: 'Todas as alterações de licença e módulos contratuais geram entradas imutáveis na Trilha de Auditoria.',
+    status: 'passed'
+  },
+  {
+    id: 'tc-lic-17',
+    code: 'CT-LIC-17',
+    requirement: 'RN-LIC-07 / SECURITY-01',
+    title: 'Usuário sem permissão não recebe dados do módulo',
+    category: 'Segurança & Zero-Leakage',
+    preConditions: 'Usuário sem permissão a determinado módulo (ex: Contas a Receber).',
+    steps: [
+      '1. Inspecionar a carga de dados retornada pelo scopedDb.',
+      '2. Confirmar que coleções restritas são retornadas como vazias [].',
+      '3. Verificar que nenhum dado confidencial é exposto na camada de renderização.'
+    ],
+    expectedResult: 'Proteção zero-leakage: o usuário sem permissão não recebe dados estruturais ou registros do módulo.',
+    status: 'passed'
+  },
+  {
+    id: 'tc-lic-18',
+    code: 'CT-LIC-18',
+    requirement: 'RN-LIC-08 / SECURITY-02',
+    title: 'Acesso por URL direta não contorna RBAC',
+    category: 'Segurança & Roteamento',
+    preConditions: 'Usuário comum tenta acessar diretamente via URL ou manipulando o estado de navegação.',
+    steps: [
+      '1. Simular tentativa de navegação direta para uma View restrita ou não contratada.',
+      '2. O sistema intercepta o acesso via guards e getEffectivePermissions / isModuleLocked.',
+      '3. Exibe a tela de bloqueio e/ou redireciona para a tela padrão permitida.'
+    ],
+    expectedResult: 'Tentativas de navegação direta não contornam as camadas de Licenciamento e RBAC.',
     status: 'passed'
   }
 ];

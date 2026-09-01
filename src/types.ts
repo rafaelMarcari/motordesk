@@ -5,7 +5,7 @@
 
 export interface SystemNotification {
   id: string;
-  type: 'stock_low' | 'budget_created' | 'service_order_created' | 'budget_converted' | 'stock_expired' | 'credit_limit_exceeded' | 'price_approval_required' | 'os_closed_by_mechanic' | 'system';
+  type: 'stock_low' | 'budget_created' | 'service_order_created' | 'budget_converted' | 'stock_expired' | 'credit_limit_exceeded' | 'price_approval_required' | 'os_closed_by_mechanic' | 'receivable_due' | 'payable_due' | 'sale_created' | 'budget_converted_to_sale' | 'system';
   title: string;
   message: string;
   date: string;
@@ -26,10 +26,16 @@ export interface SystemNotification {
     releasedItemsCount?: number;
     clientId?: string;
     clientName?: string;
+    supplierId?: string;
+    supplierName?: string;
     creditLimit?: number;
     currentDebt?: number;
     attemptedAmount?: number;
     receivableId?: string;
+    payableId?: string;
+    amount?: number;
+    dueDate?: string;
+    daysDiff?: number;
     originalPrice?: number;
     newPrice?: number;
     priceDifference?: number;
@@ -45,12 +51,14 @@ export type PaymentRequirementMode = 'AFTER_COMPLETION' | 'ADVANCE_DEPOSIT' | 'F
 export interface AlertSettings {
   enableLowStockAlerts: boolean; // Alerta de estoque baixo
   enableBudgetCreatedAlerts: boolean; // Alerta quando um orçamento é feito
-  enableServiceOrderCreatedAlerts: boolean; // Alerta quando uma OS é feita
-  enableBudgetConvertedAlerts: boolean; // Alerta quando orçamento vira OS (Total/Parcial)
+  enableServiceOrderCreatedAlerts: boolean; // Alerta quando uma OS é feita (Oficina)
+  enableSalesCreatedAlerts?: boolean; // Alerta quando uma nova venda balcão é feita (Comércio)
+  enableBudgetConvertedAlerts: boolean; // Alerta quando orçamento vira OS (Oficina)
+  enableBudgetConvertedToSaleAlerts?: boolean; // Alerta quando orçamento vira Venda Balcão (Comércio)
   enableStockReservedExpirationAlerts: boolean; // Alerta quando os itens de um orçamento expirado voltam ao estoque
   defaultBudgetValidityDays: number; // Prazo padrão de validade de orçamentos (ex: 10 dias)
 
-  // Política / Regra de Cobrança e Recebimento da Oficina
+  // Política / Regra de Cobrança e Recebimento da Oficina / Comércio
   defaultPaymentRequirementMode?: PaymentRequirementMode; // 'AFTER_COMPLETION' (100% no encerramento) | 'ADVANCE_DEPOSIT' (Sinal %) | 'FULL_ADVANCE' (100% Antecipado)
   defaultDepositPercentage?: number; // % padrão de sinal/entrada (ex: 30%, 50%)
   requireDepositToExecuteOS?: boolean; // Bloquear/Alertar no semáforo se o sinal de entrada não foi pago antes de iniciar
@@ -68,6 +76,7 @@ export interface AlertSettings {
   dormantStockDaysThreshold?: number; // Limite de dias sem giro (ex: 30, 60, 90, 180, 365)
   enableCostIncreaseAlerts?: boolean; // Alerta de aumento significativo no custo de aquisição
   costIncreaseThresholdPercent?: number; // % de variação para disparar alerta (ex: 10%)
+  enableCreditLimitAlerts?: boolean; // Alerta de limite de crédito excedido em vendas a prazo
 }
 
 export type UserRole = 'admin' | 'atendente' | 'mecanico' | 'qa';
@@ -1998,7 +2007,7 @@ export interface AccountReceivable {
   nfeRejectionReason?: string;
   boletoId?: string;
   boletoCode?: string;
-  boletoStatus?: 'registered' | 'paid' | 'overdue' | 'canceled';
+  boletoStatus?: 'registered' | 'paid' | 'overdue' | 'canceled' | 'simulated';
   boletoBarcode?: string;
   boletoNossoNumero?: string;
 }
@@ -2214,7 +2223,7 @@ export interface BoletoDocument {
   amount: number;
   dueDate: string;
   issueDate: string;
-  status: 'registered' | 'paid' | 'overdue' | 'canceled';
+  status: 'registered' | 'paid' | 'overdue' | 'canceled' | 'simulated';
   companyId: string;
   serviceOrderId?: string;
   receivableId?: string;

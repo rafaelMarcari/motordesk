@@ -278,6 +278,133 @@ export interface ReservingBudgetInfo {
 }
 
 /**
+ * Checks pending receivables and payables and generates due date notifications based on user configured notice days.
+ */
+export function checkFinancialDueAlerts(db: AppDatabase): SystemNotification[] {
+  const alertSettings = db.alertSettings;
+  const notifications: SystemNotification[] = [];
+  const existingNotifications = db.notifications || [];
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const todayMs = new Date(`${todayStr}T00:00:00`).getTime();
+
+  // 1. Contas a Receber (Faturas de Clientes / Vendas / OS)
+  const enableReceivables = alertSettings ? alertSettings.enableReceivableDueAlerts !== false : true;
+  const recNoticeDays = alertSettings?.receivableDueNoticeDays ?? 3;
+
+  if (enableReceivables && db.accountsReceivable && Array.isArray(db.accountsReceivable)) {
+    db.accountsReceivable.forEach(rec => {
+      if (rec.status === 'paid') return;
+
+      const dueMs = new Date(`${rec.dueDate}T00:00:00`).getTime();
+      const diffMs = dueMs - todayMs;
+      const daysDiff = Math.round(diffMs / (1000 * 60 * 60 * 24));
+
+      if (daysDiff <= recNoticeDays) {
+        const client = (db.clients || []).find(c => c.id === rec.clientId);
+        const clientName = client?.name || rec.clientName || 'Cliente';
+        const amount = rec.remainingAmount ?? rec.totalAmount ?? 0;
+        const amountFormatted = amount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
+        // Deduplicação diária
+        const alreadyAlerted = existingNotifications.some(
+          n => n.type === 'receivable_due' && n.metadata?.receivableId === rec.id && n.date.slice(0, 10) === todayStr
+        );
+
+        if (!alreadyAlerted) {
+          let title = `Fatura a Vencer em ${daysDiff} dia(s)`;
+          let msg = `A fatura #${rec.code || rec.id} de ${clientName} no valor de ${amountFormatted} vence em ${daysDiff} dia(s) (${rec.dueDate}).`;
+
+          if (daysDiff === 0) {
+            title = 'Fatura Vence HOJE';
+            msg = `A fatura #${rec.code || rec.id} de ${clientName} no valor de ${amountFormatted} vence HOJE (${rec.dueDate}).`;
+          } else if (daysDiff < 0) {
+            title = 'Fatura Vencida (Cobrança Pendente)';
+            msg = `A fatura #${rec.code || rec.id} de ${clientName} no valor de ${amountFormatted} está vencida há ${Math.abs(daysDiff)} dia(s) (Vencimento: ${rec.dueDate}).`;
+          }
+
+          notifications.push({
+            id: `notif-rec-${rec.id}-${Date.now()}`,
+            companyId: rec.companyId || 'comp-1',
+            type: 'receivable_due',
+            title,
+            message: msg,
+            date: new Date().toISOString(),
+            read: false,
+            metadata: {
+              receivableId: rec.id,
+              clientId: rec.clientId,
+              clientName,
+              amount,
+              dueDate: rec.dueDate,
+              daysDiff
+            }
+          });
+        }
+      }
+    });
+  }
+
+  // 2. Contas a Pagar (Duplicatas / Fornecedores / Despesas)
+  const enablePayables = alertSettings ? alertSettings.enablePayableDueAlerts !== false : true;
+  const payNoticeDays = alertSettings?.payableDueNoticeDays ?? 5;
+
+  if (enablePayables && db.accountsPayable && Array.isArray(db.accountsPayable)) {
+    db.accountsPayable.forEach(pay => {
+      if (pay.status === 'paid') return;
+
+      const dueMs = new Date(`${pay.dueDate}T00:00:00`).getTime();
+      const diffMs = dueMs - todayMs;
+      const daysDiff = Math.round(diffMs / (1000 * 60 * 60 * 24));
+
+      if (daysDiff <= payNoticeDays) {
+        const supplier = (db.suppliers || []).find(s => s.id === pay.supplierId);
+        const supplierName = supplier?.tradeName || supplier?.name || pay.supplierName || 'Fornecedor';
+        const amount = pay.remainingAmount ?? pay.totalAmount ?? 0;
+        const amountFormatted = amount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
+        // Deduplicação diária
+        const alreadyAlerted = existingNotifications.some(
+          n => n.type === 'payable_due' && n.metadata?.payableId === pay.id && n.date.slice(0, 10) === todayStr
+        );
+
+        if (!alreadyAlerted) {
+          let title = `Conta a Pagar a Vencer em ${daysDiff} dia(s)`;
+          let msg = `A despesa/duplicata #${pay.code || pay.id} (${supplierName}) no valor de ${amountFormatted} vence em ${daysDiff} dia(s) (${pay.dueDate}).`;
+
+          if (daysDiff === 0) {
+            title = 'Conta a Pagar Vence HOJE';
+            msg = `A despesa/duplicata #${pay.code || pay.id} (${supplierName}) no valor de ${amountFormatted} vence HOJE (${pay.dueDate}).`;
+          } else if (daysDiff < 0) {
+            title = 'Conta a Pagar Vencida';
+            msg = `A despesa/duplicata #${pay.code || pay.id} (${supplierName}) no valor de ${amountFormatted} está vencida há ${Math.abs(daysDiff)} dia(s) (Vencimento: ${pay.dueDate}).`;
+          }
+
+          notifications.push({
+            id: `notif-pay-${pay.id}-${Date.now()}`,
+            companyId: pay.companyId || 'comp-1',
+            type: 'payable_due',
+            title,
+            message: msg,
+            date: new Date().toISOString(),
+            read: false,
+            metadata: {
+              payableId: pay.id,
+              supplierId: pay.supplierId,
+              supplierName,
+              amount,
+              dueDate: pay.dueDate,
+              daysDiff
+            }
+          });
+        }
+      }
+    });
+  }
+
+  return notifications;
+}
+
+/**
  * Finds all active non-expired budgets holding stock reservations for a specific part.
  */
 export function getReservingBudgetsForPart(

@@ -50,6 +50,7 @@ import PreTransmissionReviewModal, { PreTransmissionDocData } from './PreTransmi
 import OperationResultModal from './OperationResultModal';
 import { getPartStockDetails } from '../utils/stockUtils';
 import { syncServiceOrdersWithBudgets, checkVehicleWarrantyStatus } from '../utils/serviceOrderUtils';
+import { buildBoletoDocument } from '../utils/boletoEngine';
 
 interface ServiceOrdersViewProps {
   db: AppDatabase;
@@ -870,33 +871,23 @@ export default function ServiceOrdersView({ db, currentUser, onSaveServiceOrders
     let createdBoleto: BoletoDocument | undefined = undefined;
     if (finishFiscalOption === 'immediate' && emitBoletoOnFinish) {
       const existingBoletos = db.boletos || [];
-      const bolNumber = existingBoletos.length + 1;
-      const boletoCode = `BOL-${new Date().getFullYear()}-${String(bolNumber).padStart(3, '0')}`;
-      const barcodeNumber = `34191.${Math.floor(10000 + Math.random() * 90000)} ${Math.floor(10000 + Math.random() * 90000)}.${Math.floor(100000 + Math.random() * 900000)} ${Math.floor(10000 + Math.random() * 90000)}.${Math.floor(100000 + Math.random() * 900000)} 1 ${Math.floor(1000000000 + Math.random() * 9000000000)}`;
+      
+      createdBoleto = buildBoletoDocument({
+        receivable: newReceivable,
+        companyInfo: db.companyInfo,
+        client,
+        bankConfig: db.companyInfo?.bankBoletoConfig,
+        pixConfig: db.companyInfo?.pixConfig,
+        instructions: `Referente à Ordem de Serviço #${finishingOS.id}. Não receber após 30 dias do vencimento.`
+      });
 
-      createdBoleto = {
-        id: `bol-${Date.now()}`,
-        code: boletoCode,
-        bankCode: '341',
-        bankName: 'Itaú Unibanco',
-        barcodeNumber,
-        pixQrCodeUrl: `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=00020126580014BR.GOV.BCB.PIX0136pix@oficina.com.br520400005303986540${finishingTotalAmount.toFixed(2)}5802BR5915OFICINA%20MECANICA6009SAO%20PAULO62070503***6304`,
-        pixCopiaECola: `00020126580014BR.GOV.BCB.PIX0136pix@oficina.com.br520400005303986540${finishingTotalAmount.toFixed(2)}5802BR5915OFICINA%20MECANICA6009SAO%20PAULO62070503***6304`,
-        payerName: client?.name || 'Cliente Desconhecido',
-        payerCpfCnpj: client?.cpf || '000.000.000-00',
-        amount: finishingTotalAmount,
-        dueDate: finishingInstallmentsSchedule[0]?.dueDate || firstDueDate,
-        issueDate: new Date().toISOString().split('T')[0],
-        status: markPaidImmediately ? 'paid' : 'registered',
-        companyId: currentUser.companyId || 'company-001',
-        serviceOrderId: finishingOS.id,
-        receivableId: newReceivable.id,
-        nfeAccessKey: createdNfe?.accessKey
-      };
+      if (markPaidImmediately) {
+        createdBoleto.status = 'paid';
+      }
 
       newReceivable.boletoId = createdBoleto.id;
       newReceivable.boletoCode = createdBoleto.code;
-      newReceivable.boletoStatus = markPaidImmediately ? 'paid' : 'registered';
+      newReceivable.boletoStatus = createdBoleto.status;
       newReceivable.boletoBarcode = createdBoleto.barcodeNumber;
 
       if (onSaveBoletos) {

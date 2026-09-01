@@ -27,6 +27,8 @@ import {
   SystemNotification
 } from '../types';
 import { AppDatabase } from '../data/mockData';
+import BoletoPrintModal from './BoletoPrintModal';
+import { buildBoletoDocument } from '../utils/boletoEngine';
 
 interface BillingAndReconciliationManagerProps {
   db: AppDatabase;
@@ -1747,120 +1749,48 @@ export default function BillingAndReconciliationManager({
       )}
 
       {/* ========================================================= */}
-      {/* MODAL 3: BOLETO CONSOLIDADO COM DETALHAMENTO DAS VENDAS */}
+      {/* MODAL 3: BOLETO CONSOLIDADO OFICIAL FEBRABAN + PIX */}
       {/* ========================================================= */}
-      {isBoletoModalOpen && selectedClosing && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in" id="modal-consolidated-boleto">
-          <div className="bg-white rounded-2xl max-w-2xl w-full shadow-2xl overflow-hidden border border-slate-200 flex flex-col max-h-[90vh]">
-            <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-slate-900 text-white">
-              <div>
-                <span className="text-[10px] font-bold uppercase tracking-wider bg-indigo-500/30 text-indigo-200 px-2 py-0.5 rounded">
-                  Boleto Bancário Consolidado
-                </span>
-                <h3 className="text-lg font-bold font-display mt-1">
-                  {selectedClosing.code} — {selectedClosing.clientName}
-                </h3>
-              </div>
-              <button onClick={() => setIsBoletoModalOpen(false)} className="text-white/80 hover:text-white">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
+      {isBoletoModalOpen && selectedClosing && (() => {
+        const client = clients.find(c => c.id === selectedClosing.clientId);
+        const foundBoleto = boletos.find(b => b.id === selectedClosing.boletoId || b.receivableId === selectedClosing.accountReceivableId || b.receivableId === selectedClosing.receivableId);
+        const consolidatedBoleto: BoletoDocument = foundBoleto || buildBoletoDocument({
+          receivable: {
+            id: selectedClosing.accountReceivableId || selectedClosing.receivableId || `rec-${Date.now()}`,
+            code: selectedClosing.accountReceivableCode || `TIT-${selectedClosing.code}`,
+            companyId: selectedClosing.companyId || currentUser.companyId || 'comp-1',
+            clientId: selectedClosing.clientId,
+            clientName: selectedClosing.clientName,
+            clientCpf: client?.cpfCnpj || client?.cpf,
+            title: `Faturamento Consolidado ${selectedClosing.code}`,
+            totalAmount: selectedClosing.totalAmount,
+            paidAmount: 0,
+            remainingAmount: selectedClosing.totalAmount,
+            dueDate: selectedClosing.dueDate,
+            status: 'pending',
+            paymentMethod: 'Boleto Bancário',
+            installmentsCount: 1,
+            installments: [],
+            createdAt: selectedClosing.createdAt || selectedClosing.closingDate || new Date().toISOString().split('T')[0]
+          },
+          companyInfo: db.companyInfo,
+          client,
+          bankConfig: db.companyInfo?.bankBoletoConfig,
+          pixConfig: db.companyInfo?.pixConfig,
+          instructions: `Faturamento Consolidado ${selectedClosing.code} (${selectedClosing.items?.length || 0} lançamentos). Cobrar juros de 1% ao mês após vencimento.`
+        });
 
-            <div className="p-6 overflow-y-auto space-y-5">
-              {/* Boleto Header Display */}
-              <div className="border border-slate-300 rounded-xl p-4 bg-slate-50 space-y-3 font-mono">
-                <div className="flex items-center justify-between border-b border-slate-200 pb-2">
-                  <span className="font-bold text-slate-800 text-sm">Banco Itaú Unibanco (341)</span>
-                  <span className="text-xs text-slate-600 font-bold">341-7 | 99999.99999</span>
-                </div>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
-                  <div>
-                    <span className="text-[10px] text-slate-400 block">Vencimento</span>
-                    <span className="font-bold text-slate-800">{selectedClosing.dueDate}</span>
-                  </div>
-                  <div>
-                    <span className="text-[10px] text-slate-400 block">Valor do Documento</span>
-                    <span className="font-bold text-emerald-700 text-sm">
-                      R$ {selectedClosing.totalAmount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                    </span>
-                  </div>
-                  <div>
-                    <span className="text-[10px] text-slate-400 block">Nosso Número</span>
-                    <span className="font-bold text-slate-800">109/8492041-8</span>
-                  </div>
-                  <div>
-                    <span className="text-[10px] text-slate-400 block">Agência/Código</span>
-                    <span className="font-bold text-slate-800">0452 / 98450-2</span>
-                  </div>
-                </div>
-
-                <div className="pt-2 border-t border-slate-200">
-                  <span className="text-[10px] text-slate-400 block">Linha Digitável / Código de Barras:</span>
-                  <div className="flex items-center justify-between bg-white p-2 rounded border border-slate-200 mt-1">
-                    <span className="text-xs font-bold text-slate-800">{selectedClosing.boletoBarcode || '34191.10901 84920.418005 98450.200001 1 98450000420000'}</span>
-                    <button
-                      onClick={() => handleCopyText(selectedClosing.boletoBarcode || '34191.10901 84920.418005 98450.200001 1 98450000420000', 'Linha Digitável')}
-                      className="text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 px-2 py-1 rounded flex items-center gap-1 font-sans"
-                    >
-                      <Copy className="w-3 h-3" /> Copiar
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              {/* Demonstrativo Analítico das Vendas Vinculadas */}
-              <div>
-                <h4 className="text-xs font-bold text-slate-800 mb-2 flex items-center gap-1.5">
-                  <FileText className="w-4 h-4 text-emerald-600" />
-                  Extrato de Vendas que Originaram este Boleto:
-                </h4>
-
-                <div className="border border-slate-200 rounded-xl overflow-hidden">
-                  <table className="w-full text-left text-xs">
-                    <thead className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200">
-                      <tr>
-                        <th className="px-3 py-2">Código</th>
-                        <th className="px-3 py-2">Data</th>
-                        <th className="px-3 py-2">Descrição</th>
-                        <th className="px-3 py-2 text-right">Valor</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100 font-mono">
-                      {selectedClosing.items?.map(item => (
-                        <tr key={item.id}>
-                          <td className="px-3 py-2 font-bold text-slate-800">{item.originCode}</td>
-                          <td className="px-3 py-2 text-slate-600">{item.documentDate}</td>
-                          <td className="px-3 py-2 text-slate-600 font-sans">{item.description}</td>
-                          <td className="px-3 py-2 text-right font-bold text-slate-800">
-                            R$ {item.amount.toFixed(2)}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </div>
-
-            <div className="p-4 border-t border-slate-100 bg-slate-50 flex items-center justify-between">
-              <button
-                type="button"
-                onClick={() => setIsBoletoModalOpen(false)}
-                className="px-4 py-2 border border-slate-300 text-slate-700 text-xs font-semibold rounded-lg"
-              >
-                Fechar
-              </button>
-              <button
-                type="button"
-                onClick={() => window.print()}
-                className="flex items-center gap-1.5 bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold px-4 py-2 rounded-lg"
-              >
-                <Printer className="w-4 h-4" /> Imprimir Boleto com Extrato Anexo
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+        return (
+          <BoletoPrintModal
+            isOpen={isBoletoModalOpen}
+            onClose={() => setIsBoletoModalOpen(false)}
+            boleto={consolidatedBoleto}
+            companyInfo={db.companyInfo}
+            bankConfig={db.companyInfo?.bankBoletoConfig}
+            pixConfig={db.companyInfo?.pixConfig}
+          />
+        );
+      })()}
 
       {/* ========================================================= */}
       {/* MODAL 4: CONCILIAÇÃO BANCÁRIA COM TÍTULO */}

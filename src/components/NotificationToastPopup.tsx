@@ -43,8 +43,14 @@ export default function NotificationToastPopup({
     onMarkAsRead(n.id);
     handleDismiss(n.id);
 
-    if (n.type === 'credit_limit_exceeded') {
-      onNavigateToView('accounts_receivable');
+    if (n.type === 'receivable_due' || n.type === 'credit_limit_exceeded') {
+      onNavigateToView('accountsReceivable');
+    } else if (n.type === 'payable_due') {
+      onNavigateToView('accountsPayable');
+    } else if (n.type === 'sale_created' || n.type === 'budget_converted_to_sale') {
+      onNavigateToView('sales');
+    } else if (n.type === 'stock_low' || n.type === 'stock_expired') {
+      onNavigateToView('parts');
     } else if (n.type === 'service_order_created' || n.type === 'os_closed_by_mechanic') {
       onNavigateToView('serviceOrders');
     } else if (n.type === 'budget_created' || n.type === 'budget_converted') {

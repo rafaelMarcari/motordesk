@@ -12,8 +12,8 @@
  * 6. Isolamento estrito Multi-tenant por companyId
  */
 
-import { User, UserRole, UserPermissions, AccessGroup, AppDatabase, HistoryEntry } from '../types';
-import { normalizeUserPermissions } from './businessSegmentation';
+import { User, UserRole, UserPermissions, AccessGroup, AppDatabase, HistoryEntry, CompanyInfo, BusinessType } from '../types';
+import { normalizeUserPermissions, isModuleAllowedForBusinessType } from './businessSegmentation';
 
 export const ALL_PERMISSION_KEYS: Array<{
   key: keyof UserPermissions;
@@ -110,10 +110,62 @@ export const ALL_PERMISSION_KEYS: Array<{
  * 4. Privilégios de Administrador / QA
  * 5. Isolamento Multi-tenant
  */
+/**
+ * Verifica se um módulo está efetivamente contratado pela empresa (SaaS Licensing)
+ * Respeita a hierarquia:
+ * 1. Segmentação do Tenant (isModuleAllowedForBusinessType)
+ * 2. Módulos Globais / Assinatura da Empresa (company.globalModules ou company.modules)
+ */
+export function isModuleContractedForCompany(
+  permissionKey: string,
+  company?: CompanyInfo | null,
+  businessType?: BusinessType | string | null
+): boolean {
+  if (permissionKey === 'accessUserManagement' || permissionKey === 'accessDashboard') {
+    return true;
+  }
+
+  const effectiveBusinessType = (businessType || company?.businessType || 'OFICINA') as BusinessType;
+
+  // 1. Centralized Segmentation Check
+  if (!isModuleAllowedForBusinessType(permissionKey, effectiveBusinessType)) {
+    return false;
+  }
+
+  // 2. Company Subscription / Global Modules Check
+  if (company?.globalModules && typeof company.globalModules === 'object') {
+    if (company.globalModules[permissionKey] !== undefined) {
+      return Boolean(company.globalModules[permissionKey]);
+    }
+  }
+
+  // 3. Fallback to company.modules (legacy/alternative map) if present
+  if (company?.modules && typeof company.modules === 'object') {
+    const modMap: Record<string, boolean | undefined> = {
+      accessSales: company.modules.sales,
+      accessWithdrawals: company.modules.withdrawals,
+      accessServiceOrders: company.modules.serviceOrders,
+      accessVehicles: company.modules.vehicles,
+      accessParts: company.modules.inventory,
+      accessFinancial: company.modules.financial,
+      accessAccountsReceivable: company.modules.financial,
+      accessAccountsPayable: company.modules.financial,
+      accessFiscal: company.modules.fiscal,
+      accessProduction: (company.modules as any).production ?? (company.modules as any).industry,
+      accessIndustrialDashboard: (company.modules as any).production ?? (company.modules as any).industry,
+    };
+    if (modMap[permissionKey] !== undefined) {
+      return Boolean(modMap[permissionKey]);
+    }
+  }
+
+  return true;
+}
+
 export function getEffectivePermissions(
   user: User | string | undefined | null,
   companyId: string | undefined | null,
-  db: AppDatabase
+  db?: AppDatabase | null
 ): UserPermissions {
   // Se usuário não fornecido, retorna todas as permissões como falso
   if (!user) {
@@ -122,7 +174,7 @@ export function getEffectivePermissions(
 
   // Se passou apenas o ID do usuário como string, busca no DB
   const userObj: User | undefined = typeof user === 'string'
-    ? (db.users || []).find(u => u.id === user || u.username.toLowerCase() === user.toLowerCase())
+    ? (db?.users || []).find(u => u.id === user || u.username.toLowerCase() === user.toLowerCase())
     : user;
 
   if (!userObj) {
@@ -142,7 +194,7 @@ export function getEffectivePermissions(
   let basePerms = normalizeUserPermissions(userObj.permissions || {}, userObj.role || 'atendente');
 
   // 3. Se o usuário estiver vinculado a um Grupo de Acesso específico (AccessGroup)
-  if (userObj.groupId && db.accessGroups && db.accessGroups.length > 0) {
+  if (userObj.groupId && db?.accessGroups && db.accessGroups.length > 0) {
     const matchedGroup = db.accessGroups.find(
       g => g.id === userObj.groupId && (g.active !== false) && (!g.companyId || !companyId || g.companyId === companyId)
     );
@@ -209,6 +261,78 @@ export function getEffectivePermissions(
     basePerms.financialReconciliation = true;
     basePerms.financialUnreconcile = true;
     basePerms.authorizeCreditLimitBypass = true;
+    basePerms.accessProduction = true;
+    basePerms.accessIndustrialDashboard = true;
+    basePerms.accessBillOfMaterials = true;
+    basePerms.accessProductionOrders = true;
+  }
+
+  // 6. CAMADA DE LICENCIAMENTO E CONTRATO SAAS (CT-LIC-11 a CT-LIC-18)
+  // Regra Inviolável: Nenhum usuário, inclusive Admin/Master, acessa módulo não contratado pela empresa.
+  // Hierarquia: Contrato da Empresa -> Segmentação -> Grupo RBAC -> Usuário -> Permissão Efetiva
+  const targetCompany = (db?.registeredCompanies && db.registeredCompanies.length > 0)
+    ? (db.registeredCompanies.find(c => c.id === companyId) || db.registeredCompanies.find(c => c.id === (typeof user === 'object' ? user?.companyId : undefined)) || db.companyInfo)
+    : db?.companyInfo;
+
+  if (targetCompany) {
+    const effectiveBt = targetCompany.businessType || 'OFICINA';
+    ALL_PERMISSION_KEYS.forEach(pKey => {
+      if (pKey.key === 'accessUserManagement' || pKey.key === 'accessQAPanel') {
+        return; // Ferramentas centrais de administração e testes
+      }
+      const isContracted = isModuleContractedForCompany(pKey.key, targetCompany, effectiveBt);
+      if (!isContracted) {
+        (basePerms as any)[pKey.key] = false;
+      }
+    });
+
+    // Bloqueio em cascata de sub-permissões quando o módulo pai não está contratado
+    if (!isModuleContractedForCompany('accessFiscal', targetCompany, effectiveBt)) {
+      basePerms.fiscalView = false;
+      basePerms.fiscalConference = false;
+      basePerms.fiscalEmit = false;
+      basePerms.fiscalTransmit = false;
+      basePerms.fiscalCancel = false;
+      basePerms.fiscalGenerateGuides = false;
+      basePerms.fiscalCancelGuides = false;
+      basePerms.accessTaxObligationsReport = false;
+    }
+    if (!isModuleContractedForCompany('accessFinancial', targetCompany, effectiveBt)) {
+      basePerms.financialBillingClosing = false;
+      basePerms.financialReopenClosing = false;
+      basePerms.financialReconciliation = false;
+      basePerms.financialUnreconcile = false;
+    }
+    if (!isModuleContractedForCompany('accessProduction', targetCompany, effectiveBt)) {
+      basePerms.accessIndustrialDashboard = false;
+      basePerms.accessManufacturing = false;
+      basePerms.accessProductionOrders = false;
+      basePerms.accessBillOfMaterials = false;
+      basePerms.accessProductStructure = false;
+      basePerms.createProductStructure = false;
+      basePerms.editProductStructure = false;
+      basePerms.approveProductStructure = false;
+      basePerms.accessIndustrialStock = false;
+      basePerms.accessIndustrialPurchasing = false;
+      basePerms.accessIndustrialCosts = false;
+      basePerms.accessLots = false;
+      basePerms.accessProductionReports = false;
+      basePerms.accessIndustrialReports = false;
+      basePerms.accessCommercialReports = false;
+      basePerms.accessMaintenance = false;
+      basePerms.createMaintenance = false;
+      basePerms.editMaintenance = false;
+      basePerms.approveMaintenance = false;
+      basePerms.accessEquipment = false;
+      basePerms.accessIndustrialAudit = false;
+      basePerms.productionOrderCreate = false;
+      basePerms.productionOrderEdit = false;
+      basePerms.productionOrderApprove = false;
+      basePerms.productionOrderCancel = false;
+      basePerms.productionOrderComplete = false;
+      basePerms.bomCreate = false;
+      basePerms.bomEdit = false;
+    }
   }
 
   return basePerms;
@@ -236,6 +360,10 @@ export type SecurityAuditAction =
   | 'EXCEPTION_APPLIED' 
   | 'USER_PERMISSIONS_OVERRIDDEN'
   | 'USER_UPDATED'
+  | 'LICENSE_MODULE_MODIFIED'
+  | 'MODULE_CONTRACT_CHANGED'
+  | 'LICENSE_ACTIVATED'
+  | 'LICENSE_DEACTIVATED'
   | 'FISCAL_TRANSMIT' 
   | 'FISCAL_CANCEL' 
   | 'GUIDE_GENERATED' 
