@@ -79,7 +79,7 @@ export interface AlertSettings {
   enableCreditLimitAlerts?: boolean; // Alerta de limite de crédito excedido em vendas a prazo
 }
 
-export type UserRole = 'admin' | 'atendente' | 'mecanico' | 'qa';
+export type UserRole = 'admin' | 'gerente' | 'consultor' | 'atendente' | 'mecanico' | 'estoquista' | 'financeiro' | 'qa';
 
 export type BusinessType = "OFICINA" | "COMERCIO" | "INDUSTRIA" | "OFICINA_COMERCIO" | "SERVICOS" | "OUTROS";
 
@@ -511,12 +511,17 @@ export interface UserPermissions {
   salesCreate?: boolean;
   salesCancel?: boolean;
   budgetsCreate?: boolean;
+  budgetsEdit?: boolean;
   budgetsApprove?: boolean;
+  budgetsCancel?: boolean;
+  budgetsConvert?: boolean;
   budgetsApplyDiscount?: boolean;
   serviceOrdersCreate?: boolean;
   serviceOrdersEdit?: boolean;
   serviceOrdersComplete?: boolean;
   serviceOrdersCancel?: boolean;
+  serviceOrdersReopen?: boolean;
+  serviceOrdersAssignMechanic?: boolean;
   clientsCreate?: boolean;
   clientsEdit?: boolean;
   clientsDelete?: boolean;
@@ -527,14 +532,18 @@ export interface UserPermissions {
   partsEdit?: boolean;
   partsDelete?: boolean;
   partsImportXml?: boolean;
+  partsAdjustStock?: boolean;
   fiscalInutilize?: boolean;
   financialExport?: boolean;
   accountsReceivableCreate?: boolean;
   accountsReceivableSettle?: boolean;
   accountsReceivableCancel?: boolean;
+  accountsReceivableGenerateBoleto?: boolean;
+  accountsReceivableReopen?: boolean;
   accountsPayableCreate?: boolean;
   accountsPayableSettle?: boolean;
   accountsPayableCancel?: boolean;
+  accountsPayableImportXml?: boolean;
   carriersCreate?: boolean;
   carriersEdit?: boolean;
   carriersDelete?: boolean;
@@ -545,6 +554,18 @@ export interface UserPermissions {
   servicesDelete?: boolean;
   quotationsCreate?: boolean;
   quotationsApprove?: boolean;
+  quotationsReject?: boolean;
+}
+
+export interface OperationalAlcada {
+  maxDiscountPercent?: number; // % máximo de desconto que o operador pode conceder sem alçada superior (ex: 5, 10, 15)
+  maxPurchaseApprovalAmount?: number; // R$ valor máximo para aprovação de pedidos de compra/cotações
+  maxCreditBypassAmount?: number; // R$ valor máximo de tolerância para liberação de venda com limite estourado
+  maxAccountsPayableSettleAmount?: number; // R$ valor máximo para liquidação direta de título a pagar
+  canCancelInvoices?: boolean; // Pode cancelar notas fiscais autorizadas na SEFAZ
+  canReopenServiceOrders?: boolean; // Pode reabrir ordens de serviço concluídas/faturadas
+  canReopenFinancialClosings?: boolean; // Pode estornar fechamentos financeiros consolidados
+  canBypassCreditLimit?: boolean; // Pode autorizar pedidos com crédito bloqueado
 }
 
 export interface AccessGroup {
@@ -556,6 +577,7 @@ export interface AccessGroup {
   active: boolean;
   isSystemDefault?: boolean;
   permissions: UserPermissions;
+  alcadas?: OperationalAlcada;
   usersCount?: number;
   createdAt: string;
   updatedAt: string;
@@ -571,6 +593,8 @@ export interface User {
   role: UserRole;
   passwordHash: string; // Storing as plaintext/simulated hash for simple demo settings
   permissions: UserPermissions;
+  alcadas?: OperationalAlcada; // Alçadas operacionais diretas ou herdadas
+  customAlcadas?: Partial<OperationalAlcada>; // Exceções individuais de alçadas
   companyId?: string; // ID da empresa/oficina à qual o usuário pertence
   groupId?: string; // ID do Grupo de Acesso vinculado
   accessGroupId?: string; // Compatibilidade de Grupo de Acesso
