@@ -160,11 +160,11 @@ export default function NotificationsModal({
     if (!onNavigateToView) return;
 
     if (notif.type === 'receivable_due') {
-      onNavigateToView('accountsReceivable', notif.metadata?.receivableId);
+      onNavigateToView('accounts_receivable', notif.metadata?.receivableId);
     } else if (notif.type === 'payable_due') {
-      onNavigateToView('accountsPayable', notif.metadata?.payableId);
+      onNavigateToView('accounts_payable', notif.metadata?.payableId);
     } else if (notif.type === 'credit_limit_exceeded') {
-      onNavigateToView(isCommerce ? 'sales' : 'accountsReceivable', notif.metadata?.clientId);
+      onNavigateToView(isCommerce ? 'sales' : 'accounts_receivable', notif.metadata?.clientId);
     } else if (notif.type === 'sale_created' || notif.type === 'budget_converted_to_sale') {
       onNavigateToView('sales', notif.metadata?.saleId);
     } else if (notif.type === 'budget_created' || notif.type === 'budget_converted') {
@@ -178,6 +178,7 @@ export default function NotificationsModal({
     } else {
       onNavigateToView('dashboard');
     }
+    onClose();
   };
 
   const getIconForType = (type: SystemNotification['type'], metadata?: any) => {

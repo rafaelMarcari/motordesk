@@ -1330,13 +1330,59 @@ export default function App() {
     setPendingTargetView(null);
   };
 
+  // Normalizador resiliente de ViewID para compatibilidade de rotas e notificações
+  const normalizeViewId = (rawView: string | ViewID): ViewID => {
+    const map: Record<string, ViewID> = {
+      'accountsReceivable': 'accounts_receivable',
+      'accounts_receivable': 'accounts_receivable',
+      'accountsPayable': 'accounts_payable',
+      'accounts_payable': 'accounts_payable',
+      'fiscalConference': 'fiscal_conference',
+      'fiscal_conference': 'fiscal_conference',
+      'taxObligations': 'tax_obligations',
+      'tax_obligations': 'tax_obligations',
+      'unitsOfMeasure': 'units_of_measure',
+      'units_of_measure': 'units_of_measure',
+      'accessGroups': 'access_groups',
+      'access_groups': 'access_groups',
+      'qaPanel': 'qa_panel',
+      'qa_panel': 'qa_panel',
+      'dataMigration': 'data_migration',
+      'data_migration': 'data_migration',
+      'serviceOrders': 'serviceOrders',
+      'service_orders': 'serviceOrders',
+      'production': 'industry',
+      'industrial': 'industry',
+      'industry': 'industry',
+      'reports': 'reports',
+      'history': 'history',
+      'users': 'users',
+      'userManagement': 'users',
+      'profile': 'profile',
+      'dashboard': 'dashboard',
+      'sales': 'sales',
+      'withdrawals': 'withdrawals',
+      'carriers': 'carriers',
+      'clients': 'clients',
+      'vehicles': 'vehicles',
+      'parts': 'parts',
+      'quotations': 'quotations',
+      'services': 'services',
+      'budgets': 'budgets',
+      'financial': 'financial',
+      'fiscal': 'fiscal',
+    };
+    return map[rawView] || (rawView as ViewID);
+  };
+
   // Safe navigation checks for unsaved forms with segmentation fallback
-  const navigateToView = (view: ViewID) => {
+  const navigateToView = (view: ViewID | string) => {
+    const normalized = normalizeViewId(view);
     const currentActiveComp = (db?.registeredCompanies || []).find(c => c.id === activeCompanyId) || db?.companyInfo;
     const curBusinessType = getBusinessType(currentActiveComp);
     
-    const targetView = isViewAllowedForBusinessType(view, curBusinessType)
-      ? view
+    const targetView = isViewAllowedForBusinessType(normalized, curBusinessType)
+      ? normalized
       : getFallbackViewForBusinessType(curBusinessType, currentUser?.permissions);
 
     if (unsavedTask) {
@@ -1933,19 +1979,25 @@ export default function App() {
               </button>
             )}
 
-            {Boolean(currentUser.permissions.accessUnitsOfMeasure) && (
+            {Boolean(currentUser.permissions.accessUnitsOfMeasure) && isViewAllowedForBusinessType('units_of_measure', activeBusinessType) && (
               <button 
                 id="menu-btn-units-of-measure"
-                onClick={() => navigateToView('units_of_measure')}
+                onClick={() => !isModuleLocked('accessUnitsOfMeasure') && navigateToView('units_of_measure')}
+                disabled={isModuleLocked('accessUnitsOfMeasure')}
                 title="Unidades de Medida"
                 className={`w-full flex items-center ${(!isSidebarCollapsed || isSidebarHovered) ? 'justify-between px-3' : 'justify-center px-2'} py-2.5 rounded-lg text-xs font-semibold tracking-wide transition ${
-                  activeView === 'units_of_measure' ? 'bg-indigo-600 text-white font-bold' : 'hover:bg-slate-800 text-slate-400 hover:text-slate-100'
+                  isModuleLocked('accessUnitsOfMeasure')
+                    ? 'opacity-40 cursor-not-allowed text-slate-500'
+                    : activeView === 'units_of_measure' ? 'bg-indigo-600 text-white font-bold' : 'hover:bg-slate-800 text-slate-400 hover:text-slate-100'
                 }`}
               >
                 <div className="flex items-center gap-2.5 min-w-0">
                   <Ruler className="w-4 h-4 shrink-0 text-indigo-400" />
                   {(!isSidebarCollapsed || isSidebarHovered) && <span className="truncate">Unidades de Medida</span>}
                 </div>
+                {(!isSidebarCollapsed || isSidebarHovered) && activeCompanyModules.accessUnitsOfMeasure === false && (
+                  <span className="text-[9px] bg-amber-500/10 text-amber-500 px-1 py-0.2 rounded border border-amber-500/20 font-mono">🔒</span>
+                )}
               </button>
             )}
 
@@ -2530,13 +2582,15 @@ export default function App() {
           )}
 
           {activeView === 'units_of_measure' && (currentUser.permissions.accessUnitsOfMeasure ?? (currentUser.role === 'admin' || currentUser.role === 'qa')) && (
-            <UnitsOfMeasureView
-              db={scopedDb}
-              currentUser={currentUser}
-              currentCompany={activeCompanyObj || db.companyInfo}
-              onSaveUnitsOfMeasure={handleSaveUnitsOfMeasure}
-              onAddHistoryLog={handleAddHistoryLog}
-            />
+            isModuleLocked('accessUnitsOfMeasure') ? renderLockedScreen() : (
+              <UnitsOfMeasureView
+                db={scopedDb}
+                currentUser={currentUser}
+                currentCompany={activeCompanyObj || db.companyInfo}
+                onSaveUnitsOfMeasure={handleSaveUnitsOfMeasure}
+                onAddHistoryLog={handleAddHistoryLog}
+              />
+            )
           )}
 
           {activeView === 'quotations' && currentUser.permissions.accessQuotations && (
@@ -2764,6 +2818,31 @@ export default function App() {
               onSaveServiceOrders={handleSaveServiceOrders}
               onAddHistoryLog={handleAddHistoryLog}
             />
+          )}
+
+          {/* Fallback de Segurança caso a view não corresponda a nenhum componente renderizado - Previne 100% Tela Branca */}
+          {![
+            'dashboard', 'sales', 'withdrawals', 'carriers', 'clients', 'vehicles', 
+            'parts', 'units_of_measure', 'quotations', 'accounts_receivable', 
+            'accounts_payable', 'financial', 'fiscal_conference', 'fiscal', 
+            'tax_obligations', 'services', 'budgets', 'serviceOrders', 'industry', 
+            'history', 'reports', 'users', 'access_groups', 'profile', 'qa_panel', 'data_migration'
+          ].includes(activeView) && (
+            <div className="flex flex-col items-center justify-center p-12 text-center bg-white rounded-2xl border border-slate-200/80 my-12 animate-fade-in shadow-xs" id="fallback-view-screen">
+              <div className="w-14 h-14 bg-indigo-50 border border-indigo-200 text-indigo-600 rounded-2xl flex items-center justify-center text-2xl mb-4 shadow-xs font-bold">
+                🧭
+              </div>
+              <h2 className="text-base font-bold text-slate-800 font-display">Acesso Direcionado</h2>
+              <p className="text-xs text-slate-500 max-w-md mt-1 leading-relaxed">
+                A visualização solicitada não está disponível para o seu nível de acesso ou não consta no contrato da empresa.
+              </p>
+              <button
+                onClick={() => setActiveView(getFallbackViewForBusinessType(activeBusinessType, currentUser?.permissions))}
+                className="mt-4 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl shadow-xs cursor-pointer"
+              >
+                Voltar para a Página Principal
+              </button>
+            </div>
           )}
         </main>
       </div>

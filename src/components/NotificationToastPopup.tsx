@@ -44,9 +44,9 @@ export default function NotificationToastPopup({
     handleDismiss(n.id);
 
     if (n.type === 'receivable_due' || n.type === 'credit_limit_exceeded') {
-      onNavigateToView('accountsReceivable');
+      onNavigateToView('accounts_receivable');
     } else if (n.type === 'payable_due') {
-      onNavigateToView('accountsPayable');
+      onNavigateToView('accounts_payable');
     } else if (n.type === 'sale_created' || n.type === 'budget_converted_to_sale') {
       onNavigateToView('sales');
     } else if (n.type === 'stock_low' || n.type === 'stock_expired') {

@@ -15,7 +15,10 @@ export const WORKSHOP_EXCLUSIVE_VIEWS: ViewID[] = [
 ];
 
 export const COMMERCE_EXCLUSIVE_VIEWS: ViewID[] = [
+  'sales',
   'withdrawals',
+  'carriers',
+  'units_of_measure',
 ];
 
 export const INDUSTRIAL_EXCLUSIVE_VIEWS: ViewID[] = [
@@ -29,7 +32,10 @@ export const WORKSHOP_EXCLUSIVE_PERMISSIONS: (keyof UserPermissions | string)[] 
 ];
 
 export const COMMERCE_EXCLUSIVE_PERMISSIONS: (keyof UserPermissions | string)[] = [
+  'accessSales',
   'accessWithdrawals',
+  'accessCarriers',
+  'accessUnitsOfMeasure',
 ];
 
 export const INDUSTRIAL_EXCLUSIVE_PERMISSIONS: (keyof UserPermissions | string)[] = [
