@@ -492,7 +492,7 @@ export function isModuleContractedForCompany(
   company?: CompanyInfo | null,
   businessType?: BusinessType | string | null
 ): boolean {
-  if (permissionKey === 'accessUserManagement' || permissionKey === 'accessDashboard') {
+  if (permissionKey === 'accessUserManagement') {
     return true;
   }
 
@@ -503,7 +503,7 @@ export function isModuleContractedForCompany(
     return false;
   }
 
-  // 2. Company Subscription / Global Modules Check
+  // 2. Company Subscription / Global Modules Check (Contract source of truth)
   if (company?.globalModules && typeof company.globalModules === 'object') {
     if (company.globalModules[permissionKey] !== undefined) {
       return Boolean(company.globalModules[permissionKey]);
@@ -512,18 +512,29 @@ export function isModuleContractedForCompany(
 
   // 3. Fallback to company.modules (legacy/alternative map) if present
   if (company?.modules && typeof company.modules === 'object') {
+    const rawModules = company.modules as any;
     const modMap: Record<string, boolean | undefined> = {
-      accessSales: company.modules.sales,
-      accessWithdrawals: company.modules.withdrawals,
-      accessServiceOrders: company.modules.serviceOrders,
-      accessVehicles: company.modules.vehicles,
-      accessParts: company.modules.inventory,
-      accessFinancial: company.modules.financial,
-      accessAccountsReceivable: company.modules.financial,
-      accessAccountsPayable: company.modules.financial,
-      accessFiscal: company.modules.fiscal,
-      accessProduction: (company.modules as any).production ?? (company.modules as any).industry,
-      accessIndustrialDashboard: (company.modules as any).production ?? (company.modules as any).industry,
+      accessDashboard: rawModules.dashboard,
+      accessSales: rawModules.sales,
+      accessWithdrawals: rawModules.withdrawals,
+      accessCarriers: rawModules.carriers,
+      accessBudgets: rawModules.budgets,
+      accessServiceOrders: rawModules.serviceOrders,
+      accessClients: rawModules.clients,
+      accessVehicles: rawModules.vehicles,
+      accessParts: rawModules.inventory,
+      accessUnitsOfMeasure: rawModules.unitsOfMeasure,
+      accessServices: rawModules.services,
+      accessQuotations: rawModules.quotations,
+      accessFinancial: rawModules.financial,
+      accessAccountsReceivable: rawModules.financial,
+      accessAccountsPayable: rawModules.financial,
+      accessFiscal: rawModules.fiscal,
+      accessHistory: rawModules.history,
+      accessReports: rawModules.reports,
+      accessProduction: rawModules.production ?? rawModules.industry,
+      accessIndustrialDashboard: rawModules.production ?? rawModules.industry,
+      accessQAPanel: rawModules.qaPanel,
     };
     if (modMap[permissionKey] !== undefined) {
       return Boolean(modMap[permissionKey]);
@@ -561,7 +572,7 @@ export function getEffectivePermissions(
     return disabledPerms as UserPermissions;
   }
 
-  // 2. Base de permissões a partir do papel (Role)
+  // 2. Base de permissões a partir do papel (Role) e permissões explícitas do usuário
   let basePerms = normalizeUserPermissions(userObj.permissions || {}, userObj.role || 'atendente');
 
   // 3. Se o usuário estiver vinculado a um Grupo de Acesso específico (AccessGroup)
@@ -597,104 +608,7 @@ export function getEffectivePermissions(
     });
   }
 
-  // 5. Tratamento de Administrador Máximo / Validador QA
-  if (userObj.role === 'admin' || userObj.username.toLowerCase() === 'validador' || userObj.username.toLowerCase() === 'admin') {
-    basePerms.accessDashboard = true;
-    basePerms.exportDashboard = true;
-    basePerms.accessSales = true;
-    basePerms.salesCreate = true;
-    basePerms.salesCancel = true;
-    basePerms.accessWithdrawals = true;
-    basePerms.accessCarriers = true;
-    basePerms.carriersCreate = true;
-    basePerms.carriersEdit = true;
-    basePerms.carriersDelete = true;
-    basePerms.accessClients = true;
-    basePerms.clientsCreate = true;
-    basePerms.clientsEdit = true;
-    basePerms.clientsDelete = true;
-    basePerms.accessVehicles = true;
-    basePerms.vehiclesCreate = true;
-    basePerms.vehiclesEdit = true;
-    basePerms.vehiclesDelete = true;
-    basePerms.accessParts = true;
-    basePerms.partsCreate = true;
-    basePerms.partsEdit = true;
-    basePerms.partsDelete = true;
-    basePerms.partsImportXml = true;
-    basePerms.partsAdjustStock = true;
-    basePerms.accessServices = true;
-    basePerms.servicesCreate = true;
-    basePerms.servicesEdit = true;
-    basePerms.servicesDelete = true;
-    basePerms.accessBudgets = true;
-    basePerms.budgetsCreate = true;
-    basePerms.budgetsEdit = true;
-    basePerms.budgetsApprove = true;
-    basePerms.budgetsCancel = true;
-    basePerms.budgetsApplyDiscount = true;
-    basePerms.canEditBudgets = true;
-    basePerms.accessServiceOrders = true;
-    basePerms.serviceOrdersCreate = true;
-    basePerms.serviceOrdersEdit = true;
-    basePerms.serviceOrdersComplete = true;
-    basePerms.serviceOrdersCancel = true;
-    basePerms.serviceOrdersReopen = true;
-    basePerms.serviceOrdersAssignMechanic = true;
-    basePerms.accessHistory = true;
-    basePerms.historyExport = true;
-    basePerms.accessReports = true;
-    basePerms.reportsExport = true;
-    basePerms.accessUserManagement = true;
-    basePerms.accessAccessGroups = true;
-    basePerms.accessGroupsCreate = true;
-    basePerms.accessGroupsEdit = true;
-    basePerms.accessGroupsDelete = true;
-    basePerms.accessQAPanel = true;
-    basePerms.accessQuotations = true;
-    basePerms.quotationsCreate = true;
-    basePerms.quotationsApprove = true;
-    basePerms.accessPurchasing = true;
-    basePerms.accessPurchasingOrders = true;
-    basePerms.accessPurchasingApprove = true;
-    basePerms.accessAccountsReceivable = true;
-    basePerms.accountsReceivableCreate = true;
-    basePerms.accountsReceivableSettle = true;
-    basePerms.accountsReceivableCancel = true;
-    basePerms.accountsReceivableGenerateBoleto = true;
-    basePerms.accessAccountsPayable = true;
-    basePerms.accountsPayableCreate = true;
-    basePerms.accountsPayableSettle = true;
-    basePerms.accountsPayableCancel = true;
-    basePerms.accountsPayableImportXml = true;
-    basePerms.accessFinancial = true;
-    basePerms.financialExport = true;
-    basePerms.accessFiscal = true;
-    basePerms.fiscalView = true;
-    basePerms.fiscalConference = true;
-    basePerms.fiscalEmit = true;
-    basePerms.fiscalTransmit = true;
-    basePerms.fiscalCancel = true;
-    basePerms.fiscalInutilize = true;
-    basePerms.fiscalGenerateGuides = true;
-    basePerms.fiscalCancelGuides = true;
-    basePerms.accessTaxObligationsReport = true;
-    basePerms.accessUnitsOfMeasure = true;
-    basePerms.unitsOfMeasureCreate = true;
-    basePerms.unitsOfMeasureEdit = true;
-    basePerms.unitsOfMeasureToggleActive = true;
-    basePerms.financialBillingClosing = true;
-    basePerms.financialReopenClosing = true;
-    basePerms.financialReconciliation = true;
-    basePerms.financialUnreconcile = true;
-    basePerms.authorizeCreditLimitBypass = true;
-    basePerms.accessProduction = true;
-    basePerms.accessIndustrialDashboard = true;
-    basePerms.accessBillOfMaterials = true;
-    basePerms.accessProductionOrders = true;
-  }
-
-  // 6. CAMADA DE LICENCIAMENTO E CONTRATO SAAS (CT-LIC-11 a CT-LIC-18)
+  // 5. CAMADA DE LICENCIAMENTO E CONTRATO SAAS (CT-LIC-11 a CT-LIC-18)
   // Regra Inviolável: Nenhum usuário, inclusive Admin/Master, acessa módulo não contratado pela empresa.
   // Hierarquia: Contrato da Empresa -> Segmentação -> Grupo RBAC -> Usuário -> Permissão Efetiva
   const targetCompany = (db?.registeredCompanies && db.registeredCompanies.length > 0)

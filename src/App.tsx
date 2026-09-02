@@ -538,24 +538,32 @@ export default function App() {
     }
   }, [db?.budgets?.length, db?.parts?.length, db?.serviceOrders?.length, db?.accountsReceivable?.length, db?.accountsPayable?.length]);
 
-  // Keep currentUser permissions in sync with db.users in real time
+  // Multi-tenant scoping helper: derive active company ID for current logged user
+  const activeCompanyId = currentUser?.companyId || db?.companyInfo?.id || 'comp-1';
+  const activeCompanyObj = (db?.registeredCompanies || []).find(c => c.id === activeCompanyId) || db?.companyInfo;
+  const activeCompanyModules = activeCompanyObj?.globalModules || globalModules;
+  const activeBusinessType = getBusinessType(activeCompanyObj);
+  const activeSegmentMeta = getSegmentMetadata(activeBusinessType);
+
+  // Keep currentUser permissions in sync with db.users and active company licensing in real time
   useEffect(() => {
     if (db && currentUser) {
       const rawUser = (db.users || []).find(
         u => u.id === currentUser.id || (u.username && u.username.toLowerCase() === currentUser.username.toLowerCase())
       );
       if (rawUser) {
-        const freshUser = normalizeUser(rawUser);
+        const freshUser = normalizeUser(rawUser, activeCompanyId, db);
         if (
           JSON.stringify(freshUser.permissions) !== JSON.stringify(currentUser.permissions) ||
           freshUser.role !== currentUser.role ||
-          freshUser.name !== currentUser.name
+          freshUser.name !== currentUser.name ||
+          freshUser.companyId !== currentUser.companyId
         ) {
           setCurrentUser(freshUser);
         }
       }
     }
-  }, [db?.users, currentUser?.id]);
+  }, [db, activeCompanyId, currentUser?.id]);
 
   // Fallback activeView if current module permission is revoked
   useEffect(() => {
@@ -603,13 +611,6 @@ export default function App() {
       landingContent: newContent
     }));
   };
-
-  // Multi-tenant scoping helper: derive active company ID for current logged user
-  const activeCompanyId = currentUser?.companyId || db?.companyInfo?.id || 'comp-1';
-  const activeCompanyObj = (db?.registeredCompanies || []).find(c => c.id === activeCompanyId) || db?.companyInfo;
-  const activeCompanyModules = activeCompanyObj?.globalModules || globalModules;
-  const activeBusinessType = getBusinessType(activeCompanyObj);
-  const activeSegmentMeta = getSegmentMetadata(activeBusinessType);
 
   const isModuleLocked = React.useCallback((permissionKey: string) => {
     if (permissionKey === 'accessUserManagement' || permissionKey === 'accessDashboard') return false;

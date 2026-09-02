@@ -65,6 +65,12 @@ export default function BoletoPrintModal({
   const [cancelReason, setCancelReason] = useState('');
   const printContainerRef = useRef<HTMLDivElement>(null);
 
+  // Hook chamado incondicionalmente no topo de acordo com as Regras dos Hooks do React
+  const barcodeSvg = useMemo(() => {
+    if (!boleto?.barcodeNumber) return '';
+    return generateBarcodeSvg(boleto.barcodeNumber);
+  }, [boleto?.barcodeNumber]);
+
   if (!isOpen || !boleto) return null;
 
   const bankMeta = getBankMetadata(boleto.bankCode || bankConfig?.bankCode);
@@ -81,11 +87,6 @@ export default function BoletoPrintModal({
   const payerName = boleto.payerName || client?.name || 'Cliente';
   const payerCpfCnpj = boleto.payerCpfCnpj || client?.cpfCnpj || client?.cpf || '000.000.000-00';
   const payerAddress = client?.address || 'Endereço do Pagador Não Informado';
-
-  // Código de Barras e Linha Digitável
-  const barcodeSvg = useMemo(() => {
-    return generateBarcodeSvg(boleto.barcodeNumber);
-  }, [boleto.barcodeNumber]);
 
   // Handler de Cópia
   const handleCopyText = (text: string, type: 'barcode' | 'pix') => {

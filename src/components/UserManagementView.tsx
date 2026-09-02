@@ -2461,6 +2461,34 @@ export default function UserManagementView({
                     );
                   })}
                 </div>
+
+                {/* Barra de Ação & Salvar Módulos Contratados */}
+                <div className="pt-3 border-t border-slate-200 flex flex-wrap items-center justify-between gap-3 bg-slate-50 p-3 rounded-xl">
+                  <div className="text-xs text-slate-600 flex items-center gap-2">
+                    <CheckCircle className="w-4 h-4 text-emerald-600" />
+                    <span>
+                      <strong className="text-slate-800 font-bold">
+                        {Object.keys(DEFAULT_OPTIONAL_MODULE_PRICES).filter(k => !!companyGlobalModules[k]).length}
+                      </strong> de {Object.keys(DEFAULT_OPTIONAL_MODULE_PRICES).length} módulos contratados para <strong>{compName}</strong>
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    id="btn-save-contracted-modules"
+                    onClick={() => {
+                      saveCurrentCompanyData();
+                      setSaveModalData({
+                        title: 'Módulos Contratados Atualizados!',
+                        message: `A seleção de módulos do contrato e os parâmetros de precificação da empresa "${compName}" foram sincronizados e gravados no sistema com sucesso.`,
+                        targetType: 'subscription'
+                      });
+                      setShowSaveConfirmationModal(true);
+                    }}
+                    className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl transition flex items-center gap-1.5 shadow-xs cursor-pointer"
+                  >
+                    <Save className="w-4 h-4" /> Salvar Módulos Contratados & Precificação
+                  </button>
+                </div>
               </div>
             </div>
           </div>
