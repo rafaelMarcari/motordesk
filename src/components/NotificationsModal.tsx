@@ -325,6 +325,18 @@ export default function NotificationsModal({
           >
             <Sliders className="w-4 h-4" /> Configuração de Alertas do Segmento
           </button>
+
+          {onNavigateToView && (
+            <button
+              id="btn-tab-open-notification-engine"
+              onClick={() => onNavigateToView('notification_engine')}
+              className="ml-auto pb-3 text-xs font-bold tracking-wider text-indigo-600 hover:text-indigo-800 transition flex items-center gap-1.5 cursor-pointer"
+              title="Acessar painel completo do Motor Central de Notificações"
+            >
+              <ExternalLink className="w-3.5 h-3.5" />
+              <span>Motor Central & Réguas (Connect)</span>
+            </button>
+          )}
         </div>
 
         {/* Tab 1: Notifications List */}

@@ -103,6 +103,8 @@ import WithdrawalView from './components/WithdrawalView';
 import CarriersView from './components/CarriersView';
 import UnitsOfMeasureView from './components/UnitsOfMeasureView';
 import IndustrialView from './components/IndustrialView';
+import { NotificationEngineView } from './components/NotificationEngineView';
+import { RepresentativeCommerceView } from './components/RepresentativeCommerceView';
 import NotificationToastPopup from './components/NotificationToastPopup';
 import NotificationsModal from './components/NotificationsModal';
 import LandingPresentationView, { LandingContent } from './components/LandingPresentationView';
@@ -129,7 +131,7 @@ import {
   normalizeUser,
   normalizeUserPermissions
 } from './utils/businessSegmentation';
-import { getEffectivePermissions, isModuleContractedForCompany } from './utils/securityUtils';
+import { getEffectivePermissions, isModuleContractedForCompany, canAccessView } from './utils/securityUtils';
 
 const VIEW_PERMISSION_MAP: Record<ViewID, keyof UserPermissions | null> = {
   dashboard: 'accessDashboard',
@@ -148,6 +150,8 @@ const VIEW_PERMISSION_MAP: Record<ViewID, keyof UserPermissions | null> = {
   fiscal: 'accessFiscal',
   tax_obligations: 'accessFiscal',
   access_groups: 'accessUserManagement',
+  notifications_engine: 'accessNotificationsEngine',
+  representative_commerce: 'accessRepresentativeCommerce',
   services: 'accessServices',
   budgets: 'accessBudgets',
   serviceOrders: 'accessServiceOrders',
@@ -164,8 +168,25 @@ export default function App() {
   // 1. Core DB State (Instant Local Cache + Silent Async Cloud Sync)
   const [db, setDb] = useState<AppDatabase>(() => getDatabase());
   
-  // 2. Auth State
-  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  // 2. Auth State & Multi-tenant Company Tracking
+  const [activeCompanyIdState, setActiveCompanyIdState] = useState<string>(() => {
+    if (typeof localStorage === 'undefined') return '';
+    return localStorage.getItem('motordesk_active_company_id') || '';
+  });
+  const [currentUser, setCurrentUser] = useState<User | null>(() => {
+    if (typeof localStorage === 'undefined') return null;
+    const token = localStorage.getItem('motordesk_auth_token');
+    const savedUserStr = localStorage.getItem('motordesk_active_user');
+    if (token && savedUserStr) {
+      try {
+        const parsed = JSON.parse(savedUserStr);
+        return parsed;
+      } catch (e) {
+        return null;
+      }
+    }
+    return null;
+  });
   const [loginUsername, setLoginUsername] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
   const [selectedLoginCompanyId, setSelectedLoginCompanyId] = useState<string>('');
@@ -335,40 +356,11 @@ export default function App() {
   useEffect(() => {
     if (!currentUser) return;
 
-    const viewPermissionMap: Record<ViewID, keyof UserPermissions | null> = {
-      dashboard: 'accessDashboard',
-      industry: 'accessIndustrialDashboard',
-      sales: 'accessSales',
-      withdrawals: 'accessWithdrawals',
-      fiscal_conference: 'accessFiscal',
-      carriers: 'accessCarriers',
-      clients: 'accessClients',
-      vehicles: 'accessVehicles',
-      parts: 'accessParts',
-      units_of_measure: 'accessUnitsOfMeasure',
-      quotations: 'accessQuotations',
-      accounts_receivable: 'accessAccountsReceivable',
-      accounts_payable: 'accessAccountsPayable',
-      financial: 'accessFinancial',
-      fiscal: 'accessFiscal',
-      tax_obligations: 'accessFiscal',
-      access_groups: 'accessAccessGroups',
-      services: 'accessServices',
-      budgets: 'accessBudgets',
-      serviceOrders: 'accessServiceOrders',
-      history: 'accessHistory',
-      reports: 'accessReports',
-      users: 'accessUserManagement',
-      profile: null,
-      qa_panel: 'accessQAPanel',
-      data_migration: 'accessQAPanel'
-    };
-
-    const requiredPerm = viewPermissionMap[activeView];
+    const requiredPerm = VIEW_PERMISSION_MAP[activeView];
     const isAllowed = requiredPerm ? (currentUser.permissions[requiredPerm] ?? true) : true;
     if (!isAllowed) {
-      const firstAllowed = (Object.keys(viewPermissionMap) as ViewID[]).find(v => {
-        const perm = viewPermissionMap[v];
+      const firstAllowed = (Object.keys(VIEW_PERMISSION_MAP) as ViewID[]).find(v => {
+        const perm = VIEW_PERMISSION_MAP[v];
         return perm === null || (currentUser.permissions[perm] ?? true);
       });
       setActiveView(firstAllowed || 'profile');
@@ -539,7 +531,7 @@ export default function App() {
   }, [db?.budgets?.length, db?.parts?.length, db?.serviceOrders?.length, db?.accountsReceivable?.length, db?.accountsPayable?.length]);
 
   // Multi-tenant scoping helper: derive active company ID for current logged user
-  const activeCompanyId = currentUser?.companyId || db?.companyInfo?.id || 'comp-1';
+  const activeCompanyId = activeCompanyIdState || currentUser?.companyId || db?.companyInfo?.id || 'comp-1';
   const activeCompanyObj = (db?.registeredCompanies || []).find(c => c.id === activeCompanyId) || db?.companyInfo;
   const activeCompanyModules = activeCompanyObj?.globalModules || globalModules;
   const activeBusinessType = getBusinessType(activeCompanyObj);
@@ -552,7 +544,7 @@ export default function App() {
         u => u.id === currentUser.id || (u.username && u.username.toLowerCase() === currentUser.username.toLowerCase())
       );
       if (rawUser) {
-        const freshUser = normalizeUser(rawUser, activeCompanyId, db);
+        const freshUser = normalizeUser({ ...rawUser, companyId: activeCompanyId }, activeCompanyId, db);
         if (
           JSON.stringify(freshUser.permissions) !== JSON.stringify(currentUser.permissions) ||
           freshUser.role !== currentUser.role ||
@@ -565,6 +557,53 @@ export default function App() {
     }
   }, [db, activeCompanyId, currentUser?.id]);
 
+  // Multi-tab synchronization: listen to storage and focus events to sync permissions and DB immediately across tabs
+  useEffect(() => {
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'motordesk_db_v2' || e.key === 'motordesk_active_company_id' || e.key === 'motordesk_active_user') {
+        const freshDb = getDatabase();
+        setDb(freshDb);
+        const storedCompId = localStorage.getItem('motordesk_active_company_id') || '';
+        if (storedCompId && storedCompId !== activeCompanyIdState) {
+          setActiveCompanyIdState(storedCompId);
+        }
+        if (currentUser) {
+          const rawUser = (freshDb.users || []).find(
+            u => u.id === currentUser.id || (u.username && u.username.toLowerCase() === currentUser.username.toLowerCase())
+          );
+          if (rawUser) {
+            const effCompId = storedCompId || activeCompanyId;
+            const freshUser = normalizeUser({ ...rawUser, companyId: effCompId }, effCompId, freshDb);
+            setCurrentUser(freshUser);
+          }
+        }
+      }
+    };
+
+    const handleFocus = () => {
+      const freshDb = getDatabase();
+      if (currentUser) {
+        const rawUser = (freshDb.users || []).find(
+          u => u.id === currentUser.id || (u.username && u.username.toLowerCase() === currentUser.username.toLowerCase())
+        );
+        if (rawUser) {
+          const effCompId = localStorage.getItem('motordesk_active_company_id') || activeCompanyId;
+          const freshUser = normalizeUser({ ...rawUser, companyId: effCompId }, effCompId, freshDb);
+          if (JSON.stringify(freshUser.permissions) !== JSON.stringify(currentUser.permissions)) {
+            setCurrentUser(freshUser);
+          }
+        }
+      }
+    };
+
+    window.addEventListener('storage', handleStorageChange);
+    window.addEventListener('focus', handleFocus);
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+      window.removeEventListener('focus', handleFocus);
+    };
+  }, [activeCompanyId, activeCompanyIdState, currentUser]);
+
   // Fallback activeView if current module permission is revoked
   useEffect(() => {
     if (!currentUser) return;
@@ -572,11 +611,11 @@ export default function App() {
     if (requiredPerm !== null && requiredPerm !== undefined && !currentUser.permissions[requiredPerm]) {
       const firstAllowed = (Object.keys(VIEW_PERMISSION_MAP) as ViewID[]).find(v => {
         const perm = VIEW_PERMISSION_MAP[v];
-        return perm === null || Boolean(currentUser.permissions[perm]);
+        return (perm === null || Boolean(currentUser.permissions[perm])) && isViewAllowedForBusinessType(v, activeBusinessType);
       });
       setActiveView(firstAllowed || 'profile');
     }
-  }, [currentUser?.permissions, activeView]);
+  }, [currentUser?.permissions, activeView, activeBusinessType]);
 
   const handleUpdateGlobalModules = (updatedModules: { [key: string]: boolean }) => {
     setGlobalModules(updatedModules);
@@ -623,14 +662,14 @@ export default function App() {
     return activeCompanyModules[permissionKey as keyof typeof activeCompanyModules] === false;
   }, [activeCompanyObj, activeBusinessType, activeCompanyModules]);
 
-  // Auto-redirect if active view is not supported by current company business type
+  // Auto-redirect if active view is not supported by current company business type or not accessible
   useEffect(() => {
     if (!currentUser) return;
-    if (!isViewAllowedForBusinessType(activeView, activeBusinessType)) {
+    if (!canAccessView(activeCompanyObj, currentUser, activeView, db)) {
       const fallback = getFallbackViewForBusinessType(activeBusinessType, currentUser.permissions);
       setActiveView(fallback);
     }
-  }, [activeCompanyId, activeBusinessType, currentUser, activeView]);
+  }, [activeCompanyId, activeBusinessType, currentUser, activeView, activeCompanyObj, db]);
 
   // Registered Companies List
   const registeredCompaniesList: CompanyInfo[] = db?.registeredCompanies && db.registeredCompanies.length > 0
@@ -641,13 +680,30 @@ export default function App() {
   const handleSwitchCompanyWorkspace = (targetCompanyId: string) => {
     if (!currentUser) return;
     const targetComp = (db?.registeredCompanies || []).find(c => c.id === targetCompanyId) || db?.companyInfo;
-    const updatedUser: User = {
+    if (!targetComp) return;
+
+    setActiveCompanyIdState(targetCompanyId);
+    localStorage.setItem('motordesk_active_company_id', targetCompanyId);
+
+    const updatedUser: User = normalizeUser({
       ...currentUser,
       companyId: targetCompanyId,
-    };
+    }, targetCompanyId, db);
+
     setCurrentUser(updatedUser);
     localStorage.setItem('motordesk_active_user', JSON.stringify(updatedUser));
     
+    // Also update db.companyInfo and users so all components and backend see the active company
+    syncDb(prev => ({
+      ...prev,
+      companyInfo: targetComp,
+      users: (prev.users || []).map(u => 
+        (u.id === currentUser.id || u.username.toLowerCase() === currentUser.username.toLowerCase())
+          ? { ...u, companyId: targetCompanyId }
+          : u
+      )
+    }));
+
     // Check if the current active view is allowed in the target company's business type
     const newBusinessType = getBusinessType(targetComp);
     if (!isViewAllowedForBusinessType(activeView, newBusinessType)) {
@@ -744,6 +800,10 @@ export default function App() {
     });
   };
   const handleSaveClients = (clients: Client[]) => {
+    if (currentUser && !currentUser.permissions?.accessClients) {
+      alert('Acesso não permitido. Seu usuário não possui permissão para acessar este recurso.');
+      return;
+    }
     const formatted = clients.map(c => ({ ...c, companyId: c.companyId || activeCompanyId }));
     setDb(prev => {
       if (!prev) return prev;
@@ -755,6 +815,10 @@ export default function App() {
   };
 
   const handleSaveVehicles = (vehicles: Vehicle[]) => {
+    if (currentUser && !currentUser.permissions?.accessVehicles) {
+      alert('Acesso não permitido. Seu usuário não possui permissão para acessar este recurso.');
+      return;
+    }
     const formatted = vehicles.map(v => ({ ...v, companyId: v.companyId || activeCompanyId }));
     setDb(prev => {
       if (!prev) return prev;
@@ -766,6 +830,10 @@ export default function App() {
   };
 
   const handleSaveParts = (parts: Part[]) => {
+    if (currentUser && !currentUser.permissions?.accessParts) {
+      alert('Acesso não permitido. Seu usuário não possui permissão para acessar este recurso.');
+      return;
+    }
     const formatted = parts.map(p => ({ ...p, companyId: p.companyId || activeCompanyId }));
     syncDb(prev => {
       const other = (prev.parts || []).filter(item => (item.companyId || 'comp-1') !== activeCompanyId);
@@ -1103,14 +1171,9 @@ export default function App() {
     }));
   };
 
-  // Calculate matching companies for typed username
+  // Calculate matching companies for typed username (or all registered companies if empty/admin)
   const matchingCompaniesForLogin = React.useMemo(() => {
-    if (!db || !loginUsername.trim()) return [];
-    const cleanUsername = loginUsername.trim().toLowerCase();
-    
-    // Find all users matching this username
-    const matchingUsers = (db.users || []).filter(u => u.username.toLowerCase() === cleanUsername);
-    if (matchingUsers.length === 0) return [];
+    if (!db) return [];
 
     const allCompanies: CompanyInfo[] = [];
     if (db.registeredCompanies && db.registeredCompanies.length > 0) {
@@ -1119,20 +1182,40 @@ export default function App() {
       allCompanies.push(db.companyInfo);
     }
 
+    if (!loginUsername.trim()) {
+      return allCompanies;
+    }
+
+    const cleanUsername = loginUsername.trim().toLowerCase();
+    const matchingUsers = (db.users || []).filter(u => u.username.toLowerCase() === cleanUsername);
+    if (matchingUsers.length === 0) return allCompanies;
+
+    // Admin and QA roles can access any company
+    const isAdminOrQa = matchingUsers.some(u => u.role === 'admin' || u.role === 'qa');
+    if (isAdminOrQa) {
+      return allCompanies;
+    }
+
     const companyIds = Array.from(new Set(matchingUsers.map(u => u.companyId || 'comp-1')));
-    return allCompanies.filter(c => companyIds.includes(c.id));
+    const filtered = allCompanies.filter(c => companyIds.includes(c.id));
+    return filtered.length > 0 ? filtered : allCompanies;
   }, [db, loginUsername]);
 
   // Synchronize selectedLoginCompanyId based on typed username and matching companies
   useEffect(() => {
     if (matchingCompaniesForLogin.length > 0) {
-      if (!selectedLoginCompanyId || !matchingCompaniesForLogin.some(c => c.id === selectedLoginCompanyId)) {
+      const savedCompanyId = localStorage.getItem('motordesk_active_company_id');
+      if (savedCompanyId && matchingCompaniesForLogin.some(c => c.id === savedCompanyId)) {
+        if (!selectedLoginCompanyId || !matchingCompaniesForLogin.some(c => c.id === selectedLoginCompanyId)) {
+          setSelectedLoginCompanyId(savedCompanyId);
+        }
+      } else if (!selectedLoginCompanyId || !matchingCompaniesForLogin.some(c => c.id === selectedLoginCompanyId)) {
         setSelectedLoginCompanyId(matchingCompaniesForLogin[0].id);
       }
     } else {
       setSelectedLoginCompanyId('');
     }
-  }, [matchingCompaniesForLogin, selectedLoginCompanyId]);
+  }, [matchingCompaniesForLogin]);
 
   // Login handler with strict multi-tenant company block check
   const handleLogin = (e: React.FormEvent) => {
@@ -1202,7 +1285,11 @@ export default function App() {
 
     if (matchedUser) {
       // Sync active company with effective companyId
-      const userCompId = matchedUser.companyId || targetCompId || 'comp-1';
+      const userCompId = targetCompId || matchedUser.companyId || 'comp-1';
+      matchedUser = {
+        ...matchedUser,
+        companyId: userCompId
+      };
       const matchedComp = (db.registeredCompanies || []).find(c => c.id === userCompId) || 
                           (db.companyInfo?.id === userCompId ? db.companyInfo : null) ||
                           db.companyInfo;
@@ -1219,8 +1306,8 @@ export default function App() {
         }
       }
 
-      // Normalize user permissions for legacy database safety
-      matchedUser = normalizeUser(matchedUser);
+      // Normalize user permissions with active company context and licensing
+      matchedUser = normalizeUser(matchedUser, userCompId, db);
 
       // Sync permissions with motordesk_level_permissions from localStorage if available
       const savedLevels = localStorage.getItem('motordesk_level_permissions');
@@ -1256,52 +1343,30 @@ export default function App() {
       ].slice(0, 4);
       setLoginHistory(updatedHistory);
 
-      // Batch state update
+      // Batch state update: ensure both companyInfo and user's companyId are updated
       syncDb(prev => ({
         ...prev,
         ...(matchedComp ? { companyInfo: matchedComp } : {}),
+        users: (prev.users || []).map(u =>
+          (u.id === matchedUser!.id || u.username.toLowerCase() === matchedUser!.username.toLowerCase())
+            ? { ...u, companyId: userCompId }
+            : u
+        ),
         loginHistory: updatedHistory
       }));
 
+      setActiveCompanyIdState(userCompId);
+      localStorage.setItem('motordesk_active_company_id', userCompId);
       setCurrentUser(matchedUser);
       const sessionToken = `motordesk_session_${matchedUser.id}_${Date.now()}`;
       localStorage.setItem('motordesk_auth_token', sessionToken);
       localStorage.setItem('motordesk_active_user', JSON.stringify(matchedUser));
 
       // Determine default accessible landing view based on user permissions
-      const viewPermissionMap: Record<ViewID, keyof UserPermissions | null> = {
-        dashboard: 'accessDashboard',
-        industry: 'accessIndustrialDashboard',
-        sales: 'accessSales',
-        withdrawals: 'accessWithdrawals',
-        fiscal_conference: 'accessFiscal',
-        carriers: 'accessCarriers',
-        clients: 'accessClients',
-        vehicles: 'accessVehicles',
-        parts: 'accessParts',
-        units_of_measure: 'accessUnitsOfMeasure',
-        quotations: 'accessQuotations',
-        accounts_receivable: 'accessAccountsReceivable',
-        accounts_payable: 'accessAccountsPayable',
-        financial: 'accessFinancial',
-        fiscal: 'accessFiscal',
-        tax_obligations: 'accessFiscal',
-        access_groups: 'accessAccessGroups',
-        services: 'accessServices',
-        budgets: 'accessBudgets',
-        serviceOrders: 'accessServiceOrders',
-        history: 'accessHistory',
-        reports: 'accessReports',
-        users: 'accessUserManagement',
-        profile: null,
-        qa_panel: 'accessQAPanel',
-        data_migration: 'accessQAPanel'
-      };
-
       const matchedCompanyBusinessType = getBusinessType(matchedComp);
-      const firstAllowed = (Object.keys(viewPermissionMap) as ViewID[]).find(v => {
+      const firstAllowed = (Object.keys(VIEW_PERMISSION_MAP) as ViewID[]).find(v => {
         if (!isViewAllowedForBusinessType(v, matchedCompanyBusinessType)) return false;
-        const perm = viewPermissionMap[v];
+        const perm = VIEW_PERMISSION_MAP[v];
         return perm === null || (matchedUser!.permissions[perm] ?? true);
       });
       setActiveView(firstAllowed || 'profile');
@@ -1326,6 +1391,8 @@ export default function App() {
     setCurrentUser(null);
     localStorage.removeItem('motordesk_auth_token');
     localStorage.removeItem('motordesk_active_user');
+    localStorage.removeItem('motordesk_active_company_id');
+    setActiveCompanyIdState('');
     setUnsavedTask(null);
     setShowUnsavedModal(false);
     setPendingTargetView(null);
@@ -1372,6 +1439,12 @@ export default function App() {
       'budgets': 'budgets',
       'financial': 'financial',
       'fiscal': 'fiscal',
+      'notification_engine': 'notifications_engine',
+      'notificationEngine': 'notifications_engine',
+      'notifications_engine': 'notifications_engine',
+      'notificationsEngine': 'notifications_engine',
+      'representative_commerce': 'representative_commerce',
+      'representativeCommerce': 'representative_commerce',
     };
     return map[rawView] || (rawView as ViewID);
   };
@@ -1778,6 +1851,44 @@ export default function App() {
     </div>
   );
 
+  const renderAccessDeniedScreen = () => (
+    <div className="flex flex-col items-center justify-center p-12 text-center bg-white rounded-2xl border border-rose-200/80 my-12 animate-fade-in shadow-xs" id="access-denied-screen">
+      <div className="w-14 h-14 bg-rose-50 border border-rose-200 text-rose-600 rounded-2xl flex items-center justify-center text-2xl mb-4 shadow-xs font-bold">
+        🚫
+      </div>
+      <h2 className="text-base font-bold text-slate-800 font-display">Acesso não permitido</h2>
+      <p className="text-xs text-slate-600 max-w-md mt-1 leading-relaxed font-medium">
+        Seu usuário não possui permissão para acessar este recurso.
+      </p>
+      <button
+        type="button"
+        onClick={() => setActiveView(getFallbackViewForBusinessType(activeBusinessType, currentUser?.permissions))}
+        className="mt-4 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl transition flex items-center gap-1.5 shadow-xs cursor-pointer"
+      >
+        Voltar para a Página Principal
+      </button>
+    </div>
+  );
+
+  const renderSegmentRestrictedScreen = () => (
+    <div className="flex flex-col items-center justify-center p-12 text-center bg-white rounded-2xl border border-amber-200/80 my-12 animate-fade-in shadow-xs" id="segment-restricted-screen">
+      <div className="w-14 h-14 bg-amber-50 border border-amber-200 text-amber-600 rounded-2xl flex items-center justify-center text-2xl mb-4 shadow-xs font-bold">
+        🏢
+      </div>
+      <h2 className="text-base font-bold text-slate-800 font-display">Módulo Não Habilitado para este Segmento</h2>
+      <p className="text-xs text-slate-600 max-w-md mt-1 leading-relaxed">
+        Este recurso não está disponível para o segmento <strong>{activeSegmentMeta.label}</strong> da empresa atual.
+      </p>
+      <button
+        type="button"
+        onClick={() => setActiveView(getFallbackViewForBusinessType(activeBusinessType, currentUser?.permissions))}
+        className="mt-4 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl transition flex items-center gap-1.5 shadow-xs cursor-pointer"
+      >
+        Voltar para a Página Principal
+      </button>
+    </div>
+  );
+
   // MAIN WORKSPACE INTERFACE
   return (
     <div className="min-h-screen bg-slate-50 flex font-sans" id="app-workspace-shell">
@@ -1865,6 +1976,28 @@ export default function App() {
                   {(!isSidebarCollapsed || isSidebarHovered) && <span className="truncate">Vendas & Balcão</span>}
                 </div>
                 {(!isSidebarCollapsed || isSidebarHovered) && activeCompanyModules.accessSales === false && (
+                  <span className="text-[9px] bg-amber-500/10 text-amber-500 px-1 py-0.2 rounded border border-amber-500/20 font-mono">🔒</span>
+                )}
+              </button>
+            )}
+
+            {currentUser.permissions.accessRepresentativeCommerce && isViewAllowedForBusinessType('representative_commerce', activeBusinessType) && (
+              <button 
+                id="menu-btn-representative-commerce"
+                onClick={() => !isModuleLocked('accessRepresentativeCommerce') && navigateToView('representative_commerce')}
+                disabled={isModuleLocked('accessRepresentativeCommerce')}
+                title="Comércio Representante (Fábricas & Comissões)"
+                className={`w-full flex items-center ${(!isSidebarCollapsed || isSidebarHovered) ? 'justify-between px-3' : 'justify-center px-2'} py-2.5 rounded-lg text-xs font-semibold tracking-wide transition ${
+                  isModuleLocked('accessRepresentativeCommerce')
+                    ? 'opacity-40 cursor-not-allowed text-slate-500'
+                    : activeView === 'representative_commerce' ? 'bg-blue-600 text-white font-bold shadow-xs' : 'hover:bg-slate-800 text-slate-300 hover:text-slate-100'
+                }`}
+              >
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <Building2 className="w-4 h-4 shrink-0 text-blue-400" />
+                  {(!isSidebarCollapsed || isSidebarHovered) && <span className="truncate">Representadas</span>}
+                </div>
+                {(!isSidebarCollapsed || isSidebarHovered) && activeCompanyModules.accessRepresentativeCommerce === false && (
                   <span className="text-[9px] bg-amber-500/10 text-amber-500 px-1 py-0.2 rounded border border-amber-500/20 font-mono">🔒</span>
                 )}
               </button>
@@ -2319,6 +2452,28 @@ export default function App() {
               </button>
             )}
 
+            {(currentUser.permissions.accessNotificationsEngine || currentUser.permissions.accessNotificationEngine) && isViewAllowedForBusinessType('notifications_engine', activeBusinessType) && (
+              <button 
+                id="menu-btn-notification-engine"
+                onClick={() => !isModuleLocked('accessNotificationsEngine') && navigateToView('notifications_engine')}
+                disabled={isModuleLocked('accessNotificationsEngine')}
+                title="Motor Central de Notificações & Réguas"
+                className={`w-full flex items-center ${(!isSidebarCollapsed || isSidebarHovered) ? 'justify-between px-3' : 'justify-center px-2'} py-2.5 rounded-lg text-xs font-semibold tracking-wide transition ${
+                  isModuleLocked('accessNotificationsEngine')
+                    ? 'opacity-40 cursor-not-allowed text-slate-500'
+                    : activeView === 'notifications_engine' ? 'bg-indigo-600 text-white font-bold shadow-xs' : 'hover:bg-slate-800 text-slate-300 hover:text-slate-100'
+                }`}
+              >
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <Bell className="w-4 h-4 shrink-0 text-amber-400" />
+                  {(!isSidebarCollapsed || isSidebarHovered) && <span className="truncate">Motor Notificações</span>}
+                </div>
+                {(!isSidebarCollapsed || isSidebarHovered) && (activeCompanyModules.accessNotificationsEngine === false || activeCompanyModules.accessNotificationEngine === false) && (
+                  <span className="text-[9px] bg-amber-500/10 text-amber-500 px-1 py-0.2 rounded border border-amber-500/20 font-mono">🔒</span>
+                )}
+              </button>
+            )}
+
             {currentUser.permissions.accessQAPanel && (
               <button 
                 id="menu-btn-qa-panel"
@@ -2500,8 +2655,13 @@ export default function App() {
 
         {/* MAIN VIEW CONTENT AREA */}
         <main className="flex-1 p-8 overflow-y-auto" id="workspace-main-content">
-
-          {activeView === 'dashboard' && currentUser.permissions.accessDashboard && (
+          {activeView !== 'profile' && !isViewAllowedForBusinessType(activeView, activeBusinessType) ? (
+            renderSegmentRestrictedScreen()
+          ) : activeView !== 'profile' && VIEW_PERMISSION_MAP[activeView] && !currentUser.permissions[VIEW_PERMISSION_MAP[activeView]!] ? (
+            renderAccessDeniedScreen()
+          ) : (
+            <>
+              {activeView === 'dashboard' && currentUser.permissions.accessDashboard && (
             isModuleLocked('accessDashboard') ? renderLockedScreen() : (
               <DashboardView 
                 db={scopedDb} 
@@ -2821,13 +2981,36 @@ export default function App() {
             />
           )}
 
+          {(activeView === 'notifications_engine' || (activeView as string) === 'notification_engine') && (currentUser.permissions.accessNotificationsEngine || currentUser.permissions.accessNotificationEngine) && (
+            (isModuleLocked('accessNotificationsEngine') || isModuleLocked('accessNotificationEngine')) ? renderLockedScreen() : (
+              <NotificationEngineView 
+                db={db}
+                setDb={syncDb as any}
+                currentUser={currentUser}
+                activeCompanyId={activeCompanyId}
+              />
+            )
+          )}
+
+          {activeView === 'representative_commerce' && currentUser.permissions.accessRepresentativeCommerce && (
+            isModuleLocked('accessRepresentativeCommerce') ? renderLockedScreen() : (
+              <RepresentativeCommerceView 
+                db={db}
+                setDb={syncDb as any}
+                currentUser={currentUser}
+                activeCompanyId={activeCompanyId}
+              />
+            )
+          )}
+
           {/* Fallback de Segurança caso a view não corresponda a nenhum componente renderizado - Previne 100% Tela Branca */}
           {![
             'dashboard', 'sales', 'withdrawals', 'carriers', 'clients', 'vehicles', 
             'parts', 'units_of_measure', 'quotations', 'accounts_receivable', 
             'accounts_payable', 'financial', 'fiscal_conference', 'fiscal', 
             'tax_obligations', 'services', 'budgets', 'serviceOrders', 'industry', 
-            'history', 'reports', 'users', 'access_groups', 'profile', 'qa_panel', 'data_migration'
+            'history', 'reports', 'users', 'access_groups', 'profile', 'qa_panel', 'data_migration',
+            'notifications_engine', 'notification_engine', 'representative_commerce'
           ].includes(activeView) && (
             <div className="flex flex-col items-center justify-center p-12 text-center bg-white rounded-2xl border border-slate-200/80 my-12 animate-fade-in shadow-xs" id="fallback-view-screen">
               <div className="w-14 h-14 bg-indigo-50 border border-indigo-200 text-indigo-600 rounded-2xl flex items-center justify-center text-2xl mb-4 shadow-xs font-bold">
@@ -2844,6 +3027,8 @@ export default function App() {
                 Voltar para a Página Principal
               </button>
             </div>
+          )}
+            </>
           )}
         </main>
       </div>

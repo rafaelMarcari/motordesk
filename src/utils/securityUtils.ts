@@ -12,8 +12,8 @@
  * 6. Isolamento estrito Multi-tenant por companyId
  */
 
-import { User, UserRole, UserPermissions, AccessGroup, AppDatabase, HistoryEntry, CompanyInfo, BusinessType, OperationalAlcada } from '../types';
-import { normalizeUserPermissions, isModuleAllowedForBusinessType } from './businessSegmentation';
+import { User, UserRole, UserPermissions, AccessGroup, AppDatabase, HistoryEntry, CompanyInfo, BusinessType, OperationalAlcada, ViewID } from '../types';
+import { normalizeUserPermissions, isModuleAllowedForBusinessType, isViewAllowedForBusinessType, normalizeBusinessType, getDefaultGlobalModulesForBusinessType } from './businessSegmentation';
 
 export const ALL_PERMISSION_KEYS: Array<{
   key: keyof UserPermissions;
@@ -141,7 +141,22 @@ export const ALL_PERMISSION_KEYS: Array<{
   { key: 'accessProductionOrders', label: 'Ordens de Produção (OP)', category: 'industrial', description: 'Gerenciar ordens de manufatura e fabricação' },
   { key: 'accessBillOfMaterials', label: 'Estrutura de Produtos (BOM)', category: 'industrial', description: 'Cadastrar listas técnicas de materiais' },
   { key: 'accessEquipment', label: 'Gestão de Equipamentos & Máquinas', category: 'industrial', description: 'Controle do parque de maquinários industriais' },
-  { key: 'accessMaintenance', label: 'Planos de Manutenção Industrial', category: 'industrial', description: 'Gestão de manutenção preventiva e corretiva de máquinas' }
+  { key: 'accessMaintenance', label: 'Planos de Manutenção Industrial', category: 'industrial', description: 'Gestão de manutenção preventiva e corretiva de máquinas' },
+
+  // Motor Central de Notificações
+  { key: 'accessNotificationEngine', label: 'Motor Central de Notificações', category: 'admin', description: 'Acesso e configuração do motor central de notificações multicanal' },
+  { key: 'notificationTemplatesEdit', label: 'Editar Templates de Notificações', category: 'admin', description: 'Permite alterar textos e variáveis dos templates de mensagens' },
+  { key: 'notificationRulesEdit', label: 'Editar Réguas de Notificação', category: 'admin', description: 'Permite configurar prazos (D-X, D0, D+X) e canais das regras' },
+  { key: 'notificationSendManual', label: 'Disparo Manual de Notificações', category: 'operations', description: 'Permite enviar lembretes e mensagens manuais via WhatsApp/E-mail' },
+
+  // Comércio Representante
+  { key: 'accessRepresentativeCommerce', label: 'Comércio Representante (Fábricas & Pedidos)', category: 'sales', description: 'Acesso ao módulo de representação comercial, pedidos e comissões' },
+  { key: 'representativeOrdersCreate', label: 'Criar Pedidos para Fábrica', category: 'sales', description: 'Permite registrar novos pedidos de vendas direcionados às fábricas' },
+  { key: 'representativeOrdersEdit', label: 'Editar Pedidos da Representada', category: 'sales', description: 'Permite alterar itens e condições comerciais dos pedidos' },
+  { key: 'representativeOrdersCancel', label: 'Cancelar Pedidos da Representada', category: 'sales', description: 'Permite cancelar pedidos emitidos para a fábrica' },
+  { key: 'representativeOrdersExport', label: 'Exportar Pedidos e Resumo WhatsApp', category: 'sales', description: 'Permite gerar relatórios e resumos de pedidos para envio à fábrica' },
+  { key: 'representativeReconcile', label: 'Conferência de Faturamento da Fábrica', category: 'sales', description: 'Permite importar e conciliar arquivos de faturamento das representadas' },
+  { key: 'representativeCommissionsManage', label: 'Gestão e Baixa de Comissões', category: 'financial', description: 'Permite gerenciar, conferir e faturar comissões de representação' },
 ];
 
 /**
@@ -492,7 +507,7 @@ export function isModuleContractedForCompany(
   company?: CompanyInfo | null,
   businessType?: BusinessType | string | null
 ): boolean {
-  if (permissionKey === 'accessUserManagement') {
+  if (permissionKey === 'accessUserManagement' || permissionKey === 'accessDashboard') {
     return true;
   }
 
@@ -505,8 +520,19 @@ export function isModuleContractedForCompany(
 
   // 2. Company Subscription / Global Modules Check (Contract source of truth)
   if (company?.globalModules && typeof company.globalModules === 'object') {
-    if (company.globalModules[permissionKey] !== undefined) {
-      return Boolean(company.globalModules[permissionKey]);
+    let val = company.globalModules[permissionKey];
+    if (val === undefined && permissionKey === 'accessNotificationEngine') {
+      val = company.globalModules['accessNotificationsEngine'];
+    }
+    if (val === undefined && permissionKey === 'accessNotificationsEngine') {
+      val = company.globalModules['accessNotificationEngine'];
+    }
+    if (val !== undefined) {
+      return Boolean(val);
+    }
+    // If company defines an explicit contract with configured modules, any omitted module is NOT contracted
+    if (Object.keys(company.globalModules).length > 0) {
+      return false;
     }
   }
 
@@ -535,10 +561,23 @@ export function isModuleContractedForCompany(
       accessProduction: rawModules.production ?? rawModules.industry,
       accessIndustrialDashboard: rawModules.production ?? rawModules.industry,
       accessQAPanel: rawModules.qaPanel,
+      accessNotificationEngine: rawModules.notifications_engine,
+      accessNotificationsEngine: rawModules.notifications_engine,
+      accessRepresentativeCommerce: rawModules.representative_commerce ?? company.enableRepresentativeCommerce,
     };
     if (modMap[permissionKey] !== undefined) {
       return Boolean(modMap[permissionKey]);
     }
+  }
+
+  if (permissionKey === 'accessRepresentativeCommerce' && company?.enableRepresentativeCommerce === false) {
+    return false;
+  }
+
+  // 4. Default business type modules fallback
+  const defaultModules = getDefaultGlobalModulesForBusinessType(effectiveBusinessType);
+  if (defaultModules[permissionKey] !== undefined) {
+    return Boolean(defaultModules[permissionKey]);
   }
 
   return true;
@@ -546,13 +585,16 @@ export function isModuleContractedForCompany(
 
 export function getEffectivePermissions(
   user: User | string | undefined | null,
-  companyId: string | undefined | null,
+  companyOrId?: CompanyInfo | string | undefined | null,
   db?: AppDatabase | null
 ): UserPermissions {
   // Se usuário não fornecido, retorna todas as permissões como falso
   if (!user) {
     return normalizeUserPermissions({}, 'atendente');
   }
+
+  const companyId = typeof companyOrId === 'string' ? companyOrId : companyOrId?.id;
+  const directCompany = typeof companyOrId === 'object' && companyOrId !== null ? companyOrId : undefined;
 
   // Se passou apenas o ID do usuário como string, busca no DB
   const userObj: User | undefined = typeof user === 'string'
@@ -611,9 +653,9 @@ export function getEffectivePermissions(
   // 5. CAMADA DE LICENCIAMENTO E CONTRATO SAAS (CT-LIC-11 a CT-LIC-18)
   // Regra Inviolável: Nenhum usuário, inclusive Admin/Master, acessa módulo não contratado pela empresa.
   // Hierarquia: Contrato da Empresa -> Segmentação -> Grupo RBAC -> Usuário -> Permissão Efetiva
-  const targetCompany = (db?.registeredCompanies && db.registeredCompanies.length > 0)
+  const targetCompany = directCompany || ((db?.registeredCompanies && db.registeredCompanies.length > 0)
     ? (db.registeredCompanies.find(c => c.id === companyId) || db.registeredCompanies.find(c => c.id === (typeof user === 'object' ? user?.companyId : undefined)) || db.companyInfo)
-    : db?.companyInfo;
+    : db?.companyInfo);
 
   if (targetCompany) {
     const effectiveBt = targetCompany.businessType || 'OFICINA';
@@ -675,6 +717,21 @@ export function getEffectivePermissions(
       basePerms.productionOrderComplete = false;
       basePerms.bomCreate = false;
       basePerms.bomEdit = false;
+    }
+    if (!isModuleContractedForCompany('accessRepresentativeCommerce', targetCompany, effectiveBt)) {
+      basePerms.accessRepresentativeCommerce = false;
+      basePerms.representativeOrdersCreate = false;
+      basePerms.representativeOrdersEdit = false;
+      basePerms.representativeOrdersCancel = false;
+      basePerms.representativeOrdersExport = false;
+      basePerms.representativeReconcile = false;
+      basePerms.representativeCommissionsManage = false;
+    }
+    if (!isModuleContractedForCompany('accessNotificationEngine', targetCompany, effectiveBt)) {
+      basePerms.accessNotificationEngine = false;
+      basePerms.notificationTemplatesEdit = false;
+      basePerms.notificationRulesEdit = false;
+      basePerms.notificationSendManual = false;
     }
   }
 
@@ -765,3 +822,94 @@ export function createSecurityAuditLog(params: {
     newValue: params.newValue
   };
 }
+
+/**
+ * Mapeamento da tela (ViewID) para a permissão raiz correspondente
+ */
+export const VIEW_TO_PRIMARY_PERMISSION_MAP: Record<string, keyof UserPermissions> = {
+  dashboard: 'accessDashboard',
+  sales: 'accessSales',
+  withdrawals: 'accessWithdrawals',
+  carriers: 'accessCarriers',
+  clients: 'accessClients',
+  vehicles: 'accessVehicles',
+  parts: 'accessParts',
+  units_of_measure: 'accessUnitsOfMeasure',
+  services: 'accessServices',
+  budgets: 'accessBudgets',
+  serviceOrders: 'accessServiceOrders',
+  industry: 'accessProduction',
+  history: 'accessHistory',
+  reports: 'accessReports',
+  quotations: 'accessQuotations',
+  accounts_receivable: 'accessAccountsReceivable',
+  accounts_payable: 'accessAccountsPayable',
+  financial: 'accessFinancial',
+  fiscal: 'accessFiscal',
+  fiscal_conference: 'accessFiscal',
+  tax_obligations: 'accessFiscal',
+  representative_commerce: 'accessRepresentativeCommerce',
+  notifications_engine: 'accessNotificationEngine',
+  notification_engine: 'accessNotificationEngine',
+  users: 'accessUserManagement',
+  access_groups: 'accessUserManagement',
+  qa_panel: 'accessQAPanel',
+  data_migration: 'accessQAPanel',
+};
+
+/**
+ * Função ÚNICA, CENTRAL e AUTORITATIVA de decisão de acesso a uma tela (ViewID):
+ * Valida estritamente os 3 pilares sem atalhos ou vazamento de escopo:
+ * 1. SEGMENTO DA EMPRESA: A view é aplicável ao ramo de atuação (Oficina / Comércio / Indústria / Híbrido)?
+ *    isViewAllowedForBusinessType(viewId, company.businessType)
+ * 2. CONTRATO DO SAAS: O módulo foi efetivamente comprado/contratado pela empresa?
+ *    isModuleContractedForCompany(permKey, company, company.businessType)
+ * 3. PERMISSÕES EFETIVAS DO OPERADOR (RBAC v2.0): O usuário tem a permissão ativa após filtro do contrato?
+ *    getEffectivePermissions(user, company, db)
+ *
+ * REGRAS CRÍTICAS:
+ * - ADMIN não bypassa o contrato da empresa nem as regras de segmento.
+ * - Elimina fallbacks permissivos: se !company ou !user, retorna false imediatamente.
+ * - 'profile' é liberado para qualquer usuário autenticado ativo.
+ */
+export function canAccessView(
+  company: CompanyInfo | null | undefined,
+  user: User | null | undefined,
+  viewId: ViewID | string,
+  db?: AppDatabase | null
+): boolean {
+  // 0. Validações preliminares
+  if (!company || !user) return false;
+  if (user.active === false) return false;
+
+  // Tela de perfil pessoal é liberada para qualquer usuário autenticado
+  if (viewId === 'profile') return true;
+
+  const businessType = normalizeBusinessType(company.businessType);
+
+  // 1. Validação de SEGMENTO DA EMPRESA
+  if (!isViewAllowedForBusinessType(viewId as ViewID, businessType)) {
+    return false;
+  }
+
+  // Obter a permissão primária associada à View
+  const permKey = VIEW_TO_PRIMARY_PERMISSION_MAP[viewId];
+  if (!permKey) {
+    // Se a view não tem mapeamento de permissão restritiva mas foi liberada para o segmento
+    return true;
+  }
+
+  // 2. Validação de MÓDULO CONTRATADO PELA EMPRESA (Licenciamento SaaS)
+  if (!isModuleContractedForCompany(permKey, company, businessType)) {
+    return false;
+  }
+
+  // 3. Validação de PERMISSÃO EFETIVA DO USUÁRIO (RBAC v2.0 filtrado pelo contrato da empresa)
+  const effectivePerms = getEffectivePermissions(user, company, db || undefined);
+  if (!effectivePerms || !effectivePerms[permKey]) {
+    return false;
+  }
+
+  return true;
+}
+

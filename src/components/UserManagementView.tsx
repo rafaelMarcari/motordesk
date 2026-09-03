@@ -47,7 +47,12 @@ import {
 } from 'lucide-react';
 import { User, UserRole, UserPermissions, CompanyInfo, BusinessType } from '../types';
 import { AppDatabase } from '../data/mockData';
-import { normalizeBusinessType } from '../utils/businessSegmentation';
+import { 
+  normalizeBusinessType, 
+  getDefaultGlobalModulesForBusinessType, 
+  isModuleAllowedForBusinessType,
+  normalizeUserPermissions 
+} from '../utils/businessSegmentation';
 import PrivacyLgpdModal, { PrivacyLgpdFooter } from './PrivacyLgpdModal';
 import OperationResultModal from './OperationResultModal';
 
@@ -1099,24 +1104,7 @@ export default function UserManagementView({
 
   // Global Modules Toggles
   const [companyGlobalModules, setCompanyGlobalModules] = useState<{ [key: string]: boolean }>(() => {
-    return currentCompany?.globalModules || {
-      accessDashboard: true,
-      accessClients: true,
-      accessVehicles: true,
-      accessServices: true,
-      accessBudgets: true,
-      accessServiceOrders: true,
-      accessHistory: true,
-      accessParts: true,
-      accessQuotations: true,
-      accessAccountsReceivable: true,
-      accessAccountsPayable: true,
-      accessFinancial: true,
-      accessFiscal: true,
-      accessReports: true,
-      accessUserManagement: true,
-      accessQAPanel: true,
-    };
+    return currentCompany?.globalModules || getDefaultGlobalModulesForBusinessType(currentCompany?.businessType);
   });
 
   // Contract Addendums List
@@ -1218,24 +1206,7 @@ export default function UserManagementView({
       if (comp.globalModules) {
         setCompanyGlobalModules(comp.globalModules);
       } else {
-        setCompanyGlobalModules({
-          accessDashboard: true,
-          accessClients: true,
-          accessVehicles: true,
-          accessServices: true,
-          accessBudgets: true,
-          accessServiceOrders: true,
-          accessHistory: true,
-          accessParts: true,
-          accessQuotations: true,
-          accessAccountsReceivable: true,
-          accessAccountsPayable: true,
-          accessFinancial: true,
-          accessFiscal: true,
-          accessReports: true,
-          accessUserManagement: true,
-          accessQAPanel: true,
-        });
+        setCompanyGlobalModules(getDefaultGlobalModulesForBusinessType(comp.businessType));
       }
 
       setContractAddendums(comp.contractAddendums || []);
@@ -1449,12 +1420,15 @@ export default function UserManagementView({
       hasImplementationFee: newCompHasImplementationFee,
       implementationFee: newCompHasImplementationFee ? Number(newCompImplementationFee) : 0,
       contractStatus: 'pending',
-      levelPermissions: DEFAULT_LEVEL_PERMISSIONS
+      levelPermissions: DEFAULT_LEVEL_PERMISSIONS,
+      globalModules: getDefaultGlobalModulesForBusinessType(newCompBusinessType)
     };
 
     const updatedList = [...registeredCompaniesList, newCompanyObj];
 
-    // Automatically create default QA and Admin users with full permissions for the new company
+    const initialCompanyPerms = normalizeUserPermissions(getDefaultGlobalModulesForBusinessType(newCompBusinessType), 'admin');
+
+    // Automatically create default QA and Admin users with proper permissions for the new company
     const newQAUser: User = {
       id: `usr-qa-${Date.now()}`,
       username: 'qa',
@@ -1462,27 +1436,7 @@ export default function UserManagementView({
       role: 'qa',
       passwordHash: 'qa123',
       companyId: newCompId,
-      permissions: {
-        accessDashboard: true,
-        accessSales: true,
-        accessClients: true,
-        accessVehicles: true,
-        accessParts: true,
-        accessServices: true,
-        accessBudgets: true,
-        accessServiceOrders: true,
-        accessHistory: true,
-        accessReports: true,
-        accessUserManagement: true,
-        accessQAPanel: true,
-        accessQuotations: true,
-        accessNotifications: true,
-        accessAccountsReceivable: true,
-        accessAccountsPayable: true,
-        accessFinancial: true,
-        accessFiscal: true,
-        canEditBudgets: true,
-      }
+      permissions: initialCompanyPerms
     };
 
     const newAdminUser: User = {
@@ -1492,27 +1446,7 @@ export default function UserManagementView({
       role: 'admin',
       passwordHash: 'admin123',
       companyId: newCompId,
-      permissions: {
-        accessDashboard: true,
-        accessSales: true,
-        accessClients: true,
-        accessVehicles: true,
-        accessParts: true,
-        accessServices: true,
-        accessBudgets: true,
-        accessServiceOrders: true,
-        accessHistory: true,
-        accessReports: true,
-        accessUserManagement: true,
-        accessQAPanel: true,
-        accessQuotations: true,
-        accessNotifications: true,
-        accessAccountsReceivable: true,
-        accessAccountsPayable: true,
-        accessFinancial: true,
-        accessFiscal: true,
-        canEditBudgets: true,
-      }
+      permissions: initialCompanyPerms
     };
 
     const initialCompanyUsers = [newQAUser, newAdminUser];
@@ -2402,40 +2336,51 @@ export default function UserManagementView({
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[360px] overflow-y-auto pr-1">
                   {Object.keys(DEFAULT_OPTIONAL_MODULE_PRICES).map((modKey) => {
                     const info = DEFAULT_OPTIONAL_MODULE_PRICES[modKey];
-                    const isEnabled = !!companyGlobalModules[modKey];
+                    const isAllowedForSegment = isModuleAllowedForBusinessType(modKey, compBusinessType);
+                    const isEnabled = isAllowedForSegment && !!companyGlobalModules[modKey];
                     const currentPrice = optionalModulePrices[modKey] !== undefined ? optionalModulePrices[modKey] : info.defaultPrice;
 
                     return (
                       <div 
                         key={modKey}
                         className={`p-3 rounded-xl border transition flex flex-col justify-between space-y-2 ${
-                          isEnabled 
-                            ? 'bg-indigo-50/50 border-indigo-200 shadow-2xs' 
-                            : 'bg-white border-slate-200 opacity-75'
+                          !isAllowedForSegment
+                            ? 'bg-slate-50 border-slate-200 opacity-60'
+                            : isEnabled 
+                              ? 'bg-indigo-50/50 border-indigo-200 shadow-2xs' 
+                              : 'bg-white border-slate-200 opacity-75'
                         }`}
                       >
                         <div className="flex items-start justify-between gap-2">
-                          <label className="flex items-center gap-2 cursor-pointer font-semibold text-xs text-slate-800">
+                          <label className={`flex items-center gap-2 font-semibold text-xs text-slate-800 ${isAllowedForSegment ? 'cursor-pointer' : 'cursor-not-allowed'}`}>
                             <input
                               type="checkbox"
                               checked={isEnabled}
+                              disabled={!isAllowedForSegment}
                               onChange={(e) => {
+                                if (!isAllowedForSegment) return;
                                 setCompanyGlobalModules({
                                   ...companyGlobalModules,
                                   [modKey]: e.target.checked
                                 });
                                 setHasUnsavedChanges(true);
                               }}
-                              className="w-4 h-4 text-indigo-600 rounded-md border-slate-300 focus:ring-indigo-500 cursor-pointer"
+                              className="w-4 h-4 text-indigo-600 rounded-md border-slate-300 focus:ring-indigo-500 cursor-pointer disabled:cursor-not-allowed"
                             />
                             <span>{info.label}</span>
                           </label>
 
-                          <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase ${
-                            isEnabled ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' : 'bg-slate-100 text-slate-500'
-                          }`}>
-                            {isEnabled ? 'Liberado' : 'Não Contratado'}
-                          </span>
+                          {!isAllowedForSegment ? (
+                            <span className="text-[10px] px-2 py-0.5 rounded-full font-bold uppercase bg-amber-50 text-amber-700 border border-amber-200 whitespace-nowrap">
+                              Incompatível ({compBusinessType})
+                            </span>
+                          ) : (
+                            <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase ${
+                              isEnabled ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' : 'bg-slate-100 text-slate-500'
+                            }`}>
+                              {isEnabled ? 'Liberado' : 'Não Contratado'}
+                            </span>
+                          )}
                         </div>
 
                         <div className="flex items-center justify-between pt-1 border-t border-slate-100 text-xs">

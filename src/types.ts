@@ -135,6 +135,8 @@ export type ViewID =
   | 'fiscal'
   | 'tax_obligations'
   | 'access_groups'
+  | 'notifications_engine'
+  | 'representative_commerce'
   | 'services' 
   | 'budgets' 
   | 'serviceOrders' 
@@ -351,6 +353,9 @@ export interface CompanyInfo {
   // Taxa de Implantação e Treinamento do Sistema
   hasImplementationFee?: boolean; // Se true, foi cobrada taxa de implantação/treinamento
   implementationFee?: number; // Valor negociado da taxa de implantação (R$)
+
+  // Comércio Representante / Representação Comercial
+  enableRepresentativeCommerce?: boolean; // Habilita fluxo comercial para representantes (Fábricas, Pedidos, Conferência, Comissões)
 }
 
 export interface UserPermissions {
@@ -555,6 +560,22 @@ export interface UserPermissions {
   quotationsCreate?: boolean;
   quotationsApprove?: boolean;
   quotationsReject?: boolean;
+
+  // Permissões Granulares - Módulo Motor Central de Notificações
+  accessNotificationEngine?: boolean;
+  accessNotificationsEngine?: boolean;
+  notificationTemplatesEdit?: boolean;
+  notificationRulesEdit?: boolean;
+  notificationSendManual?: boolean;
+
+  // Permissões Granulares - Módulo Comércio Representante
+  accessRepresentativeCommerce?: boolean;
+  representativeOrdersCreate?: boolean;
+  representativeOrdersEdit?: boolean;
+  representativeOrdersCancel?: boolean;
+  representativeOrdersExport?: boolean;
+  representativeReconcile?: boolean;
+  representativeCommissionsManage?: boolean;
 }
 
 export interface OperationalAlcada {
@@ -2765,6 +2786,239 @@ export interface AppDatabase {
   globalModules?: { [key: string]: boolean };
   loginHistory?: { username: string; name: string; role: string; lastAccess: string }[];
   levelPermissions?: any;
+
+  // Motor Central de Notificações
+  notificationRules?: NotificationRule[];
+  notificationTemplates?: NotificationTemplate[];
+  notificationAuditLogs?: NotificationAuditLog[];
+  notificationEngineSettings?: NotificationEngineSettings;
+
+  // Comércio Representante
+  representedCompanies?: RepresentedCompany[];
+  representativeOrders?: RepresentativeOrder[];
+  representativeCommissions?: RepresentativeCommission[];
+  representativeReconciliations?: RepresentativeReconciliation[];
+}
+
+// ==========================================
+// MOTOR CENTRAL DE NOTIFICAÇÕES (Tipos e Modelos)
+// ==========================================
+
+export type NotificationChannel = 'system' | 'whatsapp' | 'email';
+
+export type NotificationCriticality = 'normal' | 'atencao' | 'urgente' | 'critico';
+
+export type NotificationTriggerType = 
+  | 'receivable_pre_due'     // Fatura a receber prestes a vencer (D-X)
+  | 'receivable_due_today'   // Fatura a receber vence hoje (D0)
+  | 'receivable_overdue'     // Fatura a receber vencida (D+X)
+  | 'payable_pre_due'        // Conta a pagar prestes a vencer (D-X)
+  | 'payable_due_today'      // Conta a pagar vence hoje (D0)
+  | 'payable_overdue'        // Conta a pagar vencida (D+X)
+  | 'low_stock'              // Estoque abaixo do mínimo
+  | 'budget_expiring'        // Orçamento vencendo validade
+  | 'budget_approved'        // Orçamento aprovado pelo cliente
+  | 'so_created'             // Ordem de Serviço aberta
+  | 'so_waiting_parts'       // OS aguardando peças
+  | 'so_completed'           // OS finalizada
+  | 'sale_created'           // Venda balcão emitida
+  | 'cash_flow_negative'     // Saldo projetado negativo
+  | 'rep_order_sent'         // Pedido enviado para fábrica
+  | 'rep_commission_due'     // Comissão de representação a receber
+  | 'daily_summary'          // Resumo financeiro diário
+  | 'custom';
+
+export type NotificationRecipientType = 'client' | 'supplier' | 'financial' | 'manager' | 'admin' | 'stock' | 'mechanic';
+
+export interface NotificationRule {
+  id: string;
+  companyId: string;
+  name: string;
+  triggerType: NotificationTriggerType;
+  daysOffset: number; // -3 para 3 dias antes, 0 para no dia, +1, +5 para atraso
+  channels: NotificationChannel[]; // ['system', 'whatsapp', 'email']
+  templateId: string;
+  active: boolean;
+  recipients: NotificationRecipientType[];
+  criticality: NotificationCriticality;
+  escalateAfterDays?: number; // Ex: se atraso > 5 dias, escalar para gerente
+  escalateTo?: 'manager' | 'admin';
+}
+
+export interface NotificationTemplate {
+  id: string;
+  companyId?: string; // se undefined, template padrão global
+  code: string; // Ex: 'RECEIVABLE_PRE_DUE_3D', 'RECEIVABLE_DUE_TODAY', 'RECEIVABLE_OVERDUE_5D', 'PAYABLE_PRE_DUE', etc.
+  name: string;
+  triggerType: NotificationTriggerType;
+  channel: NotificationChannel;
+  emailSubject?: string;
+  body: string; // Suporta variáveis: {cliente_nome}, {fornecedor_nome}, {valor_total}, {data_vencimento}, {dias_atraso}, {codigo_documento}, {link_fatura_pix}, {empresa_nome}, {telefone_contato}
+  isSystemDefault?: boolean;
+}
+
+export interface NotificationAuditLog {
+  id: string;
+  companyId: string;
+  date: string;
+  channel: NotificationChannel;
+  recipientType: 'client' | 'supplier' | 'internal' | 'custom';
+  recipientName: string;
+  recipientContact: string; // Telefone/WhatsApp ou E-mail
+  sourceDocType: 'receivable' | 'payable' | 'budget' | 'service_order' | 'sale' | 'rep_order' | 'daily_summary' | 'stock' | 'system';
+  sourceDocId?: string;
+  sourceDocCode?: string;
+  subject?: string;
+  messageContent: string;
+  criticality: NotificationCriticality;
+  status: 'sent' | 'delivered' | 'read' | 'failed' | 'simulated';
+  operatorId?: string;
+  operatorName: string; // Ou 'Sistema Automático'
+  linkUrl?: string;
+  notes?: string;
+}
+
+export interface NotificationEngineSettings {
+  enabled: boolean;
+  enableWhatsApp: boolean;
+  enableEmail: boolean;
+  enableInApp: boolean;
+  groupDailySameRecipient: boolean; // Agrupamento Consolidado (Digest) para não enviar 10 mensagens
+  autoEscalateOverdue: boolean; // Escalonar após X dias
+  escalateOverdueDaysThreshold: number; // Padrão: 5 dias
+  dailySummarySendTime?: string; // Ex: "08:00"
+  dailySummaryRecipients?: string[]; // IDs ou papéis que recebem o resumo diário
+}
+
+// ==========================================
+// COMÉRCIO REPRESENTANTE (Tipos e Modelos)
+// ==========================================
+
+export interface RepresentedCompany {
+  id: string;
+  companyId: string; // Tenant ID
+  corporateName: string; // Razão Social da Fábrica
+  tradeName: string; // Nome Fantasia
+  cnpj: string;
+  contactPerson: string;
+  email: string;
+  phone: string;
+  whatsapp: string;
+  defaultCommissionPercentage: number; // Ex: 5%
+  commissionPaymentRule: 'UPON_INVOICE' | 'UPON_CUSTOMER_PAYMENT' | 'MONTHLY_FIXED_DAY'; // No faturamento, Na liquidação da duplicata, Dia fixo
+  commissionPaymentTerms?: string; // Ex: "Até dia 15 do mês seguinte ao faturamento"
+  priceTableNotes?: string;
+  commercialConditions?: string;
+  active: boolean;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export interface RepresentativeOrderItem {
+  id: string;
+  partId?: string;
+  code?: string;
+  description: string;
+  quantity: number;
+  tablePrice: number;
+  discountPercentage: number;
+  unitPrice: number;
+  totalPrice: number;
+  commissionPercentage: number;
+  commissionAmount: number;
+  invoicedQuantity?: number;
+  invoicedUnitPrice?: number;
+  invoicedTotalPrice?: number;
+  reconciliationStatus?: 'matched' | 'divergent_value' | 'not_invoiced' | 'partial';
+}
+
+export type RepresentativeOrderStatus = 
+  | 'draft'               // Rascunho
+  | 'sent_to_factory'     // Enviado à Fábrica
+  | 'factory_confirmed'   // Confirmado pela Fábrica
+  | 'invoiced_partial'    // Faturado Parcial
+  | 'invoiced_total'      // Faturado Total
+  | 'canceled';           // Cancelado
+
+export interface RepresentativeOrder {
+  id: string;
+  companyId: string; // Tenant
+  orderNumber: string; // Ex: 'PREP-2026-001'
+  representedId: string; // ID da Representada
+  representedName: string;
+  clientId: string; // Cliente final comprador
+  clientName: string;
+  clientCnpjCpf: string;
+  orderDate: string;
+  estimatedDeliveryDate?: string;
+  paymentCondition: string; // Ex: 28/56 dias direto com a fábrica
+  carrierName?: string;
+  freightType?: 'CIF' | 'FOB';
+  items: RepresentativeOrderItem[];
+  subtotal: number;
+  totalDiscount: number;
+  totalOrderAmount: number;
+  estimatedTotalCommission: number;
+  factoryInvoiceNumber?: string;
+  factoryInvoiceDate?: string;
+  status: RepresentativeOrderStatus;
+  notes?: string;
+  sentAt?: string;
+  confirmedAt?: string;
+  invoicedAt?: string;
+  createdBy: string;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export interface RepresentativeCommission {
+  id: string;
+  companyId: string;
+  representedId: string;
+  representedName: string;
+  orderId: string;
+  orderNumber: string;
+  factoryInvoiceNumber: string;
+  clientId: string;
+  clientName: string;
+  invoicedAmount: number;
+  commissionPercentage: number;
+  commissionAmount: number;
+  expectedPaymentDate: string;
+  actualPaymentDate?: string;
+  status: 'to_be_invoiced' | 'receivable' | 'received' | 'disputed_glosa';
+  financialReceivableId?: string; // Se vinculado ao Contas a Receber
+  notes?: string;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export interface RepresentativeReconciliation {
+  id: string;
+  companyId: string;
+  fileName: string;
+  importedAt: string;
+  representedId: string;
+  representedName: string;
+  totalRecords: number;
+  matchedCount: number;
+  divergentCount: number;
+  pendingCount: number;
+  reconciliationItems: Array<{
+    id: string;
+    orderNumber: string;
+    clientCnpj: string;
+    clientName?: string;
+    factoryInvoiceNumber: string;
+    factoryInvoiceDate: string;
+    orderAmount: number;
+    invoicedAmount: number;
+    difference: number;
+    orderCommission: number;
+    invoicedCommission: number;
+    status: 'matched' | 'divergent_value' | 'pending' | 'unmatched';
+    notes?: string;
+  }>;
 }
 
 export type Company = CompanyInfo;

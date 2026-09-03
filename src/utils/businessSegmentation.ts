@@ -19,6 +19,7 @@ export const COMMERCE_EXCLUSIVE_VIEWS: ViewID[] = [
   'withdrawals',
   'carriers',
   'units_of_measure',
+  'representative_commerce',
 ];
 
 export const INDUSTRIAL_EXCLUSIVE_VIEWS: ViewID[] = [
@@ -36,6 +37,7 @@ export const COMMERCE_EXCLUSIVE_PERMISSIONS: (keyof UserPermissions | string)[] 
   'accessWithdrawals',
   'accessCarriers',
   'accessUnitsOfMeasure',
+  'accessRepresentativeCommerce',
 ];
 
 export const INDUSTRIAL_EXCLUSIVE_PERMISSIONS: (keyof UserPermissions | string)[] = [
@@ -138,7 +140,65 @@ export function normalizeUserPermissions(
       defaultAccessFiscal = true;
       defaultAccessIndustrial = true;
       break;
+    case 'gerente':
+      defaultAccessSales = true;
+      defaultAccessCarriers = true;
+      defaultAccessBudgets = true;
+      defaultAccessServiceOrders = true;
+      defaultAccessClients = true;
+      defaultAccessVehicles = true;
+      defaultAccessParts = true;
+      defaultAccessServices = true;
+      defaultAccessReports = true;
+      defaultAccessUserManagement = false;
+      defaultCanCustomizePdf = true;
+      defaultAccessQuotations = true;
+      defaultAccessReceivable = true;
+      defaultAccessPayable = true;
+      defaultAccessFinancial = true;
+      defaultAccessFiscal = true;
+      defaultAccessIndustrial = true;
+      break;
+    case 'estoquista':
+      defaultAccessSales = true;
+      defaultAccessCarriers = true;
+      defaultAccessBudgets = false;
+      defaultAccessServiceOrders = false;
+      defaultAccessClients = true;
+      defaultAccessVehicles = false;
+      defaultAccessParts = true;
+      defaultAccessServices = false;
+      defaultAccessReports = true;
+      defaultAccessUserManagement = false;
+      defaultCanCustomizePdf = false;
+      defaultAccessQuotations = true;
+      defaultAccessReceivable = false;
+      defaultAccessPayable = false;
+      defaultAccessFinancial = false;
+      defaultAccessFiscal = false;
+      defaultAccessIndustrial = true;
+      break;
+    case 'financeiro':
+      defaultAccessSales = false;
+      defaultAccessCarriers = false;
+      defaultAccessBudgets = false;
+      defaultAccessServiceOrders = false;
+      defaultAccessClients = true;
+      defaultAccessVehicles = false;
+      defaultAccessParts = false;
+      defaultAccessServices = false;
+      defaultAccessReports = true;
+      defaultAccessUserManagement = false;
+      defaultCanCustomizePdf = true;
+      defaultAccessQuotations = false;
+      defaultAccessReceivable = true;
+      defaultAccessPayable = true;
+      defaultAccessFinancial = true;
+      defaultAccessFiscal = true;
+      defaultAccessIndustrial = false;
+      break;
     case 'atendente':
+    case 'vendedor':
       defaultAccessSales = true;
       defaultAccessCarriers = true;
       defaultAccessBudgets = true;
@@ -151,10 +211,10 @@ export function normalizeUserPermissions(
       defaultAccessUserManagement = false;
       defaultCanCustomizePdf = true;
       defaultAccessQuotations = false;
-      defaultAccessReceivable = true;
+      defaultAccessReceivable = false;
       defaultAccessPayable = false;
       defaultAccessFinancial = false;
-      defaultAccessFiscal = true;
+      defaultAccessFiscal = false;
       defaultAccessIndustrial = false;
       break;
     case 'mecanico':
@@ -162,8 +222,8 @@ export function normalizeUserPermissions(
       defaultAccessCarriers = false;
       defaultAccessBudgets = false;
       defaultAccessServiceOrders = true;
-      defaultAccessClients = false;
-      defaultAccessVehicles = false;
+      defaultAccessClients = true;
+      defaultAccessVehicles = true;
       defaultAccessParts = true;
       defaultAccessServices = true;
       defaultAccessReports = false;
@@ -183,7 +243,8 @@ export function normalizeUserPermissions(
   }
 
   return {
-    accessDashboard: permissions?.accessDashboard !== undefined ? Boolean(permissions.accessDashboard) : true,
+    ...(permissions || {}),
+    accessDashboard: permissions?.accessDashboard !== undefined ? Boolean(permissions.accessDashboard) : (normalizedRole !== 'mecanico' && normalizedRole !== 'estoquista'),
     accessSales: permissions?.accessSales !== undefined ? Boolean(permissions.accessSales) : defaultAccessSales,
     accessWithdrawals: permissions?.accessWithdrawals !== undefined ? Boolean(permissions.accessWithdrawals) : defaultAccessSales,
     accessCarriers: permissions?.accessCarriers !== undefined ? Boolean(permissions.accessCarriers) : defaultAccessCarriers,
@@ -196,7 +257,7 @@ export function normalizeUserPermissions(
     accessHistory: permissions?.accessHistory !== undefined ? Boolean(permissions.accessHistory) : true,
     accessReports: permissions?.accessReports !== undefined ? Boolean(permissions.accessReports) : defaultAccessReports,
     accessUserManagement: permissions?.accessUserManagement !== undefined ? Boolean(permissions.accessUserManagement) : defaultAccessUserManagement,
-    accessQAPanel: permissions?.accessQAPanel !== undefined ? Boolean(permissions.accessQAPanel) : true,
+    accessQAPanel: permissions?.accessQAPanel !== undefined ? Boolean(permissions.accessQAPanel) : (normalizedRole === 'admin' || normalizedRole === 'qa'),
     accessQuotations: permissions?.accessQuotations !== undefined ? Boolean(permissions.accessQuotations) : defaultAccessQuotations,
     accessNotifications: permissions?.accessNotifications !== undefined ? Boolean(permissions.accessNotifications) : true,
     accessAccountsReceivable: permissions?.accessAccountsReceivable !== undefined ? Boolean(permissions.accessAccountsReceivable) : defaultAccessReceivable,
@@ -207,6 +268,21 @@ export function normalizeUserPermissions(
     unitsOfMeasureCreate: permissions?.unitsOfMeasureCreate !== undefined ? Boolean(permissions.unitsOfMeasureCreate) : (normalizedRole === 'admin' || normalizedRole === 'qa'),
     unitsOfMeasureEdit: permissions?.unitsOfMeasureEdit !== undefined ? Boolean(permissions.unitsOfMeasureEdit) : (normalizedRole === 'admin' || normalizedRole === 'qa'),
     unitsOfMeasureToggleActive: permissions?.unitsOfMeasureToggleActive !== undefined ? Boolean(permissions.unitsOfMeasureToggleActive) : (normalizedRole === 'admin' || normalizedRole === 'qa'),
+
+    // Motor Central de Notificações
+    accessNotificationEngine: permissions?.accessNotificationEngine !== undefined ? Boolean(permissions.accessNotificationEngine) : (normalizedRole === 'admin' || normalizedRole === 'gerente' || normalizedRole === 'financeiro' || normalizedRole === 'qa'),
+    notificationTemplatesEdit: permissions?.notificationTemplatesEdit !== undefined ? Boolean(permissions.notificationTemplatesEdit) : (normalizedRole === 'admin' || normalizedRole === 'qa'),
+    notificationRulesEdit: permissions?.notificationRulesEdit !== undefined ? Boolean(permissions.notificationRulesEdit) : (normalizedRole === 'admin' || normalizedRole === 'qa'),
+    notificationSendManual: permissions?.notificationSendManual !== undefined ? Boolean(permissions.notificationSendManual) : (normalizedRole !== 'mecanico'),
+
+    // Comércio Representante
+    accessRepresentativeCommerce: permissions?.accessRepresentativeCommerce !== undefined ? Boolean(permissions.accessRepresentativeCommerce) : (normalizedRole === 'admin' || normalizedRole === 'gerente' || normalizedRole === 'atendente' || normalizedRole === 'qa'),
+    representativeOrdersCreate: permissions?.representativeOrdersCreate !== undefined ? Boolean(permissions.representativeOrdersCreate) : (normalizedRole !== 'mecanico'),
+    representativeOrdersEdit: permissions?.representativeOrdersEdit !== undefined ? Boolean(permissions.representativeOrdersEdit) : (normalizedRole !== 'mecanico'),
+    representativeOrdersCancel: permissions?.representativeOrdersCancel !== undefined ? Boolean(permissions.representativeOrdersCancel) : (normalizedRole === 'admin' || normalizedRole === 'gerente' || normalizedRole === 'qa'),
+    representativeOrdersExport: permissions?.representativeOrdersExport !== undefined ? Boolean(permissions.representativeOrdersExport) : true,
+    representativeReconcile: permissions?.representativeReconcile !== undefined ? Boolean(permissions.representativeReconcile) : (normalizedRole === 'admin' || normalizedRole === 'gerente' || normalizedRole === 'financeiro' || normalizedRole === 'qa'),
+    representativeCommissionsManage: permissions?.representativeCommissionsManage !== undefined ? Boolean(permissions.representativeCommissionsManage) : (normalizedRole === 'admin' || normalizedRole === 'gerente' || normalizedRole === 'financeiro' || normalizedRole === 'qa'),
     
     // Industrial RBAC
     accessIndustrialDashboard: permissions?.accessIndustrialDashboard !== undefined ? Boolean(permissions.accessIndustrialDashboard) : defaultAccessIndustrial,
@@ -256,17 +332,20 @@ import { getEffectivePermissions } from './securityUtils';
  */
 export function normalizeUser(user: User, companyId?: string, db?: any): User {
   if (!user) return user;
+  const targetCompanyId = companyId || user.companyId;
   
-  if (db && companyId) {
-    const effective = getEffectivePermissions(user, companyId, db);
+  if (db && targetCompanyId) {
+    const effective = getEffectivePermissions(user, targetCompanyId, db);
     return {
       ...user,
+      companyId: targetCompanyId,
       permissions: effective,
     };
   }
 
   return {
     ...user,
+    companyId: targetCompanyId,
     permissions: normalizeUserPermissions(user.permissions, user.role),
   };
 }
@@ -283,7 +362,7 @@ export function normalizeBusinessType(type?: string | null): BusinessType {
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "");
 
-  if (clean === 'INDUSTRIA' || clean === 'FABRICA' || clean === 'MANUFATURA' || clean === 'METALURGICA' || clean === 'PRODUCAO') {
+  if (clean === 'INDUSTRIA' || clean === 'INDUSTRIAL' || clean === 'FABRICA' || clean === 'MANUFATURA' || clean === 'METALURGICA' || clean === 'PRODUCAO') {
     return 'INDUSTRIA';
   }
   if (clean === 'COMERCIO' || clean === 'COMERCIO / AUTOPECAS' || clean === 'LOJA' || clean === 'BALCAO') {
@@ -460,6 +539,8 @@ export function getAvailableViewsForBusinessType(businessType?: BusinessType | s
     'fiscal',
     'history',
     'reports',
+    'notifications_engine',
+    'representative_commerce',
     'users',
     'profile',
     'qa_panel',
@@ -566,3 +647,161 @@ export function getCompanyReportOrientation(
 
   return 'portrait';
 }
+
+/**
+ * Retorna os módulos globais padrão ativados de acordo com o segmento de negócio (BusinessType)
+ * Garante que COMERCIO não receba OS/Veículos, e INDUSTRIA receba Produção/PCP/BOM/Lotes.
+ */
+export function getDefaultGlobalModulesForBusinessType(businessType?: BusinessType | string | null): Record<string, boolean> {
+  const norm = normalizeBusinessType(businessType);
+
+  switch (norm) {
+    case 'COMERCIO':
+      return {
+        accessDashboard: true,
+        accessSales: true,
+        accessWithdrawals: true,
+        accessCarriers: true,
+        accessUnitsOfMeasure: true,
+        accessClients: true,
+        accessVehicles: false,
+        accessServices: false,
+        accessBudgets: false,
+        accessServiceOrders: false,
+        accessProduction: false,
+        accessIndustrialDashboard: false,
+        accessBillOfMaterials: false,
+        accessProductionOrders: false,
+        accessLots: false,
+        accessParts: true,
+        accessQuotations: true,
+        accessAccountsReceivable: true,
+        accessAccountsPayable: true,
+        accessFinancial: true,
+        accessFiscal: true,
+        accessReports: true,
+        accessHistory: true,
+        accessRepresentativeCommerce: true,
+        accessNotificationEngine: true,
+        accessUserManagement: true,
+        accessQAPanel: true,
+      };
+
+    case 'INDUSTRIA':
+      return {
+        accessDashboard: true,
+        accessSales: true,
+        accessWithdrawals: true,
+        accessCarriers: true,
+        accessUnitsOfMeasure: true,
+        accessClients: true,
+        accessVehicles: false,
+        accessServices: false,
+        accessBudgets: false,
+        accessServiceOrders: false,
+        accessProduction: true,
+        accessIndustrialDashboard: true,
+        accessManufacturing: true,
+        accessBillOfMaterials: true,
+        accessProductStructure: true,
+        accessProductionOrders: true,
+        accessLots: true,
+        accessIndustrialStock: true,
+        accessIndustrialPurchasing: true,
+        accessIndustrialCosts: true,
+        accessProductionReports: true,
+        accessIndustrialReports: true,
+        accessCommercialReports: true,
+        accessMaintenance: true,
+        accessEquipment: true,
+        accessIndustrialAudit: true,
+        accessParts: true,
+        accessQuotations: true,
+        accessAccountsReceivable: true,
+        accessAccountsPayable: true,
+        accessFinancial: true,
+        accessFiscal: true,
+        accessReports: true,
+        accessHistory: true,
+        accessRepresentativeCommerce: true,
+        accessNotificationEngine: true,
+        accessUserManagement: true,
+        accessQAPanel: true,
+      };
+
+    case 'OFICINA_COMERCIO':
+      return {
+        accessDashboard: true,
+        accessSales: true,
+        accessWithdrawals: true,
+        accessCarriers: true,
+        accessUnitsOfMeasure: true,
+        accessClients: true,
+        accessVehicles: true,
+        accessServices: true,
+        accessBudgets: true,
+        accessServiceOrders: true,
+        accessProduction: true,
+        accessIndustrialDashboard: true,
+        accessManufacturing: true,
+        accessBillOfMaterials: true,
+        accessProductStructure: true,
+        accessProductionOrders: true,
+        accessLots: true,
+        accessIndustrialStock: true,
+        accessIndustrialPurchasing: true,
+        accessIndustrialCosts: true,
+        accessProductionReports: true,
+        accessIndustrialReports: true,
+        accessCommercialReports: true,
+        accessMaintenance: true,
+        accessEquipment: true,
+        accessIndustrialAudit: true,
+        accessParts: true,
+        accessQuotations: true,
+        accessAccountsReceivable: true,
+        accessAccountsPayable: true,
+        accessFinancial: true,
+        accessFiscal: true,
+        accessReports: true,
+        accessHistory: true,
+        accessRepresentativeCommerce: true,
+        accessNotificationEngine: true,
+        accessUserManagement: true,
+        accessQAPanel: true,
+      };
+
+    case 'OFICINA':
+    default:
+      return {
+        accessDashboard: true,
+        accessSales: false,
+        accessWithdrawals: false,
+        accessCarriers: false,
+        accessUnitsOfMeasure: false,
+        accessClients: true,
+        accessVehicles: true,
+        accessServices: true,
+        accessBudgets: true,
+        accessServiceOrders: true,
+        accessProduction: false,
+        accessIndustrialDashboard: false,
+        accessBillOfMaterials: false,
+        accessProductionOrders: false,
+        accessLots: false,
+        accessParts: true,
+        accessQuotations: true,
+        accessAccountsReceivable: true,
+        accessAccountsPayable: true,
+        accessFinancial: true,
+        accessFiscal: true,
+        accessReports: true,
+        accessHistory: true,
+        accessRepresentativeCommerce: false,
+        accessNotificationEngine: true,
+        accessUserManagement: true,
+        accessQAPanel: true,
+      };
+  }
+}
+

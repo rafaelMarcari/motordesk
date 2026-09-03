@@ -100,11 +100,11 @@ export default function BillingAndReconciliationManager({
     setTimeout(() => setCopiedText(null), 2500);
   };
 
-  // Permissions Check
-  const isAdminOrManager = currentUser.role === 'admin' || currentUser.permissions.financialBillingClosing === true;
-  const canReopen = currentUser.role === 'admin' || currentUser.permissions.financialReopenClosing === true;
-  const canReconcile = currentUser.role === 'admin' || currentUser.permissions.financialReconciliation === true;
-  const canBypassCredit = currentUser.role === 'admin' || currentUser.permissions.authorizeCreditLimitBypass === true;
+  // Permissions Check - strictly respect effective permissions
+  const isAdminOrManager = Boolean(currentUser.permissions.financialBillingClosing);
+  const canReopen = Boolean(currentUser.permissions.financialReopenClosing);
+  const canReconcile = Boolean(currentUser.permissions.financialReconciliation);
+  const canBypassCredit = Boolean(currentUser.permissions.authorizeCreditLimitBypass);
 
   // 1. GATHER ALL UNCONSOLIDATED ACCUMULATED SALES AND OS
   const eligiblePendingItems = useMemo(() => {

@@ -122,12 +122,12 @@ export const UnitsOfMeasureView: React.FC<UnitsOfMeasureViewProps> = ({
   const [simPieces, setSimPieces] = useState<number>(1);
   const [simUnitPrice, setSimUnitPrice] = useState<number>(85.0);
 
-  // Permissions check
+  // Permissions check - strictly respect effective permissions
   const isAdmin = currentUser.role === 'admin' || currentUser.role === 'qa';
-  const canManage = isAdmin || Boolean(currentUser.permissions?.accessUnitsOfMeasure);
-  const canCreate = isAdmin || Boolean(currentUser.permissions?.unitsOfMeasureCreate);
-  const canEdit = isAdmin || Boolean(currentUser.permissions?.unitsOfMeasureEdit);
-  const canToggleActive = isAdmin || Boolean(currentUser.permissions?.unitsOfMeasureToggleActive);
+  const canManage = Boolean(currentUser.permissions?.accessUnitsOfMeasure);
+  const canCreate = Boolean(currentUser.permissions?.unitsOfMeasureCreate);
+  const canEdit = Boolean(currentUser.permissions?.unitsOfMeasureEdit);
+  const canToggleActive = Boolean(currentUser.permissions?.unitsOfMeasureToggleActive);
 
   // Filtered list
   const filteredUnits = useMemo(() => {
