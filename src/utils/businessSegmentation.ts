@@ -20,6 +20,8 @@ export const COMMERCE_EXCLUSIVE_VIEWS: ViewID[] = [
   'carriers',
   'units_of_measure',
   'representative_commerce',
+  'representative_orders',
+  'representative_reconciliation',
 ];
 
 export const INDUSTRIAL_EXCLUSIVE_VIEWS: ViewID[] = [
@@ -352,23 +354,56 @@ export function normalizeUser(user: User, companyId?: string, db?: any): User {
 
 /**
  * Normaliza e padroniza qualquer valor recebido de tipo de negócio para o enum canônico BusinessType.
- * Trata variações de maiúsculas/minúsculas, acentuação ("COMÉRCIO", "Comércio", "INDÚSTRIA") e sinônimos.
+ * Trata variações de maiúsculas/minúsculas, acentuação ("COMÉRCIO", "Comércio", "INDÚSTRIA") e sinônimos,
+ * além de inferência inteligente pelo nome da empresa caso o cadastro seja legado.
  */
-export function normalizeBusinessType(type?: string | null): BusinessType {
-  if (!type) return 'OFICINA';
-  const clean = String(type)
+export function normalizeBusinessType(type?: string | null, companyName?: string | null): BusinessType {
+  const clean = String(type || "")
     .trim()
     .toUpperCase()
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "");
 
-  if (clean === 'INDUSTRIA' || clean === 'INDUSTRIAL' || clean === 'FABRICA' || clean === 'MANUFATURA' || clean === 'METALURGICA' || clean === 'PRODUCAO') {
+  const nameClean = String(companyName || "")
+    .trim()
+    .toUpperCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+
+  if (
+    clean === 'INDUSTRIA' || 
+    clean === 'INDUSTRIAL' || 
+    clean === 'FABRICA' || 
+    clean === 'MANUFATURA' || 
+    clean === 'METALURGICA' || 
+    clean === 'PRODUCAO' ||
+    nameClean.includes('INDUSTRIA') ||
+    nameClean.includes('METALURGICA') ||
+    nameClean.includes('FABRICACAO') ||
+    nameClean.includes('MANUFATURA') ||
+    nameClean.includes('USINAGEM')
+  ) {
     return 'INDUSTRIA';
   }
-  if (clean === 'COMERCIO' || clean === 'COMERCIO / AUTOPECAS' || clean === 'LOJA' || clean === 'BALCAO') {
+  if (
+    clean === 'COMERCIO' || 
+    clean === 'COMERCIO / AUTOPECAS' || 
+    clean === 'LOJA' || 
+    clean === 'BALCAO' ||
+    clean === 'DISTRIBUIDORA' ||
+    nameClean.includes('DISTRIBUIDORA') ||
+    nameClean.includes('AUTO PECAS') ||
+    nameClean.includes('AUTOPECAS')
+  ) {
     return 'COMERCIO';
   }
-  if (clean === 'OFICINA_COMERCIO' || clean === 'OFICINA + COMERCIO' || clean === 'HIBRIDO' || clean === 'OFICINA_E_COMERCIO') {
+  if (
+    clean === 'OFICINA_COMERCIO' || 
+    clean === 'OFICINA + COMERCIO' || 
+    clean === 'HIBRIDO' || 
+    clean === 'OFICINA_E_COMERCIO' ||
+    (nameClean.includes('OFICINA') && (nameClean.includes('COMERCIO') || nameClean.includes('LOJA')))
+  ) {
     return 'OFICINA_COMERCIO';
   }
   if (clean === 'SERVICOS' || clean === 'SERVICO') {
@@ -384,10 +419,10 @@ export function normalizeBusinessType(type?: string | null): BusinessType {
  * Retorna o tipo de negócio oficial da empresa ativa, com normalização completa e retrocompatibilidade
  */
 export function getBusinessType(company?: CompanyInfo | null): BusinessType {
-  if (!company || !company.businessType) {
+  if (!company) {
     return 'OFICINA';
   }
-  return normalizeBusinessType(company.businessType);
+  return normalizeBusinessType(company.businessType, company.name);
 }
 
 /**
@@ -541,6 +576,8 @@ export function getAvailableViewsForBusinessType(businessType?: BusinessType | s
     'reports',
     'notifications_engine',
     'representative_commerce',
+    'representative_orders',
+    'representative_reconciliation',
     'users',
     'profile',
     'qa_panel',

@@ -7,6 +7,8 @@ import { appStore, clients as clientsTable, vehicles as vehiclesTable, parts as 
 import { eq } from "drizzle-orm";
 import dotenv from "dotenv";
 import { requireAuth } from "./src/middleware/auth.js";
+import { requireContractedModule } from "./src/middleware/contractGuard.js";
+import { isCompanyActive } from "./src/utils/securityUtils.js";
 import { fiscalBackendService } from "./server/fiscalProviderService.js";
 
 dotenv.config();
@@ -222,13 +224,44 @@ function mergeEntityCollection<T extends Record<string, any>>(
 }
 
 // Helper: Normalize businessType enum consistently on server
-function normalizeBusinessType(type: any): string {
-  if (!type) return 'OFICINA';
-  const clean = String(type).trim().toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-  if (clean === 'COMERCIO' || clean === 'LOJA' || clean === 'BALCAO' || clean === 'AUTOPECAS' || clean === 'DISTRIBUIDORA') {
+function normalizeBusinessType(type: any, companyName?: string): string {
+  const clean = String(type || '').trim().toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  const nameClean = String(companyName || '').trim().toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+
+  if (
+    clean === 'INDUSTRIA' || 
+    clean === 'INDUSTRIAL' || 
+    clean === 'FABRICA' || 
+    clean === 'MANUFATURA' || 
+    clean === 'METALURGICA' || 
+    clean === 'PRODUCAO' ||
+    nameClean.includes('INDUSTRIA') ||
+    nameClean.includes('METALURGICA') ||
+    nameClean.includes('FABRICACAO') ||
+    nameClean.includes('MANUFATURA') ||
+    nameClean.includes('USINAGEM')
+  ) {
+    return 'INDUSTRIA';
+  }
+  if (
+    clean === 'COMERCIO' || 
+    clean === 'LOJA' || 
+    clean === 'BALCAO' || 
+    clean === 'AUTOPECAS' || 
+    clean === 'DISTRIBUIDORA' ||
+    nameClean.includes('DISTRIBUIDORA') ||
+    nameClean.includes('AUTO PECAS') ||
+    nameClean.includes('AUTOPECAS')
+  ) {
     return 'COMERCIO';
   }
-  if (clean === 'OFICINA_COMERCIO' || clean === 'AMBOS' || clean === 'HIBRIDO' || (clean.includes('OFICINA') && clean.includes('COMERCIO'))) {
+  if (
+    clean === 'OFICINA_COMERCIO' || 
+    clean === 'AMBOS' || 
+    clean === 'HIBRIDO' || 
+    (clean.includes('OFICINA') && clean.includes('COMERCIO')) ||
+    (nameClean.includes('OFICINA') && (nameClean.includes('COMERCIO') || nameClean.includes('LOJA')))
+  ) {
     return 'OFICINA_COMERCIO';
   }
   return 'OFICINA';
@@ -242,13 +275,13 @@ export function mergeAppDatabase(existing: any, incoming: any): any {
   const rawCompanies = mergeEntityCollection(existing.registeredCompanies, incoming.registeredCompanies, 'id', 'cnpj');
   const normalizedCompanies = rawCompanies.map((c: any) => ({
     ...c,
-    businessType: normalizeBusinessType(c?.businessType)
+    businessType: normalizeBusinessType(c?.businessType, c?.name)
   }));
 
   const rawCompanyInfo = incoming.companyInfo || existing.companyInfo || (normalizedCompanies.length > 0 ? normalizedCompanies[0] : null);
   const normalizedCompanyInfo = rawCompanyInfo ? {
     ...rawCompanyInfo,
-    businessType: normalizeBusinessType(rawCompanyInfo?.businessType)
+    businessType: normalizeBusinessType(rawCompanyInfo?.businessType, rawCompanyInfo?.name)
   } : null;
 
   return {
@@ -598,9 +631,14 @@ app.get("/api/companies", async (req, res) => {
   }
 });
 
-// Granular REST APIs for ERP - Protected with requireAuth
-app.get("/api/clients", requireAuth, async (req, res) => {
+// Granular REST APIs for ERP - Protected with requireAuth + requireContractedModule
+app.get("/api/clients", requireAuth, requireContractedModule("Clientes", "accessClients", () => serverAppStoreCache), async (req: any, res) => {
   try {
+    const companyId = req.validatedCompanyId;
+    if (serverAppStoreCache?.clients) {
+      const list = (serverAppStoreCache.clients || []).filter((c: any) => !companyId || c.companyId === companyId);
+      return res.json(list);
+    }
     const db = getDbInstance();
     if (db) {
       const list = await db.select().from(clientsTable);
@@ -612,8 +650,13 @@ app.get("/api/clients", requireAuth, async (req, res) => {
   }
 });
 
-app.get("/api/vehicles", requireAuth, async (req, res) => {
+app.get("/api/vehicles", requireAuth, requireContractedModule("Veículos", "accessVehicles", () => serverAppStoreCache), async (req: any, res) => {
   try {
+    const companyId = req.validatedCompanyId;
+    if (serverAppStoreCache?.vehicles) {
+      const list = (serverAppStoreCache.vehicles || []).filter((v: any) => !companyId || v.companyId === companyId);
+      return res.json(list);
+    }
     const db = getDbInstance();
     if (db) {
       const list = await db.select().from(vehiclesTable);
@@ -625,8 +668,13 @@ app.get("/api/vehicles", requireAuth, async (req, res) => {
   }
 });
 
-app.get("/api/parts", requireAuth, async (req, res) => {
+app.get("/api/parts", requireAuth, requireContractedModule("Estoque", "accessParts", () => serverAppStoreCache), async (req: any, res) => {
   try {
+    const companyId = req.validatedCompanyId;
+    if (serverAppStoreCache?.parts) {
+      const list = (serverAppStoreCache.parts || []).filter((p: any) => !companyId || p.companyId === companyId);
+      return res.json(list);
+    }
     const db = getDbInstance();
     if (db) {
       const list = await db.select().from(partsTable);
@@ -638,14 +686,91 @@ app.get("/api/parts", requireAuth, async (req, res) => {
   }
 });
 
-app.get("/api/service-orders", requireAuth, async (req, res) => {
+app.get("/api/service-orders", requireAuth, requireContractedModule("Ordens de Serviço", "accessServiceOrders", () => serverAppStoreCache), async (req: any, res) => {
   try {
+    const companyId = req.validatedCompanyId;
+    if (serverAppStoreCache?.serviceOrders) {
+      const list = (serverAppStoreCache.serviceOrders || []).filter((o: any) => !companyId || o.companyId === companyId);
+      return res.json(list);
+    }
     const db = getDbInstance();
     if (db) {
       const list = await db.select().from(serviceOrdersTable);
       return res.json(list);
     }
     return res.json([]);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get("/api/production-orders", requireAuth, requireContractedModule("Produção", "accessProduction", () => serverAppStoreCache), async (req: any, res) => {
+  try {
+    const companyId = req.validatedCompanyId;
+    const list = (serverAppStoreCache?.productionOrders || []).filter((o: any) => !companyId || o.companyId === companyId);
+    return res.json(list);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get("/api/financial", requireAuth, requireContractedModule("Financeiro", "accessFinancial", () => serverAppStoreCache), async (req: any, res) => {
+  try {
+    const companyId = req.validatedCompanyId;
+    const receivables = (serverAppStoreCache?.accountsReceivable || []).filter((r: any) => !companyId || r.companyId === companyId);
+    const payables = (serverAppStoreCache?.accountsPayable || []).filter((p: any) => !companyId || p.companyId === companyId);
+    const transactions = (serverAppStoreCache?.financialTransactions || []).filter((t: any) => !companyId || t.companyId === companyId);
+    return res.json({ receivables, payables, transactions });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get("/api/sales", requireAuth, requireContractedModule("Vendas & Balcão", "accessSales", () => serverAppStoreCache), async (req: any, res) => {
+  try {
+    const companyId = req.validatedCompanyId;
+    const list = (serverAppStoreCache?.commercialSales || []).filter((s: any) => !companyId || s.companyId === companyId);
+    return res.json(list);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get("/api/budgets", requireAuth, requireContractedModule("Orçamentos", "accessBudgets", () => serverAppStoreCache), async (req: any, res) => {
+  try {
+    const companyId = req.validatedCompanyId;
+    const list = (serverAppStoreCache?.budgets || []).filter((b: any) => !companyId || b.companyId === companyId);
+    return res.json(list);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get("/api/representative-orders", requireAuth, requireContractedModule("Representação Comercial", "accessRepresentativeCommerce", () => serverAppStoreCache), async (req: any, res) => {
+  try {
+    const companyId = req.validatedCompanyId;
+    const list = (serverAppStoreCache?.representativeOrders || []).filter((r: any) => !companyId || r.companyId === companyId);
+    return res.json(list);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get("/api/services", requireAuth, requireContractedModule("Serviços", "accessServices", () => serverAppStoreCache), async (req: any, res) => {
+  try {
+    const companyId = req.validatedCompanyId;
+    const list = (serverAppStoreCache?.services || []).filter((s: any) => !companyId || s.companyId === companyId);
+    return res.json(list);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get("/api/quotations", requireAuth, requireContractedModule("Cotações", "accessQuotations", () => serverAppStoreCache), async (req: any, res) => {
+  try {
+    const companyId = req.validatedCompanyId;
+    const list = (serverAppStoreCache?.quotations || []).filter((q: any) => !companyId || q.companyId === companyId);
+    return res.json(list);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
@@ -687,7 +812,7 @@ app.post("/api/fiscal/test-webservices", async (req, res) => {
 });
 
 // Configuração do modo de comunicação (SEFAZ SP Direto vs Gateway Particular)
-app.post("/api/fiscal/set-communication-mode", requireAuth, async (req, res) => {
+app.post("/api/fiscal/set-communication-mode", requireAuth, requireContractedModule("Fiscal", "accessFiscal", () => serverAppStoreCache), async (req, res) => {
   try {
     const { mode, customConfig } = req.body;
     if (!mode || (mode !== 'direct_sefaz_sp' && mode !== 'custom_gateway')) {
@@ -717,7 +842,7 @@ app.get("/api/fiscal/status-servico", async (req, res) => {
 });
 
 // Upload seguro de Certificado Digital A1 para o cofre do provedor
-app.post("/api/fiscal/certificate/upload", requireAuth, async (req, res) => {
+app.post("/api/fiscal/certificate/upload", requireAuth, requireContractedModule("Fiscal", "accessFiscal", () => serverAppStoreCache), async (req, res) => {
   try {
     const { companyCnpj, certBase64, certPassword, companyData, environment } = req.body;
     if (!companyCnpj || !certBase64 || !certPassword) {
@@ -737,7 +862,7 @@ app.post("/api/fiscal/certificate/upload", requireAuth, async (req, res) => {
 });
 
 // Emissão de NF-e (Modelo 55 - Produtos / Vendas)
-app.post("/api/fiscal/nfe/emit", requireAuth, async (req, res) => {
+app.post("/api/fiscal/nfe/emit", requireAuth, requireContractedModule("Fiscal", "accessFiscal", () => serverAppStoreCache), async (req, res) => {
   try {
     const { payload, refId, environment } = req.body;
     if (!payload || !refId) {
@@ -751,7 +876,7 @@ app.post("/api/fiscal/nfe/emit", requireAuth, async (req, res) => {
 });
 
 // Emissão de NFC-e (Modelo 65 - Consumidor Final / Balcão)
-app.post("/api/fiscal/nfce/emit", requireAuth, async (req, res) => {
+app.post("/api/fiscal/nfce/emit", requireAuth, requireContractedModule("Fiscal", "accessFiscal", () => serverAppStoreCache), async (req, res) => {
   try {
     const { payload, refId, environment } = req.body;
     if (!payload || !refId) {
@@ -765,7 +890,7 @@ app.post("/api/fiscal/nfce/emit", requireAuth, async (req, res) => {
 });
 
 // Emissão de NFS-e (Serviços / Ordens de Serviço Oficina)
-app.post("/api/fiscal/nfse/emit", requireAuth, async (req, res) => {
+app.post("/api/fiscal/nfse/emit", requireAuth, requireContractedModule("Fiscal", "accessFiscal", () => serverAppStoreCache), async (req, res) => {
   try {
     const { payload, refId, environment } = req.body;
     if (!payload || !refId) {
@@ -779,7 +904,7 @@ app.post("/api/fiscal/nfse/emit", requireAuth, async (req, res) => {
 });
 
 // Cancelamento de Documento Fiscal (NF-e / NFC-e / NFS-e)
-app.post("/api/fiscal/cancel", requireAuth, async (req, res) => {
+app.post("/api/fiscal/cancel", requireAuth, requireContractedModule("Fiscal", "accessFiscal", () => serverAppStoreCache), async (req, res) => {
   try {
     const { docType, refId, justificativa, environment } = req.body;
     if (!docType || !refId || !justificativa) {
@@ -793,7 +918,7 @@ app.post("/api/fiscal/cancel", requireAuth, async (req, res) => {
 });
 
 // Carta de Correção Eletrônica (CC-e)
-app.post("/api/fiscal/cce", requireAuth, async (req, res) => {
+app.post("/api/fiscal/cce", requireAuth, requireContractedModule("Fiscal", "accessFiscal", () => serverAppStoreCache), async (req, res) => {
   try {
     const { refId, correcao, environment } = req.body;
     if (!refId || !correcao) {
@@ -807,7 +932,7 @@ app.post("/api/fiscal/cce", requireAuth, async (req, res) => {
 });
 
 // Inutilização de Numeração Fiscal
-app.post("/api/fiscal/inutilize", requireAuth, async (req, res) => {
+app.post("/api/fiscal/inutilize", requireAuth, requireContractedModule("Fiscal", "accessFiscal", () => serverAppStoreCache), async (req, res) => {
   try {
     const { payload, environment } = req.body;
     if (!payload || !payload.cnpj || !payload.serie || !payload.numero_inicial || !payload.numero_final || !payload.justificativa) {

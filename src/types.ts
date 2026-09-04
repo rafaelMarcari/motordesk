@@ -137,6 +137,8 @@ export type ViewID =
   | 'access_groups'
   | 'notifications_engine'
   | 'representative_commerce'
+  | 'representative_orders'
+  | 'representative_reconciliation'
   | 'services' 
   | 'budgets' 
   | 'serviceOrders' 
@@ -204,6 +206,17 @@ export function getDefaultModulesForBusinessType(type: BusinessType = "OFICINA")
   }
 }
 
+export interface CompanyContractModule {
+  moduleKey: string;
+  label?: string;
+  contracted: boolean;
+  monthlyFee?: number;
+  startDate?: string;
+  endDate?: string;
+  status?: 'active' | 'suspended' | 'canceled';
+  notes?: string;
+}
+
 /**
  * Interface para armazenar dados cadastrais da empresa/oficina contratante do MotorDesk.
  * Inclui canal oficial de WhatsApp, CNPJ e endereço para emissão de orçamentos e Ordens de Serviço.
@@ -214,6 +227,7 @@ export interface CompanyInfo {
   tradeName?: string; // Nome Fantasia da Oficina/Empresa
   businessType?: BusinessType; // Segmento de negócio da empresa ("OFICINA", "COMERCIO", etc.)
   modules?: CompanyModules; // Módulos ativados/desativados para esta empresa
+  contractModules?: Record<string, CompanyContractModule>; // Detalhamento de módulos contratados
   cnpj: string; // CNPJ da Empresa
   phone: string; // Telefone Fixo de Contato
   whatsapp: string; // WhatsApp Oficial de Atendimento da Oficina (com DDD)
@@ -570,10 +584,20 @@ export interface UserPermissions {
 
   // Permissões Granulares - Módulo Comércio Representante
   accessRepresentativeCommerce?: boolean;
+  representativeOrdersView?: boolean;
   representativeOrdersCreate?: boolean;
   representativeOrdersEdit?: boolean;
   representativeOrdersCancel?: boolean;
   representativeOrdersExport?: boolean;
+  representativeImportView?: boolean;
+  representativeImportCreate?: boolean;
+  representativeReconciliationView?: boolean;
+  representativeReconciliationApprove?: boolean;
+  representativeCommissionView?: boolean;
+  representativeCommissionEdit?: boolean;
+  representativeCommissionSettle?: boolean;
+  representativeReportsView?: boolean;
+  representativeReportsExport?: boolean;
   representativeReconcile?: boolean;
   representativeCommissionsManage?: boolean;
 }
@@ -632,6 +656,8 @@ export interface Client {
   name: string;
   cpf: string;
   cpfCnpj?: string;
+  cnpjCpf?: string;
+  document?: string;
   email: string;
   phone: string;
   address: string;
@@ -2048,11 +2074,19 @@ export interface AccountReceivable {
   interestAmount?: number; // Valor do acréscimo de juros (R$)
   paymentMethod?: string; // Forma de pagamento selecionada (PIX, Dinheiro, Cartão, etc.)
   totalAmount: number; // Valor total final com acréscimo
+  amount?: number; // Compatibilidade de valor do título
+  netAmount?: number;
   paidAmount: number;
   remainingAmount: number;
-  status: 'pending' | 'partially_paid' | 'paid' | 'overdue' | 'blocked_credit_limit' | 'approved_by_manager';
+  status: 'pending' | 'partially_paid' | 'paid' | 'overdue' | 'blocked_credit_limit' | 'approved_by_manager' | 'settled';
   installmentsCount: number;
+  installmentNumber?: number;
   dueDate: string;
+  issueDate?: string;
+  settlementDate?: string;
+  originType?: string;
+  orderId?: string;
+  description?: string;
   createdAt: string;
   installments: AccountInstallment[];
   creditLimitExceeded?: boolean;
@@ -2089,7 +2123,44 @@ export interface AccountReceivable {
   boletoStatus?: 'registered' | 'paid' | 'overdue' | 'canceled' | 'simulated';
   boletoBarcode?: string;
   boletoNossoNumero?: string;
+
+  // Reestruturação Financeira (Campos Separados)
+  nature?: FinancialNature; // 'income'
+  classification?: FinancialClassification; // 'fixed' | 'variable'
+  periodicity?: FinancialPeriodicity; // 'single' | 'monthly' | 'weekly' | ...
+  isRecurring?: boolean; // Sim / Não
+  origin?: FinancialOrigin; // 'sale' | 'commission' | 'service' | ...
+  representativeOrderId?: string;
+  representedCompanyId?: string;
+  commissionId?: string;
 }
+
+// ==========================================
+// REESTRUTURAÇÃO DE CONTAS FINANCEIRAS
+// ==========================================
+export type FinancialNature = 'income' | 'expense'; // A) NATUREZA: Receita / Despesa
+export type FinancialClassification = 'fixed' | 'variable'; // B) CLASSIFICAÇÃO: Fixa / Variável
+export type FinancialPeriodicity = 
+  | 'single'       // Única
+  | 'monthly'      // Mensal
+  | 'weekly'       // Semanal
+  | 'biweekly'     // Quinzenal
+  | 'bimonthly'    // Bimestral
+  | 'quarterly'    // Trimestral
+  | 'semiannual'   // Semestral
+  | 'annual'       // Anual
+  | 'custom';      // Personalizada
+export type FinancialOrigin = 
+  | 'sale'         // Venda
+  | 'commission'   // Comissão
+  | 'rent'         // Aluguel
+  | 'salary'       // Salário
+  | 'tax'          // Imposto
+  | 'supplier'     // Fornecedor
+  | 'service'      // Serviço
+  | 'freight'      // Transporte
+  | 'marketing'    // Marketing
+  | 'other';       // Outros
 
 export interface AccountPayable {
   id: string;
@@ -2120,6 +2191,16 @@ export interface AccountPayable {
   boletoBankName?: string;
   paymentCondition?: string; // Ex: '1x Boleto À Vista', '3x Boletos', '30/60/90'
   documentType?: 'boleto' | 'nfe' | 'fatura' | 'recibo' | 'contrato' | 'diversos';
+
+  // Reestruturação Financeira (Campos Separados)
+  nature?: FinancialNature; // 'expense'
+  classification?: FinancialClassification; // 'fixed' | 'variable'
+  periodicity?: FinancialPeriodicity; // 'single' | 'monthly' | 'weekly' | ...
+  isRecurring?: boolean; // Sim / Não
+  origin?: FinancialOrigin; // 'supplier' | 'rent' | 'salary' | 'tax' | ...
+  representativeOrderId?: string;
+  representedCompanyId?: string;
+  commissionId?: string;
 }
 
 export interface FinancialTransaction {
@@ -2135,6 +2216,16 @@ export interface FinancialTransaction {
   clientId?: string;
   supplierId?: string;
   createdByName: string;
+
+  // Reestruturação Financeira (Campos Separados)
+  nature?: FinancialNature;
+  classification?: FinancialClassification;
+  periodicity?: FinancialPeriodicity;
+  isRecurring?: boolean;
+  origin?: FinancialOrigin;
+  representativeOrderId?: string;
+  representedCompanyId?: string;
+  commissionId?: string;
 }
 
 export interface FiscalDocumentItem {
@@ -2732,6 +2823,7 @@ export interface TaxObligationGuide {
 export interface AppDatabase {
   companyInfo?: CompanyInfo;
   registeredCompanies?: CompanyInfo[];
+  companies?: CompanyInfo[];
   users: User[];
   accessGroups?: AccessGroup[];
   clients: Client[];
@@ -2798,6 +2890,10 @@ export interface AppDatabase {
   representativeOrders?: RepresentativeOrder[];
   representativeCommissions?: RepresentativeCommission[];
   representativeReconciliations?: RepresentativeReconciliation[];
+  representativeFactoryOrders?: RepresentativeFactoryOrder[];
+  factoryInvoices?: FactoryInvoice[];
+  factoryBillingImports?: FactoryBillingImport[];
+  representedCompanyLayouts?: RepresentedCompanyColumnLayout[];
 }
 
 // ==========================================
@@ -2824,7 +2920,17 @@ export type NotificationTriggerType =
   | 'sale_created'           // Venda balcão emitida
   | 'cash_flow_negative'     // Saldo projetado negativo
   | 'rep_order_sent'         // Pedido enviado para fábrica
+  | 'rep_order_confirmed'    // Pedido confirmado pela representada
+  | 'rep_order_partial_invoiced' // Pedido parcialmente faturado
+  | 'rep_order_invoiced'     // Pedido faturado
+  | 'rep_order_not_invoiced' // Pedido não faturado
+  | 'rep_divergence_found'   // Divergência encontrada na conciliação
+  | 'rep_import_completed'   // Planilha importada
+  | 'rep_reconciliation_completed' // Conciliação concluída
+  | 'rep_commission_released' // Comissão liberada
+  | 'rep_commission_received' // Comissão recebida
   | 'rep_commission_due'     // Comissão de representação a receber
+  | 'rep_commission_overdue' // Comissão em atraso
   | 'daily_summary'          // Resumo financeiro diário
   | 'custom';
 
@@ -2933,17 +3039,23 @@ export interface RepresentativeOrderItem {
 }
 
 export type RepresentativeOrderStatus = 
-  | 'draft'               // Rascunho
-  | 'sent_to_factory'     // Enviado à Fábrica
-  | 'factory_confirmed'   // Confirmado pela Fábrica
-  | 'invoiced_partial'    // Faturado Parcial
-  | 'invoiced_total'      // Faturado Total
-  | 'canceled';           // Cancelado
+  | 'draft'                    // RASCUNHO
+  | 'sent_to_factory'          // ENVIADO À REPRESENTADA
+  | 'received_by_factory'      // RECEBIDO PELA REPRESENTADA
+  | 'processing'               // EM PROCESSAMENTO
+  | 'factory_order_generated'  // PEDIDO DA REPRESENTADA GERADO
+  | 'in_expedition'            // EM EXPEDIÇÃO
+  | 'invoiced_partial'         // PARCIALMENTE FATURADO
+  | 'invoiced_total'           // FATURADO
+  | 'commission_pending'       // COMISSÃO A RECEBER
+  | 'commission_received'      // COMISSÃO RECEBIDA
+  | 'factory_confirmed'        // Compatibilidade
+  | 'canceled';                // CANCELADO
 
 export interface RepresentativeOrder {
   id: string;
   companyId: string; // Tenant
-  orderNumber: string; // Ex: 'PREP-2026-001'
+  orderNumber: string; // Ex: 'REP-000123'
   representedId: string; // ID da Representada
   representedName: string;
   clientId: string; // Cliente final comprador
@@ -2958,67 +3070,229 @@ export interface RepresentativeOrder {
   subtotal: number;
   totalDiscount: number;
   totalOrderAmount: number;
+  commissionPercentage?: number;
+  commissionAmount?: number;
   estimatedTotalCommission: number;
   factoryInvoiceNumber?: string;
   factoryInvoiceDate?: string;
+  factoryOrderNumbers?: string[]; // Lista de números de pedidos da representada (ex: ['45871', '45872', '45873'])
   status: RepresentativeOrderStatus;
   notes?: string;
   sentAt?: string;
   confirmedAt?: string;
   invoicedAt?: string;
+  commissionReceivedAt?: string;
   createdBy: string;
   createdAt: string;
   updatedAt?: string;
 }
 
-export interface RepresentativeCommission {
+// 6. Pedidos da Representada (1:N com RepresentativeOrder)
+export interface RepresentativeFactoryOrder {
   id: string;
   companyId: string;
-  representedId: string;
-  representedName: string;
-  orderId: string;
-  orderNumber: string;
-  factoryInvoiceNumber: string;
-  clientId: string;
-  clientName: string;
-  invoicedAmount: number;
-  commissionPercentage: number;
-  commissionAmount: number;
-  expectedPaymentDate: string;
-  actualPaymentDate?: string;
-  status: 'to_be_invoiced' | 'receivable' | 'received' | 'disputed_glosa';
-  financialReceivableId?: string; // Se vinculado ao Contas a Receber
-  notes?: string;
+  representativeOrderId: string; // Pedido MotorDesk pai (REP-000123)
+  representativeOrderNumber?: string;
+  representedCompanyId: string;
+  representedCompanyName?: string;
+  factoryOrderNumber: string; // ex: 45871, 45872, 45873
+  orderDate: string;
+  customer: string;
+  customerCnpjCpf?: string;
+  totalValue: number;
+  status: 'open' | 'expedition' | 'invoiced' | 'partially_invoiced' | 'canceled';
+  observations?: string;
+  attachment?: string;
   createdAt: string;
   updatedAt?: string;
+}
+
+// 7. Notas Fiscais da Representada
+export interface FactoryInvoice {
+  id: string;
+  companyId: string;
+  representativeOrderId?: string; // Vínculo ao Pedido Pai MotorDesk
+  representativeOrderNumber?: string;
+  factoryOrderId?: string; // Vínculo ao Pedido da Representada
+  representativeFactoryOrderId?: string;
+  factoryOrderNumber?: string;
+  representedCompanyId?: string;
+  accessKey?: string; // Chave NF-e 44 dígitos
+  number: string; // Número NF
+  series: string;
+  issueDate: string;
+  totalAmount: number;
+  productsAmount?: number;
+  issuerName: string; // Fábrica/Representada
+  issuerCnpj: string;
+  recipientName: string; // Cliente
+  recipientCnpj: string;
+  status?: string;
+  xmlContent?: string;
+  danfePdfUrl?: string;
+  items?: Array<{
+    code: string;
+    description: string;
+    quantity: number;
+    unitPrice: number;
+    totalPrice: number;
+  }>;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+// 8 e 9. Importação de Planilhas e Mapeamento de Colunas
+export interface FactoryBillingImport {
+  id: string;
+  companyId: string;
+  representedCompanyId: string;
+  representedCompanyName: string;
+  fileName: string;
+  fileType: 'xlsx' | 'csv' | 'xml';
+  importedAt: string;
+  importedBy: string;
+  rowsCount: number;
+  status: 'imported' | 'reconciled' | 'divergent_pending' | 'approved';
+  rawData: Array<Record<string, any>>;
+  columnMapping: Record<string, string>;
+  reconciliationId?: string;
+  createdAt: string;
+}
+
+export interface RepresentedCompanyColumnLayout {
+  id: string;
+  companyId: string;
+  representedCompanyId: string;
+  layoutName: string; // Ex: "Fábrica ABC — Faturamento"
+  columnMapping: {
+    factoryOrderNumber?: string; // ex: "Pedido", "Pedido_Fabrica"
+    representativeOrderNumber?: string; // ex: "Pedido_Cliente", "Ref_MotorDesk"
+    clientName?: string; // ex: "Cliente", "Razao_Social"
+    clientCnpj?: string; // ex: "CNPJ", "Documento"
+    invoiceNumber?: string; // ex: "NF", "Nota_Fiscal", "Numero_NF"
+    invoiceDate?: string; // ex: "Data_Faturamento", "Emissao_NF"
+    invoicedAmount?: string; // ex: "Valor_Faturado", "Total_NF", "Valor"
+    productCode?: string; // ex: "Codigo", "Cod_Item"
+    productDescription?: string; // ex: "Produto", "Descricao"
+    quantity?: string; // ex: "Qtd", "Quantidade"
+    commissionRate?: string; // ex: "Perc_Comissao", "Aliquota"
+  };
+  updatedAt: string;
+}
+
+// 10 a 14. Conciliação Inteligente 1:N
+export type ReconciliationStatus = 
+  | 'CONCILIADO'             // 🟢 CONCILIADO (ex: Pedido 20.000, Faturado 20.000)
+  | 'PARCIAL'                // 🟡 PARCIAL (ex: Pedido 20.000, Faturado 15.000, Saldo 5.000)
+  | 'NAO_FATURADO'           // 🔴 NÃO FATURADO (ex: Pedido 20.000, Faturado 0)
+  | 'DIVERGENCIA'            // 🔴 DIVERGÊNCIA (ex: Pedido 20.000, Faturado 22.000)
+  | 'FATURAMENTO_SEM_PEDIDO';// 🔴 FATURAMENTO SEM PEDIDO (Linha na planilha sem correspondência)
+
+export type MatchConfidenceLevel = 'HIGH' | 'MEDIUM' | 'LOW' | 'NO_MATCH';
+
+export interface ReconciliationResultItem {
+  id: string;
+  representativeOrderId?: string;
+  representativeOrderNumber?: string;
+  clientName: string;
+  clientCnpjCpf: string;
+  orderAmount: number;
+  // 1:N pedidos da representada vinculados
+  factoryOrders: Array<{
+    factoryOrderNumber: string;
+    amount: number;
+    status?: string;
+  }>;
+  // 1:N NF-e vinculadas
+  invoices: Array<{
+    invoiceNumber: string;
+    invoiceDate: string;
+    amount: number;
+    accessKey?: string;
+  }>;
+  totalInvoicedAmount: number;
+  difference: number;
+  commissionPercentage: number;
+  expectedCommission: number;
+  confirmedCommission: number;
+  confidenceLevel: MatchConfidenceLevel;
+  matchCriteria: string[]; // ['order_number', 'factory_order', 'cnpj', 'client_name', 'amount']
+  status: ReconciliationStatus;
+  notes?: string;
+  approved?: boolean;
+  approvedBy?: string;
+  approvedAt?: string;
 }
 
 export interface RepresentativeReconciliation {
   id: string;
   companyId: string;
-  fileName: string;
-  importedAt: string;
+  importId?: string;
   representedId: string;
   representedName: string;
-  totalRecords: number;
-  matchedCount: number;
-  divergentCount: number;
-  pendingCount: number;
-  reconciliationItems: Array<{
-    id: string;
-    orderNumber: string;
-    clientCnpj: string;
-    clientName?: string;
-    factoryInvoiceNumber: string;
-    factoryInvoiceDate: string;
-    orderAmount: number;
-    invoicedAmount: number;
-    difference: number;
-    orderCommission: number;
-    invoicedCommission: number;
-    status: 'matched' | 'divergent_value' | 'pending' | 'unmatched';
-    notes?: string;
-  }>;
+  fileName?: string;
+  reconciliationDate: string;
+  reconciledBy: string;
+  totalOrdersCompared: number;
+  statusSummary: {
+    conciliado: number;
+    parcial: number;
+    naoFaturado: number;
+    divergencia: number;
+    semPedido: number;
+  };
+  results: ReconciliationResultItem[];
+  // Retrocompatibilidade
+  totalRecords?: number;
+  matchedCount?: number;
+  divergentCount?: number;
+  pendingCount?: number;
+  reconciliationItems?: any[];
+}
+
+// 15. Comissões
+export type CommissionStatus = 
+  | 'PREVISTA'       // Prevista
+  | 'CONFIRMADA'     // Confirmada
+  | 'A_RECEBER'      // A Receber
+  | 'RECEBIDA'       // Recebida
+  | 'EM_ATRASO'      // Em Atraso
+  | 'DIVERGENTE';    // Divergente
+
+export type RepresentativeCommissionStatus = CommissionStatus;
+
+export interface RepresentativeCommission {
+  id: string;
+  companyId: string;
+  representedId?: string;
+  representedName?: string;
+  representedCompanyId?: string;
+  representedCompanyName?: string;
+  orderId?: string;
+  representativeOrderId?: string;
+  orderNumber: string; // REP-000123
+  factoryOrderNumbers?: string[]; // ['45871', '45872', '45873']
+  factoryInvoiceNumbers?: string[]; // ['8921', '8922', '8923']
+  factoryInvoiceNumber?: string;
+  invoiceNumber?: string;
+  clientId?: string;
+  clientName?: string;
+  orderAmount?: number;
+  invoicedAmount: number;
+  commissionPercentage: number;
+  expectedCommissionAmount?: number;
+  confirmedCommissionAmount?: number;
+  confirmedAmount?: number;
+  commissionAmount?: number; // compatibilidade
+  status: CommissionStatus | 'to_be_invoiced' | 'receivable' | 'received' | 'disputed_glosa';
+  expectedPaymentDate: string;
+  actualPaymentDate?: string;
+  paymentDate?: string;
+  financialReceivableId?: string; // Vinculado ao Contas a Receber
+  differenceNotes?: string;
+  notes?: string;
+  createdAt: string;
+  updatedAt?: string;
 }
 
 export type Company = CompanyInfo;

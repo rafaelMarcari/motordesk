@@ -1,6 +1,6 @@
 {
   "name": "MotorDesk",
-  "description": "Sistema integrado de gestão para Oficina Mecânica, Comércio & Autopeças e Indústria & PCP, com controle modular RBAC, faturamento, estoque real e rastreabilidade operacional.",
+  "description": "Sistema integrado de gestão para Oficina Mecânica, Comércio, Autopeças e Representação Comercial, com controle modular RBAC, faturamento, conciliação 1:N de pedidos e representadas, estoque e financeiro.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

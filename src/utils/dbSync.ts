@@ -45,14 +45,14 @@ export function mergeDatabases(existing: AppDatabase, incoming: AppDatabase): Ap
 
   const mergedRegisteredCompanies = mergeList<CompanyInfo>(existing.registeredCompanies, incoming.registeredCompanies, 'id', 'cnpj').map(c => ({
     ...c,
-    businessType: normalizeBusinessType(c.businessType)
+    businessType: normalizeBusinessType(c.businessType, c.name)
   }));
   const savedActiveCompanyId = typeof localStorage !== 'undefined' ? localStorage.getItem('motordesk_active_company_id') : null;
   const foundActiveCompany = savedActiveCompanyId ? mergedRegisteredCompanies.find(c => c.id === savedActiveCompanyId) : null;
   const rawActiveCompany = foundActiveCompany || existing.companyInfo || incoming.companyInfo || (mergedRegisteredCompanies.length > 0 ? mergedRegisteredCompanies[0] : undefined);
   const activeCompany = rawActiveCompany ? {
     ...rawActiveCompany,
-    businessType: normalizeBusinessType(rawActiveCompany.businessType)
+    businessType: normalizeBusinessType(rawActiveCompany.businessType, rawActiveCompany.name)
   } : undefined;
 
   return {

@@ -131,7 +131,7 @@ import {
   normalizeUser,
   normalizeUserPermissions
 } from './utils/businessSegmentation';
-import { getEffectivePermissions, isModuleContractedForCompany, canAccessView } from './utils/securityUtils';
+import { getEffectivePermissions, isModuleContractedForCompany, canAccessView, isCompanyActive, getSafeAccessibleFallbackView } from './utils/securityUtils';
 
 const VIEW_PERMISSION_MAP: Record<ViewID, keyof UserPermissions | null> = {
   dashboard: 'accessDashboard',
@@ -152,6 +152,8 @@ const VIEW_PERMISSION_MAP: Record<ViewID, keyof UserPermissions | null> = {
   access_groups: 'accessUserManagement',
   notifications_engine: 'accessNotificationsEngine',
   representative_commerce: 'accessRepresentativeCommerce',
+  representative_orders: 'accessRepresentativeCommerce',
+  representative_reconciliation: 'accessRepresentativeCommerce',
   services: 'accessServices',
   budgets: 'accessBudgets',
   serviceOrders: 'accessServiceOrders',
@@ -652,21 +654,34 @@ export default function App() {
   };
 
   const isModuleLocked = React.useCallback((permissionKey: string) => {
-    if (permissionKey === 'accessUserManagement' || permissionKey === 'accessDashboard') return false;
+    if (!activeCompanyObj) return true;
 
-    // Strict centralized licensing & segmentation check
+    // Empresa inativa ou bloqueada tem todos os módulos operacionais bloqueados
+    if (!isCompanyActive(activeCompanyObj)) {
+      if (permissionKey === 'accessUserManagement' && (currentUser?.role === 'admin' || currentUser?.username?.toLowerCase() === 'admin')) {
+        return false;
+      }
+      return true;
+    }
+
+    // Regra central de Contrato e Segmentação da Empresa
     if (!isModuleContractedForCompany(permissionKey, activeCompanyObj, activeBusinessType)) {
       return true;
     }
 
+    // Override explícito em globalModules
+    if (activeCompanyObj.globalModules && activeCompanyObj.globalModules[permissionKey] === false) {
+      return true;
+    }
+
     return activeCompanyModules[permissionKey as keyof typeof activeCompanyModules] === false;
-  }, [activeCompanyObj, activeBusinessType, activeCompanyModules]);
+  }, [activeCompanyObj, activeBusinessType, activeCompanyModules, currentUser]);
 
   // Auto-redirect if active view is not supported by current company business type or not accessible
   useEffect(() => {
     if (!currentUser) return;
     if (!canAccessView(activeCompanyObj, currentUser, activeView, db)) {
-      const fallback = getFallbackViewForBusinessType(activeBusinessType, currentUser.permissions);
+      const fallback = getSafeAccessibleFallbackView(activeCompanyObj, currentUser, db);
       setActiveView(fallback);
     }
   }, [activeCompanyId, activeBusinessType, currentUser, activeView, activeCompanyObj, db]);
@@ -677,10 +692,15 @@ export default function App() {
     : [db?.companyInfo || { id: 'comp-1', name: 'MotorDesk', cnpj: '', phone: '', whatsapp: '', email: '', address: '', welcomeMessage: '', registeredAt: '' }];
 
   // Switch Active Company Workspace (for Admin / QA users)
-  const handleSwitchCompanyWorkspace = (targetCompanyId: string) => {
+  const handleSwitchCompanyWorkspace = (targetCompanyId: string, optionalTargetComp?: CompanyInfo) => {
     if (!currentUser) return;
-    const targetComp = (db?.registeredCompanies || []).find(c => c.id === targetCompanyId) || db?.companyInfo;
-    if (!targetComp) return;
+    const targetComp = optionalTargetComp || 
+      (db?.registeredCompanies || []).find(c => c.id === targetCompanyId) || 
+      (db?.companyInfo?.id === targetCompanyId ? db?.companyInfo : null);
+    if (!targetComp) {
+      console.warn(`[WorkspaceSwitch] Company ${targetCompanyId} not found`);
+      return;
+    }
 
     setActiveCompanyIdState(targetCompanyId);
     localStorage.setItem('motordesk_active_company_id', targetCompanyId);
@@ -754,7 +774,17 @@ export default function App() {
       accountsPayable: canAccountsPayable ? (db.accountsPayable || []).filter(item => (item.companyId || 'comp-1') === activeCompanyId) : [],
       financialTransactions: canFinancial ? (db.financialTransactions || []).filter(item => (item.companyId || 'comp-1') === activeCompanyId) : [],
       users: (db.users || []).filter(item => (item.companyId || 'comp-1') === activeCompanyId),
-      notifications: (db.notifications || []).filter(item => (item.companyId || 'comp-1') === activeCompanyId),
+      notifications: (db.notifications || [])
+        .filter(item => (item.companyId || 'comp-1') === activeCompanyId)
+        .filter(item => {
+          if ((item.type === 'stock_low' || item.type === 'stock_expired') && !canParts) return false;
+          if ((item.type === 'service_order_created' || item.type === 'os_closed_by_mechanic') && !canServiceOrders) return false;
+          if ((item.type === 'budget_created' || item.type === 'budget_converted' || item.type === 'budget_converted_to_sale') && !canBudgets) return false;
+          if (item.type === 'sale_created' && !canSales) return false;
+          if (item.type === 'receivable_due' && !canAccountsReceivable) return false;
+          if (item.type === 'payable_due' && !canAccountsPayable) return false;
+          return true;
+        }),
       stockMovements: canParts ? (db.stockMovements || []).filter(item => (item.companyId || 'comp-1') === activeCompanyId) : [],
       supplierPartPrices: (canQuotations || canParts) ? (db.supplierPartPrices || []).filter(item => (item.companyId || 'comp-1') === activeCompanyId) : [],
       maintenanceLogs: (canVehicles || canServiceOrders) ? (db.maintenanceLogs || []).filter(item => (item.companyId || 'comp-1') === activeCompanyId) : [],
@@ -1081,11 +1111,19 @@ export default function App() {
   };
 
   const handleSaveRegisteredCompanies = (companies: CompanyInfo[], activeCompanyId?: string, newUsers?: User[]) => {
+    const targetActiveId = activeCompanyId || activeCompanyIdState || localStorage.getItem('motordesk_active_company_id') || companies[0]?.id;
+    const activeComp = companies.find(c => c.id === targetActiveId) || companies[0];
+
+    if (activeCompanyId) {
+      setActiveCompanyIdState(activeCompanyId);
+      localStorage.setItem('motordesk_active_company_id', activeCompanyId);
+    }
+
     setDb(prev => {
       if (!prev) return prev;
-      const activeComp = activeCompanyId 
-        ? companies.find(c => c.id === activeCompanyId) || prev.companyInfo
-        : prev.companyInfo;
+      const effectiveActiveComp = activeCompanyId 
+        ? companies.find(c => c.id === activeCompanyId) || activeComp
+        : activeComp || prev.companyInfo;
 
       let mergedUsers = prev.users || [];
       if (newUsers && newUsers.length > 0) {
@@ -1094,22 +1132,49 @@ export default function App() {
         mergedUsers = Array.from(userMap.values());
       }
 
+      if (currentUser && activeCompanyId) {
+        mergedUsers = mergedUsers.map(u => 
+          (u.id === currentUser.id || u.username.toLowerCase() === currentUser.username.toLowerCase())
+            ? { ...u, companyId: activeCompanyId }
+            : u
+        );
+      }
+
       const nextDb = {
         ...prev,
-        companyInfo: activeComp,
+        companyInfo: effectiveActiveComp,
         registeredCompanies: companies,
         users: mergedUsers
       };
       dataProvider.saveDatabaseImmediate(nextDb);
       return nextDb;
     });
+
+    if (currentUser && activeCompanyId && activeComp) {
+      const updatedUser: User = normalizeUser({
+        ...currentUser,
+        companyId: activeCompanyId,
+      }, activeCompanyId, db);
+      setCurrentUser(updatedUser);
+      localStorage.setItem('motordesk_active_user', JSON.stringify(updatedUser));
+
+      const newBusinessType = getBusinessType(activeComp);
+      if (!isViewAllowedForBusinessType(activeView, newBusinessType)) {
+        const fallback = getFallbackViewForBusinessType(newBusinessType, updatedUser.permissions);
+        setActiveView(fallback);
+      }
+    }
   };
 
   const handleRegisterCompanyFromQA = (companyInfo: CompanyInfo, adminUser?: User, qaUser?: User) => {
     const normalizedCompany: CompanyInfo = {
       ...companyInfo,
-      businessType: normalizeBusinessType(companyInfo.businessType),
+      businessType: normalizeBusinessType(companyInfo.businessType, companyInfo.name),
     };
+    if (normalizedCompany.id) {
+      setActiveCompanyIdState(normalizedCompany.id);
+      localStorage.setItem('motordesk_active_company_id', normalizedCompany.id);
+    }
     setDb(prev => {
       if (!prev) return prev;
       const currentList = prev.registeredCompanies && prev.registeredCompanies.length > 0 
@@ -1445,6 +1510,10 @@ export default function App() {
       'notificationsEngine': 'notifications_engine',
       'representative_commerce': 'representative_commerce',
       'representativeCommerce': 'representative_commerce',
+      'representative_orders': 'representative_orders',
+      'representativeOrders': 'representative_orders',
+      'representative_reconciliation': 'representative_reconciliation',
+      'representativeReconciliation': 'representative_reconciliation',
     };
     return map[rawView] || (rawView as ViewID);
   };
@@ -1769,13 +1838,16 @@ export default function App() {
                     onChange={e => setSelectedLoginCompanyId(e.target.value)}
                     className="w-full text-xs px-3 py-2.5 bg-white border border-indigo-300 text-slate-900 font-bold rounded-lg focus:outline-hidden focus:ring-2 focus:ring-indigo-500 transition cursor-pointer shadow-xs"
                   >
-                    {matchingCompaniesForLogin.map(comp => (
-                      <option key={comp.id} value={comp.id}>
-                        {comp.companyType === 'filial' ? '🏬 Filial: ' : '🏢 '}
-                        {comp.name} {comp.cnpj ? `— CNPJ: ${comp.cnpj}` : ''}
-                        {comp.subscriptionStatus === 'blocked' ? ' 🔒 (Bloqueada)' : ''}
-                      </option>
-                    ))}
+                    {matchingCompaniesForLogin.map(comp => {
+                      const bType = getBusinessType(comp);
+                      const segmentLabel = bType === 'INDUSTRIA' ? '🏭 Indústria' : bType === 'COMERCIO' ? '🛒 Comércio' : bType === 'OFICINA_COMERCIO' ? '🏢 Híbrido' : '🔧 Oficina';
+                      return (
+                        <option key={comp.id} value={comp.id}>
+                          [{segmentLabel}] {comp.companyType === 'filial' ? 'Filial: ' : ''}{comp.name} {comp.cnpj ? `— CNPJ: ${comp.cnpj}` : ''}
+                          {comp.subscriptionStatus === 'blocked' ? ' 🔒 (Bloqueada)' : ''}
+                        </option>
+                      );
+                    })}
                   </select>
                   <p className="text-[10px] text-indigo-700 font-medium">
                     Usuário cadastrado em mais de uma empresa. Selecione a unidade onde deseja fazer login.
@@ -2603,7 +2675,7 @@ export default function App() {
                 >
                   {registeredCompaniesList.map((comp) => {
                     const bType = getBusinessType(comp);
-                    const label = bType === 'COMERCIO' ? '🛒 Comércio' : bType === 'OFICINA_COMERCIO' ? '🏢 Híbrido' : '🔧 Oficina';
+                    const label = bType === 'INDUSTRIA' ? '🏭 Indústria' : bType === 'COMERCIO' ? '🛒 Comércio' : bType === 'OFICINA_COMERCIO' ? '🏢 Híbrido' : '🔧 Oficina';
                     return (
                       <option key={comp.id} value={comp.id} className="bg-white text-slate-800">
                         {comp.name || 'Empresa'} ({label})
@@ -2622,16 +2694,19 @@ export default function App() {
 
             {/* Segment Indicator Pill */}
             <span className={`text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-md border flex items-center gap-1 font-sans hidden sm:inline-flex ${
-              activeBusinessType === 'COMERCIO' 
-                ? 'bg-emerald-50 text-emerald-800 border-emerald-300' 
-                : activeBusinessType === 'OFICINA_COMERCIO' 
-                  ? 'bg-amber-50 text-amber-800 border-amber-300' 
-                  : 'bg-indigo-50 text-indigo-800 border-indigo-300'
+              activeBusinessType === 'INDUSTRIA'
+                ? 'bg-cyan-50 text-cyan-800 border-cyan-300'
+                : activeBusinessType === 'COMERCIO' 
+                  ? 'bg-emerald-50 text-emerald-800 border-emerald-300' 
+                  : activeBusinessType === 'OFICINA_COMERCIO' 
+                    ? 'bg-amber-50 text-amber-800 border-amber-300' 
+                    : 'bg-indigo-50 text-indigo-800 border-indigo-300'
             }`}>
+              {activeBusinessType === 'INDUSTRIA' && <Factory className="w-3 h-3 text-cyan-600" />}
               {activeBusinessType === 'COMERCIO' && <ShoppingBag className="w-3 h-3 text-emerald-600" />}
               {activeBusinessType === 'OFICINA_COMERCIO' && <Building2 className="w-3 h-3 text-amber-600" />}
               {activeBusinessType === 'OFICINA' && <Wrench className="w-3 h-3 text-indigo-600" />}
-              {activeBusinessType === 'COMERCIO' ? 'Comércio' : activeBusinessType === 'OFICINA_COMERCIO' ? 'Híbrido' : 'Oficina'}
+              {activeBusinessType === 'INDUSTRIA' ? 'Indústria' : activeBusinessType === 'COMERCIO' ? 'Comércio' : activeBusinessType === 'OFICINA_COMERCIO' ? 'Híbrido' : 'Oficina'}
             </span>
 
             <span className="text-xs font-semibold text-slate-500 font-sans hidden sm:inline">Sessão:</span>
@@ -2657,8 +2732,8 @@ export default function App() {
         <main className="flex-1 p-8 overflow-y-auto" id="workspace-main-content">
           {activeView !== 'profile' && !isViewAllowedForBusinessType(activeView, activeBusinessType) ? (
             renderSegmentRestrictedScreen()
-          ) : activeView !== 'profile' && VIEW_PERMISSION_MAP[activeView] && !currentUser.permissions[VIEW_PERMISSION_MAP[activeView]!] ? (
-            renderAccessDeniedScreen()
+          ) : activeView !== 'profile' && !canAccessView(activeCompanyObj || db.companyInfo, currentUser, activeView, db) ? (
+            renderLockedScreen()
           ) : (
             <>
               {activeView === 'dashboard' && currentUser.permissions.accessDashboard && (
@@ -2992,13 +3067,15 @@ export default function App() {
             )
           )}
 
-          {activeView === 'representative_commerce' && currentUser.permissions.accessRepresentativeCommerce && (
+          {['representative_commerce', 'representative_orders', 'representative_reconciliation'].includes(activeView) && currentUser.permissions.accessRepresentativeCommerce && (
             isModuleLocked('accessRepresentativeCommerce') ? renderLockedScreen() : (
               <RepresentativeCommerceView 
                 db={db}
                 setDb={syncDb as any}
                 currentUser={currentUser}
                 activeCompanyId={activeCompanyId}
+                initialTab={activeView === 'representative_orders' ? 'orders' : activeView === 'representative_reconciliation' ? 'reconciliation' : undefined}
+                onAddHistoryLog={handleAddHistoryLog}
               />
             )
           )}
@@ -3010,7 +3087,8 @@ export default function App() {
             'accounts_payable', 'financial', 'fiscal_conference', 'fiscal', 
             'tax_obligations', 'services', 'budgets', 'serviceOrders', 'industry', 
             'history', 'reports', 'users', 'access_groups', 'profile', 'qa_panel', 'data_migration',
-            'notifications_engine', 'notification_engine', 'representative_commerce'
+            'notifications_engine', 'notification_engine', 'representative_commerce',
+            'representative_orders', 'representative_reconciliation'
           ].includes(activeView) && (
             <div className="flex flex-col items-center justify-center p-12 text-center bg-white rounded-2xl border border-slate-200/80 my-12 animate-fade-in shadow-xs" id="fallback-view-screen">
               <div className="w-14 h-14 bg-indigo-50 border border-indigo-200 text-indigo-600 rounded-2xl flex items-center justify-center text-2xl mb-4 shadow-xs font-bold">

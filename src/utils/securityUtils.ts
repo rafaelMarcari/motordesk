@@ -327,8 +327,8 @@ export function getEffectiveAlcadas(
     };
   }
 
-  // 5. Admin / QA Override
-  if (userObj.role === 'admin' || userObj.username.toLowerCase() === 'validador' || userObj.username.toLowerCase() === 'admin') {
+  // 5. Admin / Operador de Gestão
+  if (userObj.role === 'admin') {
     effectiveAlcadas = {
       maxDiscountPercent: 100,
       maxPurchaseApprovalAmount: 999999999,
@@ -497,28 +497,61 @@ export function validateOperationalAction(
 }
 
 /**
+ * Verifica se a empresa está ativa e com contrato regular (não suspensa/inadimplente/bloqueada)
+ * Regra: Empresa inativa/bloqueada/vencida tem ACESSO NEGADO A TUDO
+ */
+export function isCompanyActive(company?: CompanyInfo | null): boolean {
+  if (!company) return false;
+  if (company.subscriptionStatus === 'blocked' || company.subscriptionStatus === 'overdue') {
+    return false;
+  }
+  if (company.paymentStatus === 'overdue') {
+    if (company.expirationDate) {
+      const today = new Date().toISOString().slice(0, 10);
+      if (company.expirationDate < today) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
+/**
  * Verifica se um módulo está efetivamente contratado pela empresa (SaaS Licensing)
- * Respeita a hierarquia:
- * 1. Segmentação do Tenant (isModuleAllowedForBusinessType)
- * 2. Módulos Globais / Assinatura da Empresa (company.globalModules ou company.modules)
+ * Respeita a hierarquia inviolável:
+ * 1. Empresa Ativa (isCompanyActive)
+ * 2. Segmentação do Tenant (isModuleAllowedForBusinessType)
+ * 3. Contrato Explícito (company.contractModules ou company.globalModules ou company.modules)
+ *
+ * REGRA CRÍTICA: Nenhum perfil de usuário (nem ADMIN nem MASTER) ultrapassa o contrato.
  */
 export function isModuleContractedForCompany(
   permissionKey: string,
   company?: CompanyInfo | null,
   businessType?: BusinessType | string | null
 ): boolean {
-  if (permissionKey === 'accessUserManagement' || permissionKey === 'accessDashboard') {
-    return true;
-  }
-
   const effectiveBusinessType = (businessType || company?.businessType || 'OFICINA') as BusinessType;
 
-  // 1. Centralized Segmentation Check
+  // 1. Centralized Segmentation Check: módulo precisa ser compatível com o segmento da empresa
   if (!isModuleAllowedForBusinessType(permissionKey, effectiveBusinessType)) {
     return false;
   }
 
-  // 2. Company Subscription / Global Modules Check (Contract source of truth)
+  // 2. Explicit Contract Modules (com status granular: active, suspended, canceled e vigência)
+  if (company?.contractModules && typeof company.contractModules === 'object') {
+    const contractItem = (company.contractModules as any)[permissionKey];
+    if (contractItem && typeof contractItem === 'object') {
+      if (contractItem.contracted === false || contractItem.status === 'canceled' || contractItem.status === 'suspended') {
+        return false;
+      }
+      const today = new Date().toISOString().slice(0, 10);
+      if (contractItem.startDate && contractItem.startDate > today) return false;
+      if (contractItem.endDate && contractItem.endDate < today) return false;
+      return true;
+    }
+  }
+
+  // 3. Company Subscription / Global Modules Check (Contract source of truth)
   if (company?.globalModules && typeof company.globalModules === 'object') {
     let val = company.globalModules[permissionKey];
     if (val === undefined && permissionKey === 'accessNotificationEngine') {
@@ -532,11 +565,15 @@ export function isModuleContractedForCompany(
     }
     // If company defines an explicit contract with configured modules, any omitted module is NOT contracted
     if (Object.keys(company.globalModules).length > 0) {
+      // Exceção apenas para ferramentas fundamentais de gestão se não explicitadas
+      if (permissionKey === 'accessDashboard' || permissionKey === 'accessUserManagement') {
+        return true;
+      }
       return false;
     }
   }
 
-  // 3. Fallback to company.modules (legacy/alternative map) if present
+  // 4. Fallback to company.modules (legacy/alternative map) if present
   if (company?.modules && typeof company.modules === 'object') {
     const rawModules = company.modules as any;
     const modMap: Record<string, boolean | undefined> = {
@@ -574,7 +611,7 @@ export function isModuleContractedForCompany(
     return false;
   }
 
-  // 4. Default business type modules fallback
+  // 5. Default business type modules fallback
   const defaultModules = getDefaultGlobalModulesForBusinessType(effectiveBusinessType);
   if (defaultModules[permissionKey] !== undefined) {
     return Boolean(defaultModules[permissionKey]);
@@ -658,9 +695,22 @@ export function getEffectivePermissions(
     : db?.companyInfo);
 
   if (targetCompany) {
+    // 5.0 Se a empresa estiver suspensa ou inadimplente, revoga permissões funcionais (exceto gestão para regularização se for admin)
+    if (!isCompanyActive(targetCompany)) {
+      ALL_PERMISSION_KEYS.forEach(pKey => {
+        if (pKey.key !== 'accessUserManagement') {
+          (basePerms as any)[pKey.key] = false;
+        }
+      });
+      return basePerms;
+    }
+
     const effectiveBt = targetCompany.businessType || 'OFICINA';
     ALL_PERMISSION_KEYS.forEach(pKey => {
       if (pKey.key === 'accessUserManagement' || pKey.key === 'accessQAPanel') {
+        if (targetCompany?.globalModules && targetCompany.globalModules[pKey.key] === false) {
+          (basePerms as any)[pKey.key] = false;
+        }
         return; // Ferramentas centrais de administração e testes
       }
       const isContracted = isModuleContractedForCompany(pKey.key, targetCompany, effectiveBt);
@@ -720,10 +770,20 @@ export function getEffectivePermissions(
     }
     if (!isModuleContractedForCompany('accessRepresentativeCommerce', targetCompany, effectiveBt)) {
       basePerms.accessRepresentativeCommerce = false;
+      basePerms.representativeOrdersView = false;
       basePerms.representativeOrdersCreate = false;
       basePerms.representativeOrdersEdit = false;
       basePerms.representativeOrdersCancel = false;
       basePerms.representativeOrdersExport = false;
+      basePerms.representativeImportView = false;
+      basePerms.representativeImportCreate = false;
+      basePerms.representativeReconciliationView = false;
+      basePerms.representativeReconciliationApprove = false;
+      basePerms.representativeCommissionView = false;
+      basePerms.representativeCommissionEdit = false;
+      basePerms.representativeCommissionSettle = false;
+      basePerms.representativeReportsView = false;
+      basePerms.representativeReportsExport = false;
       basePerms.representativeReconcile = false;
       basePerms.representativeCommissionsManage = false;
     }
@@ -849,6 +909,8 @@ export const VIEW_TO_PRIMARY_PERMISSION_MAP: Record<string, keyof UserPermission
   fiscal_conference: 'accessFiscal',
   tax_obligations: 'accessFiscal',
   representative_commerce: 'accessRepresentativeCommerce',
+  representative_orders: 'accessRepresentativeCommerce',
+  representative_reconciliation: 'accessRepresentativeCommerce',
   notifications_engine: 'accessNotificationEngine',
   notification_engine: 'accessNotificationEngine',
   users: 'accessUserManagement',
@@ -885,9 +947,19 @@ export function canAccessView(
   // Tela de perfil pessoal é liberada para qualquer usuário autenticado
   if (viewId === 'profile') return true;
 
+  // 1. PRIORIDADE ABSOLUTA: A empresa está ativa e com contrato regular?
+  // Se a empresa estiver suspensa, inadimplente ou bloqueada -> ACESSO NEGADO A TUDO
+  // (Exceção: tela 'users' para administradores permitindo regularização/pagamento da assinatura)
+  if (!isCompanyActive(company)) {
+    if (viewId === 'users' && user.role === 'admin') {
+      return true;
+    }
+    return false;
+  }
+
   const businessType = normalizeBusinessType(company.businessType);
 
-  // 1. Validação de SEGMENTO DA EMPRESA
+  // 2. Validação de SEGMENTO DA EMPRESA
   if (!isViewAllowedForBusinessType(viewId as ViewID, businessType)) {
     return false;
   }
@@ -899,17 +971,53 @@ export function canAccessView(
     return true;
   }
 
-  // 2. Validação de MÓDULO CONTRATADO PELA EMPRESA (Licenciamento SaaS)
+  // 3. Validação de MÓDULO CONTRATADO PELA EMPRESA (Licenciamento SaaS)
+  // Regra Inviolável: Nenhum perfil de usuário (nem ADMIN nem MASTER) acessa módulo não contratado.
   if (!isModuleContractedForCompany(permKey, company, businessType)) {
     return false;
   }
 
-  // 3. Validação de PERMISSÃO EFETIVA DO USUÁRIO (RBAC v2.0 filtrado pelo contrato da empresa)
+  // 4. Validação de PERMISSÃO EFETIVA DO USUÁRIO (RBAC v2.0 filtrado pelo contrato da empresa)
   const effectivePerms = getEffectivePermissions(user, company, db || undefined);
   if (!effectivePerms || !effectivePerms[permKey]) {
     return false;
   }
 
   return true;
+}
+
+/**
+ * Retorna a primeira view acessível pelo usuário na empresa atual (fallback seguro)
+ * Garante que o operador nunca seja redirecionado para um módulo inacessível ou não contratado.
+ */
+export function getSafeAccessibleFallbackView(
+  company: CompanyInfo | null | undefined,
+  user: User | null | undefined,
+  db?: AppDatabase | null
+): ViewID {
+  const candidateViews: ViewID[] = [
+    'dashboard',
+    'sales',
+    'serviceOrders',
+    'budgets',
+    'clients',
+    'parts',
+    'services',
+    'representative_commerce',
+    'industry',
+    'financial',
+    'history',
+    'reports',
+    'users',
+    'profile'
+  ];
+
+  for (const v of candidateViews) {
+    if (canAccessView(company, user, v, db)) {
+      return v;
+    }
+  }
+
+  return 'profile';
 }
 

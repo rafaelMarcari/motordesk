@@ -41,6 +41,11 @@ api.interceptors.request.use(
       } catch (e) {}
     }
 
+    const activeCompanyId = localStorage.getItem('motordesk_active_company_id');
+    if (activeCompanyId) {
+      config.headers['X-Company-Id'] = activeCompanyId;
+    }
+
     return config;
   },
   (error) => {

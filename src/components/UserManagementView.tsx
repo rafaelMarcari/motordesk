@@ -43,7 +43,8 @@ import {
   Wrench,
   Zap,
   Package,
-  Truck
+  Truck,
+  Factory
 } from 'lucide-react';
 import { User, UserRole, UserPermissions, CompanyInfo, BusinessType } from '../types';
 import { AppDatabase } from '../data/mockData';
@@ -53,6 +54,7 @@ import {
   isModuleAllowedForBusinessType,
   normalizeUserPermissions 
 } from '../utils/businessSegmentation';
+import { isModuleContractedForCompany, ALL_PERMISSION_KEYS } from '../utils/securityUtils';
 import PrivacyLgpdModal, { PrivacyLgpdFooter } from './PrivacyLgpdModal';
 import OperationResultModal from './OperationResultModal';
 
@@ -65,7 +67,7 @@ interface UserManagementViewProps {
   onAddHistoryLog: (type: 'budget' | 'service_order' | 'payment' | 'user_activity' | 'system', title: string, description: string, clientId: string, vehicleId: string) => void;
   globalModules: { [key: string]: boolean };
   onUpdateGlobalModules: (modules: { [key: string]: boolean }) => void;
-  onSwitchActiveCompany?: (companyId: string) => void;
+  onSwitchActiveCompany?: (companyId: string, companyObj?: CompanyInfo) => void;
   activeWorkspaceCompanyId?: string;
 }
 
@@ -1479,7 +1481,7 @@ export default function UserManagementView({
     setShowNewCompanyModal(false);
     setSelectedCompanyId(newCompId);
     if (onSwitchActiveCompany) {
-      onSwitchActiveCompany(newCompId);
+      onSwitchActiveCompany(newCompId, newCompanyObj);
     }
     setSuccessMsg(`Empresa "${newCompanyObj.name}" cadastrada e ativada no workspace com sucesso!`);
     setTimeout(() => setSuccessMsg(''), 5000);
@@ -1697,6 +1699,18 @@ export default function UserManagementView({
 
     let updatedUsersList: User[] = [];
 
+    // Teto Contratual: Nenhuma permissão pode ser salva para um módulo que a empresa não contratou
+    const targetComp = (db.registeredCompanies || []).find(c => c.id === selectedCompanyId) || db.companyInfo;
+    const sanitizedPermissions: UserPermissions = { ...permissions };
+    if (targetComp) {
+      const effectiveBt = targetComp.businessType || 'OFICINA';
+      ALL_PERMISSION_KEYS.forEach(p => {
+        if (!isModuleContractedForCompany(p.key, targetComp, effectiveBt)) {
+          (sanitizedPermissions as any)[p.key] = false;
+        }
+      });
+    }
+
     if (editingUser) {
       const updatedUser: User = {
         ...editingUser,
@@ -1704,7 +1718,7 @@ export default function UserManagementView({
         name: name.trim(),
         role,
         passwordHash: password || editingUser.passwordHash,
-        permissions,
+        permissions: sanitizedPermissions,
         companyId: selectedCompanyId
       };
 
@@ -1725,7 +1739,7 @@ export default function UserManagementView({
 
       setSaveModalData({
         title: 'Permissões do Usuário Atualizadas!',
-        message: `As alterações do colaborador "${updatedUser.name}" foram salvas no banco de dados.`,
+        message: `As alterações do colaborador "${updatedUser.name}" foram salvas no banco de dados respeitando o teto contratual da empresa.`,
         targetType: 'user',
         userName: updatedUser.name,
         userRole: updatedUser.role.toUpperCase(),
@@ -1744,7 +1758,7 @@ export default function UserManagementView({
         name: name.trim(),
         role,
         passwordHash: password,
-        permissions,
+        permissions: sanitizedPermissions,
         companyId: selectedCompanyId
       };
 
@@ -1896,16 +1910,19 @@ export default function UserManagementView({
             
             {/* Segment Badge */}
             <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase border flex items-center gap-1.5 ${
-              compBusinessType === 'COMERCIO' 
-                ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40' 
-                : compBusinessType === 'OFICINA_COMERCIO' 
-                  ? 'bg-amber-500/20 text-amber-300 border-amber-500/40' 
-                  : 'bg-indigo-500/20 text-indigo-300 border-indigo-500/40'
+              compBusinessType === 'INDUSTRIA'
+                ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40'
+                : compBusinessType === 'COMERCIO' 
+                  ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40' 
+                  : compBusinessType === 'OFICINA_COMERCIO' 
+                    ? 'bg-amber-500/20 text-amber-300 border-amber-500/40' 
+                    : 'bg-indigo-500/20 text-indigo-300 border-indigo-500/40'
             }`}>
+              {compBusinessType === 'INDUSTRIA' && <Factory className="w-3 h-3 text-cyan-400" />}
               {compBusinessType === 'COMERCIO' && <ShoppingBag className="w-3 h-3 text-emerald-400" />}
               {compBusinessType === 'OFICINA_COMERCIO' && <Building2 className="w-3 h-3 text-amber-400" />}
               {compBusinessType === 'OFICINA' && <Wrench className="w-3 h-3 text-indigo-400" />}
-              {compBusinessType === 'COMERCIO' ? 'Comércio & Autopeças' : compBusinessType === 'OFICINA_COMERCIO' ? 'Oficina + Comércio Híbrido' : 'Oficina Mecânica'}
+              {compBusinessType === 'INDUSTRIA' ? 'Indústria & Manufatura' : compBusinessType === 'COMERCIO' ? 'Comércio & Autopeças' : compBusinessType === 'OFICINA_COMERCIO' ? 'Oficina + Comércio Híbrido' : 'Oficina Mecânica'}
             </span>
 
             <span className="flex items-center gap-1.5">
@@ -1924,7 +1941,7 @@ export default function UserManagementView({
                 <button
                   type="button"
                   id="btn-activate-company-workspace"
-                  onClick={() => onSwitchActiveCompany(selectedCompanyId)}
+                  onClick={() => onSwitchActiveCompany(selectedCompanyId, currentCompany)}
                   className="bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-bold px-3 py-1 rounded-lg flex items-center gap-1.5 transition cursor-pointer shadow-xs"
                   title="Mudar o sistema para trabalhar com esta empresa"
                 >
@@ -2846,23 +2863,43 @@ export default function UserManagementView({
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
                       {Object.keys(PERMISSION_LABEL_MAP).map((permKey) => {
                         const key = permKey as keyof UserPermissions;
-                        const isChecked = Boolean(permissions[key]);
+                        const targetComp = (db.registeredCompanies || []).find(c => c.id === selectedCompanyId) || db.companyInfo;
+                        const isContracted = targetComp ? isModuleContractedForCompany(key, targetComp, targetComp.businessType) : true;
+                        const isChecked = Boolean(permissions[key]) && isContracted;
 
                         return (
                           <div 
                             key={key} 
-                            onClick={() => togglePermission(key)}
-                            className={`p-3 rounded-lg border flex items-center justify-between cursor-pointer transition ${
-                              isChecked 
-                                ? 'bg-white border-indigo-200 shadow-3xs' 
-                                : 'bg-slate-50/30 border-slate-100 opacity-60'
+                            onClick={() => {
+                              if (!isContracted) return;
+                              togglePermission(key);
+                            }}
+                            className={`p-3 rounded-lg border flex items-center justify-between transition ${
+                              !isContracted 
+                                ? 'bg-slate-100 border-slate-200 opacity-50 cursor-not-allowed' 
+                                : isChecked 
+                                  ? 'bg-white border-indigo-200 shadow-3xs cursor-pointer' 
+                                  : 'bg-slate-50/30 border-slate-100 opacity-60 cursor-pointer'
                             }`}
+                            title={!isContracted ? 'Módulo não contratado pela empresa no plano SaaS' : undefined}
                           >
-                            <span className="text-xs text-slate-700 font-medium">{PERMISSION_LABEL_MAP[key]}</span>
-                            <div className={`w-5 h-5 rounded-sm flex items-center justify-center border transition ${
-                              isChecked ? 'bg-indigo-600 border-indigo-600 text-white' : 'bg-white border-slate-200'
+                            <div className="flex flex-col pr-2">
+                              <span className="text-xs text-slate-700 font-medium">{PERMISSION_LABEL_MAP[key]}</span>
+                              {!isContracted && (
+                                <span className="text-[10px] text-amber-700 font-semibold flex items-center gap-1 mt-0.5">
+                                  <Lock className="w-2.5 h-2.5" /> Não contratado pela empresa
+                                </span>
+                              )}
+                            </div>
+                            <div className={`w-5 h-5 rounded-sm flex items-center justify-center border transition shrink-0 ${
+                              !isContracted 
+                                ? 'bg-slate-200 border-slate-300 text-slate-400' 
+                                : isChecked 
+                                  ? 'bg-indigo-600 border-indigo-600 text-white' 
+                                  : 'bg-white border-slate-200'
                             }`}>
                               {isChecked && <Check className="w-3.5 h-3.5" />}
+                              {!isContracted && <Lock className="w-3 h-3 text-slate-400" />}
                             </div>
                           </div>
                         );

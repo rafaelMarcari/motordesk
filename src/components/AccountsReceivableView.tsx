@@ -750,6 +750,38 @@ export default function AccountsReceivableView({
     onSaveReceivables(updatedReceivablesList, updatedClients, updatedTransactions, db.notifications || []);
     onAddHistoryLog('payment', 'Pagamento/Abatimento Registrado', `Recebimento de R$ ${amountToAbate.toFixed(2)} via ${paymentMethod} referente ao título ${selectedReceivable.code}. Saldo restante: R$ ${newRemainingAmount.toFixed(2)}.`, selectedReceivable.clientId, '');
 
+    // Sincronização automática com Comissões de Representação Comercial se o título for quitado
+    if (newStatus === 'paid' && onSaveDatabaseUpdates && (selectedReceivable.commissionId || selectedReceivable.origin === 'commission' || selectedReceivable.originType === 'commission')) {
+      const commUpdates = (db.representativeCommissions || []).map(c => {
+        if (c.id === selectedReceivable.commissionId || c.financialReceivableId === selectedReceivable.id) {
+          return {
+            ...c,
+            status: 'RECEBIDA' as const,
+            paymentDate: paymentDate,
+            actualPaymentDate: paymentDate,
+            updatedAt: new Date().toISOString(),
+          };
+        }
+        return c;
+      });
+      const orderIdToMatch = selectedReceivable.orderId || (selectedReceivable as any).representativeOrderId;
+      const orderUpdates = (db.representativeOrders || []).map(o => {
+        if (o.id === orderIdToMatch) {
+          return {
+            ...o,
+            status: 'commission_received' as const,
+            commissionReceivedAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          };
+        }
+        return o;
+      });
+      onSaveDatabaseUpdates({
+        representativeCommissions: commUpdates,
+        representativeOrders: orderUpdates,
+      });
+    }
+
     setSuccessMsg(`Pagamento de R$ ${amountToAbate.toLocaleString('pt-BR', {minimumFractionDigits: 2})} abatido com sucesso! Saldo em caixa atualizado.`);
     setTimeout(() => setSuccessMsg(''), 4000);
     setIsPayModalOpen(false);
