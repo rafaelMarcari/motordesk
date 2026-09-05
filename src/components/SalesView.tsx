@@ -22,7 +22,10 @@ import {
   Ban,
   Truck,
   ShieldCheck,
-  X
+  X,
+  Boxes,
+  Package,
+  Info
 } from 'lucide-react';
 import { AppDatabase } from '../data/mockData';
 import {
@@ -39,7 +42,8 @@ import {
   SefazApiConfig,
   GoodsWithdrawalOrder,
   GoodsWithdrawalItem,
-  GoodsWithdrawalHistoryEvent
+  GoodsWithdrawalHistoryEvent,
+  StockMovement
 } from '../types';
 import ShareDocumentModal from './ShareDocumentModal';
 import FiscalConferenceModal from './FiscalConferenceModal';
@@ -62,6 +66,9 @@ export const SalesView: React.FC<SalesViewProps> = ({
   isFiscalEnabled = true,
   onSaveCompanyInfo
 }) => {
+  // Determina se a empresa opera com fluxo de Expedição (Retirada & Entrega) ou Venda Balcão Imediata (Sem Expedição)
+  const hasExpedition = Boolean(currentCompany?.enableWithdrawalAndDelivery);
+
   const [activeTab, setActiveTab] = useState<'nova_venda' | 'historico'>('nova_venda');
 
   // New Sale State
@@ -366,130 +373,241 @@ export const SalesView: React.FC<SalesViewProps> = ({
 
     newSale.receivableId = receivableId;
 
-    // Criar Ordem de Retirada / Expedição (GoodsWithdrawalOrder com Romaneio)
-    const withdrawalId = 'gwo-' + Date.now();
-    const withdrawalCode = `RET-${saleCode}`;
-    const withdrawalItems: GoodsWithdrawalItem[] = cart.map(ci => {
-      const partObj = db.parts.find(p => p.id === ci.partId);
-      return {
-        id: 'gwi-' + Date.now() + '-' + Math.random().toString(36).substr(2, 4),
-        partId: ci.partId,
-        partCode: ci.partCode,
-        partName: ci.partName,
-        location: partObj?.location || 'Estoque Geral',
-        unit: ci.unit || partObj?.unit || 'UN',
-        quantitySold: ci.quantity,
-        quantityReserved: ci.quantity,
-        quantitySeparated: 0,
-        quantityReleased: 0,
-        quantityWithdrawn: 0,
-        quantityForDelivery: freightType !== 'NONE' ? ci.quantity : 0,
-        unitPrice: ci.unitPrice,
-        totalPrice: ci.totalPrice,
-        isConferred: false
-      };
-    });
+    if (!hasExpedition) {
+      // =========================================================================
+      // FLUXO SEM EXPEDIÇÃO (Venda Pronta Entrega / Balcão Imediato):
+      // A venda finaliza na hora ao clicar em salvar, gerando baixa física direta
+      // no estoque, sem criar pedidos pendentes na esteira de separação.
+      // =========================================================================
+      newSale.notes = saleNotes 
+        ? `${saleNotes} | Venda Balcão Imediata (Sem Expedição - Baixa Direta)` 
+        : 'Venda Balcão Imediata (Sem Expedição - Baixa Direta)';
 
-    const newWithdrawalOrder: GoodsWithdrawalOrder = {
-      id: withdrawalId,
-      code: withdrawalCode,
-      saleId,
-      saleCode: String(saleCode),
-      clientId: resolvedClientId,
-      clientName,
-      clientDocument: clientCpfCnpj,
-      clientPhone: selectedClientObj?.phone,
-      shippingAddress: (freightType !== 'NONE' && selectedClientObj?.address) ? `${selectedClientObj.address}` : undefined,
-      companyId: currentCompany.id,
-      type: freightType === 'NONE' ? 'BALCAO' : 'ENTREGA',
-      status: 'AGUARDANDO_SEPARACAO',
-      carrierId: freightType !== 'NONE' ? carrierId : undefined,
-      carrierName: (freightType !== 'NONE' && selectedCarrierObj) ? (selectedCarrierObj.corporateName || selectedCarrierObj.tradeName) : undefined,
-      items: withdrawalItems,
-      history: [
-        {
-          id: 'gwh-' + Date.now(),
-          status: 'AGUARDANDO_SEPARACAO',
-          action: 'Venda Concluída',
+      const withdrawalCode = undefined;
+
+      onUpdateDb(prev => {
+        // 1. Baixa Física Imediata no Estoque de cada produto vendido
+        const updatedParts = prev.parts.map(p => {
+          const cartItem = cart.find(ci => ci.partId === p.id);
+          if (cartItem) {
+            const currentStock = p.stock || 0;
+            return {
+              ...p,
+              stock: Math.max(0, currentStock - cartItem.quantity)
+            };
+          }
+          return p;
+        });
+
+        // 2. Registro do Movimento de Estoque Físico de Saída (Kardex / Auditoria)
+        const newStockMovements: StockMovement[] = cart.map(ci => ({
+          id: `sm-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+          partId: ci.partId,
+          partName: ci.partName,
+          partCode: ci.partCode || 'PRD-' + ci.partId,
+          companyId: currentCompany.id,
+          type: 'out' as const,
+          quantity: ci.quantity,
+          unitCost: ci.unitPrice,
+          date: nowIso,
           timestamp: nowIso,
-          userId: currentUser.id,
+          reason: `Venda Balcão #${saleCode}`,
+          description: `Baixa física direta realizada no salvamento da Venda Balcão #${saleCode} (sem esteira de expedição)`,
           userName: currentUser.name,
-          description: `Pedido de expedição gerado automaticamente pela Venda #${saleCode}. Itens reservados no estoque.`
-        }
-      ],
-      notes: saleNotes || undefined,
-      createdAt: nowIso,
-      updatedAt: nowIso
-    };
+          sourceDocument: `Venda #${saleCode}`
+        }));
 
-    onUpdateDb(prev => {
-      // 1. Reservar Estoque (NÃO baixar fisicamente no momento da venda)
-      const updatedParts = prev.parts.map(p => {
-        const cartItem = cart.find(ci => ci.partId === p.id);
-        if (cartItem) {
-          const currentReserved = p.reservedStock || 0;
-          return {
-            ...p,
-            reservedStock: currentReserved + cartItem.quantity
-          };
-        }
-        return p;
+        // 3. Registro Financeiro
+        const newFinancialTx = {
+          id: 'ft-' + Date.now(),
+          type: 'income' as const,
+          category: 'Venda de Produtos / Peças',
+          description: `Venda Balcão #${saleCode} - ${clientName}`,
+          amount: cartTotalAmount,
+          date: nowIso,
+          paymentMethod,
+          referenceId: saleId,
+          clientId: resolvedClientId !== 'walk-in' ? resolvedClientId : undefined,
+          createdByName: currentUser.name,
+          companyId: currentCompany.id
+        };
+
+        const existingSales = prev.sales || [];
+        const existingFinancials = prev.financialTransactions || [];
+        const existingReceivables = prev.accountsReceivable || [];
+        const existingMovements = prev.stockMovements || [];
+
+        return {
+          ...prev,
+          parts: updatedParts,
+          sales: [newSale, ...existingSales],
+          accountsReceivable: [newReceivable, ...existingReceivables],
+          stockMovements: [...newStockMovements, ...existingMovements],
+          // Mantém as retiradas existentes intactas (sem gerar ordem de separação pendente)
+          goodsWithdrawals: prev.goodsWithdrawals || [],
+          financialTransactions: isCreditOrBoleto ? existingFinancials : [newFinancialTx, ...existingFinancials]
+        };
       });
 
-      // 2. Record Financial Transaction (Receita / Caixa se não for a prazo)
-      const newFinancialTx = {
-        id: 'ft-' + Date.now(),
-        type: 'income' as const,
-        category: 'Venda de Produtos / Peças',
-        description: `Venda Balcão #${saleCode} - ${clientName}`,
-        amount: cartTotalAmount,
-        date: nowIso,
-        paymentMethod,
-        referenceId: saleId,
-        clientId: resolvedClientId !== 'walk-in' ? resolvedClientId : undefined,
-        createdByName: currentUser.name,
-        companyId: currentCompany.id
-      };
+      // Save newly created sale reference
+      setLastFinalizedSale(newSale);
 
-      const existingSales = prev.sales || [];
-      const existingFinancials = prev.financialTransactions || [];
-      const existingReceivables = prev.accountsReceivable || [];
-      const existingWithdrawals = prev.goodsWithdrawals || [];
+      // Reset Form
+      setCart([]);
+      setSaleDiscount(0);
+      setSaleNotes('');
+      setSelectedClientId('walk-in');
+      setCustomClientName('');
+      setCustomClientCpf('');
+      setFreightType('NONE');
+      setCarrierId('');
+      setFreightValue(0);
+      setShippingOperation('direct');
+      setLogisticsHub('');
+      setRedispersionCarrierId('');
 
-      return {
-        ...prev,
-        parts: updatedParts,
-        sales: [newSale, ...existingSales],
-        accountsReceivable: [newReceivable, ...existingReceivables],
-        goodsWithdrawals: [newWithdrawalOrder, ...existingWithdrawals],
-        financialTransactions: isCreditOrBoleto ? existingFinancials : [newFinancialTx, ...existingFinancials]
-      };
-    });
+      const successMsg = `✅ Venda #${saleCode} finalizada com sucesso! Baixa física realizada diretamente no estoque (mercadoria entregue no balcão).`;
+      setSaleSuccessMessage(successMsg);
 
-    // Save newly created sale reference
-    setLastFinalizedSale(newSale);
-
-    // Reset Form
-    setCart([]);
-    setSaleDiscount(0);
-    setSaleNotes('');
-    setSelectedClientId('walk-in');
-    setCustomClientName('');
-    setCustomClientCpf('');
-    setFreightType('NONE');
-    setCarrierId('');
-    setFreightValue(0);
-    setShippingOperation('direct');
-    setLogisticsHub('');
-    setRedispersionCarrierId('');
-
-    // Open Fiscal Post-Sale Decision Modal if fiscal enabled
-    if (isFiscalEnabled) {
-      setShowFiscalChoiceModal(true);
+      // Open Fiscal Post-Sale Decision Modal if fiscal enabled
+      if (isFiscalEnabled) {
+        setShowFiscalChoiceModal(true);
+      } else {
+        setSelectedSaleForReceipt(newSale);
+        setShowReceiptModal(true);
+      }
     } else {
-      setSelectedSaleForReceipt(newSale);
-      setShowReceiptModal(true);
-      setSaleSuccessMessage(`Venda #${saleCode} finalizada com sucesso!`);
+      // =========================================================================
+      // FLUXO COM EXPEDIÇÃO (Retirada & Entrega):
+      // Reserva os produtos no estoque e cria um pedido de separação/picking na
+      // esteira de expedição (WithdrawalView).
+      // =========================================================================
+      const withdrawalId = 'gwo-' + Date.now();
+      const withdrawalCode = `RET-${saleCode}`;
+      const withdrawalItems: GoodsWithdrawalItem[] = cart.map(ci => {
+        const partObj = db.parts.find(p => p.id === ci.partId);
+        return {
+          id: 'gwi-' + Date.now() + '-' + Math.random().toString(36).substr(2, 4),
+          partId: ci.partId,
+          partCode: ci.partCode,
+          partName: ci.partName,
+          location: partObj?.location || 'Estoque Geral',
+          unit: ci.unit || partObj?.unit || 'UN',
+          quantitySold: ci.quantity,
+          quantityReserved: ci.quantity,
+          quantitySeparated: 0,
+          quantityReleased: 0,
+          quantityWithdrawn: 0,
+          quantityForDelivery: freightType !== 'NONE' ? ci.quantity : 0,
+          unitPrice: ci.unitPrice,
+          totalPrice: ci.totalPrice,
+          isConferred: false
+        };
+      });
+
+      const newWithdrawalOrder: GoodsWithdrawalOrder = {
+        id: withdrawalId,
+        code: withdrawalCode,
+        saleId,
+        saleCode: String(saleCode),
+        clientId: resolvedClientId,
+        clientName,
+        clientDocument: clientCpfCnpj,
+        clientPhone: selectedClientObj?.phone,
+        shippingAddress: (freightType !== 'NONE' && selectedClientObj?.address) ? `${selectedClientObj.address}` : undefined,
+        companyId: currentCompany.id,
+        type: freightType === 'NONE' ? 'BALCAO' : 'ENTREGA',
+        status: 'AGUARDANDO_SEPARACAO',
+        carrierId: freightType !== 'NONE' ? carrierId : undefined,
+        carrierName: (freightType !== 'NONE' && selectedCarrierObj) ? (selectedCarrierObj.corporateName || selectedCarrierObj.tradeName) : undefined,
+        items: withdrawalItems,
+        history: [
+          {
+            id: 'gwh-' + Date.now(),
+            status: 'AGUARDANDO_SEPARACAO',
+            action: 'Venda Concluída',
+            timestamp: nowIso,
+            userId: currentUser.id,
+            userName: currentUser.name,
+            description: `Pedido de expedição gerado automaticamente pela Venda #${saleCode}. Itens reservados no estoque.`
+          }
+        ],
+        notes: saleNotes || undefined,
+        createdAt: nowIso,
+        updatedAt: nowIso
+      };
+
+      onUpdateDb(prev => {
+        // 1. Reservar Estoque (NÃO baixar fisicamente no momento da venda)
+        const updatedParts = prev.parts.map(p => {
+          const cartItem = cart.find(ci => ci.partId === p.id);
+          if (cartItem) {
+            const currentReserved = p.reservedStock || 0;
+            return {
+              ...p,
+              reservedStock: currentReserved + cartItem.quantity
+            };
+          }
+          return p;
+        });
+
+        // 2. Record Financial Transaction (Receita / Caixa se não for a prazo)
+        const newFinancialTx = {
+          id: 'ft-' + Date.now(),
+          type: 'income' as const,
+          category: 'Venda de Produtos / Peças',
+          description: `Venda Balcão #${saleCode} - ${clientName}`,
+          amount: cartTotalAmount,
+          date: nowIso,
+          paymentMethod,
+          referenceId: saleId,
+          clientId: resolvedClientId !== 'walk-in' ? resolvedClientId : undefined,
+          createdByName: currentUser.name,
+          companyId: currentCompany.id
+        };
+
+        const existingSales = prev.sales || [];
+        const existingFinancials = prev.financialTransactions || [];
+        const existingReceivables = prev.accountsReceivable || [];
+        const existingWithdrawals = prev.goodsWithdrawals || [];
+
+        return {
+          ...prev,
+          parts: updatedParts,
+          sales: [newSale, ...existingSales],
+          accountsReceivable: [newReceivable, ...existingReceivables],
+          goodsWithdrawals: [newWithdrawalOrder, ...existingWithdrawals],
+          financialTransactions: isCreditOrBoleto ? existingFinancials : [newFinancialTx, ...existingFinancials]
+        };
+      });
+
+      // Save newly created sale reference
+      setLastFinalizedSale(newSale);
+
+      // Reset Form
+      setCart([]);
+      setSaleDiscount(0);
+      setSaleNotes('');
+      setSelectedClientId('walk-in');
+      setCustomClientName('');
+      setCustomClientCpf('');
+      setFreightType('NONE');
+      setCarrierId('');
+      setFreightValue(0);
+      setShippingOperation('direct');
+      setLogisticsHub('');
+      setRedispersionCarrierId('');
+
+      const successMsg = `🚚 Venda #${saleCode} criada com sucesso! Pedido de expedição #${withdrawalCode} gerado e enviado para a esteira de Separação/Retirada e Entrega. Itens reservados no estoque.`;
+      setSaleSuccessMessage(successMsg);
+
+      // Open Fiscal Post-Sale Decision Modal if fiscal enabled
+      if (isFiscalEnabled) {
+        setShowFiscalChoiceModal(true);
+      } else {
+        setSelectedSaleForReceipt(newSale);
+        setShowReceiptModal(true);
+      }
     }
   };
 
@@ -1073,13 +1191,28 @@ export const SalesView: React.FC<SalesViewProps> = ({
 
               {/* Transporte, Logística & Frete */}
               <div className="space-y-3 pt-2 border-t border-slate-100">
-                <label className="text-xs font-bold text-slate-700 uppercase flex items-center justify-between">
-                  <span className="flex items-center gap-1.5">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-slate-700 uppercase flex items-center gap-1.5">
                     <Truck className="w-3.5 h-3.5 text-blue-600" />
                     Transporte & Logística
-                  </span>
-                  <span className="text-[10px] text-slate-400 font-normal lowercase">opcional</span>
-                </label>
+                  </label>
+                  {!hasExpedition ? (
+                    <span className="text-[10px] bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded-full font-bold">
+                      Balcão Pronta Entrega
+                    </span>
+                  ) : (
+                    <span className="text-[10px] bg-indigo-50 text-indigo-700 border border-indigo-200 px-2 py-0.5 rounded-full font-bold">
+                      Expedição Habilitada
+                    </span>
+                  )}
+                </div>
+
+                {!hasExpedition && (
+                  <div className="p-2.5 bg-emerald-50/50 rounded-xl border border-emerald-100 text-[11px] text-emerald-800 flex items-start gap-2">
+                    <Info className="w-3.5 h-3.5 text-emerald-600 shrink-0 mt-0.5" />
+                    <span>Esta empresa opera sem esteira de expedição residual. A mercadoria é entregue diretamente no balcão e a baixa no estoque é imediata.</span>
+                  </div>
+                )}
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   <div>
@@ -1255,6 +1388,35 @@ export const SalesView: React.FC<SalesViewProps> = ({
                 )}
               </div>
 
+              {/* Informação Operacional da Empresa: Com ou Sem Expedição */}
+              {!hasExpedition ? (
+                <div className="p-3 bg-emerald-50/90 border border-emerald-200 rounded-xl text-xs flex items-start gap-2.5 text-emerald-950">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                  <div className="space-y-0.5 flex-1">
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-emerald-900">Operação: Venda Balcão Imediata</span>
+                      <span className="text-[10px] font-bold bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full border border-emerald-300 font-mono">Sem Expedição</span>
+                    </div>
+                    <p className="text-[11px] text-emerald-700 leading-normal">
+                      Ao clicar em salvar, a venda é finalizada na hora e os itens sofrem <strong>baixa física direta no estoque</strong> (mercadoria entregue no balcão).
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <div className="p-3 bg-indigo-50/90 border border-indigo-200 rounded-xl text-xs flex items-start gap-2.5 text-indigo-950">
+                  <Boxes className="w-4 h-4 text-indigo-600 shrink-0 mt-0.5" />
+                  <div className="space-y-0.5 flex-1">
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-indigo-900">Operação: Esteira de Expedição</span>
+                      <span className="text-[10px] font-bold bg-indigo-100 text-indigo-800 px-2 py-0.5 rounded-full border border-indigo-300 font-mono">Retira & Entrega</span>
+                    </div>
+                    <p className="text-[11px] text-indigo-700 leading-normal">
+                      Ao clicar em salvar, os itens são <strong>reservados no estoque</strong> e um pedido é gerado para a fila de separação (picking) e despacho.
+                    </p>
+                  </div>
+                </div>
+              )}
+
               {/* Total Summary */}
               <div className="p-4 bg-slate-900 text-white rounded-xl space-y-2">
                 <div className="flex justify-between text-xs text-slate-400">
@@ -1286,11 +1448,22 @@ export const SalesView: React.FC<SalesViewProps> = ({
                 className={`w-full py-3.5 rounded-xl text-xs font-bold flex items-center justify-center gap-2 shadow-sm transition-all ${
                   cart.length === 0
                     ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
-                    : 'bg-emerald-600 text-white hover:bg-emerald-700 hover:shadow-md'
+                    : !hasExpedition
+                      ? 'bg-emerald-600 text-white hover:bg-emerald-700 hover:shadow-md'
+                      : 'bg-indigo-600 text-white hover:bg-indigo-700 hover:shadow-md'
                 }`}
               >
-                <CheckCircle2 className="w-4 h-4" />
-                Finalizar Venda & Emitir Comprovante
+                {!hasExpedition ? (
+                  <>
+                    <CheckCircle2 className="w-4 h-4" />
+                    Salvar & Finalizar Venda (Baixa Direta no Estoque)
+                  </>
+                ) : (
+                  <>
+                    <Boxes className="w-4 h-4" />
+                    Salvar & Enviar para Expedição (Separação)
+                  </>
+                )}
               </button>
             </form>
           </div>
@@ -1384,6 +1557,25 @@ export const SalesView: React.FC<SalesViewProps> = ({
                               👤 {sale.createdBy}
                             </div>
                           )}
+                          {/* Identificação de Expedição vs Balcão Imediato */}
+                          {(() => {
+                            const withdrawalOrder = (db.goodsWithdrawals || []).find(w => w.saleId === sale.id);
+                            if (withdrawalOrder) {
+                              return (
+                                <div className="text-[10px] text-indigo-700 font-medium flex items-center gap-1 mt-0.5" title={`Ordem de Expedição #${withdrawalOrder.code}`}>
+                                  <Boxes className="w-3 h-3 text-indigo-500 shrink-0" />
+                                  <span>Expedição ({withdrawalOrder.status.replace(/_/g, ' ')})</span>
+                                </div>
+                              );
+                            } else {
+                              return (
+                                <div className="text-[10px] text-emerald-700 font-medium flex items-center gap-1 mt-0.5">
+                                  <CheckCircle2 className="w-3 h-3 text-emerald-500 shrink-0" />
+                                  <span>Balcão (Baixa Imediata)</span>
+                                </div>
+                              );
+                            }
+                          })()}
                         </td>
                         <td className="p-3">
                           <div className="font-semibold text-slate-800">{sale.clientName}</div>

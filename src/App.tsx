@@ -412,6 +412,39 @@ export default function App() {
           setLoginHistory(loadedDb.loginHistory);
         }
 
+        // Align active company ID with authoritative server database
+        const serverCompanyId = loadedDb.companyInfo?.id;
+        const targetCompanies = loadedDb.registeredCompanies || [];
+        const isCurrentActiveValid = activeCompanyIdState && targetCompanies.some(c => c.id === activeCompanyIdState);
+        
+        const effectiveId = isCurrentActiveValid ? activeCompanyIdState : (serverCompanyId || targetCompanies[0]?.id || 'comp-1');
+        if (effectiveId !== activeCompanyIdState) {
+          setActiveCompanyIdState(effectiveId);
+          try {
+            localStorage.setItem('motordesk_active_company_id', effectiveId);
+          } catch (e) {}
+        }
+
+        const activeComp = targetCompanies.find(c => c.id === effectiveId) || loadedDb.companyInfo;
+        if (activeComp?.globalModules) {
+          setGlobalModules(activeComp.globalModules);
+        } else if (loadedDb.globalModules) {
+          setGlobalModules(loadedDb.globalModules);
+        }
+
+        if (currentUser) {
+          const rawUser = (loadedDb.users || []).find(
+            u => u.id === currentUser.id || (u.username && u.username.toLowerCase() === currentUser.username.toLowerCase())
+          );
+          if (rawUser) {
+            const freshUser = normalizeUser({ ...rawUser, companyId: effectiveId }, effectiveId, loadedDb);
+            setCurrentUser(freshUser);
+            try {
+              localStorage.setItem('motordesk_active_user', JSON.stringify(freshUser));
+            } catch (e) {}
+          }
+        }
+
         const applyStart = performance.now();
         setDb(loadedDb);
         const applyEnd = performance.now();
@@ -533,9 +566,30 @@ export default function App() {
   }, [db?.budgets?.length, db?.parts?.length, db?.serviceOrders?.length, db?.accountsReceivable?.length, db?.accountsPayable?.length]);
 
   // Multi-tenant scoping helper: derive active company ID for current logged user
-  const activeCompanyId = activeCompanyIdState || currentUser?.companyId || db?.companyInfo?.id || 'comp-1';
-  const activeCompanyObj = (db?.registeredCompanies || []).find(c => c.id === activeCompanyId) || db?.companyInfo;
-  const activeCompanyModules = activeCompanyObj?.globalModules || globalModules;
+  const activeCompanyId = React.useMemo(() => {
+    if (activeCompanyIdState && (db?.registeredCompanies || []).some(c => c.id === activeCompanyIdState)) {
+      return activeCompanyIdState;
+    }
+    if (currentUser?.companyId && (db?.registeredCompanies || []).some(c => c.id === currentUser.companyId)) {
+      return currentUser.companyId;
+    }
+    if (db?.companyInfo?.id && (db?.registeredCompanies || []).some(c => c.id === db.companyInfo.id)) {
+      return db.companyInfo.id;
+    }
+    if (db?.registeredCompanies && db.registeredCompanies.length > 0) {
+      return db.registeredCompanies[0].id;
+    }
+    return db?.companyInfo?.id || 'comp-1';
+  }, [activeCompanyIdState, currentUser?.companyId, db?.registeredCompanies, db?.companyInfo?.id]);
+
+  const activeCompanyObj = React.useMemo(() => {
+    return (db?.registeredCompanies || []).find(c => c.id === activeCompanyId) || db?.companyInfo;
+  }, [db?.registeredCompanies, db?.companyInfo, activeCompanyId]);
+
+  const activeCompanyModules = React.useMemo(() => {
+    return activeCompanyObj?.globalModules || globalModules;
+  }, [activeCompanyObj?.globalModules, globalModules]);
+
   const activeBusinessType = getBusinessType(activeCompanyObj);
   const activeSegmentMeta = getSegmentMetadata(activeBusinessType);
 
@@ -559,52 +613,19 @@ export default function App() {
     }
   }, [db, activeCompanyId, currentUser?.id]);
 
-  // Multi-tab synchronization: listen to storage and focus events to sync permissions and DB immediately across tabs
+  // Multi-tab synchronization: keep activeCompanyIdState in sync without overwriting memory DB with stale localStorage
   useEffect(() => {
     const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === 'motordesk_db_v2' || e.key === 'motordesk_active_company_id' || e.key === 'motordesk_active_user') {
-        const freshDb = getDatabase();
-        setDb(freshDb);
-        const storedCompId = localStorage.getItem('motordesk_active_company_id') || '';
-        if (storedCompId && storedCompId !== activeCompanyIdState) {
-          setActiveCompanyIdState(storedCompId);
-        }
-        if (currentUser) {
-          const rawUser = (freshDb.users || []).find(
-            u => u.id === currentUser.id || (u.username && u.username.toLowerCase() === currentUser.username.toLowerCase())
-          );
-          if (rawUser) {
-            const effCompId = storedCompId || activeCompanyId;
-            const freshUser = normalizeUser({ ...rawUser, companyId: effCompId }, effCompId, freshDb);
-            setCurrentUser(freshUser);
-          }
-        }
-      }
-    };
-
-    const handleFocus = () => {
-      const freshDb = getDatabase();
-      if (currentUser) {
-        const rawUser = (freshDb.users || []).find(
-          u => u.id === currentUser.id || (u.username && u.username.toLowerCase() === currentUser.username.toLowerCase())
-        );
-        if (rawUser) {
-          const effCompId = localStorage.getItem('motordesk_active_company_id') || activeCompanyId;
-          const freshUser = normalizeUser({ ...rawUser, companyId: effCompId }, effCompId, freshDb);
-          if (JSON.stringify(freshUser.permissions) !== JSON.stringify(currentUser.permissions)) {
-            setCurrentUser(freshUser);
-          }
-        }
+      if (e.key === 'motordesk_active_company_id' && e.newValue && e.newValue !== activeCompanyIdState) {
+        setActiveCompanyIdState(e.newValue);
       }
     };
 
     window.addEventListener('storage', handleStorageChange);
-    window.addEventListener('focus', handleFocus);
     return () => {
       window.removeEventListener('storage', handleStorageChange);
-      window.removeEventListener('focus', handleFocus);
     };
-  }, [activeCompanyId, activeCompanyIdState, currentUser]);
+  }, [activeCompanyIdState]);
 
   // Fallback activeView if current module permission is revoked
   useEffect(() => {
@@ -703,33 +724,45 @@ export default function App() {
     }
 
     setActiveCompanyIdState(targetCompanyId);
-    localStorage.setItem('motordesk_active_company_id', targetCompanyId);
+    try {
+      localStorage.setItem('motordesk_active_company_id', targetCompanyId);
+    } catch (e) {}
 
-    const updatedUser: User = normalizeUser({
-      ...currentUser,
-      companyId: targetCompanyId,
-    }, targetCompanyId, db);
-
-    setCurrentUser(updatedUser);
-    localStorage.setItem('motordesk_active_user', JSON.stringify(updatedUser));
-    
-    // Also update db.companyInfo and users so all components and backend see the active company
-    syncDb(prev => ({
-      ...prev,
-      companyInfo: targetComp,
-      users: (prev.users || []).map(u => 
-        (u.id === currentUser.id || u.username.toLowerCase() === currentUser.username.toLowerCase())
-          ? { ...u, companyId: targetCompanyId }
-          : u
-      )
-    }));
-
-    // Check if the current active view is allowed in the target company's business type
-    const newBusinessType = getBusinessType(targetComp);
-    if (!isViewAllowedForBusinessType(activeView, newBusinessType)) {
-      const fallback = getFallbackViewForBusinessType(newBusinessType, updatedUser.permissions);
-      setActiveView(fallback);
+    if (targetComp.globalModules) {
+      setGlobalModules(targetComp.globalModules);
     }
+
+    setDb(prev => {
+      if (!prev) return prev;
+      const nextDb: AppDatabase = {
+        ...prev,
+        companyInfo: targetComp,
+        globalModules: targetComp.globalModules || prev.globalModules,
+        users: (prev.users || []).map(u => 
+          (u.id === currentUser.id || u.username.toLowerCase() === currentUser.username.toLowerCase())
+            ? { ...u, companyId: targetCompanyId }
+            : u
+        )
+      };
+      dataProvider.saveDatabaseImmediate(nextDb);
+
+      const updatedUser: User = normalizeUser({
+        ...currentUser,
+        companyId: targetCompanyId,
+      }, targetCompanyId, nextDb);
+
+      setCurrentUser(updatedUser);
+      try {
+        localStorage.setItem('motordesk_active_user', JSON.stringify(updatedUser));
+      } catch (e) {}
+
+      if (!canAccessView(targetComp, updatedUser, activeView, nextDb)) {
+        const fallback = getSafeAccessibleFallbackView(targetComp, updatedUser, nextDb);
+        setActiveView(fallback);
+      }
+
+      return nextDb;
+    });
   };
 
   // Scoped database view providing strict multi-tenant isolation and zero-leakage security (CT-LIC-15, CT-LIC-17)
@@ -1110,20 +1143,24 @@ export default function App() {
     });
   };
 
-  const handleSaveRegisteredCompanies = (companies: CompanyInfo[], activeCompanyId?: string, newUsers?: User[]) => {
-    const targetActiveId = activeCompanyId || activeCompanyIdState || localStorage.getItem('motordesk_active_company_id') || companies[0]?.id;
+  const handleSaveRegisteredCompanies = (companies: CompanyInfo[], activeCompanyIdParam?: string, newUsers?: User[]) => {
+    const targetActiveId = activeCompanyIdParam || activeCompanyIdState || activeCompanyId || companies[0]?.id;
     const activeComp = companies.find(c => c.id === targetActiveId) || companies[0];
 
-    if (activeCompanyId) {
-      setActiveCompanyIdState(activeCompanyId);
-      localStorage.setItem('motordesk_active_company_id', activeCompanyId);
+    if (targetActiveId) {
+      setActiveCompanyIdState(targetActiveId);
+      try {
+        localStorage.setItem('motordesk_active_company_id', targetActiveId);
+      } catch (e) {}
+    }
+
+    if (activeComp?.globalModules) {
+      setGlobalModules(activeComp.globalModules);
     }
 
     setDb(prev => {
       if (!prev) return prev;
-      const effectiveActiveComp = activeCompanyId 
-        ? companies.find(c => c.id === activeCompanyId) || activeComp
-        : activeComp || prev.companyInfo;
+      const effectiveActiveComp = activeComp || prev.companyInfo;
 
       let mergedUsers = prev.users || [];
       if (newUsers && newUsers.length > 0) {
@@ -1132,38 +1169,41 @@ export default function App() {
         mergedUsers = Array.from(userMap.values());
       }
 
-      if (currentUser && activeCompanyId) {
+      if (currentUser && targetActiveId) {
         mergedUsers = mergedUsers.map(u => 
           (u.id === currentUser.id || u.username.toLowerCase() === currentUser.username.toLowerCase())
-            ? { ...u, companyId: activeCompanyId }
+            ? { ...u, companyId: targetActiveId }
             : u
         );
       }
 
-      const nextDb = {
+      const nextDb: AppDatabase = {
         ...prev,
         companyInfo: effectiveActiveComp,
         registeredCompanies: companies,
+        globalModules: effectiveActiveComp.globalModules || prev.globalModules,
         users: mergedUsers
       };
       dataProvider.saveDatabaseImmediate(nextDb);
+
+      if (currentUser) {
+        const updatedUser: User = normalizeUser({
+          ...currentUser,
+          companyId: targetActiveId,
+        }, targetActiveId, nextDb);
+        setCurrentUser(updatedUser);
+        try {
+          localStorage.setItem('motordesk_active_user', JSON.stringify(updatedUser));
+        } catch (e) {}
+
+        if (!canAccessView(effectiveActiveComp, updatedUser, activeView, nextDb)) {
+          const fallback = getSafeAccessibleFallbackView(effectiveActiveComp, updatedUser, nextDb);
+          setActiveView(fallback);
+        }
+      }
+
       return nextDb;
     });
-
-    if (currentUser && activeCompanyId && activeComp) {
-      const updatedUser: User = normalizeUser({
-        ...currentUser,
-        companyId: activeCompanyId,
-      }, activeCompanyId, db);
-      setCurrentUser(updatedUser);
-      localStorage.setItem('motordesk_active_user', JSON.stringify(updatedUser));
-
-      const newBusinessType = getBusinessType(activeComp);
-      if (!isViewAllowedForBusinessType(activeView, newBusinessType)) {
-        const fallback = getFallbackViewForBusinessType(newBusinessType, updatedUser.permissions);
-        setActiveView(fallback);
-      }
-    }
   };
 
   const handleRegisterCompanyFromQA = (companyInfo: CompanyInfo, adminUser?: User, qaUser?: User) => {

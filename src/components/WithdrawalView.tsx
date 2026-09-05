@@ -745,6 +745,29 @@ export default function WithdrawalView({
         </div>
       </div>
 
+      {/* Aviso Operacional de Empresa com Expedição Desativada */}
+      {!currentCompany?.enableWithdrawalAndDelivery && (
+        <div className="p-4 bg-amber-50 border border-amber-200 rounded-2xl flex items-start gap-3.5 text-amber-950 shadow-xs animate-fade-in">
+          <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <h3 className="font-bold text-xs uppercase tracking-wider text-amber-900">
+                Fluxo de Expedição Inativo para esta Empresa ({currentCompany?.name || 'Comércio'})
+              </h3>
+              <span className="text-[10px] bg-amber-200/80 text-amber-800 font-bold px-2 py-0.5 rounded-full font-mono">
+                Venda Pronta Entrega
+              </span>
+            </div>
+            <p className="text-xs text-amber-800 leading-relaxed">
+              Esta empresa está operando no modo <strong>Venda Balcão Imediata</strong>. Quando uma venda é salva no caixa/PDV, a baixa física é efetuada imediatamente no estoque e a mercadoria é entregue ao cliente sem gerar pedidos pendentes nesta fila.
+            </p>
+            <p className="text-[11px] text-amber-700">
+              Para utilizar a esteira logística de separação (picking), conferência e romaneios de entrega, ative a opção <strong>"Habilitar Expedição (Retirada & Entrega)"</strong> nas configurações da empresa em <em>Gestão de Usuários &rarr; Parâmetros da Empresa</em>.
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Operational Stage KPI Filters */}
       <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2.5">
         <button

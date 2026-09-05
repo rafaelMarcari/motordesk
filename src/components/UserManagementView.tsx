@@ -557,7 +557,7 @@ export default function UserManagementView({
 
   // Currently selected company ID in the Combobox
   const [selectedCompanyId, setSelectedCompanyId] = useState<string>(() => {
-    return db.companyInfo?.id || registeredCompaniesList[0]?.id || 'comp-1';
+    return activeWorkspaceCompanyId || db.companyInfo?.id || registeredCompaniesList[0]?.id || 'comp-1';
   });
 
   // Current company object derived from selectedCompanyId
@@ -567,6 +567,13 @@ export default function UserManagementView({
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState<boolean>(false);
   const [showUnsavedChangesModal, setShowUnsavedChangesModal] = useState<boolean>(false);
   const [pendingTargetCompanyId, setPendingTargetCompanyId] = useState<string | null>(null);
+
+  // Keep selected company in sync with top-level workspace switcher
+  useEffect(() => {
+    if (activeWorkspaceCompanyId && activeWorkspaceCompanyId !== selectedCompanyId && !hasUnsavedChanges) {
+      setSelectedCompanyId(activeWorkspaceCompanyId);
+    }
+  }, [activeWorkspaceCompanyId, hasUnsavedChanges]);
 
   // Privacy and LGPD States
   const [showPrivacyModal, setShowPrivacyModal] = useState<boolean>(false);
@@ -593,6 +600,7 @@ export default function UserManagementView({
   const [newCompLegalRepPhone, setNewCompLegalRepPhone] = useState('');
   const [newCompLegalRepEmail, setNewCompLegalRepEmail] = useState('');
   const [newCompLegalRepAddress, setNewCompLegalRepAddress] = useState('');
+  const [newCompEnableWithdrawalAndDelivery, setNewCompEnableWithdrawalAndDelivery] = useState(false);
 
   // Local Form State for the selected company
   const [compName, setCompName] = useState(currentCompany?.name || 'MotorDesk Auto Center');
@@ -1254,6 +1262,10 @@ export default function UserManagementView({
 
     // Direct switch if clean
     setSelectedCompanyId(targetId);
+    const targetComp = registeredCompaniesList.find(c => c.id === targetId);
+    if (onSwitchActiveCompany) {
+      onSwitchActiveCompany(targetId, targetComp);
+    }
   };
 
   // Helper to save current company edits to DB
@@ -1330,6 +1342,14 @@ export default function UserManagementView({
       onSaveCompanyInfo(updatedCompany);
     }
 
+    if (onUpdateGlobalModules) {
+      onUpdateGlobalModules(companyGlobalModules);
+    }
+
+    if (onSwitchActiveCompany) {
+      onSwitchActiveCompany(selectedCompanyId, updatedCompany);
+    }
+
     // Auditoria de alteração de módulos contratuais / licença (CT-LIC-16)
     if (onAddHistoryLog) {
       const prevMods = currentCompany?.globalModules || {};
@@ -1357,6 +1377,10 @@ export default function UserManagementView({
     saveCurrentCompanyData();
     if (pendingTargetCompanyId) {
       setSelectedCompanyId(pendingTargetCompanyId);
+      const targetComp = registeredCompaniesList.find(c => c.id === pendingTargetCompanyId);
+      if (onSwitchActiveCompany) {
+        onSwitchActiveCompany(pendingTargetCompanyId, targetComp);
+      }
     }
     setShowUnsavedChangesModal(false);
     setPendingTargetCompanyId(null);
@@ -1365,6 +1389,10 @@ export default function UserManagementView({
   const handleConfirmDiscardAndSwitch = () => {
     if (pendingTargetCompanyId) {
       setSelectedCompanyId(pendingTargetCompanyId);
+      const targetComp = registeredCompaniesList.find(c => c.id === pendingTargetCompanyId);
+      if (onSwitchActiveCompany) {
+        onSwitchActiveCompany(pendingTargetCompanyId, targetComp);
+      }
     }
     setHasUnsavedChanges(false);
     setShowUnsavedChangesModal(false);
@@ -1422,6 +1450,7 @@ export default function UserManagementView({
       hasImplementationFee: newCompHasImplementationFee,
       implementationFee: newCompHasImplementationFee ? Number(newCompImplementationFee) : 0,
       contractStatus: 'pending',
+      enableWithdrawalAndDelivery: newCompEnableWithdrawalAndDelivery,
       levelPermissions: DEFAULT_LEVEL_PERMISSIONS,
       globalModules: getDefaultGlobalModulesForBusinessType(newCompBusinessType)
     };
@@ -3490,11 +3519,19 @@ export default function UserManagementView({
                       className="mt-0.5 h-4 w-4 text-indigo-600 border-slate-300 rounded focus:ring-indigo-500 cursor-pointer"
                     />
                     <div className="space-y-1">
-                      <span className="font-bold text-xs text-slate-900 block">
-                        Habilitar Fluxo de Separação / Retirada e Entrega
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-xs text-slate-900 block">
+                          Habilitar Expedição (Retirada & Entrega)
+                        </span>
+                        {compEnableWithdrawalAndDelivery ? (
+                          <span className="text-[9px] bg-indigo-100 text-indigo-800 font-bold px-1.5 py-0.5 rounded font-mono">Com Expedição</span>
+                        ) : (
+                          <span className="text-[9px] bg-emerald-100 text-emerald-800 font-bold px-1.5 py-0.5 rounded font-mono">Venda Balcão Imediata</span>
+                        )}
+                      </div>
                       <p className="text-[11px] text-slate-500 leading-normal">
-                        Ativa a fila de expedição, geração de romaneios de entrega residual e baixa física na conferência.
+                        <strong>Ativado (Com Expedição):</strong> As vendas reservam o estoque e geram pedidos na fila de separação e expedição com romaneios.<br />
+                        <strong>Desativado (Sem Expedição):</strong> A venda finaliza na hora ao clicar em salvar, dando <em>baixa física imediata no estoque</em>.
                       </p>
                     </div>
                   </label>
@@ -4414,6 +4451,35 @@ export default function UserManagementView({
                     <span className="text-[10px] text-slate-500 font-normal pl-5">Engenharia BOM, Ordens de Produção e Lotes</span>
                   </label>
                 </div>
+
+                {/* Opção de Expedição para Comércio */}
+                {(newCompBusinessType === 'COMERCIO' || newCompBusinessType === 'OFICINA_COMERCIO') && (
+                  <div className="p-3 bg-white border border-slate-200 rounded-xl space-y-1.5 mt-2">
+                    <label className="flex items-start gap-2.5 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={newCompEnableWithdrawalAndDelivery}
+                        onChange={e => setNewCompEnableWithdrawalAndDelivery(e.target.checked)}
+                        className="mt-0.5 h-4 w-4 text-indigo-600 border-slate-300 rounded focus:ring-indigo-500"
+                      />
+                      <div className="text-xs">
+                        <span className="font-bold text-slate-800 flex items-center gap-1.5">
+                          Habilitar Expedição (Retirada & Entrega)
+                          {newCompEnableWithdrawalAndDelivery ? (
+                            <span className="text-[9px] bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded font-mono font-bold">Com Expedição</span>
+                          ) : (
+                            <span className="text-[9px] bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded font-mono font-bold">Venda Balcão Imediata</span>
+                          )}
+                        </span>
+                        <p className="text-[11px] text-slate-500 mt-0.5">
+                          {newCompEnableWithdrawalAndDelivery
+                            ? 'Vendas reservam produtos e geram pedidos na fila de separação (picking) e despacho.'
+                            : 'Vendas finalizam na hora ao clicar em salvar, dando baixa direta no estoque físico (sem fila de expedição).'}
+                        </p>
+                      </div>
+                    </label>
+                  </div>
+                )}
               </div>
 
               <div className="grid grid-cols-2 gap-3">
