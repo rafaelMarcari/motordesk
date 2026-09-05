@@ -789,6 +789,7 @@ export default function App() {
     const canCarriers = !isModuleLocked('accessCarriers') && Boolean(currentUser?.permissions?.accessCarriers);
     const canUnits = !isModuleLocked('accessUnitsOfMeasure') && Boolean(currentUser?.permissions?.accessUnitsOfMeasure);
     const canProduction = !isModuleLocked('accessProduction') && (Boolean(currentUser?.permissions?.accessProduction) || Boolean(currentUser?.permissions?.accessIndustrialDashboard));
+    const canWithdrawals = !isModuleLocked('accessWithdrawals') && (currentUser?.permissions?.accessWithdrawals ?? true);
 
     return {
       ...db,
@@ -822,6 +823,7 @@ export default function App() {
       supplierPartPrices: (canQuotations || canParts) ? (db.supplierPartPrices || []).filter(item => (item.companyId || 'comp-1') === activeCompanyId) : [],
       maintenanceLogs: (canVehicles || canServiceOrders) ? (db.maintenanceLogs || []).filter(item => (item.companyId || 'comp-1') === activeCompanyId) : [],
       sales: canSales ? (db.sales || []).filter(item => (item.companyId || 'comp-1') === activeCompanyId) : [],
+      goodsWithdrawals: canWithdrawals ? (db.goodsWithdrawals || []).filter(item => (item.companyId || 'comp-1') === activeCompanyId) : [],
       carriers: canCarriers ? (db.carriers || []).filter(item => (item.companyId || 'comp-1') === activeCompanyId) : [],
       fiscalDocuments: canFiscal ? (db.fiscalDocuments || []).filter(item => (item.companyId || 'comp-1') === activeCompanyId) : [],
       boletos: (canAccountsReceivable || canFiscal) ? (db.boletos || []).filter(item => (item.companyId || 'comp-1') === activeCompanyId) : [],
@@ -2802,7 +2804,7 @@ export default function App() {
           {activeView === 'withdrawals' && (currentUser.permissions.accessWithdrawals ?? true) && (
             isModuleLocked('accessWithdrawals') ? renderLockedScreen() : (
               <WithdrawalView 
-                db={db}
+                db={scopedDb}
                 onUpdateDb={syncDb}
                 currentUser={currentUser}
                 currentCompany={activeCompanyObj || db.companyInfo}
