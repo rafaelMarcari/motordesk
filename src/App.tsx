@@ -642,10 +642,24 @@ export default function App() {
 
   const handleUpdateGlobalModules = (updatedModules: { [key: string]: boolean }) => {
     setGlobalModules(updatedModules);
-    syncDb(prev => ({
-      ...prev,
-      globalModules: updatedModules
-    }));
+    syncDb(prev => {
+      const updatedRegComps = (prev.registeredCompanies || []).map(c => {
+        if (c.id === activeCompanyId) {
+          return { ...c, globalModules: updatedModules };
+        }
+        return c;
+      });
+      const updatedCompInfo = prev.companyInfo && prev.companyInfo.id === activeCompanyId
+        ? { ...prev.companyInfo, globalModules: updatedModules }
+        : prev.companyInfo;
+
+      return {
+        ...prev,
+        globalModules: updatedModules,
+        registeredCompanies: updatedRegComps,
+        companyInfo: updatedCompInfo
+      };
+    });
     
     // Log in history
     handleAddHistoryLog(
@@ -697,6 +711,14 @@ export default function App() {
 
     return activeCompanyModules[permissionKey as keyof typeof activeCompanyModules] === false;
   }, [activeCompanyObj, activeBusinessType, activeCompanyModules, currentUser]);
+
+  // Decisão unificada e autoritativa de exibição de itens de menu e acesso a telas:
+  // Só exibe o que foi efetivamente CONTRATADO pela empresa e cujo usuário possui permissão ativa.
+  // Mesmo para o usuário master/admin, apenas os módulos contratados pela empresa são exibidos.
+  // Se uma permissão for removida do usuário ou do contrato, o item é removido imediatamente da navegação.
+  const isViewAccessible = React.useCallback((viewId: ViewID | string): boolean => {
+    return canAccessView(activeCompanyObj || db?.companyInfo, currentUser, viewId, db);
+  }, [activeCompanyObj, currentUser, db]);
 
   // Auto-redirect if active view is not supported by current company business type or not accessible
   useEffect(() => {
@@ -1082,7 +1104,8 @@ export default function App() {
         u => u.id === currentUser.id || u.username.toLowerCase() === currentUser.username.toLowerCase()
       );
       if (updatedSelf) {
-        setCurrentUser({ ...updatedSelf });
+        const freshSelf = normalizeUser({ ...updatedSelf, companyId: activeCompanyId }, activeCompanyId, db);
+        setCurrentUser(freshSelf);
       }
     }
   };
@@ -2051,228 +2074,168 @@ export default function App() {
 
           {/* Dynamic Navigation Links (Based on Permissions & Segment) */}
           <nav className="flex-1 p-2 space-y-1 overflow-y-auto">
-            {currentUser.permissions.accessDashboard && isViewAllowedForBusinessType('dashboard', activeBusinessType) && (
+            {isViewAccessible('dashboard') && (
               <button 
                 id="menu-btn-dashboard"
-                onClick={() => !isModuleLocked('accessDashboard') && navigateToView('dashboard')}
-                disabled={isModuleLocked('accessDashboard')}
+                onClick={() => navigateToView('dashboard')}
                 title="Dashboard KPI"
                 className={`w-full flex items-center ${(!isSidebarCollapsed || isSidebarHovered) ? 'justify-between px-3' : 'justify-center px-2'} py-2.5 rounded-lg text-xs font-semibold tracking-wide transition ${
-                  isModuleLocked('accessDashboard')
-                    ? 'opacity-40 cursor-not-allowed text-slate-500'
-                    : activeView === 'dashboard' ? 'bg-indigo-600 text-white font-bold' : 'hover:bg-slate-800 text-slate-400 hover:text-slate-100'
+                  activeView === 'dashboard' ? 'bg-indigo-600 text-white font-bold' : 'hover:bg-slate-800 text-slate-400 hover:text-slate-100'
                 }`}
               >
                 <div className="flex items-center gap-2.5 min-w-0">
                   <LayoutDashboard className="w-4 h-4 shrink-0" />
                   {(!isSidebarCollapsed || isSidebarHovered) && <span className="truncate">Dashboard KPI</span>}
                 </div>
-                {(!isSidebarCollapsed || isSidebarHovered) && activeCompanyModules.accessDashboard === false && (
-                  <span className="text-[9px] bg-amber-500/10 text-amber-500 px-1 py-0.2 rounded border border-amber-500/20 font-mono">🔒</span>
-                )}
               </button>
             )}
 
-            {currentUser.permissions.accessSales && isViewAllowedForBusinessType('sales', activeBusinessType) && (
+            {isViewAccessible('sales') && (
               <button 
                 id="menu-btn-sales"
-                onClick={() => !isModuleLocked('accessSales') && navigateToView('sales')}
-                disabled={isModuleLocked('accessSales')}
+                onClick={() => navigateToView('sales')}
                 title="Vendas & Balcão (PDV / Comércio)"
                 className={`w-full flex items-center ${(!isSidebarCollapsed || isSidebarHovered) ? 'justify-between px-3' : 'justify-center px-2'} py-2.5 rounded-lg text-xs font-semibold tracking-wide transition ${
-                  isModuleLocked('accessSales')
-                    ? 'opacity-40 cursor-not-allowed text-slate-500'
-                    : activeView === 'sales' ? 'bg-emerald-600 text-white font-bold shadow-xs' : 'hover:bg-slate-800 text-slate-300 hover:text-slate-100'
+                  activeView === 'sales' ? 'bg-emerald-600 text-white font-bold shadow-xs' : 'hover:bg-slate-800 text-slate-300 hover:text-slate-100'
                 }`}
               >
                 <div className="flex items-center gap-2.5 min-w-0">
                   <ShoppingBag className="w-4 h-4 shrink-0 text-emerald-400" />
                   {(!isSidebarCollapsed || isSidebarHovered) && <span className="truncate">Vendas & Balcão</span>}
                 </div>
-                {(!isSidebarCollapsed || isSidebarHovered) && activeCompanyModules.accessSales === false && (
-                  <span className="text-[9px] bg-amber-500/10 text-amber-500 px-1 py-0.2 rounded border border-amber-500/20 font-mono">🔒</span>
-                )}
               </button>
             )}
 
-            {currentUser.permissions.accessRepresentativeCommerce && isViewAllowedForBusinessType('representative_commerce', activeBusinessType) && (
+            {isViewAccessible('representative_commerce') && (
               <button 
                 id="menu-btn-representative-commerce"
-                onClick={() => !isModuleLocked('accessRepresentativeCommerce') && navigateToView('representative_commerce')}
-                disabled={isModuleLocked('accessRepresentativeCommerce')}
+                onClick={() => navigateToView('representative_commerce')}
                 title="Comércio Representante (Fábricas & Comissões)"
                 className={`w-full flex items-center ${(!isSidebarCollapsed || isSidebarHovered) ? 'justify-between px-3' : 'justify-center px-2'} py-2.5 rounded-lg text-xs font-semibold tracking-wide transition ${
-                  isModuleLocked('accessRepresentativeCommerce')
-                    ? 'opacity-40 cursor-not-allowed text-slate-500'
-                    : activeView === 'representative_commerce' ? 'bg-blue-600 text-white font-bold shadow-xs' : 'hover:bg-slate-800 text-slate-300 hover:text-slate-100'
+                  activeView === 'representative_commerce' ? 'bg-blue-600 text-white font-bold shadow-xs' : 'hover:bg-slate-800 text-slate-300 hover:text-slate-100'
                 }`}
               >
                 <div className="flex items-center gap-2.5 min-w-0">
                   <Building2 className="w-4 h-4 shrink-0 text-blue-400" />
                   {(!isSidebarCollapsed || isSidebarHovered) && <span className="truncate">Representadas</span>}
                 </div>
-                {(!isSidebarCollapsed || isSidebarHovered) && activeCompanyModules.accessRepresentativeCommerce === false && (
-                  <span className="text-[9px] bg-amber-500/10 text-amber-500 px-1 py-0.2 rounded border border-amber-500/20 font-mono">🔒</span>
-                )}
               </button>
             )}
 
-            {Boolean(currentUser.permissions.accessWithdrawals) && isViewAllowedForBusinessType('withdrawals', activeBusinessType) && (
+            {isViewAccessible('withdrawals') && (
               <button 
                 id="menu-btn-withdrawals"
-                onClick={() => !isModuleLocked('accessWithdrawals') && navigateToView('withdrawals')}
-                disabled={isModuleLocked('accessWithdrawals')}
+                onClick={() => navigateToView('withdrawals')}
                 title="Retirada & Entrega de Mercadorias (Expedição)"
                 className={`w-full flex items-center ${(!isSidebarCollapsed || isSidebarHovered) ? 'justify-between px-3' : 'justify-center px-2'} py-2.5 rounded-lg text-xs font-semibold tracking-wide transition ${
-                  isModuleLocked('accessWithdrawals')
-                    ? 'opacity-40 cursor-not-allowed text-slate-500'
-                    : activeView === 'withdrawals' ? 'bg-indigo-600 text-white font-bold shadow-xs' : 'hover:bg-slate-800 text-slate-300 hover:text-slate-100'
+                  activeView === 'withdrawals' ? 'bg-indigo-600 text-white font-bold shadow-xs' : 'hover:bg-slate-800 text-slate-300 hover:text-slate-100'
                 }`}
               >
                 <div className="flex items-center gap-2.5 min-w-0">
                   <Boxes className="w-4 h-4 shrink-0 text-indigo-400" />
                   {(!isSidebarCollapsed || isSidebarHovered) && <span className="truncate">Retirada & Entrega</span>}
                 </div>
-                {(!isSidebarCollapsed || isSidebarHovered) && activeCompanyModules.accessWithdrawals === false && (
-                  <span className="text-[9px] bg-amber-500/10 text-amber-500 px-1 py-0.2 rounded border border-amber-500/20 font-mono">🔒</span>
-                )}
               </button>
             )}
 
-            {currentUser.permissions.accessCarriers && isViewAllowedForBusinessType('carriers', activeBusinessType) && (
+            {isViewAccessible('carriers') && (
               <button 
                 id="menu-btn-carriers"
-                onClick={() => !isModuleLocked('accessCarriers') && navigateToView('carriers')}
-                disabled={isModuleLocked('accessCarriers')}
+                onClick={() => navigateToView('carriers')}
                 title="Transportadoras & Frete"
                 className={`w-full flex items-center ${(!isSidebarCollapsed || isSidebarHovered) ? 'justify-between px-3' : 'justify-center px-2'} py-2.5 rounded-lg text-xs font-semibold tracking-wide transition ${
-                  isModuleLocked('accessCarriers')
-                    ? 'opacity-40 cursor-not-allowed text-slate-500'
-                    : activeView === 'carriers' ? 'bg-blue-600 text-white font-bold shadow-xs' : 'hover:bg-slate-800 text-slate-300 hover:text-slate-100'
+                  activeView === 'carriers' ? 'bg-blue-600 text-white font-bold shadow-xs' : 'hover:bg-slate-800 text-slate-300 hover:text-slate-100'
                 }`}
               >
                 <div className="flex items-center gap-2.5 min-w-0">
                   <Truck className="w-4 h-4 shrink-0 text-blue-400" />
                   {(!isSidebarCollapsed || isSidebarHovered) && <span className="truncate">Transportadoras</span>}
                 </div>
-                {(!isSidebarCollapsed || isSidebarHovered) && activeCompanyModules.accessCarriers === false && (
-                  <span className="text-[9px] bg-amber-500/10 text-amber-500 px-1 py-0.2 rounded border border-amber-500/20 font-mono">🔒</span>
-                )}
               </button>
             )}
 
-            {currentUser.permissions.accessClients && isViewAllowedForBusinessType('clients', activeBusinessType) && (
+            {isViewAccessible('clients') && (
               <button 
                 id="menu-btn-clients"
-                onClick={() => !isModuleLocked('accessClients') && navigateToView('clients')}
-                disabled={isModuleLocked('accessClients')}
+                onClick={() => navigateToView('clients')}
                 title="Clientes"
                 className={`w-full flex items-center ${(!isSidebarCollapsed || isSidebarHovered) ? 'justify-between px-3' : 'justify-center px-2'} py-2.5 rounded-lg text-xs font-semibold tracking-wide transition ${
-                  isModuleLocked('accessClients')
-                    ? 'opacity-40 cursor-not-allowed text-slate-500'
-                    : activeView === 'clients' ? 'bg-indigo-600 text-white font-bold' : 'hover:bg-slate-800 text-slate-400 hover:text-slate-100'
+                  activeView === 'clients' ? 'bg-indigo-600 text-white font-bold' : 'hover:bg-slate-800 text-slate-400 hover:text-slate-100'
                 }`}
               >
                 <div className="flex items-center gap-2.5 min-w-0">
                   <Users className="w-4 h-4 shrink-0" />
                   {(!isSidebarCollapsed || isSidebarHovered) && <span className="truncate">Clientes</span>}
                 </div>
-                {(!isSidebarCollapsed || isSidebarHovered) && activeCompanyModules.accessClients === false && (
-                  <span className="text-[9px] bg-amber-500/10 text-amber-500 px-1 py-0.2 rounded border border-amber-500/20 font-mono">🔒</span>
-                )}
               </button>
             )}
 
-            {currentUser.permissions.accessVehicles && isViewAllowedForBusinessType('vehicles', activeBusinessType) && (
+            {isViewAccessible('vehicles') && (
               <button 
                 id="menu-btn-vehicles"
-                onClick={() => !isModuleLocked('accessVehicles') && navigateToView('vehicles')}
-                disabled={isModuleLocked('accessVehicles')}
+                onClick={() => navigateToView('vehicles')}
                 title="Veículos"
                 className={`w-full flex items-center ${(!isSidebarCollapsed || isSidebarHovered) ? 'justify-between px-3' : 'justify-center px-2'} py-2.5 rounded-lg text-xs font-semibold tracking-wide transition ${
-                  isModuleLocked('accessVehicles')
-                    ? 'opacity-40 cursor-not-allowed text-slate-500'
-                    : activeView === 'vehicles' ? 'bg-indigo-600 text-white font-bold' : 'hover:bg-slate-800 text-slate-400 hover:text-slate-100'
+                  activeView === 'vehicles' ? 'bg-indigo-600 text-white font-bold' : 'hover:bg-slate-800 text-slate-400 hover:text-slate-100'
                 }`}
               >
                 <div className="flex items-center gap-2.5 min-w-0">
                   <Car className="w-4 h-4 shrink-0" />
                   {(!isSidebarCollapsed || isSidebarHovered) && <span className="truncate">Veículos</span>}
                 </div>
-                {(!isSidebarCollapsed || isSidebarHovered) && activeCompanyModules.accessVehicles === false && (
-                  <span className="text-[9px] bg-amber-500/10 text-amber-500 px-1 py-0.2 rounded border border-amber-500/20 font-mono">🔒</span>
-                )}
               </button>
             )}
 
-            {currentUser.permissions.accessParts && isViewAllowedForBusinessType('parts', activeBusinessType) && (
+            {isViewAccessible('parts') && (
               <button 
                 id="menu-btn-parts"
-                onClick={() => !isModuleLocked('accessParts') && navigateToView('parts')}
-                disabled={isModuleLocked('accessParts')}
+                onClick={() => navigateToView('parts')}
                 title="Estoque & NFe"
                 className={`w-full flex items-center ${(!isSidebarCollapsed || isSidebarHovered) ? 'justify-between px-3' : 'justify-center px-2'} py-2.5 rounded-lg text-xs font-semibold tracking-wide transition ${
-                  isModuleLocked('accessParts')
-                    ? 'opacity-40 cursor-not-allowed text-slate-500'
-                    : activeView === 'parts' ? 'bg-indigo-600 text-white font-bold' : 'hover:bg-slate-800 text-slate-400 hover:text-slate-100'
+                  activeView === 'parts' ? 'bg-indigo-600 text-white font-bold' : 'hover:bg-slate-800 text-slate-400 hover:text-slate-100'
                 }`}
               >
                 <div className="flex items-center gap-2.5 min-w-0">
                   <Package className="w-4 h-4 shrink-0" />
                   {(!isSidebarCollapsed || isSidebarHovered) && <span className="truncate">Estoque & NFe</span>}
                 </div>
-                {(!isSidebarCollapsed || isSidebarHovered) && activeCompanyModules.accessParts === false && (
-                  <span className="text-[9px] bg-amber-500/10 text-amber-500 px-1 py-0.2 rounded border border-amber-500/20 font-mono">🔒</span>
-                )}
               </button>
             )}
 
-            {Boolean(currentUser.permissions.accessUnitsOfMeasure) && isViewAllowedForBusinessType('units_of_measure', activeBusinessType) && (
+            {isViewAccessible('units_of_measure') && (
               <button 
                 id="menu-btn-units-of-measure"
-                onClick={() => !isModuleLocked('accessUnitsOfMeasure') && navigateToView('units_of_measure')}
-                disabled={isModuleLocked('accessUnitsOfMeasure')}
+                onClick={() => navigateToView('units_of_measure')}
                 title="Unidades de Medida"
                 className={`w-full flex items-center ${(!isSidebarCollapsed || isSidebarHovered) ? 'justify-between px-3' : 'justify-center px-2'} py-2.5 rounded-lg text-xs font-semibold tracking-wide transition ${
-                  isModuleLocked('accessUnitsOfMeasure')
-                    ? 'opacity-40 cursor-not-allowed text-slate-500'
-                    : activeView === 'units_of_measure' ? 'bg-indigo-600 text-white font-bold' : 'hover:bg-slate-800 text-slate-400 hover:text-slate-100'
+                  activeView === 'units_of_measure' ? 'bg-indigo-600 text-white font-bold' : 'hover:bg-slate-800 text-slate-400 hover:text-slate-100'
                 }`}
               >
                 <div className="flex items-center gap-2.5 min-w-0">
                   <Ruler className="w-4 h-4 shrink-0 text-indigo-400" />
                   {(!isSidebarCollapsed || isSidebarHovered) && <span className="truncate">Unidades de Medida</span>}
                 </div>
-                {(!isSidebarCollapsed || isSidebarHovered) && activeCompanyModules.accessUnitsOfMeasure === false && (
-                  <span className="text-[9px] bg-amber-500/10 text-amber-500 px-1 py-0.2 rounded border border-amber-500/20 font-mono">🔒</span>
-                )}
               </button>
             )}
 
-            {currentUser.permissions.accessQuotations && isViewAllowedForBusinessType('quotations', activeBusinessType) && (
+            {isViewAccessible('quotations') && (
               <button 
                 id="menu-btn-quotations"
-                onClick={() => !isModuleLocked('accessQuotations') && navigateToView('quotations')}
-                disabled={isModuleLocked('accessQuotations')}
+                onClick={() => navigateToView('quotations')}
                 title="Cotação & Fornecedores"
                 className={`w-full flex items-center ${(!isSidebarCollapsed || isSidebarHovered) ? 'justify-between px-3' : 'justify-center px-2'} py-2.5 rounded-lg text-xs font-semibold tracking-wide transition ${
-                  isModuleLocked('accessQuotations')
-                    ? 'opacity-40 cursor-not-allowed text-slate-500'
-                    : activeView === 'quotations' ? 'bg-indigo-600 text-white font-bold' : 'hover:bg-slate-800 text-slate-400 hover:text-slate-100'
+                  activeView === 'quotations' ? 'bg-indigo-600 text-white font-bold' : 'hover:bg-slate-800 text-slate-400 hover:text-slate-100'
                 }`}
               >
                 <div className="flex items-center gap-2.5 min-w-0">
                   <ShoppingBag className="w-4 h-4 shrink-0" />
                   {(!isSidebarCollapsed || isSidebarHovered) && <span className="truncate">Cotação & Fornecedores</span>}
                 </div>
-                {(!isSidebarCollapsed || isSidebarHovered) && activeCompanyModules.accessQuotations === false && (
-                  <span className="text-[9px] bg-amber-500/10 text-amber-500 px-1 py-0.2 rounded border border-amber-500/20 font-mono">🔒</span>
-                )}
               </button>
             )}
 
             {/* MENU GRUPO FINANCEIRO COM SUBMENU AO PASSAR O MOUSE / HOVER */}
-            {Boolean(currentUser.permissions.accessFinancial || currentUser.permissions.accessAccountsReceivable || currentUser.permissions.accessAccountsPayable || currentUser.permissions.accessFiscal) && isViewAllowedForBusinessType('financial', activeBusinessType) && (
+            {(isViewAccessible('financial') || isViewAccessible('accounts_receivable') || isViewAccessible('accounts_payable') || isViewAccessible('fiscal') || isViewAccessible('fiscal_conference') || isViewAccessible('tax_obligations')) && (
               <div 
                 className="relative space-y-1"
                 onMouseEnter={() => setIsFinSubmenuOpen(true)}
@@ -2302,11 +2265,10 @@ export default function App() {
                 {/* SUBMENUS AO PASSAR O MOUSE / HOVER */}
                 {(isFinSubmenuOpen || ['financial', 'accounts_receivable', 'accounts_payable', 'fiscal', 'fiscal_conference', 'tax_obligations'].includes(activeView)) && (!isSidebarCollapsed || isSidebarHovered) && (
                   <div className="pl-4 pr-1 space-y-1 py-1 border-l-2 border-indigo-500/40 ml-4 animate-fade-in">
-                    {currentUser.permissions.accessFinancial && (
+                    {isViewAccessible('financial') && (
                       <button
                         id="submenu-btn-financial"
-                        onClick={() => !isModuleLocked('accessFinancial') && navigateToView('financial')}
-                        disabled={isModuleLocked('accessFinancial')}
+                        onClick={() => navigateToView('financial')}
                         className={`w-full text-left px-2.5 py-1.5 rounded-md text-[11px] font-medium transition flex items-center gap-2 cursor-pointer ${
                           activeView === 'financial' ? 'bg-indigo-500/20 text-indigo-200 font-bold border border-indigo-500/30' : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
                         }`}
@@ -2316,11 +2278,10 @@ export default function App() {
                       </button>
                     )}
 
-                    {currentUser.permissions.accessAccountsReceivable && (
+                    {isViewAccessible('accounts_receivable') && (
                       <button
                         id="submenu-btn-accounts-receivable"
-                        onClick={() => !isModuleLocked('accessAccountsReceivable') && navigateToView('accounts_receivable')}
-                        disabled={isModuleLocked('accessAccountsReceivable')}
+                        onClick={() => navigateToView('accounts_receivable')}
                         className={`w-full text-left px-2.5 py-1.5 rounded-md text-[11px] font-medium transition flex items-center gap-2 cursor-pointer ${
                           activeView === 'accounts_receivable' ? 'bg-emerald-500/20 text-emerald-200 font-bold border border-emerald-500/30' : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
                         }`}
@@ -2330,11 +2291,10 @@ export default function App() {
                       </button>
                     )}
 
-                    {currentUser.permissions.accessAccountsPayable && (
+                    {isViewAccessible('accounts_payable') && (
                       <button
                         id="submenu-btn-accounts-payable"
-                        onClick={() => !isModuleLocked('accessAccountsPayable') && navigateToView('accounts_payable')}
-                        disabled={isModuleLocked('accessAccountsPayable')}
+                        onClick={() => navigateToView('accounts_payable')}
                         className={`w-full text-left px-2.5 py-1.5 rounded-md text-[11px] font-medium transition flex items-center gap-2 cursor-pointer ${
                           activeView === 'accounts_payable' ? 'bg-rose-500/20 text-rose-200 font-bold border border-rose-500/30' : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
                         }`}
@@ -2344,11 +2304,10 @@ export default function App() {
                       </button>
                     )}
 
-                    {Boolean(currentUser.permissions.accessFiscal) && (
+                    {isViewAccessible('fiscal_conference') && (
                       <button
                         id="submenu-btn-fiscal-conference"
-                        onClick={() => !isModuleLocked('accessFiscal') && navigateToView('fiscal_conference')}
-                        disabled={isModuleLocked('accessFiscal')}
+                        onClick={() => navigateToView('fiscal_conference')}
                         className={`w-full text-left px-2.5 py-1.5 rounded-md text-[11px] font-medium transition flex items-center gap-2 cursor-pointer ${
                           activeView === 'fiscal_conference' ? 'bg-cyan-500/20 text-cyan-200 font-bold border border-cyan-500/30' : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
                         }`}
@@ -2358,11 +2317,10 @@ export default function App() {
                       </button>
                     )}
 
-                    {Boolean(currentUser.permissions.accessFiscal) && (
+                    {isViewAccessible('fiscal') && (
                       <button
                         id="submenu-btn-fiscal"
-                        onClick={() => !isModuleLocked('accessFiscal') && navigateToView('fiscal')}
-                        disabled={isModuleLocked('accessFiscal')}
+                        onClick={() => navigateToView('fiscal')}
                         className={`w-full text-left px-2.5 py-1.5 rounded-md text-[11px] font-medium transition flex items-center gap-2 cursor-pointer ${
                           activeView === 'fiscal' ? 'bg-amber-500/20 text-amber-200 font-bold border border-amber-500/30' : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
                         }`}
@@ -2372,11 +2330,10 @@ export default function App() {
                       </button>
                     )}
 
-                    {Boolean(currentUser.permissions.accessFiscal) && (
+                    {isViewAccessible('tax_obligations') && (
                       <button
                         id="submenu-btn-tax-obligations"
-                        onClick={() => !isModuleLocked('accessFiscal') && navigateToView('tax_obligations')}
-                        disabled={isModuleLocked('accessFiscal')}
+                        onClick={() => navigateToView('tax_obligations')}
                         className={`w-full text-left px-2.5 py-1.5 rounded-md text-[11px] font-medium transition flex items-center gap-2 cursor-pointer ${
                           activeView === 'tax_obligations' ? 'bg-indigo-500/30 text-indigo-100 font-bold border border-indigo-500/40' : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
                         }`}
@@ -2390,245 +2347,179 @@ export default function App() {
               </div>
             )}
 
-            {currentUser.permissions.accessServices && isViewAllowedForBusinessType('services', activeBusinessType) && (
+            {isViewAccessible('services') && (
               <button 
                 id="menu-btn-services"
-                onClick={() => !isModuleLocked('accessServices') && navigateToView('services')}
-                disabled={isModuleLocked('accessServices')}
+                onClick={() => navigateToView('services')}
                 title="Serviços / Mão de Obra"
                 className={`w-full flex items-center ${(!isSidebarCollapsed || isSidebarHovered) ? 'justify-between px-3' : 'justify-center px-2'} py-2.5 rounded-lg text-xs font-semibold tracking-wide transition ${
-                  isModuleLocked('accessServices')
-                    ? 'opacity-40 cursor-not-allowed text-slate-500'
-                    : activeView === 'services' ? 'bg-indigo-600 text-white font-bold' : 'hover:bg-slate-800 text-slate-400 hover:text-slate-100'
+                  activeView === 'services' ? 'bg-indigo-600 text-white font-bold' : 'hover:bg-slate-800 text-slate-400 hover:text-slate-100'
                 }`}
               >
                 <div className="flex items-center gap-2.5 min-w-0">
                   <Wrench className="w-4 h-4 shrink-0" />
                   {(!isSidebarCollapsed || isSidebarHovered) && <span className="truncate">Serviços / Mão de Obra</span>}
                 </div>
-                {(!isSidebarCollapsed || isSidebarHovered) && activeCompanyModules.accessServices === false && (
-                  <span className="text-[9px] bg-amber-500/10 text-amber-500 px-1 py-0.2 rounded border border-amber-500/20 font-mono">🔒</span>
-                )}
               </button>
             )}
 
-            {currentUser.permissions.accessBudgets && isViewAllowedForBusinessType('budgets', activeBusinessType) && (
+            {isViewAccessible('budgets') && (
               <button 
                 id="menu-btn-budgets"
-                onClick={() => !isModuleLocked('accessBudgets') && navigateToView('budgets')}
-                disabled={isModuleLocked('accessBudgets')}
+                onClick={() => navigateToView('budgets')}
                 title="Orçamentos Builder"
                 className={`w-full flex items-center ${(!isSidebarCollapsed || isSidebarHovered) ? 'justify-between px-3' : 'justify-center px-2'} py-2.5 rounded-lg text-xs font-semibold tracking-wide transition ${
-                  isModuleLocked('accessBudgets')
-                    ? 'opacity-40 cursor-not-allowed text-slate-500'
-                    : activeView === 'budgets' ? 'bg-indigo-600 text-white font-bold' : 'hover:bg-slate-800 text-slate-400 hover:text-slate-100'
+                  activeView === 'budgets' ? 'bg-indigo-600 text-white font-bold' : 'hover:bg-slate-800 text-slate-400 hover:text-slate-100'
                 }`}
               >
                 <div className="flex items-center gap-2.5 min-w-0">
                   <FileSpreadsheet className="w-4 h-4 shrink-0" />
                   {(!isSidebarCollapsed || isSidebarHovered) && <span className="truncate">Orçamentos Builder</span>}
                 </div>
-                {(!isSidebarCollapsed || isSidebarHovered) && activeCompanyModules.accessBudgets === false && (
-                  <span className="text-[9px] bg-amber-500/10 text-amber-500 px-1 py-0.2 rounded border border-amber-500/20 font-mono">🔒</span>
-                )}
               </button>
             )}
 
-            {currentUser.permissions.accessServiceOrders && isViewAllowedForBusinessType('serviceOrders', activeBusinessType) && (
+            {isViewAccessible('serviceOrders') && (
               <button 
                 id="menu-btn-service-orders"
-                onClick={() => !isModuleLocked('accessServiceOrders') && navigateToView('serviceOrders')}
-                disabled={isModuleLocked('accessServiceOrders')}
+                onClick={() => navigateToView('serviceOrders')}
                 title="Ordens de Serviço"
                 className={`w-full flex items-center ${(!isSidebarCollapsed || isSidebarHovered) ? 'justify-between px-3' : 'justify-center px-2'} py-2.5 rounded-lg text-xs font-semibold tracking-wide transition ${
-                  isModuleLocked('accessServiceOrders')
-                    ? 'opacity-40 cursor-not-allowed text-slate-500'
-                    : activeView === 'serviceOrders' ? 'bg-indigo-600 text-white font-bold' : 'hover:bg-slate-800 text-slate-400 hover:text-slate-100'
+                  activeView === 'serviceOrders' ? 'bg-indigo-600 text-white font-bold' : 'hover:bg-slate-800 text-slate-400 hover:text-slate-100'
                 }`}
               >
                 <div className="flex items-center gap-2.5 min-w-0">
                   <ClipboardList className="w-4 h-4 shrink-0" />
                   {(!isSidebarCollapsed || isSidebarHovered) && <span className="truncate">Ordens de Serviço</span>}
                 </div>
-                {(!isSidebarCollapsed || isSidebarHovered) && activeCompanyModules.accessServiceOrders === false && (
-                  <span className="text-[9px] bg-amber-500/10 text-amber-500 px-1 py-0.2 rounded border border-amber-500/20 font-mono">🔒</span>
-                )}
               </button>
             )}
 
-            {(Boolean(currentUser.permissions.accessProduction) || Boolean(currentUser.permissions.accessIndustrialDashboard)) && isViewAllowedForBusinessType('industry', activeBusinessType) && (
+            {isViewAccessible('industry') && (
               <button 
                 id="menu-btn-industry"
-                onClick={() => !isModuleLocked('accessProduction') && navigateToView('industry')}
-                disabled={isModuleLocked('accessProduction')}
+                onClick={() => navigateToView('industry')}
                 title="Produção & PCP (BOM/OP)"
                 className={`w-full flex items-center ${(!isSidebarCollapsed || isSidebarHovered) ? 'justify-between px-3' : 'justify-center px-2'} py-2.5 rounded-lg text-xs font-semibold tracking-wide transition ${
-                  isModuleLocked('accessProduction')
-                    ? 'opacity-40 cursor-not-allowed text-slate-500'
-                    : activeView === 'industry' ? 'bg-amber-500 text-slate-950 font-bold shadow-xs' : 'hover:bg-slate-800 text-slate-300 hover:text-slate-100'
+                  activeView === 'industry' ? 'bg-amber-500 text-slate-950 font-bold shadow-xs' : 'hover:bg-slate-800 text-slate-300 hover:text-slate-100'
                 }`}
               >
                 <div className="flex items-center gap-2.5 min-w-0">
                   <Factory className="w-4 h-4 shrink-0 text-amber-400" />
                   {(!isSidebarCollapsed || isSidebarHovered) && <span className="truncate">Produção & PCP (BOM/OP)</span>}
                 </div>
-                {(!isSidebarCollapsed || isSidebarHovered) && activeCompanyModules.accessProduction === false && (
-                  <span className="text-[9px] bg-amber-500/10 text-amber-500 px-1 py-0.2 rounded border border-amber-500/20 font-mono">🔒</span>
-                )}
               </button>
             )}
 
-            {currentUser.permissions.accessHistory && isViewAllowedForBusinessType('history', activeBusinessType) && (
+            {isViewAccessible('history') && (
               <button 
                 id="menu-btn-history"
-                onClick={() => !isModuleLocked('accessHistory') && navigateToView('history')}
-                disabled={isModuleLocked('accessHistory')}
+                onClick={() => navigateToView('history')}
                 title="Histórico Auditoria"
                 className={`w-full flex items-center ${(!isSidebarCollapsed || isSidebarHovered) ? 'justify-between px-3' : 'justify-center px-2'} py-2.5 rounded-lg text-xs font-semibold tracking-wide transition ${
-                  isModuleLocked('accessHistory')
-                    ? 'opacity-40 cursor-not-allowed text-slate-500'
-                    : activeView === 'history' ? 'bg-indigo-600 text-white font-bold' : 'hover:bg-slate-800 text-slate-400 hover:text-slate-100'
+                  activeView === 'history' ? 'bg-indigo-600 text-white font-bold' : 'hover:bg-slate-800 text-slate-400 hover:text-slate-100'
                 }`}
               >
                 <div className="flex items-center gap-2.5 min-w-0">
                   <History className="w-4 h-4 shrink-0" />
                   {(!isSidebarCollapsed || isSidebarHovered) && <span className="truncate">Histórico Auditoria</span>}
                 </div>
-                {(!isSidebarCollapsed || isSidebarHovered) && activeCompanyModules.accessHistory === false && (
-                  <span className="text-[9px] bg-amber-500/10 text-amber-500 px-1 py-0.2 rounded border border-amber-500/20 font-mono">🔒</span>
-                )}
               </button>
             )}
 
-            {currentUser.permissions.accessReports && isViewAllowedForBusinessType('reports', activeBusinessType) && (
+            {isViewAccessible('reports') && (
               <button 
                 id="menu-btn-reports"
-                onClick={() => !isModuleLocked('accessReports') && navigateToView('reports')}
-                disabled={isModuleLocked('accessReports')}
+                onClick={() => navigateToView('reports')}
                 title="Relatórios"
                 className={`w-full flex items-center ${(!isSidebarCollapsed || isSidebarHovered) ? 'justify-between px-3' : 'justify-center px-2'} py-2.5 rounded-lg text-xs font-semibold tracking-wide transition ${
-                  isModuleLocked('accessReports')
-                    ? 'opacity-40 cursor-not-allowed text-slate-500'
-                    : activeView === 'reports' ? 'bg-indigo-600 text-white font-bold' : 'hover:bg-slate-800 text-slate-400 hover:text-slate-100'
+                  activeView === 'reports' ? 'bg-indigo-600 text-white font-bold' : 'hover:bg-slate-800 text-slate-400 hover:text-slate-100'
                 }`}
               >
                 <div className="flex items-center gap-2.5 min-w-0">
                   <BarChart3 className="w-4 h-4 shrink-0" />
                   {(!isSidebarCollapsed || isSidebarHovered) && <span className="truncate">Relatórios</span>}
                 </div>
-                {(!isSidebarCollapsed || isSidebarHovered) && activeCompanyModules.accessReports === false && (
-                  <span className="text-[9px] bg-amber-500/10 text-amber-500 px-1 py-0.2 rounded border border-amber-500/20 font-mono">🔒</span>
-                )}
               </button>
             )}
 
-            {currentUser.permissions.accessUserManagement && isViewAllowedForBusinessType('users', activeBusinessType) && (
+            {isViewAccessible('users') && (
               <button 
                 id="menu-btn-users"
-                onClick={() => !isModuleLocked('accessUserManagement') && navigateToView('users')}
-                disabled={isModuleLocked('accessUserManagement')}
+                onClick={() => navigateToView('users')}
                 title="Criar Usuários / Níveis"
                 className={`w-full flex items-center ${(!isSidebarCollapsed || isSidebarHovered) ? 'justify-between px-3' : 'justify-center px-2'} py-2.5 rounded-lg text-xs font-semibold tracking-wide transition ${
-                  isModuleLocked('accessUserManagement')
-                    ? 'opacity-40 cursor-not-allowed text-slate-500'
-                    : activeView === 'users' ? 'bg-indigo-600 text-white font-bold' : 'hover:bg-slate-800 text-slate-400 hover:text-slate-100'
+                  activeView === 'users' ? 'bg-indigo-600 text-white font-bold' : 'hover:bg-slate-800 text-slate-400 hover:text-slate-100'
                 }`}
               >
                 <div className="flex items-center gap-2.5 min-w-0">
                   <UserPlus className="w-4 h-4 shrink-0" />
                   {(!isSidebarCollapsed || isSidebarHovered) && <span className="truncate">Criar Usuários / Níveis</span>}
                 </div>
-                {(!isSidebarCollapsed || isSidebarHovered) && activeCompanyModules.accessUserManagement === false && (
-                  <span className="text-[9px] bg-amber-500/10 text-amber-500 px-1 py-0.2 rounded border border-amber-500/20 font-mono">🔒</span>
-                )}
               </button>
             )}
 
-            {currentUser.permissions.accessUserManagement && isViewAllowedForBusinessType('users', activeBusinessType) && (
+            {isViewAccessible('access_groups') && (
               <button 
                 id="menu-btn-access-groups"
-                onClick={() => !isModuleLocked('accessUserManagement') && navigateToView('access_groups')}
-                disabled={isModuleLocked('accessUserManagement')}
+                onClick={() => navigateToView('access_groups')}
                 title="Grupos de Acesso (RBAC 2.0)"
                 className={`w-full flex items-center ${(!isSidebarCollapsed || isSidebarHovered) ? 'justify-between px-3' : 'justify-center px-2'} py-2.5 rounded-lg text-xs font-semibold tracking-wide transition ${
-                  isModuleLocked('accessUserManagement')
-                    ? 'opacity-40 cursor-not-allowed text-slate-500'
-                    : activeView === 'access_groups' ? 'bg-indigo-600 text-white font-bold' : 'hover:bg-slate-800 text-slate-400 hover:text-slate-100'
+                  activeView === 'access_groups' ? 'bg-indigo-600 text-white font-bold' : 'hover:bg-slate-800 text-slate-400 hover:text-slate-100'
                 }`}
               >
                 <div className="flex items-center gap-2.5 min-w-0">
                   <KeyRound className="w-4 h-4 shrink-0 text-indigo-400" />
                   {(!isSidebarCollapsed || isSidebarHovered) && <span className="truncate">Grupos de Acesso (RBAC)</span>}
                 </div>
-                {(!isSidebarCollapsed || isSidebarHovered) && activeCompanyModules.accessUserManagement === false && (
-                  <span className="text-[9px] bg-amber-500/10 text-amber-500 px-1 py-0.2 rounded border border-amber-500/20 font-mono">🔒</span>
-                )}
               </button>
             )}
 
-            {(currentUser.permissions.accessNotificationsEngine || currentUser.permissions.accessNotificationEngine) && isViewAllowedForBusinessType('notifications_engine', activeBusinessType) && (
+            {isViewAccessible('notifications_engine') && (
               <button 
                 id="menu-btn-notification-engine"
-                onClick={() => !isModuleLocked('accessNotificationsEngine') && navigateToView('notifications_engine')}
-                disabled={isModuleLocked('accessNotificationsEngine')}
+                onClick={() => navigateToView('notifications_engine')}
                 title="Motor Central de Notificações & Réguas"
                 className={`w-full flex items-center ${(!isSidebarCollapsed || isSidebarHovered) ? 'justify-between px-3' : 'justify-center px-2'} py-2.5 rounded-lg text-xs font-semibold tracking-wide transition ${
-                  isModuleLocked('accessNotificationsEngine')
-                    ? 'opacity-40 cursor-not-allowed text-slate-500'
-                    : activeView === 'notifications_engine' ? 'bg-indigo-600 text-white font-bold shadow-xs' : 'hover:bg-slate-800 text-slate-300 hover:text-slate-100'
+                  activeView === 'notifications_engine' ? 'bg-indigo-600 text-white font-bold shadow-xs' : 'hover:bg-slate-800 text-slate-300 hover:text-slate-100'
                 }`}
               >
                 <div className="flex items-center gap-2.5 min-w-0">
                   <Bell className="w-4 h-4 shrink-0 text-amber-400" />
                   {(!isSidebarCollapsed || isSidebarHovered) && <span className="truncate">Motor Notificações</span>}
                 </div>
-                {(!isSidebarCollapsed || isSidebarHovered) && (activeCompanyModules.accessNotificationsEngine === false || activeCompanyModules.accessNotificationEngine === false) && (
-                  <span className="text-[9px] bg-amber-500/10 text-amber-500 px-1 py-0.2 rounded border border-amber-500/20 font-mono">🔒</span>
-                )}
               </button>
             )}
 
-            {currentUser.permissions.accessQAPanel && (
+            {isViewAccessible('qa_panel') && (
               <button 
                 id="menu-btn-qa-panel"
-                onClick={() => !isModuleLocked('accessQAPanel') && navigateToView('qa_panel')}
-                disabled={isModuleLocked('accessQAPanel')}
+                onClick={() => navigateToView('qa_panel')}
                 title="Painel de Testes QA"
                 className={`w-full flex items-center ${(!isSidebarCollapsed || isSidebarHovered) ? 'justify-between px-3' : 'justify-center px-2'} py-2.5 rounded-lg text-xs font-semibold tracking-wide transition ${
-                  isModuleLocked('accessQAPanel')
-                    ? 'opacity-40 cursor-not-allowed text-slate-500'
-                    : activeView === 'qa_panel' ? 'bg-indigo-600 text-white font-bold' : 'hover:bg-slate-800 text-slate-400 hover:text-slate-100'
+                  activeView === 'qa_panel' ? 'bg-indigo-600 text-white font-bold' : 'hover:bg-slate-800 text-slate-400 hover:text-slate-100'
                 }`}
               >
                 <div className="flex items-center gap-2.5 min-w-0">
                   <Bug className="w-4 h-4 shrink-0 text-amber-400" />
                   {(!isSidebarCollapsed || isSidebarHovered) && <span className="truncate">Painel de Testes QA</span>}
                 </div>
-                {(!isSidebarCollapsed || isSidebarHovered) && activeCompanyModules.accessQAPanel === false && (
-                  <span className="text-[9px] bg-amber-500/10 text-amber-500 px-1 py-0.2 rounded border border-amber-500/20 font-mono">🔒</span>
-                )}
               </button>
             )}
 
-            {currentUser.permissions.accessQAPanel && (
+            {isViewAccessible('data_migration') && (
               <button 
                 id="menu-btn-data-migration"
-                onClick={() => !isModuleLocked('accessQAPanel') && navigateToView('data_migration')}
-                disabled={isModuleLocked('accessQAPanel')}
+                onClick={() => navigateToView('data_migration')}
                 title="Conversor de Migração"
                 className={`w-full flex items-center ${(!isSidebarCollapsed || isSidebarHovered) ? 'justify-between px-3' : 'justify-center px-2'} py-2.5 rounded-lg text-xs font-semibold tracking-wide transition ${
-                  isModuleLocked('accessQAPanel')
-                    ? 'opacity-40 cursor-not-allowed text-slate-500'
-                    : activeView === 'data_migration' ? 'bg-indigo-600 text-white font-bold' : 'hover:bg-slate-800 text-slate-400 hover:text-slate-100'
+                  activeView === 'data_migration' ? 'bg-indigo-600 text-white font-bold' : 'hover:bg-slate-800 text-slate-400 hover:text-slate-100'
                 }`}
               >
                 <div className="flex items-center gap-2.5 min-w-0">
                   <Database className="w-4 h-4 shrink-0 text-cyan-400" />
                   {(!isSidebarCollapsed || isSidebarHovered) && <span className="truncate">Conversor de Migração</span>}
                 </div>
-                {(!isSidebarCollapsed || isSidebarHovered) && globalModules.accessQAPanel === false && (
-                  <span className="text-[9px] bg-amber-500/10 text-amber-500 px-1 py-0.2 rounded border border-amber-500/20 font-mono">🔒</span>
-                )}
               </button>
             )}
 
