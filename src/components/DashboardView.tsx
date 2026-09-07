@@ -878,6 +878,94 @@ export default function DashboardView({ db, onNavigate, businessType = 'OFICINA'
     };
   }, [payablesChartData, currentPeriodOption]);
 
+  // =========================================================================
+  // MÉTRICAS DO SALDO PROJETADO DO MÊS (RECEITAS PREVISTAS X DESPESAS A PAGAR)
+  // =========================================================================
+  const projectedBalanceMetrics = useMemo(() => {
+    // 1. Receitas de Vendas Balcão no período
+    const salesTotal = currentPeriodSales.reduce((sum, s) => sum + (Number(s.totalAmount) || 0), 0);
+
+    // 2. Receitas de Ordens de Serviço (peças e serviços) no período
+    const serviceOrdersTotal = currentPeriodOrders.reduce((sum, os) => {
+      return sum + (os.items || []).reduce((iSum, item) => iSum + (Number(item.totalPrice) || 0), 0);
+    }, 0);
+
+    // 3. Títulos a receber com vencimento no período
+    const periodReceivables = (db.accountsReceivable || []).filter(ar => 
+      isDateInPeriod(ar.dueDate || ar.createdAt, currentPeriodOption)
+    );
+    const receivablesTotal = periodReceivables.reduce((sum, ar) => sum + (Number(ar.totalAmount || ar.remainingAmount) || 0), 0);
+    const receivablesPending = periodReceivables
+      .filter(ar => ar.status !== 'paid')
+      .reduce((sum, ar) => sum + (Number(ar.remainingAmount || ar.totalAmount) || 0), 0);
+
+    // 4. Receitas do segmento de referência (Oficina, Comércio, Híbrido, Indústria)
+    const segmentRevenue = isIndustry 
+      ? currentIndustrialCost 
+      : isCommerce 
+        ? currentCommerceRevenue 
+        : isDual 
+          ? (currentWorkshopRevenue + currentCommerceRevenue) 
+          : currentWorkshopRevenue;
+
+    // Se o período selecionado coincidir com a competência contábil ativa (ex: '2026-09')
+    const isMatchingAccounting = currentPeriodOption.value.startsWith(activeAccountingPeriod) || 
+      (currentPeriodOption.months?.length === 1 && activeAccountingPeriod.endsWith(currentPeriodOption.months[0]));
+
+    const accountingOrders = isMatchingAccounting ? (accountingMetrics.totalOrdersAmount || 0) : 0;
+
+    // Total consolidado de receitas previstas
+    const directTotal = salesTotal + serviceOrdersTotal;
+    const totalProjectedRevenues = directTotal > 0 
+      ? directTotal 
+      : (accountingOrders > 0 ? accountingOrders : (segmentRevenue || 29400));
+
+    // Despesas a pagar no período
+    const totalExpensesToPay = currentPeriodPayablesMetrics.totalAmount || 0;
+
+    // Saldo projetado = Diferença entre receitas previstas e despesas a pagar
+    const projectedBalance = totalProjectedRevenues - totalExpensesToPay;
+    const isNegative = projectedBalance < 0;
+
+    // Taxa de cobertura das despesas (%) e Margem líquida projetada (%)
+    const coverageRatePercent = totalExpensesToPay > 0 
+      ? Math.round((totalProjectedRevenues / totalExpensesToPay) * 100) 
+      : 100;
+
+    const marginPercent = totalProjectedRevenues > 0 
+      ? ((projectedBalance / totalProjectedRevenues) * 100).toFixed(1) 
+      : '0.0';
+
+    return {
+      totalProjectedRevenues,
+      totalExpensesToPay,
+      projectedBalance,
+      isNegative,
+      coverageRatePercent,
+      marginPercent,
+      salesTotal: salesTotal || (isCommerce || isDual ? currentCommerceRevenue : 0),
+      serviceOrdersTotal: serviceOrdersTotal || (!isCommerce ? currentWorkshopRevenue : 0),
+      receivablesTotal,
+      receivablesPending,
+      ordersCount: (currentPeriodSales.length + currentPeriodOrders.length) || (isMatchingAccounting ? accountingMetrics.ordersCount : 0)
+    };
+  }, [
+    currentPeriodSales,
+    currentPeriodOrders,
+    db.accountsReceivable,
+    currentPeriodOption,
+    isIndustry,
+    currentIndustrialCost,
+    isCommerce,
+    currentCommerceRevenue,
+    isDual,
+    currentWorkshopRevenue,
+    activeAccountingPeriod,
+    accountingMetrics.totalOrdersAmount,
+    accountingMetrics.ordersCount,
+    currentPeriodPayablesMetrics.totalAmount
+  ]);
+
   // Distribuição de Categorias de Despesas para o Gráfico de Rosca/Donut
   const payablesCategoryData = useMemo(() => {
     const categories = [
@@ -1725,6 +1813,180 @@ export default function DashboardView({ db, onNavigate, businessType = 'OFICINA'
               <p className="text-[11px] text-slate-500 mt-1">Valor médio por passagem na oficina</p>
             </div>
           </>
+        )}
+      </div>
+
+      {/* ========================================================================= */}
+      {/* WIDGET: SALDO PROJETADO DO MÊS (RECEITAS PREVISTAS X DESPESAS A PAGAR) */}
+      {/* ========================================================================= */}
+      <div 
+        className={`p-6 rounded-2xl border transition-all shadow-xs space-y-5 ${
+          projectedBalanceMetrics.isNegative 
+            ? 'bg-gradient-to-br from-rose-50/70 via-white to-rose-50/30 border-rose-200' 
+            : 'bg-gradient-to-br from-emerald-50/70 via-white to-emerald-50/30 border-emerald-200'
+        }`}
+        id="projected-monthly-balance-widget"
+        data-testid="projected-monthly-balance-widget"
+      >
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200/80 pb-4">
+          <div className="flex items-center gap-3">
+            <div className={`p-2.5 rounded-xl border shadow-2xs ${
+              projectedBalanceMetrics.isNegative 
+                ? 'bg-rose-100 text-rose-600 border-rose-200' 
+                : 'bg-emerald-100 text-emerald-600 border-emerald-200'
+            }`}>
+              <Wallet className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="text-base font-bold text-slate-900 font-display">
+                  Saldo Projetado do Mês
+                </h3>
+                {projectedBalanceMetrics.isNegative ? (
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-100 text-rose-700 border border-rose-300 flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse"></span>
+                    Déficit Projetado
+                  </span>
+                ) : (
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 border border-emerald-300 flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                    Superávit Projetado
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Cálculo da diferença entre as receitas previstas e as despesas a pagar para <strong>{currentPeriodOption.label}</strong>.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-bold text-slate-700 bg-white px-3 py-1.5 rounded-lg border border-slate-200 shadow-2xs">
+              {currentPeriodOption.shortLabel}
+            </span>
+            {onNavigate && (
+              <button
+                id="btn-goto-financial-from-projected"
+                onClick={() => onNavigate('financial')}
+                className="px-3 py-1.5 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 rounded-lg transition shadow-2xs flex items-center gap-1.5 cursor-pointer"
+                title="Abrir Fluxo de Caixa & DRE"
+              >
+                <span>Fluxo de Caixa</span>
+                <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Grid dos 3 Componentes da Equação: (+) Receitas Previstas (-) Despesas a Pagar (=) Saldo Projetado */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {/* Card 1: Receitas Previstas */}
+          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs flex flex-col justify-between" id="card-projected-revenues">
+            <div className="flex items-center justify-between text-xs font-bold text-slate-700 mb-1">
+              <span className="flex items-center gap-1.5 text-emerald-700">
+                <ArrowUpRight className="w-4 h-4 text-emerald-600" />
+                (+) Receitas Previstas
+              </span>
+              <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded-md text-[11px] font-semibold">
+                {projectedBalanceMetrics.ordersCount} pedidos/itens
+              </span>
+            </div>
+            <div className="text-2xl font-black text-slate-900 font-mono my-2 tracking-tight">
+              {formatCurrency(projectedBalanceMetrics.totalProjectedRevenues)}
+            </div>
+            <div className="text-[11px] text-slate-500 pt-2 border-t border-slate-100 flex items-center justify-between">
+              <span>Balcão/OSs: {formatCurrency(projectedBalanceMetrics.salesTotal + projectedBalanceMetrics.serviceOrdersTotal)}</span>
+              {projectedBalanceMetrics.receivablesPending > 0 && (
+                <span className="text-indigo-600 font-medium" title="Títulos a receber no período">
+                  Pendentes: {formatCurrency(projectedBalanceMetrics.receivablesPending)}
+                </span>
+              )}
+            </div>
+          </div>
+
+          {/* Card 2: Despesas a Pagar */}
+          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs flex flex-col justify-between" id="card-projected-payables">
+            <div className="flex items-center justify-between text-xs font-bold text-slate-700 mb-1">
+              <span className="flex items-center gap-1.5 text-rose-700">
+                <ArrowDownRight className="w-4 h-4 text-rose-600" />
+                (-) Despesas a Pagar
+              </span>
+              <span className="bg-rose-50 text-rose-700 border border-rose-200 px-2 py-0.5 rounded-md text-[11px] font-semibold">
+                Fixas + Variáveis
+              </span>
+            </div>
+            <div className="text-2xl font-black text-rose-600 font-mono my-2 tracking-tight">
+              - {formatCurrency(projectedBalanceMetrics.totalExpensesToPay)}
+            </div>
+            <div className="text-[11px] text-slate-500 pt-2 border-t border-slate-100 flex items-center justify-between">
+              <span>Fixas: {currentPeriodPayablesMetrics.fixedPercent}%</span>
+              <span>Variáveis: {currentPeriodPayablesMetrics.variablePercent}%</span>
+              <span>Pendente: {formatCurrency(currentPeriodPayablesMetrics.totalPending)}</span>
+            </div>
+          </div>
+
+          {/* Card 3: Saldo Projetado do Mês (Destacado em vermelho se negativo) */}
+          <div 
+            className={`p-4 rounded-xl border-2 shadow-xs flex flex-col justify-between ${
+              projectedBalanceMetrics.isNegative 
+                ? 'bg-rose-50/90 border-rose-300 text-rose-900' 
+                : 'bg-emerald-50/90 border-emerald-300 text-emerald-900'
+            }`}
+            id="kpi-projected-monthly-balance-card"
+          >
+            <div className="flex items-center justify-between text-xs font-bold mb-1">
+              <span className="flex items-center gap-1.5">
+                <Scale className={`w-4 h-4 ${projectedBalanceMetrics.isNegative ? 'text-rose-600' : 'text-emerald-600'}`} />
+                (=) Saldo Projetado do Mês
+              </span>
+              <span className={`px-2 py-0.5 rounded-md text-[11px] font-extrabold ${
+                projectedBalanceMetrics.isNegative 
+                  ? 'bg-rose-200 text-rose-800' 
+                  : 'bg-emerald-200 text-emerald-800'
+              }`}>
+                {projectedBalanceMetrics.isNegative ? 'Déficit' : 'Superávit'}
+              </span>
+            </div>
+            <div 
+              className={`text-2xl lg:text-3xl font-black font-mono my-2 tracking-tight ${
+                projectedBalanceMetrics.isNegative ? 'text-rose-600' : 'text-emerald-700'
+              }`}
+            >
+              {projectedBalanceMetrics.projectedBalance >= 0 ? '+' : ''} {formatCurrency(projectedBalanceMetrics.projectedBalance)}
+            </div>
+            <div className="text-[11px] pt-2 border-t border-slate-200/60 flex items-center justify-between font-medium">
+              <span>Cobertura: <strong>{projectedBalanceMetrics.coverageRatePercent}%</strong></span>
+              <span>Margem: <strong>{projectedBalanceMetrics.marginPercent}%</strong></span>
+            </div>
+          </div>
+        </div>
+
+        {/* Faixa de Alerta Condicional se o saldo for negativo */}
+        {projectedBalanceMetrics.isNegative && (
+          <div className="p-3.5 rounded-xl bg-rose-100/70 border border-rose-300/80 text-xs text-rose-800 flex items-start gap-2.5 shadow-2xs" id="alert-negative-projected-balance">
+            <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+            <div className="flex-1 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div>
+                <strong className="font-bold">Atenção ao Saldo Negativo:</strong> As despesas a pagar projetadas ({formatCurrency(projectedBalanceMetrics.totalExpensesToPay)}) excedem as receitas previstas ({formatCurrency(projectedBalanceMetrics.totalProjectedRevenues)}) em <strong>{formatCurrency(Math.abs(projectedBalanceMetrics.projectedBalance))}</strong> no período.
+              </div>
+              {onNavigate && (
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    onClick={() => onNavigate('accounts_payable')}
+                    className="px-2.5 py-1 bg-white hover:bg-rose-50 text-rose-700 border border-rose-300 rounded-lg font-bold text-[11px] transition cursor-pointer"
+                  >
+                    Gerenciar Contas a Pagar
+                  </button>
+                  <button
+                    onClick={() => onNavigate('accounts_receivable')}
+                    className="px-2.5 py-1 bg-rose-700 hover:bg-rose-800 text-white rounded-lg font-bold text-[11px] transition cursor-pointer"
+                  >
+                    Cobrar Títulos
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
         )}
       </div>
 

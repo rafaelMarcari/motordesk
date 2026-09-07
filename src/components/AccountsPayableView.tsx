@@ -4,30 +4,42 @@
  * MOTOR DESK - MÓDULO DE CONTAS A PAGAR, GESTÃO DE BOLETOS, NOTAS FISCAIS E BAIXAS DE PARCELAS
  */
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useMemo } from 'react';
 import { 
   Plus, Search, DollarSign, AlertCircle, CheckCircle, 
   CreditCard, Calendar, X, FileText, ArrowDownRight, Tag, Eye,
   Upload, Paperclip, Receipt, FileCode, Check, Copy, Download,
   Layers, Clock, ArrowRight, ShieldCheck, ChevronDown, ChevronUp,
-  FileCheck, Printer
+  FileCheck, Printer, FileSpreadsheet, CheckSquare, Square, Trash2,
+  FolderPlus, UserCheck, Calculator, Sparkles, CheckCheck
 } from 'lucide-react';
-import { AccountPayable, AccountInstallment, AccountPayableAttachment, Supplier, User, FinancialTransaction } from '../types';
+import { 
+  AccountPayable, 
+  AccountInstallment, 
+  AccountPayableAttachment, 
+  Supplier, 
+  User, 
+  FinancialTransaction,
+  ExpenseCategoryItem 
+} from '../types';
 import { AppDatabase } from '../data/mockData';
 import { getBankMetadata } from '../utils/boletoEngine';
+import { calculateEmployeeCommission } from '../utils/commissionEngine';
 import AccountPayableDocumentModal from './AccountPayableDocumentModal';
 import AccountPayableSettleModal from './AccountPayableSettleModal';
+import { RepresentativeReconciliationSplitModal } from './RepresentativeReconciliationSplitModal';
 
 interface AccountsPayableViewProps {
   db: AppDatabase;
   currentUser: User;
-  onSavePayables: (payables: AccountPayable[], transactions: FinancialTransaction[]) => void;
+  onSavePayables: (payables: AccountPayable[], transactions: FinancialTransaction[], categories?: ExpenseCategoryItem[]) => void;
   onAddHistoryLog: (type: 'budget' | 'service_order' | 'payment' | 'user_activity' | 'system', title: string, description: string, clientId: string, vehicleId: string) => void;
   setUnsavedTask: (task: {
     type: 'client' | 'vehicle' | 'budget' | 'os' | 'user' | null;
     saveCallback: () => void;
     discardCallback: () => void;
   } | null) => void;
+  onSaveFullDatabase?: (updatedDb: AppDatabase) => void;
 }
 
 export default function AccountsPayableView({
@@ -35,7 +47,8 @@ export default function AccountsPayableView({
   currentUser,
   onSavePayables,
   onAddHistoryLog,
-  setUnsavedTask
+  setUnsavedTask,
+  onSaveFullDatabase
 }: AccountsPayableViewProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'partially_paid' | 'paid'>('all');
@@ -47,6 +60,21 @@ export default function AccountsPayableView({
   const [isPayModalOpen, setIsPayModalOpen] = useState(false);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
   const [isDocModalOpen, setIsDocModalOpen] = useState(false);
+  const [isSplitReconciliationOpen, setIsSplitReconciliationOpen] = useState(false);
+
+  // Multi-Selection & Batch Payment State
+  const [selectedPayableIds, setSelectedPayableIds] = useState<string[]>([]);
+  const [isBatchPayModalOpen, setIsBatchPayModalOpen] = useState(false);
+  const [batchPayDate, setBatchPayDate] = useState(new Date().toISOString().split('T')[0]);
+  const [batchPaymentMethod, setBatchPaymentMethod] = useState('PIX');
+  const [batchBankAccount, setBatchBankAccount] = useState('Conta Corrente Principal');
+  const [batchReceiptNotes, setBatchReceiptNotes] = useState('');
+
+  // Category Management State
+  const [isNewCategoryModalOpen, setIsNewCategoryModalOpen] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState('');
+  const [newCategoryColor, setNewCategoryColor] = useState('#3b82f6');
+  const [categoryToDelete, setCategoryToDelete] = useState<ExpenseCategoryItem | null>(null);
 
   // New Payable Form State
   const [supplierId, setSupplierId] = useState('');
@@ -58,6 +86,9 @@ export default function AccountsPayableView({
   const [installmentsCount, setInstallmentsCount] = useState('1');
   const [firstDueDate, setFirstDueDate] = useState(new Date().toISOString().split('T')[0]);
   const [notes, setNotes] = useState('');
+
+  // Employee Selection for Payroll / Commission
+  const [selectedEmployeeId, setSelectedEmployeeId] = useState('');
   
   // Fiscal & Boleto Extra Fields
   const [nfeNumber, setNfeNumber] = useState('');
@@ -83,17 +114,38 @@ export default function AccountsPayableView({
   const payables = db.accountsPayable || [];
   const suppliers = db.suppliers || [];
 
-  const CATEGORIES = [
-    'Peças / Fornecedores',
-    'Aluguel do Imóvel',
-    'Energia / Água / Internet',
-    'Ferramentas & Equipamentos',
-    'Salários & Comissões',
-    'Impostos & Taxas',
-    'Marketing & Anúncios',
-    'Manutenção da Oficina',
-    'Outras Despesas'
-  ];
+  // Dynamic Categories (from db or system defaults)
+  const categoriesList: ExpenseCategoryItem[] = useMemo(() => {
+    if (db.expenseCategories && db.expenseCategories.length > 0) {
+      return db.expenseCategories;
+    }
+    return [
+      { id: 'cat-pecas', name: 'Peças / Fornecedores', color: '#3b82f6', isSystemDefault: true },
+      { id: 'cat-salarios', name: 'Salários & Comissões', color: '#10b981', isSystemDefault: true },
+      { id: 'cat-aluguel', name: 'Aluguel do Imóvel', color: '#8b5cf6', isSystemDefault: true },
+      { id: 'cat-energia', name: 'Energia / Água / Internet', color: '#f59e0b', isSystemDefault: true },
+      { id: 'cat-ferramentas', name: 'Ferramentas & Equipamentos', color: '#6366f1', isSystemDefault: true },
+      { id: 'cat-impostos', name: 'Impostos & Taxas', color: '#ef4444', isSystemDefault: true },
+      { id: 'cat-marketing', name: 'Marketing & Anúncios', color: '#ec4899', isSystemDefault: true },
+      { id: 'cat-manutencao', name: 'Manutenção da Oficina', color: '#14b8a6', isSystemDefault: true },
+      { id: 'cat-outras', name: 'Outras Despesas', color: '#64748b', isSystemDefault: true }
+    ];
+  }, [db.expenseCategories]);
+
+  // Active Company Employees
+  const activeEmployees = useMemo(() => {
+    const userCompany = currentUser.companyId || 'comp-1';
+    return (db.users || []).filter(u => u.active !== false && (!u.companyId || u.companyId === userCompany));
+  }, [db.users, currentUser.companyId]);
+
+  // Commission Calculation for Selected Employee
+  const selectedEmployeeCommissionData = useMemo(() => {
+    if (!selectedEmployeeId) return null;
+    const emp = activeEmployees.find(u => u.id === selectedEmployeeId);
+    if (!emp) return null;
+    const currentMonth = new Date().toISOString().slice(0, 7);
+    return calculateEmployeeCommission(emp, db, currentMonth);
+  }, [selectedEmployeeId, activeEmployees, db]);
 
   // Helper to toggle expanded row
   const toggleRowExpansion = (id: string) => {
@@ -122,6 +174,13 @@ export default function AccountsPayableView({
   const totalPaid = payables.reduce((sum, item) => sum + item.paidAmount, 0);
   const totalRemaining = payables.reduce((sum, item) => sum + item.remainingAmount, 0);
 
+  // Selected Payables Sum
+  const selectedPayablesSum = useMemo(() => {
+    return payables
+      .filter(p => selectedPayableIds.includes(p.id))
+      .reduce((sum, p) => sum + (p.remainingAmount > 0 ? p.remainingAmount : p.totalAmount), 0);
+  }, [payables, selectedPayableIds]);
+
   const resetForm = () => {
     setSupplierId('');
     setSupplierNameInput('');
@@ -132,6 +191,7 @@ export default function AccountsPayableView({
     setInstallmentsCount('1');
     setFirstDueDate(new Date().toISOString().split('T')[0]);
     setNotes('');
+    setSelectedEmployeeId('');
     setNfeNumber('');
     setNfeSeries('1');
     setNfeAccessKey('');
@@ -144,6 +204,105 @@ export default function AccountsPayableView({
     setErrorMsg('');
     setIsFormOpen(false);
     setUnsavedTask(null);
+  };
+
+  // Category Handlers
+  const handleAddCategory = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newCategoryName.trim()) return;
+    const exists = categoriesList.some(c => c.name.toLowerCase() === newCategoryName.trim().toLowerCase());
+    if (exists) {
+      setErrorMsg('Esta categoria já existe!');
+      return;
+    }
+    const newCat: ExpenseCategoryItem = {
+      id: `cat-${Date.now()}`,
+      name: newCategoryName.trim(),
+      color: newCategoryColor || '#3b82f6',
+      isSystemDefault: false,
+      companyId: currentUser.companyId || 'comp-1'
+    };
+    const updatedCategories = [...categoriesList, newCat];
+    onSavePayables(payables, db.financialTransactions || [], updatedCategories);
+    setNewCategoryName('');
+    setIsNewCategoryModalOpen(false);
+    setCategory(newCat.name);
+    setCategoryFilter(newCat.name);
+    setSuccessMsg(`Categoria "${newCat.name}" cadastrada com sucesso!`);
+    setTimeout(() => setSuccessMsg(''), 4000);
+  };
+
+  const handleConfirmDeleteCategory = () => {
+    if (!categoryToDelete) return;
+    const updatedCategories = categoriesList.filter(c => c.id !== categoryToDelete.id);
+    const updatedPayables = payables.map(p => p.category === categoryToDelete.name ? { ...p, category: 'Outras Despesas' } : p);
+    onSavePayables(updatedPayables, db.financialTransactions || [], updatedCategories);
+    if (categoryFilter === categoryToDelete.name) {
+      setCategoryFilter('all');
+    }
+    setSuccessMsg(`Categoria "${categoryToDelete.name}" removida. Títulos foram reclassificados.`);
+    setTimeout(() => setSuccessMsg(''), 4000);
+    setCategoryToDelete(null);
+  };
+
+  // Batch Payment Execution
+  const handleConfirmBatchPayment = () => {
+    if (selectedPayableIds.length === 0) return;
+    const dateToUse = batchPayDate || new Date().toISOString().split('T')[0];
+    const methodToUse = batchPaymentMethod || 'PIX';
+
+    const selectedPayables = payables.filter(p => selectedPayableIds.includes(p.id));
+    const totalLiquidated = selectedPayables.reduce((acc, p) => acc + (p.remainingAmount > 0 ? p.remainingAmount : p.totalAmount), 0);
+
+    const updatedPayables = payables.map(p => {
+      if (!selectedPayableIds.includes(p.id)) return p;
+      const updatedInstallments = (p.installments || []).map(inst => ({
+        ...inst,
+        paidAmount: inst.amount,
+        status: 'paid' as const,
+        paymentDate: dateToUse,
+        paymentMethod: methodToUse,
+        receiptNotes: batchReceiptNotes || `Baixa em lote via ${methodToUse} (${currentUser.name})`
+      }));
+
+      return {
+        ...p,
+        paidAmount: p.totalAmount,
+        remainingAmount: 0,
+        status: 'paid' as const,
+        installments: updatedInstallments
+      };
+    });
+
+    const newTransactions: FinancialTransaction[] = selectedPayables.map(p => ({
+      id: `ft-batch-${Date.now()}-${p.id}`,
+      type: 'expense',
+      category: p.category || 'Despesas Diversas',
+      description: `Baixa em Lote: ${p.code} - ${p.supplierName} (${p.description})`,
+      amount: p.remainingAmount > 0 ? p.remainingAmount : p.totalAmount,
+      date: dateToUse,
+      companyId: p.companyId || currentUser.companyId || 'comp-1',
+      paymentMethod: methodToUse,
+      referenceId: p.id,
+      supplierId: p.supplierId,
+      createdByName: currentUser.name
+    }));
+
+    const updatedTransactions = [...newTransactions, ...(db.financialTransactions || [])];
+    onSavePayables(updatedPayables, updatedTransactions, categoriesList);
+
+    onAddHistoryLog(
+      'payment',
+      'Pagamento em Lote Realizado',
+      `Liquidadas ${selectedPayableIds.length} contas a pagar via ${methodToUse}. Total: R$ ${totalLiquidated.toFixed(2)}.`,
+      '',
+      ''
+    );
+
+    setSelectedPayableIds([]);
+    setIsBatchPayModalOpen(false);
+    setSuccessMsg(`Sucesso: ${selectedPayableIds.length} títulos quitados via ${methodToUse} (Total R$ ${totalLiquidated.toLocaleString('pt-BR', { minimumFractionDigits: 2 })})!`);
+    setTimeout(() => setSuccessMsg(''), 4500);
   };
 
   const handleOpenNewForm = () => {
@@ -379,11 +538,14 @@ export default function AccountsPayableView({
       boletoBarcode: boletoBarcode.trim() || undefined,
       boletoBankName: boletoBankName.trim() || undefined,
       paymentCondition: paymentCondition.trim() || (numInstallments > 1 ? `${numInstallments}x Parcelado` : '1x À Vista / Boleto'),
-      attachments: formAttachments.length > 0 ? formAttachments : undefined
+      attachments: formAttachments.length > 0 ? formAttachments : undefined,
+      employeeId: selectedEmployeeId || undefined,
+      employeeName: selectedEmployeeId ? (activeEmployees.find(u => u.id === selectedEmployeeId)?.name) : undefined,
+      commissionMonthRef: selectedEmployeeId ? new Date().toISOString().slice(0, 7) : undefined
     };
 
     const updatedPayablesList = [newPayable, ...payables];
-    onSavePayables(updatedPayablesList, db.financialTransactions || []);
+    onSavePayables(updatedPayablesList, db.financialTransactions || [], categoriesList);
     onAddHistoryLog(
       'payment', 
       'Conta a Pagar Lançada', 
@@ -589,13 +751,25 @@ export default function AccountsPayableView({
           </p>
         </div>
         {!isFormOpen && (
-          <button 
-            id="btn-add-payable"
-            onClick={handleOpenNewForm} 
-            className="mt-4 sm:mt-0 flex items-center justify-center gap-2 bg-rose-600 text-white px-4 py-2.5 rounded-xl text-sm font-semibold hover:bg-rose-700 transition shadow-xs cursor-pointer"
-          >
-            <Plus className="w-4 h-4" /> Lançar Conta a Pagar / Importar NF-e
-          </button>
+          <div className="mt-4 sm:mt-0 flex flex-wrap items-center gap-2.5">
+            <button
+              id="btn-open-reconciliation"
+              type="button"
+              onClick={() => setIsSplitReconciliationOpen(true)}
+              className="flex items-center justify-center gap-2 bg-emerald-700 text-white px-4 py-2.5 rounded-xl text-sm font-semibold hover:bg-emerald-800 transition shadow-xs cursor-pointer"
+            >
+              <FileSpreadsheet className="w-4 h-4 text-emerald-300" />
+              <span>Conciliar Planilha da Representada</span>
+            </button>
+            <button 
+              id="btn-add-payable"
+              type="button"
+              onClick={handleOpenNewForm} 
+              className="flex items-center justify-center gap-2 bg-rose-600 text-white px-4 py-2.5 rounded-xl text-sm font-semibold hover:bg-rose-700 transition shadow-xs cursor-pointer"
+            >
+              <Plus className="w-4 h-4" /> Lançar Conta a Pagar / Importar NF-e
+            </button>
+          </div>
         )}
       </div>
 
@@ -761,18 +935,153 @@ export default function AccountsPayableView({
 
             {/* Categoria */}
             <div className="space-y-1.5">
-              <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">Categoria da Despesa *</label>
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">Categoria da Despesa *</label>
+                <button
+                  type="button"
+                  onClick={() => setIsNewCategoryModalOpen(true)}
+                  className="text-[11px] text-rose-600 hover:text-rose-700 font-bold flex items-center gap-1 hover:underline cursor-pointer"
+                >
+                  <Plus className="w-3 h-3" /> Nova Categoria
+                </button>
+              </div>
               <select 
                 id="payable-category-select"
                 value={category}
-                onChange={e => setCategory(e.target.value)}
+                onChange={e => {
+                  setCategory(e.target.value);
+                  if (!e.target.value.toLowerCase().includes('salário') && !e.target.value.toLowerCase().includes('comiss')) {
+                    setSelectedEmployeeId('');
+                  }
+                }}
                 className="w-full text-xs px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-hidden focus:border-rose-500 font-semibold"
               >
-                {CATEGORIES.map(cat => (
-                  <option key={cat} value={cat}>{cat}</option>
+                {categoriesList.map(cat => (
+                  <option key={cat.id} value={cat.name}>{cat.name}</option>
                 ))}
               </select>
             </div>
+
+            {/* SELEÇÃO DE COLABORADOR & CÁLCULO DE COMISSÃO / FOLHA */}
+            {(category.toLowerCase().includes('salário') || category.toLowerCase().includes('comiss')) && (
+              <div className="col-span-1 md:col-span-2 p-4 bg-emerald-50/70 border border-emerald-200 rounded-2xl space-y-3 animate-fade-in" id="employee-payroll-box">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 border-b border-emerald-200 pb-2">
+                  <div className="flex items-center gap-2">
+                    <UserCheck className="w-5 h-5 text-emerald-700" />
+                    <div>
+                      <h4 className="text-xs font-bold text-emerald-900 uppercase tracking-wider">
+                        Vincular Colaborador / Vendedor & Apuração de Comissões
+                      </h4>
+                      <p className="text-[11px] text-emerald-700">
+                        O sistema apura automaticamente o volume do mês ({new Date().toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}) e sugere os valores para pagamento.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-bold text-slate-700 uppercase">Selecionar Colaborador *</label>
+                    <select
+                      id="payable-employee-select"
+                      value={selectedEmployeeId}
+                      onChange={e => {
+                        const empId = e.target.value;
+                        setSelectedEmployeeId(empId);
+                        const emp = activeEmployees.find(u => u.id === empId);
+                        if (emp) {
+                          setSupplierNameInput(emp.name);
+                          const commData = calculateEmployeeCommission(emp, db, new Date().toISOString().slice(0, 7));
+                          const suggested = commData.suggestedTotalPayout > 0 ? commData.suggestedTotalPayout : (emp.baseSalary || 0);
+                          if (suggested > 0) setTotalAmount(suggested.toFixed(2));
+                          setDescription(`Pagamento Salário / Comissões - ${emp.name} (${new Date().toLocaleDateString('pt-BR', { month: 'short', year: 'numeric' })})`);
+                          setNotes(`Beneficiário: ${emp.name} | Cargo: ${emp.jobTitle || emp.role} | PIX: ${emp.pixKey || 'Não cadastrado'} (${emp.pixKeyType || 'Chave'}) ${emp.bankName ? `| Banco: ${emp.bankName} Ag: ${emp.bankAgency} CC: ${emp.bankAccount}` : ''}`);
+                        }
+                      }}
+                      className="w-full text-xs px-3 py-2 bg-white border border-emerald-300 rounded-xl focus:outline-hidden focus:border-emerald-600 font-semibold text-slate-800"
+                    >
+                      <option value="">-- Escolha um colaborador --</option>
+                      {activeEmployees.map(emp => (
+                        <option key={emp.id} value={emp.id}>
+                          {emp.name} ({emp.jobTitle || emp.role.toUpperCase()}) - {emp.commissionPercent || 0}% comissão
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {selectedEmployeeCommissionData && (
+                    <div className="p-3 bg-white rounded-xl border border-emerald-200 text-xs space-y-1 font-sans">
+                      <div className="flex justify-between items-center text-[11px] text-slate-500">
+                        <span>Cargo / Perfil:</span>
+                        <span className="font-bold text-slate-800">{selectedEmployeeCommissionData.user.jobTitle || selectedEmployeeCommissionData.user.role}</span>
+                      </div>
+                      <div className="flex justify-between items-center text-[11px] text-slate-500">
+                        <span>Salário Base:</span>
+                        <span className="font-mono font-bold text-slate-800">R$ {selectedEmployeeCommissionData.baseSalary.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                      </div>
+                      <div className="flex justify-between items-center text-[11px] text-slate-500">
+                        <span>Comissão Cadastrada:</span>
+                        <span className="font-bold text-emerald-700">{selectedEmployeeCommissionData.commissionPercent}% (Base: {selectedEmployeeCommissionData.commissionType})</span>
+                      </div>
+                      <div className="flex justify-between items-center text-[11px] text-slate-500">
+                        <span>Volume Produzido no Mês:</span>
+                        <span className="font-mono font-semibold text-slate-700">R$ {selectedEmployeeCommissionData.totalVolumeEligible.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                      </div>
+                      <div className="flex justify-between items-center text-xs font-bold text-emerald-900 pt-1 border-t border-slate-100">
+                        <span>Comissão Acumulada no Mês:</span>
+                        <span className="font-mono text-emerald-700 text-sm">R$ {selectedEmployeeCommissionData.totalCommission.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Sugestões de Valor com 1 Clique */}
+                {selectedEmployeeCommissionData && (
+                  <div className="space-y-1.5 pt-1">
+                    <p className="text-[11px] font-bold text-emerald-900 uppercase">Sugestões de Pagamento (Clique para preencher o valor):</p>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setTotalAmount(selectedEmployeeCommissionData.totalCommission.toFixed(2));
+                          setDescription(`Pagamento de Comissões - ${selectedEmployeeCommissionData.user.name} (${new Date().toLocaleDateString('pt-BR', { month: 'short', year: 'numeric' })})`);
+                        }}
+                        className="px-3 py-1.5 bg-white hover:bg-emerald-100 border border-emerald-300 rounded-lg text-xs font-bold text-emerald-800 transition flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                      >
+                        <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
+                        Usar Somente Comissão: R$ {selectedEmployeeCommissionData.totalCommission.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                      </button>
+
+                      {selectedEmployeeCommissionData.baseSalary > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setTotalAmount(selectedEmployeeCommissionData.baseSalary.toFixed(2));
+                            setDescription(`Pagamento de Salário Base - ${selectedEmployeeCommissionData.user.name} (${new Date().toLocaleDateString('pt-BR', { month: 'short', year: 'numeric' })})`);
+                          }}
+                          className="px-3 py-1.5 bg-white hover:bg-emerald-100 border border-emerald-300 rounded-lg text-xs font-bold text-emerald-800 transition flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                        >
+                          <DollarSign className="w-3.5 h-3.5 text-emerald-600" />
+                          Usar Salário Base: R$ {selectedEmployeeCommissionData.baseSalary.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                        </button>
+                      )}
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setTotalAmount(selectedEmployeeCommissionData.suggestedTotalPayout.toFixed(2));
+                          setDescription(`Salário Base + Comissões - ${selectedEmployeeCommissionData.user.name} (${new Date().toLocaleDateString('pt-BR', { month: 'short', year: 'numeric' })})`);
+                        }}
+                        className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-xs"
+                      >
+                        <CheckCheck className="w-3.5 h-3.5" />
+                        Usar Total Geral Sugerido: R$ {selectedEmployeeCommissionData.suggestedTotalPayout.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Descrição */}
             <div className="space-y-1.5">
@@ -983,6 +1292,88 @@ export default function AccountsPayableView({
       {!isFormOpen && (
         <div className="bg-white border border-slate-100 rounded-3xl shadow-xs overflow-hidden" id="payables-list-panel">
           
+          {/* SPREADSHEET-STYLE CATEGORY TABS ("como se fosse um título de planilha") */}
+          <div className="border-b border-slate-200 bg-slate-100/90 px-3 pt-2.5 flex items-center gap-1.5 overflow-x-auto select-none" id="payable-spreadsheet-tabs">
+            <button
+              type="button"
+              onClick={() => setCategoryFilter('all')}
+              className={`px-3.5 py-2 text-xs font-bold rounded-t-xl transition flex items-center gap-2 border-t-2 shrink-0 cursor-pointer ${
+                categoryFilter === 'all'
+                  ? 'bg-white text-rose-700 border-rose-600 shadow-xs'
+                  : 'bg-slate-200/70 hover:bg-white/70 text-slate-600 border-transparent'
+              }`}
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5" />
+              <span>Todas as Despesas</span>
+              <span className="px-1.5 py-0.5 text-[10px] rounded-full bg-slate-100 font-mono text-slate-700">
+                {payables.length}
+              </span>
+            </button>
+
+            {categoriesList.map(cat => {
+              const isSelected = categoryFilter === cat.name;
+              const catPayables = payables.filter(p => p.category === cat.name);
+              const catTotal = catPayables.reduce((acc, p) => acc + (p.remainingAmount > 0 ? p.remainingAmount : p.totalAmount), 0);
+
+              return (
+                <div
+                  key={cat.id}
+                  className={`group relative flex items-center rounded-t-xl transition border-t-2 shrink-0 ${
+                    isSelected
+                      ? 'bg-white text-slate-900 border-rose-600 shadow-xs'
+                      : 'bg-slate-200/70 hover:bg-white/70 text-slate-600 border-transparent'
+                  }`}
+                >
+                  <button
+                    type="button"
+                    onClick={() => setCategoryFilter(cat.name)}
+                    className="px-3 py-2 text-xs font-bold flex items-center gap-2 cursor-pointer"
+                  >
+                    <span
+                      className="w-2.5 h-2.5 rounded-full shrink-0"
+                      style={{ backgroundColor: cat.color || '#64748b' }}
+                    />
+                    <span className="whitespace-nowrap">{cat.name}</span>
+                    <span className="px-1.5 py-0.5 text-[10px] rounded-full bg-slate-100 font-mono text-slate-700">
+                      {catPayables.length}
+                    </span>
+                    {catTotal > 0 && (
+                      <span className="text-[10px] font-mono text-slate-400 hidden lg:inline">
+                        R$ {catTotal.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}
+                      </span>
+                    )}
+                  </button>
+
+                  {/* Botão de excluir categoria customizada */}
+                  {!cat.isSystemDefault && (
+                    <button
+                      type="button"
+                      title={`Remover categoria "${cat.name}"`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setCategoryToDelete(cat);
+                      }}
+                      className="pr-2 text-slate-400 hover:text-rose-600 opacity-60 hover:opacity-100 transition p-1 cursor-pointer"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+
+            {/* Cadastrar Nova Aba/Categoria */}
+            <button
+              type="button"
+              onClick={() => setIsNewCategoryModalOpen(true)}
+              className="px-3 py-2 text-xs font-bold text-slate-600 hover:text-rose-600 hover:bg-white/80 rounded-t-xl transition flex items-center gap-1.5 border-t-2 border-transparent shrink-0 cursor-pointer"
+              title="Cadastrar Nova Categoria de Despesa"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span className="whitespace-nowrap">Nova Categoria</span>
+            </button>
+          </div>
+
           {/* Controls Bar */}
           <div className="p-4 border-b border-slate-100 bg-slate-50 flex flex-col sm:flex-row items-center justify-between gap-3">
             <div className="relative w-full max-w-md">
@@ -1005,8 +1396,8 @@ export default function AccountsPayableView({
                 className="text-xs px-3 py-2 bg-white border border-slate-200 rounded-xl focus:outline-hidden focus:border-rose-500 transition font-semibold"
               >
                 <option value="all">Todas as Categorias</option>
-                {CATEGORIES.map(cat => (
-                  <option key={cat} value={cat}>{cat}</option>
+                {categoriesList.map(cat => (
+                  <option key={cat.id} value={cat.name}>{cat.name}</option>
                 ))}
               </select>
 
@@ -1024,6 +1415,43 @@ export default function AccountsPayableView({
             </div>
           </div>
 
+          {/* BARRA DE AÇÃO EM LOTE PARA SELEÇÃO & PAGAMENTO */}
+          {selectedPayableIds.length > 0 && (
+            <div className="bg-rose-50 border-b border-rose-200 px-4 py-3 flex flex-col sm:flex-row items-center justify-between gap-3 animate-fade-in" id="batch-selection-bar">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-lg bg-rose-600 text-white flex items-center justify-center font-bold text-xs">
+                  {selectedPayableIds.length}
+                </div>
+                <div>
+                  <p className="text-xs font-bold text-slate-900">
+                    {selectedPayableIds.length} conta(s) selecionada(s)
+                  </p>
+                  <p className="text-xs text-rose-700 font-mono font-bold">
+                    Total Selecionado: R$ {selectedPayablesSum.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsBatchPayModalOpen(true)}
+                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl shadow-xs transition flex items-center gap-2 cursor-pointer"
+                >
+                  <CheckCircle className="w-4 h-4" />
+                  Fazer Pagamento das Selecionadas ({selectedPayableIds.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSelectedPayableIds([])}
+                  className="px-3 py-2 bg-white hover:bg-slate-100 text-slate-600 text-xs font-semibold rounded-xl border border-slate-200 transition cursor-pointer"
+                >
+                  Desmarcar Todas
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Payables Table */}
           {filteredPayables.length === 0 ? (
             <div className="p-12 text-center text-slate-400" id="payables-empty-state">
@@ -1036,6 +1464,23 @@ export default function AccountsPayableView({
               <table className="w-full text-left border-collapse" id="payables-table">
                 <thead>
                   <tr className="border-b border-slate-100 text-xs font-semibold uppercase text-slate-400 bg-slate-50/50">
+                    <th className="p-4 w-10 text-center">
+                      <input
+                        type="checkbox"
+                        aria-label="Selecionar todas as contas visíveis"
+                        checked={filteredPayables.length > 0 && filteredPayables.every(p => selectedPayableIds.includes(p.id))}
+                        onChange={e => {
+                          if (e.target.checked) {
+                            const visibleIds = filteredPayables.map(p => p.id);
+                            setSelectedPayableIds(Array.from(new Set([...selectedPayableIds, ...visibleIds])));
+                          } else {
+                            const visibleIds = new Set(filteredPayables.map(p => p.id));
+                            setSelectedPayableIds(selectedPayableIds.filter(id => !visibleIds.has(id)));
+                          }
+                        }}
+                        className="rounded border-slate-300 text-rose-600 focus:ring-rose-500 w-4 h-4 cursor-pointer"
+                      />
+                    </th>
                     <th className="p-4">Código / Fornecedor</th>
                     <th className="p-4">Despesa & Documentos</th>
                     <th className="p-4">Parcelamento & Status</th>
@@ -1058,6 +1503,23 @@ export default function AccountsPayableView({
                       <React.Fragment key={item.id}>
                         <tr className="hover:bg-slate-50/60 transition duration-150" id={`payable-row-${item.id}`}>
                           
+                          {/* Checkbox de Seleção */}
+                          <td className="p-4 align-top text-center">
+                            <input
+                              type="checkbox"
+                              aria-label={`Selecionar conta ${item.code}`}
+                              checked={selectedPayableIds.includes(item.id)}
+                              onChange={e => {
+                                if (e.target.checked) {
+                                  setSelectedPayableIds(prev => [...prev, item.id]);
+                                } else {
+                                  setSelectedPayableIds(prev => prev.filter(id => id !== item.id));
+                                }
+                              }}
+                              className="rounded border-slate-300 text-rose-600 focus:ring-rose-500 w-4 h-4 cursor-pointer"
+                            />
+                          </td>
+
                           {/* Código & Fornecedor */}
                           <td className="p-4 align-top">
                             <p className="font-mono text-xs font-black text-rose-600">{item.code}</p>
@@ -1067,12 +1529,18 @@ export default function AccountsPayableView({
                             </span>
                           </td>
 
-                          {/* Categoria, Descrição & Tags de Documento */}
+                          {/* Categoria, Descrição, Tags de Documento & Vínculo de Colaborador */}
                           <td className="p-4 align-top space-y-1.5">
                             <div className="flex flex-wrap items-center gap-1.5">
                               <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-slate-100 text-slate-700 text-[11px] font-semibold rounded-md">
                                 <Tag className="w-3 h-3 text-slate-400" /> {item.category}
                               </span>
+
+                              {item.employeeName && (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-emerald-50 text-emerald-800 border border-emerald-200 text-[11px] font-bold rounded-md">
+                                  <UserCheck className="w-3 h-3 text-emerald-600" /> Colaborador: {item.employeeName}
+                                </span>
+                              )}
 
                               {item.nfeNumber && (
                                 <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-indigo-50 text-indigo-700 border border-indigo-200 text-[11px] font-bold rounded-md">
@@ -1387,6 +1855,230 @@ export default function AccountsPayableView({
             </div>
           </div>
         </div>
+      )}
+
+      {/* MODAL DE PAGAMENTO EM LOTE */}
+      {isBatchPayModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in" id="modal-batch-payment">
+          <div className="bg-white rounded-3xl p-6 w-full max-w-lg shadow-2xl border border-slate-100 space-y-5">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2">
+                <CheckCircle className="w-6 h-6 text-emerald-600" />
+                <div>
+                  <h3 className="font-bold text-slate-800 text-base">Liquidar Contas Selecionadas</h3>
+                  <p className="text-xs text-slate-500">Baixa coletiva de {selectedPayableIds.length} título(s) no Contas a Pagar</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsBatchPayModalOpen(false)}
+                className="text-slate-400 hover:text-slate-600 p-1.5 rounded-xl hover:bg-slate-100 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-4 bg-emerald-50 rounded-2xl border border-emerald-200/80 space-y-2 text-xs">
+              <div className="flex justify-between items-center text-slate-600">
+                <span>Títulos Selecionados:</span>
+                <span className="font-bold text-slate-900">{selectedPayableIds.length} conta(s)</span>
+              </div>
+              <div className="flex justify-between items-center text-emerald-900 font-bold text-sm pt-1 border-t border-emerald-200">
+                <span>Valor Total a Pagar:</span>
+                <span className="font-mono text-base text-emerald-700">
+                  R$ {selectedPayablesSum.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                </span>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-700 uppercase">Data do Pagamento *</label>
+                  <input
+                    type="date"
+                    value={batchPayDate}
+                    onChange={e => setBatchPayDate(e.target.value)}
+                    className="w-full text-xs px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-medium focus:outline-hidden focus:border-emerald-500"
+                    required
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-700 uppercase">Forma de Pagamento *</label>
+                  <select
+                    value={batchPaymentMethod}
+                    onChange={e => setBatchPaymentMethod(e.target.value)}
+                    className="w-full text-xs px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-semibold focus:outline-hidden focus:border-emerald-500"
+                  >
+                    <option value="PIX">PIX Instantâneo</option>
+                    <option value="Boleto">Boleto Bancário</option>
+                    <option value="Transferência (TED)">Transferência (TED/DOC)</option>
+                    <option value="Cartão de Débito">Cartão de Débito</option>
+                    <option value="Cartão de Crédito">Cartão de Crédito</option>
+                    <option value="Dinheiro">Dinheiro (Caixa Físico)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-slate-700 uppercase">Conta Bancária de Saída</label>
+                <select
+                  value={batchBankAccount}
+                  onChange={e => setBatchBankAccount(e.target.value)}
+                  className="w-full text-xs px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-semibold focus:outline-hidden focus:border-emerald-500"
+                >
+                  <option value="Conta Corrente Principal">Conta Corrente Principal (Banco Itaú / Santander)</option>
+                  <option value="Conta Digital Inter / Nubank">Conta Digital PJ (Inter / Cora)</option>
+                  <option value="Caixa Físico da Oficina">Caixa Físico (Balcão)</option>
+                </select>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-slate-700 uppercase">Observações do Comprovante</label>
+                <input
+                  type="text"
+                  value={batchReceiptNotes}
+                  onChange={e => setBatchReceiptNotes(e.target.value)}
+                  placeholder="Ex: Pagamento lote autorizado pela gerência via PIX"
+                  className="w-full text-xs px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-medium focus:outline-hidden focus:border-emerald-500"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setIsBatchPayModalOpen(false)}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold transition cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmBatchPayment}
+                className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-2 cursor-pointer shadow-xs"
+              >
+                <Check className="w-4 h-4" />
+                Confirmar Baixa em Lote
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL DE NOVA CATEGORIA (ABA DE PLANILHA) */}
+      {isNewCategoryModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in" id="modal-new-category">
+          <div className="bg-white rounded-3xl p-6 w-full max-w-md shadow-2xl border border-slate-100 space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2">
+                <FolderPlus className="w-5 h-5 text-rose-600" />
+                <h3 className="font-bold text-slate-800 text-sm">Nova Categoria de Despesa</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsNewCategoryModalOpen(false)}
+                className="text-slate-400 hover:text-slate-600 p-1.5 rounded-xl hover:bg-slate-100 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleAddCategory} className="space-y-4">
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-slate-700 uppercase">Nome da Categoria / Título *</label>
+                <input
+                  type="text"
+                  value={newCategoryName}
+                  onChange={e => setNewCategoryName(e.target.value)}
+                  placeholder="Ex: Seguros & Licenças, Combustível, TI & Softwares"
+                  className="w-full text-xs px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-medium focus:outline-hidden focus:border-rose-500"
+                  autoFocus
+                  required
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-slate-700 uppercase">Cor da Aba / Identificador</label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="color"
+                    value={newCategoryColor}
+                    onChange={e => setNewCategoryColor(e.target.value)}
+                    className="w-9 h-9 rounded-lg cursor-pointer border-0 p-0"
+                  />
+                  <span className="text-xs text-slate-500 font-mono">{newCategoryColor}</span>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setIsNewCategoryModalOpen(false)}
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold transition cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-xs"
+                >
+                  <Plus className="w-4 h-4" />
+                  Cadastrar Categoria
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL DE CONFIRMAÇÃO DE EXCLUSÃO DE CATEGORIA */}
+      {categoryToDelete && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in" id="modal-delete-category">
+          <div className="bg-white rounded-3xl p-6 w-full max-w-sm shadow-2xl border border-slate-100 space-y-4 text-center">
+            <div className="w-12 h-12 bg-rose-100 text-rose-600 rounded-full flex items-center justify-center mx-auto">
+              <Trash2 className="w-6 h-6" />
+            </div>
+            <div>
+              <h3 className="font-bold text-slate-900 text-base">Remover Categoria?</h3>
+              <p className="text-xs text-slate-500 mt-1">
+                Deseja remover a categoria <strong>"{categoryToDelete.name}"</strong>? As contas vinculadas serão reclassificadas como "Outras Despesas".
+              </p>
+            </div>
+            <div className="flex items-center justify-center gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setCategoryToDelete(null)}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-xl transition cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmDeleteCategory}
+                className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-xl transition cursor-pointer shadow-xs"
+              >
+                Confirmar Exclusão
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL SPLIT-SCREEN DE CONCILIAÇÃO DA REPRESENTADA (EXCEL) */}
+      {isSplitReconciliationOpen && (
+        <RepresentativeReconciliationSplitModal
+          db={db}
+          currentUser={currentUser}
+          isOpen={isSplitReconciliationOpen}
+          onClose={() => setIsSplitReconciliationOpen(false)}
+          onSavePayables={(newPayables, newTransactions) => {
+            onSavePayables(newPayables, newTransactions, categoriesList);
+          }}
+          onSaveFullDatabase={onSaveFullDatabase}
+          onAddHistoryLog={onAddHistoryLog}
+        />
       )}
 
     </div>

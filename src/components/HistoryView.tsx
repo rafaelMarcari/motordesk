@@ -22,7 +22,7 @@ export default function HistoryView({ db, currentUser, fullDb }: HistoryViewProp
   const [maintCategoryFilter, setMaintCategoryFilter] = useState<string>('all');
   const [selectedUserFilter, setSelectedUserFilter] = useState<string>('all');
 
-  const databaseToUse = fullDb || db;
+  const databaseToUse = db;
 
   const getClientName = (id: string) => databaseToUse.clients.find(c => c.id === id)?.name || 'Cliente';
   const getVehicleDesc = (id: string) => {
@@ -54,9 +54,11 @@ export default function HistoryView({ db, currentUser, fullDb }: HistoryViewProp
   const userRoleKey = currentUser?.role;
   const companyLevelPerms = userRoleKey ? databaseToUse.companyInfo?.levelPermissions?.[userRoleKey] : undefined;
   const canViewAllCompaniesHistory = Boolean(
-    isSuperAdmin || 
-    currentUser?.permissions?.canViewAllCompaniesHistory || 
-    companyLevelPerms?.canViewAllCompaniesHistory
+    allCompaniesList.length > 1 && (
+      isSuperAdmin || 
+      currentUser?.permissions?.canViewAllCompaniesHistory || 
+      companyLevelPerms?.canViewAllCompaniesHistory
+    )
   );
 
   // Global Multi-Tenant Scope Toggle for Super-Admin (Disabled by default so audit shows ONLY user company by default)

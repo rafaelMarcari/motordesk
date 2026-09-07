@@ -650,6 +650,17 @@ export interface User {
   active?: boolean; // Status ativo do usuário (padrão true)
   createdAt?: string;
   lastLoginAt?: string;
+
+  // Gestão de Colaborador, Salários e Comissões
+  jobTitle?: string; // Cargo ou função (ex: Vendedor Balcão, Mecânico, Consultor Técnico, Representante)
+  baseSalary?: number; // Salário Base Fixo em R$
+  commissionPercent?: number; // Percentual de comissão padrão (%)
+  commissionType?: 'vendas' | 'servicos' | 'ambos' | 'representada' | 'all' | 'sales' | 'services'; // Base de cálculo da comissão
+  pixKey?: string; // Chave PIX para pagamento
+  pixKeyType?: 'cpf' | 'cnpj' | 'email' | 'phone' | 'random';
+  bankName?: string;
+  bankAgency?: string;
+  bankAccount?: string;
 }
 
 export interface Client {
@@ -2173,11 +2184,14 @@ export interface AccountPayable {
   description: string; // Ex: Compra de Óleo Lubrificante - NFe #4012
   category: string; // Peças / Fornecedor, Ferramentas, Aluguel, Energia, Salários, Impostos
   totalAmount: number;
+  amount?: number; // Compatibilidade com valor total
   paidAmount: number;
   remainingAmount: number;
   status: 'pending' | 'partially_paid' | 'paid' | 'overdue';
   dueDate: string;
+  issueDate?: string;
   createdAt: string;
+  updatedAt?: string;
   installments: AccountInstallment[];
   notes?: string;
   // Integração de Documentos, Boletos e NF-e
@@ -2202,6 +2216,11 @@ export interface AccountPayable {
   representativeOrderId?: string;
   representedCompanyId?: string;
   commissionId?: string;
+
+  // Vínculo com Colaborador para Salários & Comissões
+  employeeId?: string; // ID do colaborador no MotorDesk
+  employeeName?: string; // Nome do colaborador beneficiário
+  commissionMonthRef?: string; // Mês de competência/referência (ex: '2026-09')
 }
 
 export interface FinancialTransaction {
@@ -2620,6 +2639,8 @@ export interface CommercialSale {
   clientCpfCnpj?: string;
   companyId: string;
   createdAt: string;
+  date?: string; // Sinônimo de data da venda
+  status?: string; // Sinônimo de status operacional/financeiro
   items: CommercialSaleItem[];
   subtotal: number;
   discount: number;
@@ -2928,6 +2949,57 @@ export interface AppDatabase {
   factoryInvoices?: FactoryInvoice[];
   factoryBillingImports?: FactoryBillingImport[];
   representedCompanyLayouts?: RepresentedCompanyColumnLayout[];
+
+  // Categorias de Despesas Dinâmicas (Abas de Planilha) e Conciliação de Representada
+  expenseCategories?: ExpenseCategoryItem[];
+  pendingReconciliationRows?: PendingReconciliationRow[];
+}
+
+export interface ExpenseCategoryItem {
+  id: string;
+  name: string;
+  icon?: string;
+  color?: string;
+  companyId?: string;
+  isSystemDefault?: boolean;
+  description?: string;
+  createdAt?: string;
+}
+
+export interface PendingReconciliationRow {
+  id: string;
+  companyId?: string;
+  representedCompanyId?: string;
+  representedCompanyName?: string;
+  sourceFileName?: string;
+  importedAt: string;
+  importedBy?: string;
+  
+  // Dados brutos da planilha
+  rawRowIndex: number;
+  orderNumber?: string;
+  invoiceNumber?: string;
+  clientName?: string;
+  clientDocument?: string;
+  billedAmount: number;
+  commissionRatePercent?: number;
+  commissionAmount: number;
+  orderDate?: string;
+  billingDate?: string;
+
+  // Status de correspondência
+  matchStatus: 'MATCHED' | 'DIVERGENT' | 'NOT_FOUND';
+  matchedOrderId?: string;
+  matchedOrderNumber?: string;
+  matchedOrderAmount?: number;
+  discrepancyReason?: string;
+  divergenceAmount?: number;
+
+  // Estado da conciliação
+  status: 'PENDING' | 'RESOLVED' | 'DISMISSED';
+  resolvedAt?: string;
+  resolvedBy?: string;
+  resolutionNotes?: string;
 }
 
 // ==========================================
@@ -3039,12 +3111,14 @@ export interface RepresentedCompany {
   companyId: string; // Tenant ID
   corporateName: string; // Razão Social da Fábrica
   tradeName: string; // Nome Fantasia
+  name?: string; // Sinônimo de Nome / Razão Social
   cnpj: string;
   contactPerson: string;
   email: string;
   phone: string;
   whatsapp: string;
   defaultCommissionPercentage: number; // Ex: 5%
+  commissionRateDefault?: number; // Compatibilidade de taxa padrão
   commissionPaymentRule: 'UPON_INVOICE' | 'UPON_CUSTOMER_PAYMENT' | 'MONTHLY_FIXED_DAY'; // No faturamento, Na liquidação da duplicata, Dia fixo
   commissionPaymentTerms?: string; // Ex: "Até dia 15 do mês seguinte ao faturamento"
   priceTableNotes?: string;
@@ -3083,6 +3157,8 @@ export type RepresentativeOrderStatus =
   | 'invoiced_total'           // FATURADO
   | 'commission_pending'       // COMISSÃO A RECEBER
   | 'commission_received'      // COMISSÃO RECEBIDA
+  | 'invoiced'                 // Compatibilidade
+  | 'faturado'                 // Compatibilidade
   | 'factory_confirmed'        // Compatibilidade
   | 'canceled';                // CANCELADO
 
@@ -3090,6 +3166,7 @@ export interface RepresentativeOrder {
   id: string;
   companyId: string; // Tenant
   orderNumber: string; // Ex: 'REP-000123'
+  code?: string; // Sinônimo de orderNumber
   representedId: string; // ID da Representada
   representedName: string;
   clientId: string; // Cliente final comprador
@@ -3104,13 +3181,17 @@ export interface RepresentativeOrder {
   subtotal: number;
   totalDiscount: number;
   totalOrderAmount: number;
+  totalAmount?: number; // Compatibilidade com totalOrderAmount
   commissionPercentage?: number;
+  commissionRatePercent?: number; // Compatibilidade com commissionPercentage
   commissionAmount?: number;
   estimatedTotalCommission: number;
   factoryInvoiceNumber?: string;
   factoryInvoiceDate?: string;
+  factoryOrderNumber?: string; // Número individual do pedido na fábrica
   factoryOrderNumbers?: string[]; // Lista de números de pedidos da representada (ex: ['45871', '45872', '45873'])
   status: RepresentativeOrderStatus;
+  salespersonId?: string;
   notes?: string;
   sentAt?: string;
   confirmedAt?: string;

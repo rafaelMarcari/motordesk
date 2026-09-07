@@ -44,10 +44,16 @@ import {
   Zap,
   Package,
   Truck,
-  Factory
+  Factory,
+  Percent,
+  Wallet,
+  Landmark,
+  TrendingUp,
+  Award
 } from 'lucide-react';
 import { User, UserRole, UserPermissions, CompanyInfo, BusinessType } from '../types';
 import { AppDatabase } from '../data/mockData';
+import { calculateEmployeeCommission } from '../utils/commissionEngine';
 import { 
   normalizeBusinessType, 
   getDefaultGlobalModulesForBusinessType, 
@@ -1247,6 +1253,17 @@ export default function UserManagementView({
   const [role, setRole] = useState<UserRole>('atendente');
   const [permissions, setPermissions] = useState<UserPermissions>(DEFAULT_LEVEL_PERMISSIONS.atendente);
 
+  // Remuneração, Comissões e Dados Bancários do Operador
+  const [jobTitle, setJobTitle] = useState('');
+  const [baseSalary, setBaseSalary] = useState<number>(0);
+  const [commissionPercent, setCommissionPercent] = useState<number>(0);
+  const [commissionType, setCommissionType] = useState<NonNullable<User['commissionType']>>('all');
+  const [pixKeyType, setPixKeyType] = useState<'cpf' | 'cnpj' | 'email' | 'phone' | 'random'>('cpf');
+  const [pixKey, setPixKey] = useState('');
+  const [bankName, setBankName] = useState('');
+  const [bankAgency, setBankAgency] = useState('');
+  const [bankAccount, setBankAccount] = useState('');
+
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
 
@@ -1748,7 +1765,16 @@ export default function UserManagementView({
         role,
         passwordHash: password || editingUser.passwordHash,
         permissions: sanitizedPermissions,
-        companyId: selectedCompanyId
+        companyId: selectedCompanyId,
+        jobTitle: jobTitle.trim() || undefined,
+        baseSalary: baseSalary > 0 ? baseSalary : undefined,
+        commissionPercent: commissionPercent > 0 ? commissionPercent : undefined,
+        commissionType: commissionType,
+        pixKey: pixKey.trim() || undefined,
+        pixKeyType: pixKey ? pixKeyType : undefined,
+        bankName: bankName.trim() || undefined,
+        bankAgency: bankAgency.trim() || undefined,
+        bankAccount: bankAccount.trim() || undefined,
       };
 
       updatedUsersList = db.users.map(u => u.id === editingUser.id ? updatedUser : u);
@@ -1757,7 +1783,7 @@ export default function UserManagementView({
       onAddHistoryLog(
         'user_activity', 
         'Permissões Alteradas', 
-        `Nível e permissões do colaborador "${updatedUser.name}" (@${updatedUser.username}) atualizadas na empresa ${compName}.`, 
+        `Nível, remuneração e permissões do colaborador "${updatedUser.name}" (@${updatedUser.username}) atualizadas na empresa ${compName}.`, 
         '', 
         ''
       );
@@ -1767,8 +1793,8 @@ export default function UserManagementView({
         .map(k => PERMISSION_LABEL_MAP[k] || k);
 
       setSaveModalData({
-        title: 'Permissões do Usuário Atualizadas!',
-        message: `As alterações do colaborador "${updatedUser.name}" foram salvas no banco de dados respeitando o teto contratual da empresa.`,
+        title: 'Operador e Remuneração Atualizados!',
+        message: `As alterações do colaborador "${updatedUser.name}" foram salvas no banco de dados com suas regras de comissão e salário.`,
         targetType: 'user',
         userName: updatedUser.name,
         userRole: updatedUser.role.toUpperCase(),
@@ -1788,7 +1814,16 @@ export default function UserManagementView({
         role,
         passwordHash: password,
         permissions: sanitizedPermissions,
-        companyId: selectedCompanyId
+        companyId: selectedCompanyId,
+        jobTitle: jobTitle.trim() || undefined,
+        baseSalary: baseSalary > 0 ? baseSalary : undefined,
+        commissionPercent: commissionPercent > 0 ? commissionPercent : undefined,
+        commissionType: commissionType,
+        pixKey: pixKey.trim() || undefined,
+        pixKeyType: pixKey ? pixKeyType : undefined,
+        bankName: bankName.trim() || undefined,
+        bankAgency: bankAgency.trim() || undefined,
+        bankAccount: bankAccount.trim() || undefined,
       };
 
       updatedUsersList = [...db.users, newUser];
@@ -1820,6 +1855,14 @@ export default function UserManagementView({
     setUsername('');
     setName('');
     setPassword('');
+    setJobTitle('');
+    setBaseSalary(0);
+    setCommissionPercent(0);
+    setCommissionType('all');
+    setPixKey('');
+    setBankName('');
+    setBankAgency('');
+    setBankAccount('');
     setEditingUser(null);
     setIsFormOpen(false);
   };
@@ -1899,33 +1942,45 @@ export default function UserManagementView({
           </div>
 
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
-            {/* Combobox Selection Dropdown */}
-            <div className="relative min-w-[280px]">
-              <label htmlFor="company-combobox-select" className="sr-only">Selecione a Empresa</label>
-              <select
-                id="company-combobox-select"
-                value={selectedCompanyId}
-                onChange={(e) => handleCompanySelectChange(e.target.value)}
-                className="w-full bg-slate-800/90 border border-indigo-700/60 text-white text-xs font-semibold px-4 py-2.5 rounded-xl focus:ring-2 focus:ring-indigo-400 focus:outline-hidden cursor-pointer shadow-inner appearance-none pr-10"
-              >
-                {registeredCompaniesList.map((comp) => (
-                  <option key={comp.id} value={comp.id} className="bg-slate-900 text-white py-2">
-                    {comp.name} {comp.subscriptionStatus === 'blocked' ? '🔒 (Bloqueado)' : '✅ (Ativo)'}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown className="w-4 h-4 text-indigo-300 absolute right-3 top-3 pointer-events-none" />
-            </div>
+            {/* Combobox Selection Dropdown (rendered only if user has access to multiple companies) */}
+            {registeredCompaniesList.length > 1 ? (
+              <div className="relative min-w-[280px]">
+                <label htmlFor="company-combobox-select" className="sr-only">Selecione a Empresa</label>
+                <select
+                  id="company-combobox-select"
+                  value={selectedCompanyId}
+                  onChange={(e) => handleCompanySelectChange(e.target.value)}
+                  className="w-full bg-slate-800/90 border border-indigo-700/60 text-white text-xs font-semibold px-4 py-2.5 rounded-xl focus:ring-2 focus:ring-indigo-400 focus:outline-hidden cursor-pointer shadow-inner appearance-none pr-10"
+                >
+                  {registeredCompaniesList.map((comp) => (
+                    <option key={comp.id} value={comp.id} className="bg-slate-900 text-white py-2">
+                      {comp.name} {comp.subscriptionStatus === 'blocked' ? '🔒 (Bloqueado)' : '✅ (Ativo)'}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown className="w-4 h-4 text-indigo-300 absolute right-3 top-3 pointer-events-none" />
+              </div>
+            ) : (
+              <div className="flex items-center gap-2 bg-slate-800/90 border border-indigo-700/60 text-white text-xs font-semibold px-4 py-2.5 rounded-xl shadow-inner min-w-[240px]" id="company-combobox-badge">
+                <Building2 className="w-4 h-4 text-indigo-400 shrink-0" />
+                <span className="truncate">{currentCompany?.name || 'Empresa Atual'}</span>
+                <span className="text-[10px] bg-indigo-900/80 text-indigo-200 px-2 py-0.5 rounded-md font-mono border border-indigo-700 shrink-0">
+                  {currentCompany?.subscriptionStatus === 'blocked' ? '🔒 Bloqueada' : '✅ Ativa'}
+                </span>
+              </div>
+            )}
 
-            {/* Button to Add New Company */}
-            <button
-              type="button"
-              id="btn-open-new-company-modal"
-              onClick={() => setShowNewCompanyModal(true)}
-              className="bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs px-4 py-2.5 rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer shadow-xs shrink-0"
-            >
-              <Plus className="w-4 h-4" /> Nova Empresa
-            </button>
+            {/* Button to Add New Company (Only for Master Admins / QA) */}
+            {(currentUser.role === 'admin' || currentUser.role === 'qa') && (
+              <button
+                type="button"
+                id="btn-open-new-company-modal"
+                onClick={() => setShowNewCompanyModal(true)}
+                className="bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs px-4 py-2.5 rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer shadow-xs shrink-0"
+              >
+                <Plus className="w-4 h-4" /> Nova Empresa
+              </button>
+            )}
           </div>
         </div>
 
@@ -2022,7 +2077,7 @@ export default function UserManagementView({
             adminSubView === 'users' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-400 hover:text-slate-600'
           }`}
         >
-          <Users className="w-4 h-4" /> Operadores da Empresa ({db.users.filter(u => !u.companyId || u.companyId === selectedCompanyId).length})
+          <Users className="w-4 h-4" /> Operadores da Empresa ({db.users.filter(u => (u.companyId || 'comp-1') === selectedCompanyId).length})
         </button>
         <button 
           id="btn-subview-company"
@@ -2879,6 +2934,143 @@ export default function UserManagementView({
                         <option value="qa">QA Engineer / Tester (Analista)</option>
                       </select>
                     </div>
+
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-semibold text-slate-600" htmlFor="user-job-title-input">Cargo / Especialidade</label>
+                      <input 
+                        id="user-job-title-input"
+                        type="text" 
+                        value={jobTitle}
+                        onChange={e => setJobTitle(e.target.value)}
+                        placeholder="Ex: Vendedor Balcão, Mecânico Sênior" 
+                        className="w-full text-xs px-3 py-2 border border-slate-200 rounded-lg bg-white"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Remuneração & Comissão */}
+                  <div className="bg-emerald-50/50 p-4 rounded-xl border border-emerald-100 space-y-3.5" id="user-remuneration-section">
+                    <div className="flex items-center gap-2 text-emerald-800 border-b border-emerald-100/60 pb-2">
+                      <Wallet className="w-4 h-4 text-emerald-600" />
+                      <h4 className="text-xs font-bold uppercase tracking-wider">Salário & Comissionamento</h4>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div className="space-y-1">
+                        <label className="text-[11px] font-bold text-slate-600 uppercase" htmlFor="user-base-salary-input">Salário Base (R$)</label>
+                        <input 
+                          id="user-base-salary-input"
+                          type="number" 
+                          step="0.01"
+                          min="0"
+                          value={baseSalary || ''}
+                          onChange={e => setBaseSalary(parseFloat(e.target.value) || 0)}
+                          placeholder="0,00" 
+                          className="w-full text-xs px-3 py-2 border border-slate-200 rounded-lg bg-white font-mono font-bold"
+                        />
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-[11px] font-bold text-slate-600 uppercase" htmlFor="user-commission-percent-input">Comissão (%)</label>
+                        <div className="relative">
+                          <input 
+                            id="user-commission-percent-input"
+                            type="number" 
+                            step="0.1"
+                            min="0"
+                            max="100"
+                            value={commissionPercent || ''}
+                            onChange={e => setCommissionPercent(parseFloat(e.target.value) || 0)}
+                            placeholder="Ex: 5" 
+                            className="w-full text-xs px-3 py-2 pr-7 border border-slate-200 rounded-lg bg-white font-mono font-bold text-emerald-700"
+                          />
+                          <span className="absolute right-2.5 top-2 text-xs font-bold text-slate-400">%</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[11px] font-bold text-slate-600 uppercase" htmlFor="user-commission-type-select">Base de Cálculo da Comissão</label>
+                      <select 
+                        id="user-commission-type-select"
+                        value={commissionType}
+                        onChange={e => setCommissionType(e.target.value as any)}
+                        className="w-full text-xs px-3 py-2 border border-slate-200 rounded-lg bg-white font-medium text-slate-700"
+                      >
+                        <option value="all">Todas as Operações (Vendas Balcão + Serviços/OS)</option>
+                        <option value="sales">Apenas Vendas no Balcão (Peças e Produtos)</option>
+                        <option value="services">Apenas Ordens de Serviço (Mão de Obra e Serviços)</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Dados Bancários & PIX */}
+                  <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 space-y-3.5" id="user-banking-section">
+                    <div className="flex items-center gap-2 text-slate-700 border-b border-slate-200/60 pb-2">
+                      <Landmark className="w-4 h-4 text-indigo-600" />
+                      <h4 className="text-xs font-bold uppercase tracking-wider">Dados Bancários & PIX</h4>
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-2">
+                      <div className="space-y-1 col-span-1">
+                        <label className="text-[10px] font-bold text-slate-600 uppercase">Tipo PIX</label>
+                        <select 
+                          value={pixKeyType}
+                          onChange={e => setPixKeyType(e.target.value as any)}
+                          className="w-full text-xs px-2 py-2 border border-slate-200 rounded-lg bg-white"
+                        >
+                          <option value="cpf">CPF</option>
+                          <option value="phone">Celular</option>
+                          <option value="email">E-mail</option>
+                          <option value="random">Aleatória</option>
+                          <option value="cnpj">CNPJ</option>
+                        </select>
+                      </div>
+                      <div className="space-y-1 col-span-2">
+                        <label className="text-[10px] font-bold text-slate-600 uppercase">Chave PIX</label>
+                        <input 
+                          type="text" 
+                          value={pixKey}
+                          onChange={e => setPixKey(e.target.value)}
+                          placeholder="Chave do colaborador" 
+                          className="w-full text-xs px-3 py-2 border border-slate-200 rounded-lg bg-white font-mono"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-slate-600 uppercase">Banco</label>
+                      <input 
+                        type="text" 
+                        value={bankName}
+                        onChange={e => setBankName(e.target.value)}
+                        placeholder="Ex: Nubank, Banco do Brasil, Itaú" 
+                        className="w-full text-xs px-3 py-2 border border-slate-200 rounded-lg bg-white"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-slate-600 uppercase">Agência</label>
+                        <input 
+                          type="text" 
+                          value={bankAgency}
+                          onChange={e => setBankAgency(e.target.value)}
+                          placeholder="0001" 
+                          className="w-full text-xs px-3 py-2 border border-slate-200 rounded-lg bg-white font-mono"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-slate-600 uppercase">Conta Corrente</label>
+                        <input 
+                          type="text" 
+                          value={bankAccount}
+                          onChange={e => setBankAccount(e.target.value)}
+                          placeholder="123456-7" 
+                          className="w-full text-xs px-3 py-2 border border-slate-200 rounded-lg bg-white font-mono"
+                        />
+                      </div>
+                    </div>
                   </div>
                 </div>
 
@@ -2968,13 +3160,39 @@ export default function UserManagementView({
           {/* Active Users List */}
           {!isFormOpen && (
             <div className="bg-white border border-slate-200 rounded-xl shadow-xs overflow-hidden" id="users-list-panel">
-              <div className="p-4 bg-slate-50 border-b border-slate-100 flex items-center justify-between">
+              <div className="p-4 bg-slate-50 border-b border-slate-100 flex flex-wrap items-center justify-between gap-3">
                 <div className="flex items-center gap-2">
                   <Users className="w-4 h-4 text-slate-400" />
                   <h3 className="text-xs font-bold text-slate-600 uppercase tracking-wider">
                     Operadores Cadastrados para {compName}
                   </h3>
                 </div>
+
+                <button
+                  id="btn-add-operator-header"
+                  type="button"
+                  onClick={() => {
+                    setEditingUser(null);
+                    setName('');
+                    setUsername('');
+                    setPassword('');
+                    setRole('atendente');
+                    setPermissions(levelPermissions.atendente || DEFAULT_LEVEL_PERMISSIONS.atendente);
+                    setJobTitle('');
+                    setBaseSalary(0);
+                    setCommissionPercent(0);
+                    setCommissionType('all');
+                    setPixKey('');
+                    setPixKeyType('cpf');
+                    setBankName('');
+                    setBankAgency('');
+                    setBankAccount('');
+                    setIsFormOpen(true);
+                  }}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold transition cursor-pointer shadow-xs"
+                >
+                  <Plus className="w-3.5 h-3.5" /> Novo Operador
+                </button>
               </div>
 
               <div className="divide-y divide-slate-100">
@@ -2997,6 +3215,15 @@ export default function UserManagementView({
                             setPassword('');
                             setRole('atendente');
                             setPermissions(levelPermissions.atendente || DEFAULT_LEVEL_PERMISSIONS.atendente);
+                            setJobTitle('');
+                            setBaseSalary(0);
+                            setCommissionPercent(0);
+                            setCommissionType('all');
+                            setPixKey('');
+                            setPixKeyType('cpf');
+                            setBankName('');
+                            setBankAgency('');
+                            setBankAccount('');
                             setIsFormOpen(true);
                           }}
                           className="mt-4 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg text-xs transition cursor-pointer"
@@ -3007,60 +3234,105 @@ export default function UserManagementView({
                     );
                   }
 
-                  return companyUsers.map(user => (
-                    <div key={user.id} className="p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 hover:bg-slate-50/20 transition duration-150" id={`user-row-${user.id}`}>
-                      <div className="flex items-center gap-3">
-                        <div className="p-2 bg-indigo-50 text-indigo-600 rounded-lg">
-                          <Shield className="w-5 h-5" />
-                        </div>
-                        <div>
-                          <h4 className="text-sm font-semibold text-slate-800">{user.name}</h4>
-                          <div className="flex items-center gap-2 mt-0.5 text-xs text-slate-400">
-                            <span className="font-mono">User: {user.username}</span>
-                            <span>•</span>
-                            <span className="font-bold uppercase text-[9px] bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded border border-slate-200">
-                              {user.role}
-                            </span>
-                            <span>•</span>
-                            <span className="text-[10px] text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100 font-medium">
-                              Empresa: {compName}
-                            </span>
+                  return companyUsers.map(user => {
+                    const commData = calculateEmployeeCommission(user, db);
+
+                    return (
+                      <div key={user.id} className="p-4 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 hover:bg-slate-50/40 transition duration-150" id={`user-row-${user.id}`}>
+                        <div className="flex items-start gap-3">
+                          <div className="p-2.5 bg-indigo-50 text-indigo-600 rounded-xl mt-0.5">
+                            <Shield className="w-5 h-5" />
+                          </div>
+                          <div className="space-y-1.5">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <h4 className="text-sm font-bold text-slate-800">{user.name}</h4>
+                              {user.jobTitle && (
+                                <span className="inline-flex items-center gap-1 text-[11px] font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-100">
+                                  <Award className="w-3 h-3 text-indigo-500" /> {user.jobTitle}
+                                </span>
+                              )}
+                              <span className="font-bold uppercase text-[9px] bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded border border-slate-200">
+                                {user.role}
+                              </span>
+                            </div>
+
+                            <div className="flex flex-wrap items-center gap-2 text-xs text-slate-400">
+                              <span className="font-mono text-slate-600">@{user.username}</span>
+                              <span>•</span>
+                              <span className="text-[10px] text-slate-500">
+                                Empresa: <strong>{compName}</strong>
+                              </span>
+                              {user.pixKey && (
+                                <>
+                                  <span>•</span>
+                                  <span className="text-[10px] text-emerald-700 font-mono">
+                                    PIX ({user.pixKeyType?.toUpperCase()}): {user.pixKey}
+                                  </span>
+                                </>
+                              )}
+                            </div>
+
+                            {/* Cartão de Remuneração & Comissão Acumulada */}
+                            <div className="flex flex-wrap items-center gap-2 pt-1">
+                              <span className="inline-flex items-center gap-1 text-[11px] font-semibold bg-slate-50 border border-slate-200 text-slate-700 px-2 py-0.5 rounded-md">
+                                <DollarSign className="w-3 h-3 text-slate-400" /> Salário: R$ {(user.baseSalary || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                              </span>
+
+                              <span className="inline-flex items-center gap-1 text-[11px] font-semibold bg-emerald-50 border border-emerald-200 text-emerald-800 px-2 py-0.5 rounded-md">
+                                <Percent className="w-3 h-3 text-emerald-600" /> Comissão: {user.commissionPercent || 0}%
+                              </span>
+
+                              {(user.commissionPercent || 0) > 0 && (
+                                <span className="inline-flex items-center gap-1 text-[11px] font-bold bg-amber-50 border border-amber-200 text-amber-900 px-2 py-0.5 rounded-md" title={`Volume no Mês: R$ ${commData.totalVolume.toFixed(2)} (${commData.salesCount} vendas, ${commData.servicesCount} OS)`}>
+                                  <TrendingUp className="w-3 h-3 text-amber-600" /> Mês Atual: R$ {commData.totalCommission.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} (Sugestão Folha: R$ {commData.suggestedPayout.toLocaleString('pt-BR', { minimumFractionDigits: 2 })})
+                                </span>
+                              )}
+                            </div>
                           </div>
                         </div>
-                      </div>
 
-                      <div className="flex items-center gap-2">
-                        <button
-                          id={`btn-edit-user-permissions-${user.id}`}
-                          type="button"
-                          onClick={() => {
-                            setEditingUser(user);
-                            setName(user.name);
-                            setUsername(user.username);
-                            setPassword('');
-                            setRole(user.role);
-                            setPermissions(user.permissions);
-                            setIsFormOpen(true);
-                          }}
-                          className="flex items-center gap-1.5 bg-slate-100 hover:bg-indigo-50 text-slate-700 hover:text-indigo-700 border border-slate-200 hover:border-indigo-200 px-3 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer"
-                        >
-                          <Shield className="w-3.5 h-3.5" />
-                          Editar Operador
-                        </button>
+                        <div className="flex items-center gap-2 shrink-0 self-end lg:self-center">
+                          <button
+                            id={`btn-edit-user-permissions-${user.id}`}
+                            type="button"
+                            onClick={() => {
+                              setEditingUser(user);
+                              setName(user.name);
+                              setUsername(user.username);
+                              setPassword('');
+                              setRole(user.role);
+                              setPermissions(user.permissions);
+                              setJobTitle(user.jobTitle || '');
+                              setBaseSalary(user.baseSalary || 0);
+                              setCommissionPercent(user.commissionPercent || 0);
+                              setCommissionType(user.commissionType || 'all');
+                              setPixKeyType(user.pixKeyType || 'cpf');
+                              setPixKey(user.pixKey || '');
+                              setBankName(user.bankName || '');
+                              setBankAgency(user.bankAgency || '');
+                              setBankAccount(user.bankAccount || '');
+                              setIsFormOpen(true);
+                            }}
+                            className="flex items-center gap-1.5 bg-slate-100 hover:bg-indigo-50 text-slate-700 hover:text-indigo-700 border border-slate-200 hover:border-indigo-200 px-3 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer"
+                          >
+                            <Shield className="w-3.5 h-3.5" />
+                            Editar Operador
+                          </button>
 
-                        <button
-                          id={`btn-delete-user-${user.id}`}
-                          type="button"
-                          onClick={() => handleDeleteUser(user.id, user.name)}
-                          className="flex items-center gap-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 px-3 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer"
-                          title="Excluir este operador da empresa"
-                        >
-                          <X className="w-3.5 h-3.5" />
-                          Excluir
-                        </button>
+                          <button
+                            id={`btn-delete-user-${user.id}`}
+                            type="button"
+                            onClick={() => handleDeleteUser(user.id, user.name)}
+                            className="flex items-center gap-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 px-3 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer"
+                            title="Excluir este operador da empresa"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                            Excluir
+                          </button>
+                        </div>
                       </div>
-                    </div>
-                  ));
+                    );
+                  });
                 })()}
               </div>
             </div>

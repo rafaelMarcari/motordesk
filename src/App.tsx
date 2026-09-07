@@ -35,7 +35,8 @@ import {
   TaxRule,
   XmlImportRecord,
   Carrier,
-  UnitOfMeasure
+  UnitOfMeasure,
+  ExpenseCategoryItem
 } from './types';
 
 // Icons for navigation
@@ -565,8 +566,39 @@ export default function App() {
     }
   }, [db?.budgets?.length, db?.parts?.length, db?.serviceOrders?.length, db?.accountsReceivable?.length, db?.accountsPayable?.length]);
 
+  // User Accessible Companies
+  const userAccessibleCompanies = React.useMemo(() => {
+    const all = db?.registeredCompanies && db.registeredCompanies.length > 0
+      ? db.registeredCompanies
+      : [db?.companyInfo || { id: 'comp-1', name: 'MotorDesk', cnpj: '', phone: '', whatsapp: '', email: '', address: '', welcomeMessage: '', registeredAt: '' }];
+
+    if (!currentUser) return all;
+
+    if (currentUser.allowedCompanyIds && currentUser.allowedCompanyIds.length > 0) {
+      if (currentUser.allowedCompanyIds.includes('*')) {
+        return all;
+      }
+      return all.filter(c => currentUser.allowedCompanyIds?.includes(c.id));
+    }
+
+    const primaryCompanyId = currentUser.companyId || 'comp-1';
+    return all.filter(c => c.id === primaryCompanyId);
+  }, [db?.registeredCompanies, db?.companyInfo, currentUser]);
+
   // Multi-tenant scoping helper: derive active company ID for current logged user
   const activeCompanyId = React.useMemo(() => {
+    if (currentUser) {
+      const allowedIds = userAccessibleCompanies.map(c => c.id);
+      if (activeCompanyIdState && allowedIds.includes(activeCompanyIdState)) {
+        return activeCompanyIdState;
+      }
+      if (currentUser.companyId && allowedIds.includes(currentUser.companyId)) {
+        return currentUser.companyId;
+      }
+      if (allowedIds.length > 0) {
+        return allowedIds[0];
+      }
+    }
     if (activeCompanyIdState && (db?.registeredCompanies || []).some(c => c.id === activeCompanyIdState)) {
       return activeCompanyIdState;
     }
@@ -580,7 +612,7 @@ export default function App() {
       return db.registeredCompanies[0].id;
     }
     return db?.companyInfo?.id || 'comp-1';
-  }, [activeCompanyIdState, currentUser?.companyId, db?.registeredCompanies, db?.companyInfo?.id]);
+  }, [activeCompanyIdState, currentUser, userAccessibleCompanies, db?.registeredCompanies, db?.companyInfo?.id]);
 
   const activeCompanyObj = React.useMemo(() => {
     return (db?.registeredCompanies || []).find(c => c.id === activeCompanyId) || db?.companyInfo;
@@ -745,6 +777,12 @@ export default function App() {
       return;
     }
 
+    const allowedIds = userAccessibleCompanies.map(c => c.id);
+    if (!allowedIds.includes(targetCompanyId) && currentUser.role !== 'qa') {
+      console.warn(`[WorkspaceSwitch] User ${currentUser.username} is not authorized for company ${targetCompanyId}`);
+      return;
+    }
+
     setActiveCompanyIdState(targetCompanyId);
     try {
       localStorage.setItem('motordesk_active_company_id', targetCompanyId);
@@ -760,11 +798,6 @@ export default function App() {
         ...prev,
         companyInfo: targetComp,
         globalModules: targetComp.globalModules || prev.globalModules,
-        users: (prev.users || []).map(u => 
-          (u.id === currentUser.id || u.username.toLowerCase() === currentUser.username.toLowerCase())
-            ? { ...u, companyId: targetCompanyId }
-            : u
-        )
       };
       dataProvider.saveDatabaseImmediate(nextDb);
 
@@ -817,6 +850,7 @@ export default function App() {
       ...db,
       companyInfo: activeCompanyObj || db.companyInfo,
       sefazConfig: activeCompanyObj?.sefazConfig || db.sefazConfig,
+      registeredCompanies: userAccessibleCompanies,
       clients: canClients ? (db.clients || []).filter(item => (item.companyId || 'comp-1') === activeCompanyId) : [],
       vehicles: canVehicles ? (db.vehicles || []).filter(item => (item.companyId || 'comp-1') === activeCompanyId) : [],
       parts: canParts ? (db.parts || []).filter(item => (item.companyId || 'comp-1') === activeCompanyId) : [],
@@ -850,18 +884,19 @@ export default function App() {
       fiscalDocuments: canFiscal ? (db.fiscalDocuments || []).filter(item => (item.companyId || 'comp-1') === activeCompanyId) : [],
       boletos: (canAccountsReceivable || canFiscal) ? (db.boletos || []).filter(item => (item.companyId || 'comp-1') === activeCompanyId) : [],
       taxObligationGuides: canFiscal ? (db.taxObligationGuides || []).filter(item => (item.companyId || 'comp-1') === activeCompanyId) : [],
-      accessGroups: (db.accessGroups || []).filter(item => !item.companyId || (item.companyId || 'comp-1') === activeCompanyId),
+      accessGroups: (db.accessGroups || []).filter(item => (item.companyId || 'comp-1') === activeCompanyId),
       taxOperationNatures: db.taxOperationNatures || [],
       taxRules: db.taxRules || [],
       xmlImportRecords: db.xmlImportRecords || [],
       unitsOfMeasure: canUnits ? (db.unitsOfMeasure || []).filter(item => item.isGlobal || !item.companyId || (item.companyId || 'comp-1') === activeCompanyId) : [],
-      boms: canProduction ? (db.boms || db.billOfMaterials || []).filter(item => !item.companyId || item.companyId === activeCompanyId || (activeBusinessType === 'INDUSTRIA' && !item.companyId)) : [],
-      billOfMaterials: canProduction ? (db.boms || db.billOfMaterials || []).filter(item => !item.companyId || item.companyId === activeCompanyId || (activeBusinessType === 'INDUSTRIA' && !item.companyId)) : [],
-      productionOrders: canProduction ? (db.productionOrders || []).filter(item => !item.companyId || item.companyId === activeCompanyId || (activeBusinessType === 'INDUSTRIA' && !item.companyId)) : [],
-      productLots: canProduction ? (db.productLots || []).filter(item => !item.companyId || item.companyId === activeCompanyId || (activeBusinessType === 'INDUSTRIA' && !item.companyId)) : [],
-      operationalAlerts: (db.operationalAlerts || []).filter(item => !item.companyId || item.companyId === activeCompanyId || (activeBusinessType === 'INDUSTRIA' && !item.companyId)),
+      boms: canProduction ? (db.boms || db.billOfMaterials || []).filter(item => (item.companyId || 'comp-1') === activeCompanyId) : [],
+      billOfMaterials: canProduction ? (db.boms || db.billOfMaterials || []).filter(item => (item.companyId || 'comp-1') === activeCompanyId) : [],
+      productionOrders: canProduction ? (db.productionOrders || []).filter(item => (item.companyId || 'comp-1') === activeCompanyId) : [],
+      productLots: canProduction ? (db.productLots || []).filter(item => (item.companyId || 'comp-1') === activeCompanyId) : [],
+      operationalAlerts: (db.operationalAlerts || []).filter(item => (item.companyId || 'comp-1') === activeCompanyId),
+      monthlyAccountingClosings: (db.monthlyAccountingClosings || []).filter(item => (item.companyId || 'comp-1') === activeCompanyId),
     };
-  }, [db, activeCompanyId, activeCompanyObj, activeBusinessType, currentUser?.permissions, isModuleLocked]);
+  }, [db, activeCompanyId, activeCompanyObj, activeBusinessType, userAccessibleCompanies, currentUser?.permissions, isModuleLocked]);
 
   // State Updaters passed to Views (Preserving multi-tenant data for other companies)
   const handleSaveUnitsOfMeasure = (units: UnitOfMeasure[]) => {
@@ -967,7 +1002,8 @@ export default function App() {
 
   const handleSavePayables = (
     accountsPayable: AccountPayable[], 
-    financialTransactions: FinancialTransaction[]
+    financialTransactions: FinancialTransaction[],
+    expenseCategories?: ExpenseCategoryItem[]
   ) => {
     const formattedAP = accountsPayable.map(ap => ({ ...ap, companyId: ap.companyId || activeCompanyId }));
     const formattedFT = financialTransactions.map(ft => ({ ...ft, companyId: ft.companyId || activeCompanyId }));
@@ -979,7 +1015,8 @@ export default function App() {
       return {
         ...prev,
         accountsPayable: [...otherAP, ...formattedAP],
-        financialTransactions: [...otherFT, ...formattedFT]
+        financialTransactions: [...otherFT, ...formattedFT],
+        ...(expenseCategories ? { expenseCategories } : {})
       };
     });
   };
@@ -1081,8 +1118,29 @@ export default function App() {
 
   const handleSaveAccessGroups = (accessGroups: AccessGroup[]) => {
     syncDb(prev => {
-      const other = (prev.accessGroups || []).filter(item => item.companyId && item.companyId !== activeCompanyId);
-      return { ...prev, accessGroups: [...other, ...accessGroups] };
+      const other = (prev.accessGroups || []).filter(item => (item.companyId || 'comp-1') !== activeCompanyId);
+      const current = accessGroups.map(item => ({ ...item, companyId: item.companyId || activeCompanyId }));
+      return { ...prev, accessGroups: [...other, ...current] };
+    });
+  };
+
+  const handleSaveAccessGroupsDatabase = (updatedScopedDb: AppDatabase) => {
+    syncDb(prev => {
+      const otherAccessGroups = (prev.accessGroups || []).filter(item => (item.companyId || 'comp-1') !== activeCompanyId);
+      const currentAccessGroups = (updatedScopedDb.accessGroups || []).map(g => ({ ...g, companyId: g.companyId || activeCompanyId }));
+
+      const otherUsers = (prev.users || []).filter(u => (u.companyId || 'comp-1') !== activeCompanyId);
+      const currentUsers = (updatedScopedDb.users || []).map(u => ({ ...u, companyId: u.companyId || activeCompanyId }));
+
+      const otherHistory = (prev.history || []).filter(h => (h.companyId || 'comp-1') !== activeCompanyId);
+      const currentHistory = (updatedScopedDb.history || []).map(h => ({ ...h, companyId: h.companyId || activeCompanyId }));
+
+      return {
+        ...prev,
+        accessGroups: [...otherAccessGroups, ...currentAccessGroups],
+        users: [...otherUsers, ...currentUsers],
+        history: [...currentHistory, ...otherHistory]
+      };
     });
   };
 
@@ -1093,11 +1151,16 @@ export default function App() {
 
   const handleSaveUsers = (users: User[]) => {
     syncDb(prev => {
-      // Merge users intelligently so other companies and existing operators are preserved safely
-      const userMap = new Map((prev.users || []).map(u => [u.id, u]));
-      users.forEach(u => userMap.set(u.id, u));
-      const mergedUsers = Array.from(userMap.values());
-      return { ...prev, users: mergedUsers };
+      // Keep operators from other companies completely untouched
+      const otherCompanyUsers = (prev.users || []).filter(
+        u => (u.companyId || 'comp-1') !== activeCompanyId
+      );
+      // Ensure all current company users have companyId assigned
+      const currentCompanyUsers = users.map(u => ({
+        ...u,
+        companyId: u.companyId || activeCompanyId
+      }));
+      return { ...prev, users: [...otherCompanyUsers, ...currentCompanyUsers] };
     });
     if (currentUser) {
       const updatedSelf = users.find(
@@ -1187,6 +1250,11 @@ export default function App() {
       if (!prev) return prev;
       const effectiveActiveComp = activeComp || prev.companyInfo;
 
+      // Merge companies with existing registered companies so unviewed companies are preserved
+      const compMap = new Map((prev.registeredCompanies || []).map(c => [c.id, c]));
+      companies.forEach(c => compMap.set(c.id, c));
+      const mergedCompanies = Array.from(compMap.values());
+
       let mergedUsers = prev.users || [];
       if (newUsers && newUsers.length > 0) {
         const userMap = new Map(mergedUsers.map(u => [u.id, u]));
@@ -1194,18 +1262,10 @@ export default function App() {
         mergedUsers = Array.from(userMap.values());
       }
 
-      if (currentUser && targetActiveId) {
-        mergedUsers = mergedUsers.map(u => 
-          (u.id === currentUser.id || u.username.toLowerCase() === currentUser.username.toLowerCase())
-            ? { ...u, companyId: targetActiveId }
-            : u
-        );
-      }
-
       const nextDb: AppDatabase = {
         ...prev,
         companyInfo: effectiveActiveComp,
-        registeredCompanies: companies,
+        registeredCompanies: mergedCompanies,
         globalModules: effectiveActiveComp.globalModules || prev.globalModules,
         users: mergedUsers
       };
@@ -1214,7 +1274,7 @@ export default function App() {
       if (currentUser) {
         const updatedUser: User = normalizeUser({
           ...currentUser,
-          companyId: targetActiveId,
+          companyId: currentUser.companyId || targetActiveId,
         }, targetActiveId, nextDb);
         setCurrentUser(updatedUser);
         try {
@@ -2625,16 +2685,16 @@ export default function App() {
             )}
 
             <span className="text-xs font-semibold text-slate-500 font-sans hidden sm:inline">Empresa:</span>
-            {registeredCompaniesList.length > 1 && (currentUser.role === 'admin' || currentUser.role === 'qa') ? (
+            {userAccessibleCompanies.length > 1 ? (
               <div className="relative inline-flex items-center">
                 <select
                   id="top-company-switcher-select"
                   value={activeCompanyId}
                   onChange={(e) => handleSwitchCompanyWorkspace(e.target.value)}
                   className="bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-950 text-xs font-bold px-2.5 py-1 rounded-lg focus:ring-2 focus:ring-indigo-400 focus:outline-hidden cursor-pointer shadow-3xs appearance-none pr-7 transition"
-                  title="Alternar entre empresas contratantes cadastradas"
+                  title="Alternar entre empresas autorizadas"
                 >
-                  {registeredCompaniesList.map((comp) => {
+                  {userAccessibleCompanies.map((comp) => {
                     const bType = getBusinessType(comp);
                     const label = bType === 'INDUSTRIA' ? '🏭 Indústria' : bType === 'COMERCIO' ? '🛒 Comércio' : bType === 'OFICINA_COMERCIO' ? '🏢 Híbrido' : '🔧 Oficina';
                     return (
@@ -2647,7 +2707,7 @@ export default function App() {
                 <ChevronDown className="w-3.5 h-3.5 text-indigo-600 absolute right-2 pointer-events-none" />
               </div>
             ) : (
-              <span className="text-xs font-bold text-indigo-900 bg-indigo-50 border border-indigo-200 px-2.5 py-1 rounded-md flex items-center gap-1.5 font-sans">
+              <span className="text-xs font-bold text-indigo-900 bg-indigo-50 border border-indigo-200 px-2.5 py-1 rounded-md flex items-center gap-1.5 font-sans" id="top-company-badge">
                 <Building2 className="w-3.5 h-3.5 text-indigo-600" />
                 {activeCompanyObj?.name || db.companyInfo?.name || 'MotorDesk'}
               </span>
@@ -2824,6 +2884,7 @@ export default function App() {
                 onSavePayables={handleSavePayables}
                 onAddHistoryLog={handleAddHistoryLog}
                 setUnsavedTask={setUnsavedTask}
+                onSaveFullDatabase={syncDb}
               />
             )
           )}
@@ -2948,7 +3009,7 @@ export default function App() {
 
           {activeView === 'history' && currentUser.permissions.accessHistory && (
             isModuleLocked('accessHistory') ? renderLockedScreen() : (
-              <HistoryView db={scopedDb} currentUser={currentUser} fullDb={db} />
+              <HistoryView db={scopedDb} currentUser={currentUser} />
             )
           )}
 
@@ -2961,7 +3022,7 @@ export default function App() {
           {activeView === 'users' && currentUser.permissions.accessUserManagement && (
             isModuleLocked('accessUserManagement') ? renderLockedScreen() : (
               <UserManagementView 
-                db={db} 
+                db={scopedDb} 
                 currentUser={currentUser}
                 onSaveUsers={handleSaveUsers} 
                 onSaveCompanyInfo={handleSaveCompanyInfo}
@@ -2978,10 +3039,10 @@ export default function App() {
           {activeView === 'access_groups' && currentUser.permissions.accessUserManagement && (
             isModuleLocked('accessUserManagement') ? renderLockedScreen() : (
               <AccessGroupsManagementView 
-                db={db}
+                db={scopedDb}
                 currentUser={currentUser}
                 currentCompany={activeCompanyObj || db.companyInfo}
-                onSaveDatabase={handleSaveFullDatabase}
+                onSaveDatabase={handleSaveAccessGroupsDatabase}
               />
             )
           )}
@@ -2989,7 +3050,7 @@ export default function App() {
           {activeView === 'profile' && (
             <ProfileView 
               currentUser={currentUser} 
-              db={db || scopedDb} 
+              db={scopedDb} 
               onSaveUsers={handleSaveUsers} 
               onAddHistoryLog={handleAddHistoryLog}
             />
@@ -3009,7 +3070,7 @@ export default function App() {
 
           {activeView === 'data_migration' && currentUser.permissions.accessQAPanel && (
             <DataMigrationConverterView 
-              db={db}
+              db={scopedDb}
               onSaveClients={handleSaveClients}
               onSaveVehicles={handleSaveVehicles}
               onSaveParts={handleSaveParts}
@@ -3021,7 +3082,7 @@ export default function App() {
           {(activeView === 'notifications_engine' || (activeView as string) === 'notification_engine') && (currentUser.permissions.accessNotificationsEngine || currentUser.permissions.accessNotificationEngine) && (
             (isModuleLocked('accessNotificationsEngine') || isModuleLocked('accessNotificationEngine')) ? renderLockedScreen() : (
               <NotificationEngineView 
-                db={db}
+                db={scopedDb}
                 setDb={syncDb as any}
                 currentUser={currentUser}
                 activeCompanyId={activeCompanyId}
@@ -3032,7 +3093,7 @@ export default function App() {
           {['representative_commerce', 'representative_orders', 'representative_reconciliation'].includes(activeView) && currentUser.permissions.accessRepresentativeCommerce && (
             isModuleLocked('accessRepresentativeCommerce') ? renderLockedScreen() : (
               <RepresentativeCommerceView 
-                db={db}
+                db={scopedDb}
                 setDb={syncDb as any}
                 currentUser={currentUser}
                 activeCompanyId={activeCompanyId}
