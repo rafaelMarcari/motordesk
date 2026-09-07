@@ -1301,7 +1301,7 @@ export default function App() {
     }));
   };
 
-  // Calculate matching companies for typed username (or all registered companies if empty/admin)
+  // Calculate matching companies strictly for typed username (empty on initial access)
   const matchingCompaniesForLogin = React.useMemo(() => {
     if (!db) return [];
 
@@ -1312,28 +1312,42 @@ export default function App() {
       allCompanies.push(db.companyInfo);
     }
 
-    if (!loginUsername.trim()) {
-      return allCompanies;
-    }
-
     const cleanUsername = loginUsername.trim().toLowerCase();
-    const matchingUsers = (db.users || []).filter(u => u.username.toLowerCase() === cleanUsername);
-    if (matchingUsers.length === 0) return allCompanies;
-
-    // Admin and QA roles can access any company
-    const isAdminOrQa = matchingUsers.some(u => u.role === 'admin' || u.role === 'qa');
-    if (isAdminOrQa) {
-      return allCompanies;
+    // When accessing the login screen (empty username), do not return companies so the combobox does not show
+    if (!cleanUsername) {
+      return [];
     }
 
-    const companyIds = Array.from(new Set(matchingUsers.map(u => u.companyId || 'comp-1')));
-    const filtered = allCompanies.filter(c => companyIds.includes(c.id));
-    return filtered.length > 0 ? filtered : allCompanies;
+    const matchingUsers = (db.users || []).filter(u => u.username.toLowerCase() === cleanUsername);
+    if (matchingUsers.length === 0) {
+      return [];
+    }
+
+    // Collect all company IDs the user actually has access to
+    const accessibleCompanyIds = new Set<string>();
+    matchingUsers.forEach(u => {
+      if (u.companyId) {
+        accessibleCompanyIds.add(u.companyId);
+      }
+      if (Array.isArray(u.allowedCompanyIds)) {
+        u.allowedCompanyIds.forEach(id => accessibleCompanyIds.add(id));
+      }
+    });
+
+    if (accessibleCompanyIds.size === 0) {
+      accessibleCompanyIds.add('comp-1');
+    }
+
+    const filtered = allCompanies.filter(c => accessibleCompanyIds.has(c.id));
+    return filtered;
   }, [db, loginUsername]);
 
   // Synchronize selectedLoginCompanyId based on typed username and matching companies
   useEffect(() => {
-    if (matchingCompaniesForLogin.length > 0) {
+    if (matchingCompaniesForLogin.length === 1) {
+      // Exactly one company: automatically select it so login goes straight to it
+      setSelectedLoginCompanyId(matchingCompaniesForLogin[0].id);
+    } else if (matchingCompaniesForLogin.length > 1) {
       const savedCompanyId = localStorage.getItem('motordesk_active_company_id');
       if (savedCompanyId && matchingCompaniesForLogin.some(c => c.id === savedCompanyId)) {
         if (!selectedLoginCompanyId || !matchingCompaniesForLogin.some(c => c.id === selectedLoginCompanyId)) {
@@ -1361,7 +1375,23 @@ export default function App() {
 
     const cleanUsername = loginUsername.trim().toLowerCase();
     const enteredPassword = loginPassword.trim();
-    const targetCompId = selectedLoginCompanyId || matchingCompaniesForLogin[0]?.id || db.companyInfo?.id || 'comp-1';
+
+    // Determine target company:
+    // If the user has access to only 1 company, strictly target that company.
+    // If multiple companies match, target selectedLoginCompanyId (if valid) or the first one.
+    let targetCompId = '';
+    if (matchingCompaniesForLogin.length === 1) {
+      targetCompId = matchingCompaniesForLogin[0].id;
+    } else if (matchingCompaniesForLogin.length > 1) {
+      if (selectedLoginCompanyId && matchingCompaniesForLogin.some(c => c.id === selectedLoginCompanyId)) {
+        targetCompId = selectedLoginCompanyId;
+      } else {
+        targetCompId = matchingCompaniesForLogin[0].id;
+      }
+    } else {
+      const matchingUser = (db.users || []).find(u => u.username.toLowerCase() === cleanUsername);
+      targetCompId = matchingUser?.companyId || selectedLoginCompanyId || db.companyInfo?.id || 'comp-1';
+    }
 
     // 1. Try matching with the target company first
     let matchedUser = (db.users || []).find(
@@ -1370,46 +1400,31 @@ export default function App() {
            (u.companyId || 'comp-1') === targetCompId
     );
 
-    // 2. If not matched in selected company, check if password matches across any other company
+    // 2. If not matched in target company, check if password matches across any of the user's accessible companies
     if (!matchedUser) {
+      const allowedCompIds = matchingCompaniesForLogin.map(c => c.id);
       const anyCompMatch = (db.users || []).find(
         u => u.username.toLowerCase() === cleanUsername && 
-             u.passwordHash === enteredPassword
+             u.passwordHash === enteredPassword &&
+             (allowedCompIds.length === 0 || allowedCompIds.includes(u.companyId || 'comp-1'))
       );
       if (anyCompMatch) {
-        // If user has admin or QA role, allow them to log into the selected company directly
-        if (anyCompMatch.role === 'admin' || anyCompMatch.role === 'qa') {
-          matchedUser = {
-            ...anyCompMatch,
-            companyId: targetCompId
-          };
-        } else {
-          matchedUser = anyCompMatch;
-          if (anyCompMatch.companyId) {
-            setSelectedLoginCompanyId(anyCompMatch.companyId);
-          }
-        }
+        matchedUser = anyCompMatch;
+        targetCompId = anyCompMatch.companyId || targetCompId;
       }
     }
 
-    // 3. Fallback: case-insensitive match for password
+    // 3. Fallback: case-insensitive match for password within accessible companies
     if (!matchedUser) {
+      const allowedCompIds = matchingCompaniesForLogin.map(c => c.id);
       const userWithAnyCasePass = (db.users || []).find(
         u => u.username.toLowerCase() === cleanUsername && 
-             u.passwordHash.toLowerCase() === enteredPassword.toLowerCase()
+             u.passwordHash.toLowerCase() === enteredPassword.toLowerCase() &&
+             (allowedCompIds.length === 0 || allowedCompIds.includes(u.companyId || 'comp-1'))
       );
       if (userWithAnyCasePass) {
-        if (userWithAnyCasePass.role === 'admin' || userWithAnyCasePass.role === 'qa') {
-          matchedUser = {
-            ...userWithAnyCasePass,
-            companyId: targetCompId
-          };
-        } else {
-          matchedUser = userWithAnyCasePass;
-          if (userWithAnyCasePass.companyId) {
-            setSelectedLoginCompanyId(userWithAnyCasePass.companyId);
-          }
-        }
+        matchedUser = userWithAnyCasePass;
+        targetCompId = userWithAnyCasePass.companyId || targetCompId;
       }
     }
 
@@ -1917,6 +1932,19 @@ export default function App() {
                   <p className="text-[10px] text-indigo-700 font-medium">
                     Usuário cadastrado em mais de uma empresa. Selecione a unidade onde deseja fazer login.
                   </p>
+                </div>
+              )}
+
+              {/* Single Company Indicator - Subtle badge showing the sole accessible company (without combobox) */}
+              {matchingCompaniesForLogin.length === 1 && (
+                <div className="flex items-center gap-2.5 p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs animate-fade-in" id="login-single-company-badge">
+                  <Building2 className="w-4 h-4 text-indigo-600 shrink-0" />
+                  <div className="min-w-0">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase block tracking-wider">Unidade de Acesso</span>
+                    <span className="font-semibold text-slate-800 text-xs truncate block">
+                      {matchingCompaniesForLogin[0].name}
+                    </span>
+                  </div>
                 </div>
               )}
 
@@ -2808,6 +2836,7 @@ export default function App() {
                 onSaveTransactions={handleSaveTransactions}
                 onAddHistoryLog={handleAddHistoryLog}
                 onSaveAlertSettings={handleSaveAlertSettings}
+                onUpdateDb={syncDb}
               />
             )
           )}

@@ -7,11 +7,12 @@ import React, { useState } from 'react';
 import { 
   TrendingUp, TrendingDown, DollarSign, Wallet, Calendar, 
   Search, Plus, ArrowUpRight, ArrowDownRight, Tag, X, FileText, CheckCircle,
-  Bell, Sliders
+  Bell, Sliders, Calculator
 } from 'lucide-react';
 import { FinancialTransaction, User, AlertSettings } from '../types';
 import { AppDatabase, INITIAL_ALERT_SETTINGS } from '../data/mockData';
 import { FinancialAlertsConfigModal } from './FinancialAlertsConfigModal';
+import { MonthlyAccountingPanel } from './MonthlyAccountingPanel';
 
 interface FinancialViewProps {
   db: AppDatabase;
@@ -19,6 +20,7 @@ interface FinancialViewProps {
   onSaveTransactions: (transactions: FinancialTransaction[]) => void;
   onAddHistoryLog: (type: 'budget' | 'service_order' | 'payment' | 'user_activity' | 'system', title: string, description: string, clientId: string, vehicleId: string) => void;
   onSaveAlertSettings?: (settings: AlertSettings) => void;
+  onUpdateDb?: (updater: (prev: AppDatabase) => AppDatabase) => void;
 }
 
 export default function FinancialView({
@@ -26,8 +28,10 @@ export default function FinancialView({
   currentUser,
   onSaveTransactions,
   onAddHistoryLog,
-  onSaveAlertSettings
+  onSaveAlertSettings,
+  onUpdateDb
 }: FinancialViewProps) {
+  const [currentFinancialTab, setCurrentFinancialTab] = useState<'accounting' | 'cashbook'>('accounting');
   const [searchQuery, setSearchQuery] = useState('');
   const [typeFilter, setTypeFilter] = useState<'all' | 'income' | 'expense'>('all');
   const [periodFilter, setPeriodFilter] = useState<'all' | 'today' | 'month' | 'year'>('month');
@@ -156,8 +160,57 @@ export default function FinancialView({
         </div>
       </div>
 
-      {/* Main KPI Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4" id="financial-kpis">
+      {/* Top Switcher: Apuração Contábil Mensal vs Livro Caixa */}
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-slate-100/80 p-1.5 rounded-2xl border border-slate-200" id="financial-tab-switcher">
+        <div className="flex items-center gap-1.5 w-full sm:w-auto">
+          <button
+            id="tab-btn-accounting"
+            type="button"
+            onClick={() => setCurrentFinancialTab('accounting')}
+            className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition duration-150 ${
+              currentFinancialTab === 'accounting'
+                ? 'bg-white text-indigo-700 shadow-xs border border-slate-200'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
+            }`}
+          >
+            <Calculator className="w-4 h-4 text-indigo-600" />
+            <span>Contador & Apuração Mensal (Competência)</span>
+            <span className="hidden md:inline px-1.5 py-0.5 bg-indigo-50 text-indigo-700 text-[10px] rounded-md font-semibold">
+              Pedidos & Abatimentos
+            </span>
+          </button>
+
+          <button
+            id="tab-btn-cashbook"
+            type="button"
+            onClick={() => setCurrentFinancialTab('cashbook')}
+            className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition duration-150 ${
+              currentFinancialTab === 'cashbook'
+                ? 'bg-white text-slate-900 shadow-xs border border-slate-200'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
+            }`}
+          >
+            <Wallet className="w-4 h-4 text-slate-600" />
+            <span>Livro Caixa & Movimentações Diárias</span>
+          </button>
+        </div>
+
+        <div className="text-xs text-slate-500 hidden lg:flex items-center gap-1.5 px-3">
+          <Calendar className="w-3.5 h-3.5 text-slate-400" />
+          <span>Competência Ativa: <strong className="text-slate-800">{db.activeAccountingPeriod || '2026-09'}</strong></span>
+        </div>
+      </div>
+
+      {currentFinancialTab === 'accounting' ? (
+        <MonthlyAccountingPanel
+          db={db}
+          currentUser={currentUser}
+          onUpdateDb={onUpdateDb || (() => {})}
+        />
+      ) : (
+        <>
+          {/* Main KPI Cards */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4" id="financial-kpis">
         {/* Total Entradas */}
         <div className="bg-white p-4 rounded-xl border border-slate-100 shadow-xs flex items-center gap-4">
           <div className="p-3 bg-emerald-50 text-emerald-600 rounded-lg">
@@ -482,6 +535,8 @@ export default function FinancialView({
           </div>
         )}
       </div>
+      </>
+      )}
 
       {/* Financial Alerts Config Modal */}
       {isAlertsConfigOpen && onSaveAlertSettings && (

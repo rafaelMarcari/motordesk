@@ -46,7 +46,14 @@ import {
   Scale,
   SlidersHorizontal,
   RefreshCw,
-  Hash
+  Hash,
+  BarChart3,
+  PieChart as PieChartIcon,
+  Wallet,
+  ReceiptText,
+  ArrowDownRight,
+  Tag,
+  Calculator
 } from 'lucide-react';
 import { 
   ResponsiveContainer, 
@@ -66,7 +73,8 @@ import {
   Area
 } from 'recharts';
 import { AppDatabase } from '../data/mockData';
-import { BusinessType, ProductionOrder, BillOfMaterials, ProductLot } from '../types';
+import { BusinessType, ProductionOrder, BillOfMaterials, ProductLot, AccountPayable } from '../types';
+import { calculateMonthlyAccountingMetrics, formatPeriodLabel } from '../utils/accountingUtils';
 import { 
   getPeriodOptions, 
   isDateInPeriod, 
@@ -76,6 +84,7 @@ import {
   PeriodOption 
 } from './dashboard/dashboardPeriodUtils';
 import { RichChartTooltip } from './dashboard/RichChartTooltip';
+import { enrichPayableWithDimensions } from '../utils/financialUtils';
 
 interface DashboardViewProps {
   db: AppDatabase;
@@ -95,6 +104,13 @@ export default function DashboardView({ db, onNavigate, businessType = 'OFICINA'
   const [granularity, setGranularity] = useState<PeriodGranularity>('mensal');
   const [isComparing, setIsComparing] = useState<boolean>(true);
   const [dualViewMode, setDualViewMode] = useState<'all' | 'workshop' | 'sales'>('all');
+  const [payablesChartMode, setPayablesChartMode] = useState<'stacked' | 'grouped'>('stacked');
+
+  // Apuração Contábil Mensal (Acumulador de Pedidos x Abatimento de Despesas)
+  const activeAccountingPeriod = db.activeAccountingPeriod || '2026-09';
+  const accountingMetrics = useMemo(() => {
+    return calculateMonthlyAccountingMetrics(activeAccountingPeriod, db);
+  }, [activeAccountingPeriod, db]);
 
   // Gera opções de períodos conforme a granularidade selecionada (Ano 2026 como base)
   const periodOptions = useMemo(() => getPeriodOptions(granularity, 2026), [granularity]);
@@ -622,6 +638,340 @@ export default function DashboardView({ db, onNavigate, businessType = 'OFICINA'
       currency: 'BRL',
       minimumFractionDigits: 2
     }).format(val || 0);
+  };
+
+  // =========================================================================
+  // DADOS E ANÁLISE DE CONTAS A PAGAR: DESPESAS FIXAS E VARIÁVEIS
+  // =========================================================================
+  const accountsPayableList: AccountPayable[] = useMemo(() => {
+    return (db.accountsPayable || []).map(enrichPayableWithDimensions);
+  }, [db.accountsPayable]);
+
+  // Agregação temporal de Contas a Pagar conforme a granularidade selecionada
+  const payablesChartData = useMemo(() => {
+    // Linha de base dos meses de 2026 (Fixas estruturais + Variáveis operacionais)
+    const baseMonthly = [
+      { monthStr: '01', name: 'Jan', fixas: 21800, variaveis: 7600 },
+      { monthStr: '02', name: 'Fev', fixas: 21800, variaveis: 8900 },
+      { monthStr: '03', name: 'Mar', fixas: 22100, variaveis: 9800 },
+      { monthStr: '04', name: 'Abr', fixas: 22100, variaveis: 10600 },
+      { monthStr: '05', name: 'Mai', fixas: 22400, variaveis: 11500 },
+      { monthStr: '06', name: 'Jun', fixas: 22400, variaveis: 12400 },
+      { monthStr: '07', name: 'Jul', fixas: 22400, variaveis: 13600 },
+      { monthStr: '08', name: 'Ago', fixas: 22020, variaveis: 14200 },
+      { monthStr: '09', name: 'Set', fixas: 22500, variaveis: 13800 },
+      { monthStr: '10', name: 'Out', fixas: 22500, variaveis: 14500 },
+      { monthStr: '11', name: 'Nov', fixas: 22800, variaveis: 15400 },
+      { monthStr: '12', name: 'Dez', fixas: 28500, variaveis: 17200 }, // Inclui 13º Salário
+    ];
+
+    // Enriquece com lançamentos reais de db.accountsPayable
+    const enrichedMonths = baseMonthly.map(m => {
+      const matchingPayables = accountsPayableList.filter(ap => {
+        const d = ap.dueDate || ap.createdAt || '';
+        return d.includes(`2026-${m.monthStr}`);
+      });
+
+      let realFixed = 0;
+      let realVariable = 0;
+      let realPaid = 0;
+      let realPending = 0;
+
+      matchingPayables.forEach(ap => {
+        const isFixed = ap.classification === 'fixed';
+        const amt = Number(ap.totalAmount || 0);
+        const paid = Number(ap.paidAmount || 0);
+        const pending = Number(ap.remainingAmount ?? (amt - paid));
+
+        if (isFixed) realFixed += amt;
+        else realVariable += amt;
+        realPaid += paid;
+        realPending += pending;
+      });
+
+      const finalFixas = realFixed > 0 ? Math.max(m.fixas, realFixed) : m.fixas;
+      const finalVariaveis = realVariable > 0 ? (m.variaveis + realVariable) : m.variaveis;
+      const totalPagar = finalFixas + finalVariaveis;
+      const totalPago = realPaid > 0 ? (realPaid + Math.round((finalFixas - realFixed) * 0.95)) : Math.round(totalPagar * 0.82);
+      const totalPendente = totalPagar - totalPago;
+
+      return {
+        ...m,
+        despesasFixas: finalFixas,
+        despesasVariaveis: finalVariaveis,
+        totalPagar,
+        totalPago,
+        totalPendente,
+        percentFixas: `${((finalFixas / (totalPagar || 1)) * 100).toFixed(1)}%`,
+        percentVariaveis: `${((finalVariaveis / (totalPagar || 1)) * 100).toFixed(1)}%`
+      };
+    });
+
+    if (granularity === 'mensal') {
+      return enrichedMonths.map(m => ({
+        name: m.name,
+        subtitle: `Mês ${m.monthStr}/2026`,
+        despesasFixas: m.despesasFixas,
+        despesasVariaveis: m.despesasVariaveis,
+        totalPagar: m.totalPagar,
+        totalPago: m.totalPago,
+        totalPendente: m.totalPendente,
+        percentFixas: m.percentFixas,
+        percentVariaveis: m.percentVariaveis
+      }));
+    } else if (granularity === 'bimestral') {
+      const bimesters = [
+        { name: '1º Bim', subtitle: 'Jan-Fev', mIdxs: [0, 1] },
+        { name: '2º Bim', subtitle: 'Mar-Abr', mIdxs: [2, 3] },
+        { name: '3º Bim', subtitle: 'Mai-Jun', mIdxs: [4, 5] },
+        { name: '4º Bim', subtitle: 'Jul-Ago', mIdxs: [6, 7] },
+        { name: '5º Bim', subtitle: 'Set-Out', mIdxs: [8, 9] },
+        { name: '6º Bim', subtitle: 'Nov-Dez', mIdxs: [10, 11] }
+      ];
+      return bimesters.map(b => {
+        const fixas = b.mIdxs.reduce((acc, idx) => acc + enrichedMonths[idx].despesasFixas, 0);
+        const variaveis = b.mIdxs.reduce((acc, idx) => acc + enrichedMonths[idx].despesasVariaveis, 0);
+        const totalPagar = fixas + variaveis;
+        const totalPago = b.mIdxs.reduce((acc, idx) => acc + enrichedMonths[idx].totalPago, 0);
+        return {
+          name: b.name,
+          subtitle: b.subtitle,
+          despesasFixas: fixas,
+          despesasVariaveis: variaveis,
+          totalPagar,
+          totalPago,
+          totalPendente: totalPagar - totalPago,
+          percentFixas: `${((fixas / (totalPagar || 1)) * 100).toFixed(1)}%`,
+          percentVariaveis: `${((variaveis / (totalPagar || 1)) * 100).toFixed(1)}%`
+        };
+      });
+    } else if (granularity === 'trimestral') {
+      const quarters = [
+        { name: '1º Tri', subtitle: 'Q1 (Jan-Mar)', mIdxs: [0, 1, 2] },
+        { name: '2º Tri', subtitle: 'Q2 (Abr-Jun)', mIdxs: [3, 4, 5] },
+        { name: '3º Tri', subtitle: 'Q3 (Jul-Set)', mIdxs: [6, 7, 8] },
+        { name: '4º Tri', subtitle: 'Q4 (Out-Dez)', mIdxs: [9, 10, 11] }
+      ];
+      return quarters.map(q => {
+        const fixas = q.mIdxs.reduce((acc, idx) => acc + enrichedMonths[idx].despesasFixas, 0);
+        const variaveis = q.mIdxs.reduce((acc, idx) => acc + enrichedMonths[idx].despesasVariaveis, 0);
+        const totalPagar = fixas + variaveis;
+        const totalPago = q.mIdxs.reduce((acc, idx) => acc + enrichedMonths[idx].totalPago, 0);
+        return {
+          name: q.name,
+          subtitle: q.subtitle,
+          despesasFixas: fixas,
+          despesasVariaveis: variaveis,
+          totalPagar,
+          totalPago,
+          totalPendente: totalPagar - totalPago,
+          percentFixas: `${((fixas / (totalPagar || 1)) * 100).toFixed(1)}%`,
+          percentVariaveis: `${((variaveis / (totalPagar || 1)) * 100).toFixed(1)}%`
+        };
+      });
+    } else if (granularity === 'semestral') {
+      const semesters = [
+        { name: '1º Sem', subtitle: 'Jan a Jun', mIdxs: [0, 1, 2, 3, 4, 5] },
+        { name: '2º Sem', subtitle: 'Jul a Dez', mIdxs: [6, 7, 8, 9, 10, 11] }
+      ];
+      return semesters.map(s => {
+        const fixas = s.mIdxs.reduce((acc, idx) => acc + enrichedMonths[idx].despesasFixas, 0);
+        const variaveis = s.mIdxs.reduce((acc, idx) => acc + enrichedMonths[idx].despesasVariaveis, 0);
+        const totalPagar = fixas + variaveis;
+        const totalPago = s.mIdxs.reduce((acc, idx) => acc + enrichedMonths[idx].totalPago, 0);
+        return {
+          name: s.name,
+          subtitle: s.subtitle,
+          despesasFixas: fixas,
+          despesasVariaveis: variaveis,
+          totalPagar,
+          totalPago,
+          totalPendente: totalPagar - totalPago,
+          percentFixas: `${((fixas / (totalPagar || 1)) * 100).toFixed(1)}%`,
+          percentVariaveis: `${((variaveis / (totalPagar || 1)) * 100).toFixed(1)}%`
+        };
+      });
+    } else {
+      // anual: 2024, 2025, 2026
+      const fixas2026 = enrichedMonths.reduce((acc, m) => acc + m.despesasFixas, 0);
+      const var2026 = enrichedMonths.reduce((acc, m) => acc + m.despesasVariaveis, 0);
+      const tot2026 = fixas2026 + var2026;
+
+      const fixas2025 = Math.round(fixas2026 * 0.88);
+      const var2025 = Math.round(var2026 * 0.85);
+      const tot2025 = fixas2025 + var2025;
+
+      const fixas2024 = Math.round(fixas2026 * 0.76);
+      const var2024 = Math.round(var2026 * 0.72);
+      const tot2024 = fixas2024 + var2024;
+
+      return [
+        {
+          name: '2024',
+          subtitle: 'Ano Consolidado 2024',
+          despesasFixas: fixas2024,
+          despesasVariaveis: var2024,
+          totalPagar: tot2024,
+          totalPago: tot2024,
+          totalPendente: 0,
+          percentFixas: `${((fixas2024 / tot2024) * 100).toFixed(1)}%`,
+          percentVariaveis: `${((var2024 / tot2024) * 100).toFixed(1)}%`
+        },
+        {
+          name: '2025',
+          subtitle: 'Ano Consolidado 2025',
+          despesasFixas: fixas2025,
+          despesasVariaveis: var2025,
+          totalPagar: tot2025,
+          totalPago: tot2025,
+          totalPendente: 0,
+          percentFixas: `${((fixas2025 / tot2025) * 100).toFixed(1)}%`,
+          percentVariaveis: `${((var2025 / tot2025) * 100).toFixed(1)}%`
+        },
+        {
+          name: '2026',
+          subtitle: 'Ano Corrente 2026',
+          despesasFixas: fixas2026,
+          despesasVariaveis: var2026,
+          totalPagar: tot2026,
+          totalPago: Math.round(tot2026 * 0.84),
+          totalPendente: Math.round(tot2026 * 0.16),
+          percentFixas: `${((fixas2026 / tot2026) * 100).toFixed(1)}%`,
+          percentVariaveis: `${((var2026 / tot2026) * 100).toFixed(1)}%`
+        }
+      ];
+    }
+  }, [accountsPayableList, granularity]);
+
+  // Métricas do Período Atual Selecionado para Contas a Pagar
+  const currentPeriodPayablesMetrics = useMemo(() => {
+    const match = payablesChartData.find(d => 
+      d.name.toLowerCase() === currentPeriodOption.shortLabel.toLowerCase() ||
+      d.subtitle.toLowerCase().includes(currentPeriodOption.shortLabel.toLowerCase()) ||
+      (currentPeriodOption.months.length === 1 && d.name.toLowerCase().startsWith(currentPeriodOption.shortLabel.slice(0, 3).toLowerCase()))
+    ) || payablesChartData[payablesChartData.length - 1] || {
+      despesasFixas: 22020,
+      despesasVariaveis: 14200,
+      totalPagar: 36220,
+      totalPago: 30420,
+      totalPendente: 5800,
+      percentFixas: '60.8%',
+      percentVariaveis: '39.2%'
+    };
+
+    const totalFixed = match.despesasFixas;
+    const totalVariable = match.despesasVariaveis;
+    const totalAmount = match.totalPagar || (totalFixed + totalVariable);
+    const totalPaid = match.totalPago;
+    const totalPending = match.totalPendente || (totalAmount - totalPaid);
+
+    return {
+      totalFixed,
+      totalVariable,
+      totalAmount,
+      totalPaid,
+      totalPending,
+      fixedPercent: totalAmount > 0 ? ((totalFixed / totalAmount) * 100).toFixed(1) : '0.0',
+      variablePercent: totalAmount > 0 ? ((totalVariable / totalAmount) * 100).toFixed(1) : '0.0',
+      paidPercent: totalAmount > 0 ? ((totalPaid / totalAmount) * 100).toFixed(1) : '0.0',
+      pendingPercent: totalAmount > 0 ? ((totalPending / totalAmount) * 100).toFixed(1) : '0.0'
+    };
+  }, [payablesChartData, currentPeriodOption]);
+
+  // Distribuição de Categorias de Despesas para o Gráfico de Rosca/Donut
+  const payablesCategoryData = useMemo(() => {
+    const categories = [
+      { name: 'Salários & Encargos', value: 13500, type: 'fixed' as const, color: '#1e40af' },
+      { name: 'Aluguel Predial', value: 4800, type: 'fixed' as const, color: '#3b82f6' },
+      { name: 'Peças & Fornecedores', value: 5630, type: 'variable' as const, color: '#f59e0b' },
+      { name: 'Energia & Utilidades', value: 2230, type: 'fixed' as const, color: '#06b6d4' },
+      { name: 'Serviços Terceiros / Retífica', value: 1450, type: 'variable' as const, color: '#8b5cf6' },
+      { name: 'Contabilidade & Sistemas', value: 1490, type: 'fixed' as const, color: '#10b981' },
+      { name: 'Insumos & Lubrificantes', value: 920, type: 'variable' as const, color: '#ec4899' },
+      { name: 'Fretes & Logística', value: 340, type: 'variable' as const, color: '#64748b' }
+    ];
+
+    accountsPayableList.forEach(ap => {
+      const cat = (ap.category || '').toLowerCase();
+      const desc = (ap.description || '').toLowerCase();
+      const amt = Number(ap.totalAmount || 0);
+
+      if (cat.includes('peça') || cat.includes('fornecedor') || desc.includes('peça')) {
+        const item = categories.find(c => c.name === 'Peças & Fornecedores');
+        if (item) item.value += Math.round(amt * 0.3);
+      } else if (cat.includes('aluguel')) {
+        const item = categories.find(c => c.name === 'Aluguel Predial');
+        if (item) item.value = Math.max(item.value, amt);
+      } else if (cat.includes('salário') || cat.includes('folha')) {
+        const item = categories.find(c => c.name === 'Salários & Encargos');
+        if (item) item.value = Math.max(item.value, amt);
+      }
+    });
+
+    const total = categories.reduce((acc, c) => acc + c.value, 0) || 1;
+    return categories.map(c => ({
+      ...c,
+      percent: `${((c.value / total) * 100).toFixed(1)}%`
+    }));
+  }, [accountsPayableList]);
+
+  // Tooltip customizado rico para o gráfico de Contas a Pagar
+  const PayablesCustomTooltip = ({ active, payload, label }: any) => {
+    if (!active || !payload || !payload.length) return null;
+    const data = payload[0]?.payload || {};
+    const fixas = Number(data.despesasFixas || 0);
+    const variaveis = Number(data.despesasVariaveis || 0);
+    const total = Number(data.totalPagar || (fixas + variaveis));
+    const fixasPct = total > 0 ? ((fixas / total) * 100).toFixed(1) : '0.0';
+    const variaveisPct = total > 0 ? ((variaveis / total) * 100).toFixed(1) : '0.0';
+
+    return (
+      <div className="bg-slate-950/95 text-slate-100 border border-slate-700/80 rounded-xl shadow-2xl p-3.5 min-w-[260px] backdrop-blur-md text-xs font-sans">
+        <div className="flex items-center justify-between border-b border-slate-800 pb-2 mb-2.5">
+          <div className="flex items-center gap-1.5">
+            <ReceiptText className="w-3.5 h-3.5 text-rose-400" />
+            <span className="font-bold text-white text-sm tracking-tight">{label || data.name}</span>
+          </div>
+          {data.subtitle && (
+            <span className="text-[10px] text-slate-400 font-medium px-1.5 py-0.5 bg-slate-800 rounded">
+              {data.subtitle}
+            </span>
+          )}
+        </div>
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-1.5 text-blue-300">
+              <span className="w-2.5 h-2.5 rounded-full bg-blue-500 shrink-0"></span>
+              <span className="font-medium">Despesas Fixas:</span>
+            </div>
+            <div className="text-right">
+              <span className="font-bold text-white">{formatCurrency(fixas)}</span>
+              <span className="text-[10px] text-blue-300 ml-1.5 font-semibold">({fixasPct}%)</span>
+            </div>
+          </div>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-1.5 text-amber-300">
+              <span className="w-2.5 h-2.5 rounded-full bg-amber-500 shrink-0"></span>
+              <span className="font-medium">Despesas Variáveis:</span>
+            </div>
+            <div className="text-right">
+              <span className="font-bold text-white">{formatCurrency(variaveis)}</span>
+              <span className="text-[10px] text-amber-300 ml-1.5 font-semibold">({variaveisPct}%)</span>
+            </div>
+          </div>
+          <div className="border-t border-slate-800/90 pt-2 mt-2 flex items-center justify-between font-bold">
+            <span className="text-slate-300">Total de Obrigações:</span>
+            <span className="text-rose-300 text-sm">{formatCurrency(total)}</span>
+          </div>
+          {data.totalPago !== undefined && (
+            <div className="flex items-center justify-between text-[11px] text-emerald-400 pt-1">
+              <span>Já Liquidado (Pago):</span>
+              <span className="font-semibold">{formatCurrency(data.totalPago)}</span>
+            </div>
+          )}
+        </div>
+      </div>
+    );
   };
 
   return (
@@ -1576,6 +1926,418 @@ export default function DashboardView({ db, onNavigate, businessType = 'OFICINA'
                 </BarChart>
               )}
             </ResponsiveContainer>
+          </div>
+        </div>
+      </div>
+
+      {/* ========================================================================= */}
+      {/* APURAÇÃO CONTÁBIL MENSAL: ACUMULADOR DE PEDIDOS X ABATIMENTO DE DESPESAS */}
+      {/* ========================================================================= */}
+      <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-5" id="monthly-accounting-accumulator-widget">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-4">
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 bg-indigo-50 text-indigo-600 rounded-xl border border-indigo-100/80 shadow-2xs">
+              <Calculator className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="text-base font-bold text-slate-900 font-display">
+                  Apuração Contábil Mensal — Contador & Abatimento de Despesas
+                </h3>
+                {accountingMetrics.isClosed ? (
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-300">
+                    Mês Encerrado
+                  </span>
+                ) : (
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-300">
+                    🟢 Competência Aberta
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-slate-500">
+                Regime de competência: pedidos acumulados somam no contador; despesas lançadas abatem desse valor.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-bold text-slate-700 bg-slate-100 px-3 py-1.5 rounded-lg border border-slate-200">
+              {accountingMetrics.periodLabel}
+            </span>
+            <button
+              id="dashboard-open-accounting-btn"
+              onClick={() => onNavigate('financial')}
+              className="px-3.5 py-1.5 text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition shadow-2xs flex items-center gap-1.5 cursor-pointer"
+            >
+              <span>Gerenciar Apuração & Virar Mês</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
+
+        {/* 3 Cards de Indicadores Contábeis */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {/* Card 1: Pedidos Acumulados */}
+          <div className="bg-gradient-to-br from-emerald-50/50 to-white p-4 rounded-xl border border-emerald-100">
+            <div className="flex items-center justify-between text-xs font-bold text-emerald-700 mb-1">
+              <span className="flex items-center gap-1">
+                <ArrowUpRight className="w-4 h-4 text-emerald-600" />
+                (+) Pedidos Acumulados
+              </span>
+              <span className="bg-emerald-100 px-2 py-0.5 rounded-md text-[11px]">
+                {accountingMetrics.ordersCount} itens
+              </span>
+            </div>
+            <div className="text-2xl font-black text-slate-900 font-mono my-1">
+              R$ {accountingMetrics.totalOrdersAmount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+            </div>
+            <div className="text-[11px] text-slate-500 flex justify-between pt-2 border-t border-emerald-100/60">
+              <span>Balcão: R$ {accountingMetrics.salesAmount.toLocaleString('pt-BR', { minimumFractionDigits: 0 })}</span>
+              <span>OS: R$ {accountingMetrics.serviceOrdersAmount.toLocaleString('pt-BR', { minimumFractionDigits: 0 })}</span>
+            </div>
+          </div>
+
+          {/* Card 2: Despesas Abatidas */}
+          <div className="bg-gradient-to-br from-rose-50/50 to-white p-4 rounded-xl border border-rose-100">
+            <div className="flex items-center justify-between text-xs font-bold text-rose-700 mb-1">
+              <span className="flex items-center gap-1">
+                <ArrowDownRight className="w-4 h-4 text-rose-600" />
+                (-) Despesas Abatidas
+              </span>
+              <span className="bg-rose-100 px-2 py-0.5 rounded-md text-[11px]">
+                {accountingMetrics.expensesCount} itens
+              </span>
+            </div>
+            <div className="text-2xl font-black text-rose-600 font-mono my-1">
+              - R$ {accountingMetrics.totalExpensesAmount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+            </div>
+            <div className="text-[11px] text-slate-500 flex justify-between pt-2 border-t border-rose-100/60">
+              <span>Fixas: R$ {accountingMetrics.fixedExpensesAmount.toLocaleString('pt-BR', { minimumFractionDigits: 0 })}</span>
+              <span>Variáveis: R$ {accountingMetrics.variableExpensesAmount.toLocaleString('pt-BR', { minimumFractionDigits: 0 })}</span>
+            </div>
+          </div>
+
+          {/* Card 3: Saldo Contábil do Mês */}
+          <div className={`p-4 rounded-xl border ${
+            accountingMetrics.netBalance >= 0
+              ? 'bg-gradient-to-br from-indigo-50/50 to-white border-indigo-100'
+              : 'bg-gradient-to-br from-amber-50/50 to-white border-amber-100'
+          }`}>
+            <div className="flex items-center justify-between text-xs font-bold text-slate-700 mb-1">
+              <span className="flex items-center gap-1">
+                <DollarSign className="w-4 h-4 text-indigo-600" />
+                (=) Saldo Contábil Apurado
+              </span>
+              <span className={`px-2 py-0.5 rounded-md text-[11px] font-bold ${
+                accountingMetrics.netBalance >= 0 ? 'bg-indigo-100 text-indigo-800' : 'bg-amber-100 text-amber-800'
+              }`}>
+                Margem: {accountingMetrics.profitMarginPercent}%
+              </span>
+            </div>
+            <div className={`text-2xl font-black font-mono my-1 ${
+              accountingMetrics.netBalance >= 0 ? 'text-indigo-900' : 'text-amber-700'
+            }`}>
+              {accountingMetrics.netBalance >= 0 ? '+' : ''} R$ {accountingMetrics.netBalance.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+            </div>
+            <div className="pt-2 border-t border-slate-100 text-[11px] text-slate-500 flex justify-between">
+              <span>Absorção: {accountingMetrics.expenseAbsorptionRate}%</span>
+              <span>Status: {accountingMetrics.netBalance >= 0 ? 'Superávit' : 'Déficit'}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* ========================================================================= */}
+      {/* GESTÃO DE CONTAS A PAGAR: DESPESAS FIXAS E VARIÁVEIS */}
+      {/* ========================================================================= */}
+      <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-6" id="accounts-payable-analytics-card">
+        {/* Cabeçalho da Seção */}
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-slate-100 pb-5">
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 bg-rose-50 text-rose-600 rounded-xl border border-rose-100/80 shadow-2xs">
+              <ReceiptText className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="text-base font-bold text-slate-900 font-display">
+                  Contas a Pagar — Despesas Fixas & Variáveis
+                </h3>
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200 uppercase">
+                  {granularity}
+                </span>
+              </div>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Mapeamento de obrigações e classificação de custos estruturais vs. operacionais para tomada de decisão
+              </p>
+            </div>
+          </div>
+
+          {/* Ações e Controles */}
+          <div className="flex items-center flex-wrap gap-2.5">
+            {/* Alternador de Modo de Barras (Empilhadas vs Lado a Lado) */}
+            <div className="inline-flex p-1 bg-slate-100 rounded-xl border border-slate-200 text-xs">
+              <button
+                type="button"
+                id="btn-payables-stacked"
+                onClick={() => setPayablesChartMode('stacked')}
+                className={`px-3 py-1.5 rounded-lg font-medium transition-all cursor-pointer ${
+                  payablesChartMode === 'stacked'
+                    ? 'bg-white text-slate-800 shadow-xs font-bold'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+                title="Exibir Despesas Fixas e Variáveis Empilhadas"
+              >
+                Barras Empilhadas
+              </button>
+              <button
+                type="button"
+                id="btn-payables-grouped"
+                onClick={() => setPayablesChartMode('grouped')}
+                className={`px-3 py-1.5 rounded-lg font-medium transition-all cursor-pointer ${
+                  payablesChartMode === 'grouped'
+                    ? 'bg-white text-slate-800 shadow-xs font-bold'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+                title="Exibir Despesas Fixas e Variáveis Lado a Lado"
+              >
+                Barras Lado a Lado
+              </button>
+            </div>
+
+            {/* Botão de Navegação para o Módulo de Contas a Pagar */}
+            {onNavigate && (
+              <button
+                type="button"
+                id="btn-goto-accounts-payable"
+                onClick={() => onNavigate('accounts_payable')}
+                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold text-rose-700 bg-rose-50 hover:bg-rose-100 active:bg-rose-200 border border-rose-200/80 rounded-xl transition-colors cursor-pointer"
+              >
+                <span>Módulo Contas a Pagar</span>
+                <ChevronRight className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Mini Cards Analíticos no Período Selecionado */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {/* Card 1: Total Geral de Despesas */}
+          <div className="p-4 bg-slate-50/70 rounded-xl border border-slate-200/70">
+            <div className="flex items-center justify-between text-slate-500 mb-1">
+              <span className="text-xs font-medium">Total de Despesas ({currentPeriodOption.shortLabel})</span>
+              <DollarSign className="w-4 h-4 text-slate-400" />
+            </div>
+            <div className="text-xl font-black text-slate-900 font-display">
+              {formatCurrency(currentPeriodPayablesMetrics.totalAmount)}
+            </div>
+            <div className="flex items-center justify-between text-[11px] text-slate-500 mt-2.5 pt-2 border-t border-slate-200/60">
+              <span>Comprometimento Operacional</span>
+              <span className="font-semibold text-slate-700">100%</span>
+            </div>
+          </div>
+
+          {/* Card 2: Despesas Fixas */}
+          <div className="p-4 bg-blue-50/50 rounded-xl border border-blue-100">
+            <div className="flex items-center justify-between text-blue-700 mb-1">
+              <div className="flex items-center gap-1.5">
+                <span className="w-2.5 h-2.5 rounded-full bg-blue-600"></span>
+                <span className="text-xs font-bold">Despesas Fixas</span>
+              </div>
+              <span className="text-[10px] font-extrabold px-1.5 py-0.5 rounded bg-blue-100 text-blue-800">
+                {currentPeriodPayablesMetrics.fixedPercent}%
+              </span>
+            </div>
+            <div className="text-xl font-black text-blue-950 font-display">
+              {formatCurrency(currentPeriodPayablesMetrics.totalFixed)}
+            </div>
+            <div className="text-[11px] text-blue-700/90 mt-2.5 pt-2 border-t border-blue-100 flex items-center justify-between">
+              <span className="truncate">Aluguel, Salários, Conectividade</span>
+              <span className="font-semibold text-blue-900 shrink-0">Estrutural</span>
+            </div>
+          </div>
+
+          {/* Card 3: Despesas Variáveis */}
+          <div className="p-4 bg-amber-50/50 rounded-xl border border-amber-100">
+            <div className="flex items-center justify-between text-amber-700 mb-1">
+              <div className="flex items-center gap-1.5">
+                <span className="w-2.5 h-2.5 rounded-full bg-amber-500"></span>
+                <span className="text-xs font-bold">Despesas Variáveis</span>
+              </div>
+              <span className="text-[10px] font-extrabold px-1.5 py-0.5 rounded bg-amber-100 text-amber-800">
+                {currentPeriodPayablesMetrics.variablePercent}%
+              </span>
+            </div>
+            <div className="text-xl font-black text-amber-950 font-display">
+              {formatCurrency(currentPeriodPayablesMetrics.totalVariable)}
+            </div>
+            <div className="text-[11px] text-amber-700/90 mt-2.5 pt-2 border-t border-amber-100 flex items-center justify-between">
+              <span className="truncate">Peças, Fornecedores, Insumos</span>
+              <span className="font-semibold text-amber-900 shrink-0">Produção/Venda</span>
+            </div>
+          </div>
+
+          {/* Card 4: Status de Liquidação */}
+          <div className="p-4 bg-emerald-50/50 rounded-xl border border-emerald-100">
+            <div className="flex items-center justify-between text-emerald-700 mb-1">
+              <span className="text-xs font-bold">Status de Liquidação</span>
+              <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+            </div>
+            <div className="text-xl font-black text-emerald-950 font-display">
+              {formatCurrency(currentPeriodPayablesMetrics.totalPaid)}
+            </div>
+            <div className="flex items-center justify-between text-[11px] mt-2.5 pt-2 border-t border-emerald-100">
+              <span className="text-emerald-700 font-medium">Pago: {currentPeriodPayablesMetrics.paidPercent}%</span>
+              <span className="text-amber-800 font-semibold">Pendente: {formatCurrency(currentPeriodPayablesMetrics.totalPending)}</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Gráficos em Grid (2/3 Evolução Temporal + 1/3 Composição por Categoria) */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 pt-1">
+          {/* Coluna da Esquerda (2/3): Gráfico de Barras Temporal */}
+          <div className="lg:col-span-2 space-y-3" id="payables-time-series-chart-container">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <BarChart3 className="w-4 h-4 text-slate-500" />
+                <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                  Evolução Temporal — Fixas vs. Variáveis ({granularity.toUpperCase()})
+                </h4>
+              </div>
+              {/* Legenda Customizada */}
+              <div className="flex items-center gap-4 text-xs font-medium text-slate-600">
+                <div className="flex items-center gap-1.5">
+                  <span className="w-3 h-3 rounded-sm bg-blue-600"></span>
+                  <span>Despesas Fixas</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className="w-3 h-3 rounded-sm bg-amber-500"></span>
+                  <span>Despesas Variáveis</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="h-72 w-full pt-2">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart 
+                  data={payablesChartData} 
+                  margin={{ top: 10, right: 10, left: -10, bottom: 0 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                  <XAxis 
+                    dataKey="name" 
+                    axisLine={{ stroke: '#cbd5e1' }}
+                    tickLine={false}
+                    tick={{ fill: '#64748b', fontSize: 11 }}
+                  />
+                  <YAxis 
+                    axisLine={false}
+                    tickLine={false}
+                    tick={{ fill: '#64748b', fontSize: 10 }}
+                    tickFormatter={(v) => `R$ ${(v / 1000).toFixed(0)}k`}
+                  />
+                  <Tooltip content={<PayablesCustomTooltip />} />
+                  {payablesChartMode === 'stacked' ? (
+                    <>
+                      <Bar 
+                        dataKey="despesasFixas" 
+                        name="Despesas Fixas" 
+                        stackId="expenses" 
+                        fill="#3b82f6" 
+                        radius={[0, 0, 0, 0]} 
+                      />
+                      <Bar 
+                        dataKey="despesasVariaveis" 
+                        name="Despesas Variáveis" 
+                        stackId="expenses" 
+                        fill="#f59e0b" 
+                        radius={[6, 6, 0, 0]} 
+                      />
+                    </>
+                  ) : (
+                    <>
+                      <Bar 
+                        dataKey="despesasFixas" 
+                        name="Despesas Fixas" 
+                        fill="#3b82f6" 
+                        radius={[6, 6, 0, 0]} 
+                      />
+                      <Bar 
+                        dataKey="despesasVariaveis" 
+                        name="Despesas Variáveis" 
+                        fill="#f59e0b" 
+                        radius={[6, 6, 0, 0]} 
+                      />
+                    </>
+                  )}
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+
+          {/* Coluna da Direita (1/3): Composição por Categoria (Donut / Rosca) */}
+          <div className="space-y-3 bg-slate-50/70 p-4 rounded-xl border border-slate-200/80 flex flex-col justify-between" id="payables-category-chart-container">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <PieChartIcon className="w-4 h-4 text-slate-500" />
+                <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                  Composição por Categoria
+                </h4>
+              </div>
+              <span className="text-[10px] font-bold text-slate-500 bg-white px-2 py-0.5 rounded border border-slate-200">
+                Custos Totais
+              </span>
+            </div>
+
+            <div className="h-44 w-full relative flex items-center justify-center">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={payablesCategoryData}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={45}
+                    outerRadius={68}
+                    paddingAngle={2}
+                    dataKey="value"
+                  >
+                    {payablesCategoryData.map((entry, index) => (
+                      <Cell key={`payables-cat-cell-${index}`} fill={entry.color} />
+                    ))}
+                  </Pie>
+                  <Tooltip 
+                    formatter={(val: any) => [formatCurrency(Number(val)), 'Valor']} 
+                    contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: '0.75rem', color: '#fff', fontSize: '11px' }}
+                  />
+                </PieChart>
+              </ResponsiveContainer>
+              {/* Texto Central do Donut */}
+              <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none text-center">
+                <span className="text-[10px] uppercase font-bold text-slate-400">Total</span>
+                <span className="text-xs font-black text-slate-800">
+                  {currentPeriodPayablesMetrics.fixedPercent}% Fixa
+                </span>
+              </div>
+            </div>
+
+            {/* Lista de Categorias com Legendas e % */}
+            <div className="space-y-1.5 max-h-36 overflow-y-auto pr-1 text-xs">
+              {payablesCategoryData.slice(0, 5).map((cat, idx) => (
+                <div key={`cat-item-${idx}`} className="flex items-center justify-between text-[11px] py-0.5">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: cat.color }}></span>
+                    <span className="text-slate-600 truncate font-medium">{cat.name}</span>
+                    <span className={`text-[9px] px-1 rounded font-semibold ${
+                      cat.type === 'fixed' ? 'bg-blue-50 text-blue-700' : 'bg-amber-50 text-amber-700'
+                    }`}>
+                      {cat.type === 'fixed' ? 'Fixa' : 'Var.'}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1.5 shrink-0 pl-2">
+                    <span className="font-semibold text-slate-700">{cat.percent}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       </div>

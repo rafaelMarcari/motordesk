@@ -641,6 +641,7 @@ export interface User {
   alcadas?: OperationalAlcada; // Alçadas operacionais diretas ou herdadas
   customAlcadas?: Partial<OperationalAlcada>; // Exceções individuais de alçadas
   companyId?: string; // ID da empresa/oficina à qual o usuário pertence
+  allowedCompanyIds?: string[]; // IDs adicionais de empresas às quais o usuário tem acesso permitido
   groupId?: string; // ID do Grupo de Acesso vinculado
   accessGroupId?: string; // Compatibilidade de Grupo de Acesso
   groupName?: string; // Nome do Grupo de Acesso
@@ -2228,6 +2229,37 @@ export interface FinancialTransaction {
   commissionId?: string;
 }
 
+export interface MonthlyAccountingClosing {
+  id: string;
+  companyId?: string;
+  period: string; // Formato YYYY-MM, ex: '2026-09'
+  periodLabel: string; // Ex: 'Setembro de 2026'
+  status: 'open' | 'closed';
+  closedAt?: string;
+  closedByName?: string;
+  closedByUserId?: string;
+  // Receitas acumuladas (Pedidos / Vendas / OS)
+  totalOrdersAmount: number; // Valor total acumulado de pedidos
+  ordersCount: number; // Quantidade de pedidos somados no mês
+  salesAmount: number; // Vendas Balcão
+  serviceOrdersAmount: number; // Ordens de Serviço
+  otherRevenuesAmount: number; // Outras receitas de caixa
+  // Despesas abatidas no mês
+  totalExpensesAmount: number; // Total de despesas abatidas
+  expensesCount: number;
+  fixedExpensesAmount: number; // Despesas fixas estruturais abatidas
+  variableExpensesAmount: number; // Despesas variáveis operacionais abatidas
+  // Saldo contábil apurado
+  netBalance: number; // totalOrdersAmount - totalExpensesAmount
+  profitMarginPercent: number; // Margem contábil (%)
+  expenseAbsorptionRate: number; // % da receita absorvida por despesas
+  notes?: string;
+  detailedAudit?: {
+    orderIds?: string[];
+    expenseIds?: string[];
+  };
+}
+
 export interface FiscalDocumentItem {
   id: string;
   code: string;
@@ -2847,6 +2879,8 @@ export interface AppDatabase {
   accountsPayable?: AccountPayable[];
   financialTransactions?: FinancialTransaction[];
   billingClosings?: BillingClosingOrder[];
+  monthlyAccountingClosings?: MonthlyAccountingClosing[];
+  activeAccountingPeriod?: string; // Formato YYYY-MM (ex: '2026-09')
   bankStatements?: BankStatement[];
   bankStatementEntries?: BankStatementEntry[];
   paymentMethods?: PaymentMethodOption[];

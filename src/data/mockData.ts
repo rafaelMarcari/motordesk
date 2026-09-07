@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { User, Client, Vehicle, Part, Service, Budget, ServiceOrder, HistoryEntry, TestCase, StockMovement, CompanyInfo, SystemNotification, AlertSettings, Supplier, SupplierPartPrice, Quotation, AccountReceivable, AccountPayable, FinancialTransaction, MaintenanceLog, PaymentMethodOption, FiscalDocument, BoletoDocument, InterBranchSaleLogistics, SefazApiConfig, TaxOperationNature, TaxRule, XmlImportRecord, CommercialSale, Carrier, GoodsWithdrawalOrder, WithdrawalType, WithdrawalStatus, getDefaultModulesForBusinessType, UnitOfMeasure, BillOfMaterials, ProductionOrder, ProductLot, OperationalAlert, InstalledEquipment, EquipmentMaintenancePlan, EquipmentMaintenanceOrder, ProductionScrapLog, ProductionReworkLog, PurchaseHistoryItem, BomRevision, BillingClosingOrder, BankStatement, BankStatementItem, PaymentSplit, AccessGroup, TaxObligationGuide, TaxObligationType, TaxObligationStatus, TaxCalculationMemory, AppDatabase } from '../types';
+import { User, Client, Vehicle, Part, Service, Budget, ServiceOrder, HistoryEntry, TestCase, StockMovement, CompanyInfo, SystemNotification, AlertSettings, Supplier, SupplierPartPrice, Quotation, AccountReceivable, AccountPayable, FinancialTransaction, MaintenanceLog, PaymentMethodOption, FiscalDocument, BoletoDocument, InterBranchSaleLogistics, SefazApiConfig, TaxOperationNature, TaxRule, XmlImportRecord, CommercialSale, Carrier, GoodsWithdrawalOrder, WithdrawalType, WithdrawalStatus, getDefaultModulesForBusinessType, UnitOfMeasure, BillOfMaterials, ProductionOrder, ProductLot, OperationalAlert, InstalledEquipment, EquipmentMaintenancePlan, EquipmentMaintenanceOrder, ProductionScrapLog, ProductionReworkLog, PurchaseHistoryItem, BomRevision, BillingClosingOrder, BankStatement, BankStatementItem, PaymentSplit, AccessGroup, TaxObligationGuide, TaxObligationType, TaxObligationStatus, TaxCalculationMemory, MonthlyAccountingClosing, AppDatabase } from '../types';
 
 export type { AppDatabase };
 
@@ -4521,6 +4521,8 @@ export const INITIAL_ACCOUNTS_PAYABLE: AccountPayable[] = [
     quotationId: 'cot-1',
     description: 'Lote de Amortecedores e Filtros de Óleo (Cotação #COT-2026-001)',
     category: 'Peças / Fornecedores',
+    nature: 'expense',
+    classification: 'variable',
     totalAmount: 1850.00,
     paidAmount: 1850.00,
     remainingAmount: 0,
@@ -4578,6 +4580,8 @@ export const INITIAL_ACCOUNTS_PAYABLE: AccountPayable[] = [
     supplierName: 'EletroAuto Soluções Elétricas',
     description: 'Baterias Moura 60Ah e Cabos de Velas NGK (NFe #5502)',
     category: 'Peças / Fornecedores',
+    nature: 'expense',
+    classification: 'variable',
     totalAmount: 1380.00,
     paidAmount: 460.00,
     remainingAmount: 920.00,
@@ -4694,6 +4698,8 @@ export const INITIAL_ACCOUNTS_PAYABLE: AccountPayable[] = [
     supplierName: 'Distribuidora Central de Pneus & Freios',
     description: 'Lote de Pneus Pirelli 205/55R16 e Discos Fremax (NFe #8912)',
     category: 'Peças / Fornecedores',
+    nature: 'expense',
+    classification: 'variable',
     totalAmount: 2400.00,
     paidAmount: 1200.00,
     remainingAmount: 1200.00,
@@ -4704,7 +4710,7 @@ export const INITIAL_ACCOUNTS_PAYABLE: AccountPayable[] = [
     nfeSeries: '2',
     nfeAccessKey: '35260799887766000188550020000089121000089128',
     boletoBankName: 'Bradesco',
-    boletoLinhaDigitavel: '23790.09006 90000.123452 00000.000000 2 98110000120000',
+    boletoLinhaDigitavel: '23790.09006 90000.123452 00000.000171 2 98110000120000',
     boletoBarcode: '23792981100001200000090000000123450000000000',
     paymentCondition: '2x Boletos Bradesco',
     attachments: [
@@ -4744,7 +4750,7 @@ export const INITIAL_ACCOUNTS_PAYABLE: AccountPayable[] = [
         status: 'paid',
         paymentDate: '2026-08-20T10:15:00Z',
         paymentMethod: 'Boleto Bancário',
-        boletoLinhaDigitavel: '23790.09006 90000.123452 00000.000000 2 98110000120000',
+        boletoLinhaDigitavel: '23790.09006 90000.123452 00000.000171 2 98110000120000',
         boletoBarcode: '23792981100001200000090000000123450000000000',
         boletoBankName: 'Bradesco'
       },
@@ -4756,9 +4762,227 @@ export const INITIAL_ACCOUNTS_PAYABLE: AccountPayable[] = [
         paidAmount: 0,
         dueDate: '2026-09-20',
         status: 'pending',
-        boletoLinhaDigitavel: '23790.09006 90000.123460 00000.000000 2 98420000120000',
+        boletoLinhaDigitavel: '23790.09006 90000.123460 00000.000171 2 98420000120000',
         boletoBarcode: '23792984200001200000090000000123460000000000',
         boletoBankName: 'Bradesco'
+      }
+    ]
+  },
+  {
+    id: 'cp-4',
+    code: 'CP-2026-004',
+    supplierId: 'sup-fix-1',
+    supplierName: 'Imobiliária & Empreendimentos Santa Bárbara',
+    description: 'Aluguel Predial do Galpão da Oficina & Loja Balcão',
+    category: 'Aluguel',
+    nature: 'expense',
+    classification: 'fixed',
+    periodicity: 'monthly',
+    isRecurring: true,
+    origin: 'rent',
+    totalAmount: 4800.00,
+    paidAmount: 4800.00,
+    remainingAmount: 0,
+    status: 'paid',
+    dueDate: '2026-08-10',
+    createdAt: '2026-08-01T08:00:00Z',
+    boletoBankName: 'Itaú Unibanco',
+    installments: [
+      {
+        id: 'parc-p4-1',
+        installmentNumber: 1,
+        totalInstallments: 1,
+        amount: 4800.00,
+        paidAmount: 4800.00,
+        dueDate: '2026-08-10',
+        status: 'paid',
+        paymentDate: '2026-08-09T14:30:00Z',
+        paymentMethod: 'Transferência Bancária / TED'
+      }
+    ]
+  },
+  {
+    id: 'cp-5',
+    code: 'CP-2026-005',
+    supplierId: 'sup-fix-2',
+    supplierName: 'CPFL Energia / Enel Distribuição Paulista',
+    description: 'Fatura de Energia Elétrica & Força Motriz da Oficina',
+    category: 'Energia Elétrica',
+    nature: 'expense',
+    classification: 'fixed',
+    periodicity: 'monthly',
+    isRecurring: true,
+    origin: 'other',
+    totalAmount: 1850.00,
+    paidAmount: 1850.00,
+    remainingAmount: 0,
+    status: 'paid',
+    dueDate: '2026-08-15',
+    createdAt: '2026-08-02T10:00:00Z',
+    boletoBankName: 'Banco do Brasil',
+    installments: [
+      {
+        id: 'parc-p5-1',
+        installmentNumber: 1,
+        totalInstallments: 1,
+        amount: 1850.00,
+        paidAmount: 1850.00,
+        dueDate: '2026-08-15',
+        status: 'paid',
+        paymentDate: '2026-08-14T09:10:00Z',
+        paymentMethod: 'PIX Bancário'
+      }
+    ]
+  },
+  {
+    id: 'cp-6',
+    code: 'CP-2026-006',
+    supplierId: 'sup-fix-3',
+    supplierName: 'Folha de Pagamento - Salários e Encargos Equipe',
+    description: 'Folha Salarial Mensal dos Mecânicos, Atendentes e Estoquista',
+    category: 'Salários & Encargos',
+    nature: 'expense',
+    classification: 'fixed',
+    periodicity: 'monthly',
+    isRecurring: true,
+    origin: 'salary',
+    totalAmount: 13500.00,
+    paidAmount: 13500.00,
+    remainingAmount: 0,
+    status: 'paid',
+    dueDate: '2026-08-05',
+    createdAt: '2026-08-01T08:00:00Z',
+    installments: [
+      {
+        id: 'parc-p6-1',
+        installmentNumber: 1,
+        totalInstallments: 1,
+        amount: 13500.00,
+        paidAmount: 13500.00,
+        dueDate: '2026-08-05',
+        status: 'paid',
+        paymentDate: '2026-08-05T11:00:00Z',
+        paymentMethod: 'Transferência Bancária / PIX'
+      }
+    ]
+  },
+  {
+    id: 'cp-7',
+    code: 'CP-2026-007',
+    supplierId: 'sup-fix-4',
+    supplierName: 'Vivo Fibra Dedicada Empresarial',
+    description: 'Internet Fibra 600MB + Telefonia VoIP & Atendimento',
+    category: 'Telecom & Internet',
+    nature: 'expense',
+    classification: 'fixed',
+    periodicity: 'monthly',
+    isRecurring: true,
+    origin: 'other',
+    totalAmount: 380.00,
+    paidAmount: 380.00,
+    remainingAmount: 0,
+    status: 'paid',
+    dueDate: '2026-08-18',
+    createdAt: '2026-08-03T10:00:00Z',
+    installments: [
+      {
+        id: 'parc-p7-1',
+        installmentNumber: 1,
+        totalInstallments: 1,
+        amount: 380.00,
+        paidAmount: 380.00,
+        dueDate: '2026-08-18',
+        status: 'paid',
+        paymentDate: '2026-08-17T15:40:00Z',
+        paymentMethod: 'Débito Automático'
+      }
+    ]
+  },
+  {
+    id: 'cp-8',
+    code: 'CP-2026-008',
+    supplierId: 'sup-fix-5',
+    supplierName: 'Escritório Contábil Santana & Associados',
+    description: 'Honorários de Assessoria Contábil e Fiscal Mensal',
+    category: 'Contabilidade',
+    nature: 'expense',
+    classification: 'fixed',
+    periodicity: 'monthly',
+    isRecurring: true,
+    origin: 'other',
+    totalAmount: 1100.00,
+    paidAmount: 1100.00,
+    remainingAmount: 0,
+    status: 'paid',
+    dueDate: '2026-08-20',
+    createdAt: '2026-08-05T09:00:00Z',
+    installments: [
+      {
+        id: 'parc-p8-1',
+        installmentNumber: 1,
+        totalInstallments: 1,
+        amount: 1100.00,
+        paidAmount: 1100.00,
+        dueDate: '2026-08-20',
+        status: 'paid',
+        paymentDate: '2026-08-19T10:20:00Z',
+        paymentMethod: 'PIX Bancário'
+      }
+    ]
+  },
+  {
+    id: 'cp-9',
+    code: 'CP-2026-009',
+    supplierId: 'sup-var-1',
+    supplierName: 'Química Automotiva Wurth do Brasil',
+    description: 'Insumos Químicos, Desengraxantes, Desengripantes e Trava-Roscas',
+    category: 'Insumos & Lubrificantes',
+    nature: 'expense',
+    classification: 'variable',
+    totalAmount: 920.00,
+    paidAmount: 920.00,
+    remainingAmount: 0,
+    status: 'paid',
+    dueDate: '2026-08-22',
+    createdAt: '2026-08-08T14:00:00Z',
+    installments: [
+      {
+        id: 'parc-p9-1',
+        installmentNumber: 1,
+        totalInstallments: 1,
+        amount: 920.00,
+        paidAmount: 920.00,
+        dueDate: '2026-08-22',
+        status: 'paid',
+        paymentDate: '2026-08-21T16:00:00Z',
+        paymentMethod: 'Boleto Bancário'
+      }
+    ]
+  },
+  {
+    id: 'cp-10',
+    code: 'CP-2026-010',
+    supplierId: 'sup-var-2',
+    supplierName: 'Retífica de Motores Precisão Ltda',
+    description: 'Serviço Terceirizado de Retífica de Cabeçote e Plainamento',
+    category: 'Serviços Terceirizados',
+    nature: 'expense',
+    classification: 'variable',
+    totalAmount: 1450.00,
+    paidAmount: 0,
+    remainingAmount: 1450.00,
+    status: 'pending',
+    dueDate: '2026-09-15',
+    createdAt: '2026-08-25T11:00:00Z',
+    installments: [
+      {
+        id: 'parc-p10-1',
+        installmentNumber: 1,
+        totalInstallments: 1,
+        amount: 1450.00,
+        paidAmount: 0,
+        dueDate: '2026-09-15',
+        status: 'pending'
       }
     ]
   }
@@ -6530,6 +6754,78 @@ export const INITIAL_BILLING_CLOSINGS: BillingClosingOrder[] = [
   }
 ];
 
+export const INITIAL_MONTHLY_ACCOUNTING_CLOSINGS: MonthlyAccountingClosing[] = [
+  {
+    id: 'mac-2026-06',
+    companyId: 'comp-1',
+    period: '2026-06',
+    periodLabel: 'Junho de 2026',
+    status: 'closed',
+    closedAt: '2026-06-30T19:00:00.000Z',
+    closedByName: 'Carlos Gerente',
+    closedByUserId: 'user-manager',
+    totalOrdersAmount: 38450.00,
+    ordersCount: 34,
+    salesAmount: 18200.00,
+    serviceOrdersAmount: 19500.00,
+    otherRevenuesAmount: 750.00,
+    totalExpensesAmount: 22400.00,
+    expensesCount: 16,
+    fixedExpensesAmount: 15800.00,
+    variableExpensesAmount: 6600.00,
+    netBalance: 16050.00,
+    profitMarginPercent: 41.7,
+    expenseAbsorptionRate: 58.3,
+    notes: 'Encerramento regular de Junho/2026 concluído com todas as despesas e receitas conciliadas.'
+  },
+  {
+    id: 'mac-2026-07',
+    companyId: 'comp-1',
+    period: '2026-07',
+    periodLabel: 'Julho de 2026',
+    status: 'closed',
+    closedAt: '2026-07-31T19:30:00.000Z',
+    closedByName: 'Carlos Gerente',
+    closedByUserId: 'user-manager',
+    totalOrdersAmount: 42100.00,
+    ordersCount: 38,
+    salesAmount: 19900.00,
+    serviceOrdersAmount: 21200.00,
+    otherRevenuesAmount: 1000.00,
+    totalExpensesAmount: 24300.00,
+    expensesCount: 18,
+    fixedExpensesAmount: 16200.00,
+    variableExpensesAmount: 8100.00,
+    netBalance: 17800.00,
+    profitMarginPercent: 42.3,
+    expenseAbsorptionRate: 57.7,
+    notes: 'Encerramento de Julho/2026 aprovado pela diretoria com margem de 42,3%.'
+  },
+  {
+    id: 'mac-2026-08',
+    companyId: 'comp-1',
+    period: '2026-08',
+    periodLabel: 'Agosto de 2026',
+    status: 'closed',
+    closedAt: '2026-08-31T18:45:00.000Z',
+    closedByName: 'Carlos Gerente',
+    closedByUserId: 'user-manager',
+    totalOrdersAmount: 46850.00,
+    ordersCount: 42,
+    salesAmount: 22400.00,
+    serviceOrdersAmount: 23550.00,
+    otherRevenuesAmount: 900.00,
+    totalExpensesAmount: 26150.00,
+    expensesCount: 20,
+    fixedExpensesAmount: 16500.00,
+    variableExpensesAmount: 9650.00,
+    netBalance: 20700.00,
+    profitMarginPercent: 44.2,
+    expenseAbsorptionRate: 55.8,
+    notes: 'Encerramento contábil de Agosto/2026 fechado com sucesso. Saldo apurado de R$ 20.700,00.'
+  }
+];
+
 export const INITIAL_BANK_STATEMENTS: BankStatement[] = [
   {
     id: 'stmt-2026-08',
@@ -6640,6 +6936,8 @@ export function getDatabase(): AppDatabase {
       productionReworkLogs: INITIAL_PRODUCTION_REWORK_LOGS,
       purchaseHistory: INITIAL_PURCHASE_HISTORY,
       billingClosings: INITIAL_BILLING_CLOSINGS,
+      monthlyAccountingClosings: INITIAL_MONTHLY_ACCOUNTING_CLOSINGS,
+      activeAccountingPeriod: '2026-09',
       bankStatements: INITIAL_BANK_STATEMENTS,
     };
   } else {
@@ -6656,6 +6954,12 @@ export function getDatabase(): AppDatabase {
       }
       if (!db.billingClosings || !Array.isArray(db.billingClosings) || db.billingClosings.length === 0) {
         db.billingClosings = INITIAL_BILLING_CLOSINGS;
+      }
+      if (!db.monthlyAccountingClosings || !Array.isArray(db.monthlyAccountingClosings) || db.monthlyAccountingClosings.length === 0) {
+        db.monthlyAccountingClosings = INITIAL_MONTHLY_ACCOUNTING_CLOSINGS;
+      }
+      if (!db.activeAccountingPeriod) {
+        db.activeAccountingPeriod = '2026-09';
       }
       if (!db.bankStatements || !Array.isArray(db.bankStatements) || db.bankStatements.length === 0) {
         db.bankStatements = INITIAL_BANK_STATEMENTS;
