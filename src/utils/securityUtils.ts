@@ -151,6 +151,7 @@ export const ALL_PERMISSION_KEYS: Array<{
 
   // Comércio Representante
   { key: 'accessRepresentativeCommerce', label: 'Comércio Representante (Fábricas & Pedidos)', category: 'sales', description: 'Acesso ao módulo de representação comercial, pedidos e comissões' },
+  { key: 'accessRepresentativeOrders', label: 'Pedidos da Representada (Envio & Fábricas)', category: 'sales', description: 'Emissão, indexação e acompanhamento de pedidos enviados e recebidos da representada' },
   { key: 'representativeOrdersCreate', label: 'Criar Pedidos para Fábrica', category: 'sales', description: 'Permite registrar novos pedidos de vendas direcionados às fábricas' },
   { key: 'representativeOrdersEdit', label: 'Editar Pedidos da Representada', category: 'sales', description: 'Permite alterar itens e condições comerciais dos pedidos' },
   { key: 'representativeOrdersCancel', label: 'Cancelar Pedidos da Representada', category: 'sales', description: 'Permite cancelar pedidos emitidos para a fábrica' },
@@ -560,6 +561,9 @@ export function isModuleContractedForCompany(
     if (val === undefined && permissionKey === 'accessNotificationsEngine') {
       val = company.globalModules['accessNotificationEngine'];
     }
+    if (val === undefined && permissionKey === 'accessRepresentativeOrders') {
+      val = company.globalModules['accessRepresentativeOrders'] ?? company.globalModules['accessRepresentativeCommerce'] ?? company.globalModules['representative_commerce'];
+    }
     if (val !== undefined) {
       return Boolean(val);
     }
@@ -601,13 +605,14 @@ export function isModuleContractedForCompany(
       accessNotificationEngine: rawModules.notifications_engine,
       accessNotificationsEngine: rawModules.notifications_engine,
       accessRepresentativeCommerce: rawModules.representative_commerce ?? company.enableRepresentativeCommerce,
+      accessRepresentativeOrders: rawModules.representative_orders ?? rawModules.representative_commerce ?? company.enableRepresentativeCommerce,
     };
     if (modMap[permissionKey] !== undefined) {
       return Boolean(modMap[permissionKey]);
     }
   }
 
-  if (permissionKey === 'accessRepresentativeCommerce' && company?.enableRepresentativeCommerce === false) {
+  if ((permissionKey === 'accessRepresentativeCommerce' || permissionKey === 'accessRepresentativeOrders') && company?.enableRepresentativeCommerce === false) {
     return false;
   }
 
@@ -654,21 +659,48 @@ export function getEffectivePermissions(
   // 2. Base de permissões a partir do papel (Role) e permissões explícitas do usuário
   let basePerms = normalizeUserPermissions(userObj.permissions || {}, userObj.role || 'atendente');
 
-  // 3. Se o usuário estiver vinculado a um Grupo de Acesso específico (AccessGroup)
+  // 3. REGRA DO GRUPO DE ACESSO (se o usuário estiver vinculado a um Grupo de Acesso)
   const groupId = userObj.groupId || userObj.accessGroupId;
   if (groupId && db?.accessGroups && db.accessGroups.length > 0) {
     const matchedGroup = db.accessGroups.find(
       g => g.id === groupId && (g.active !== false) && (!g.companyId || !companyId || g.companyId === companyId)
     );
     if (matchedGroup && matchedGroup.permissions) {
-      basePerms = {
-        ...basePerms,
-        ...matchedGroup.permissions
-      };
+      const groupPerms = matchedGroup.permissions;
+      (Object.keys(groupPerms) as (keyof UserPermissions)[]).forEach(permKey => {
+        const gVal = groupPerms[permKey];
+        if (typeof gVal === 'boolean') {
+          if (!gVal) {
+            // Grupo de acesso revoga explicitamente
+            (basePerms as any)[permKey] = false;
+          } else {
+            // Grupo concede, mas verifica se o usuário NÃO desmarcou individualmente
+            const userExplicitFalse = (userObj.permissions && userObj.permissions[permKey] === false) ||
+                                      (userObj.individualExceptions && userObj.individualExceptions[permKey] === false);
+            if (!userExplicitFalse) {
+              (basePerms as any)[permKey] = true;
+            } else {
+              (basePerms as any)[permKey] = false;
+            }
+          }
+        }
+      });
     }
   }
 
-  // 4. Aplicação de Exceções Individuais de Permissões (individualExceptions ou customPermissions)
+  // 4. REGRA: LIBERADO AO USUÁRIO (Prevalência estrita de revogações e exceções individuais do usuário)
+  // Se no cadastro do operador (userObj.permissions) a tela foi desmarcada/removida,
+  // ela é ESTRITAMENTE FALSE, nenhuma role ou grupo sobrepõe a remoção individual!
+  if (userObj.permissions && typeof userObj.permissions === 'object') {
+    (Object.keys(userObj.permissions) as (keyof UserPermissions)[]).forEach(permKey => {
+      const uVal = userObj.permissions[permKey];
+      if (uVal === false) {
+        (basePerms as any)[permKey] = false;
+      }
+    });
+  }
+
+  // Aplicação de Exceções Individuais de Permissões (individualExceptions ou customPermissions)
   if (userObj.individualExceptions && typeof userObj.individualExceptions === 'object') {
     Object.keys(userObj.individualExceptions).forEach(permKey => {
       const exceptionValue = userObj.individualExceptions![permKey];
@@ -768,8 +800,9 @@ export function getEffectivePermissions(
       basePerms.bomCreate = false;
       basePerms.bomEdit = false;
     }
-    if (!isModuleContractedForCompany('accessRepresentativeCommerce', targetCompany, effectiveBt)) {
+    if (!isModuleContractedForCompany('accessRepresentativeCommerce', targetCompany, effectiveBt) && !isModuleContractedForCompany('accessRepresentativeOrders', targetCompany, effectiveBt)) {
       basePerms.accessRepresentativeCommerce = false;
+      basePerms.accessRepresentativeOrders = false;
       basePerms.representativeOrdersView = false;
       basePerms.representativeOrdersCreate = false;
       basePerms.representativeOrdersEdit = false;
@@ -786,6 +819,13 @@ export function getEffectivePermissions(
       basePerms.representativeReportsExport = false;
       basePerms.representativeReconcile = false;
       basePerms.representativeCommissionsManage = false;
+    } else {
+      if (!isModuleContractedForCompany('accessRepresentativeOrders', targetCompany, effectiveBt)) {
+        basePerms.accessRepresentativeOrders = false;
+      }
+      if (!isModuleContractedForCompany('accessRepresentativeCommerce', targetCompany, effectiveBt)) {
+        basePerms.accessRepresentativeCommerce = false;
+      }
     }
     if (!isModuleContractedForCompany('accessNotificationEngine', targetCompany, effectiveBt)) {
       basePerms.accessNotificationEngine = false;
@@ -909,7 +949,7 @@ export const VIEW_TO_PRIMARY_PERMISSION_MAP: Record<string, keyof UserPermission
   fiscal_conference: 'accessFiscal',
   tax_obligations: 'accessFiscal',
   representative_commerce: 'accessRepresentativeCommerce',
-  representative_orders: 'accessRepresentativeCommerce',
+  representative_orders: 'accessRepresentativeOrders',
   representative_reconciliation: 'accessRepresentativeCommerce',
   notifications_engine: 'accessNotificationEngine',
   notification_engine: 'accessNotificationEngine',

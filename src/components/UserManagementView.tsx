@@ -1102,6 +1102,9 @@ export default function UserManagementView({
     accessFinancial: { label: 'Fluxo de Caixa Avançado & DRE', defaultPrice: 49.90, permKey: 'accessFinancial' },
     accessFiscal: { label: 'Emissão Fiscal SEFAZ & Boletos', defaultPrice: 59.90, permKey: 'accessFiscal' },
     accessReports: { label: 'Relatórios Gerenciais & Exportação', defaultPrice: 29.90, permKey: 'accessReports' },
+    accessRepresentativeCommerce: { label: 'Comércio Representante (Fábricas)', defaultPrice: 69.90, permKey: 'accessRepresentativeCommerce' },
+    accessRepresentativeOrders: { label: 'Pedidos da Representada', defaultPrice: 39.90, permKey: 'accessRepresentativeOrders' },
+    accessNotificationsEngine: { label: 'Central de Notificações', defaultPrice: 19.90, permKey: 'accessNotificationsEngine' },
     accessQAPanel: { label: 'Painel QA & Conversor de Migração', defaultPrice: 49.90, permKey: 'accessQAPanel' },
   };
 
@@ -2780,6 +2783,9 @@ export default function UserManagementView({
                 { key: 'accessFiscal', label: 'Módulo Fiscal, Boletos & SEFAZ' },
                 { key: 'accessHistory', label: 'Histórico do Veículo' },
                 { key: 'accessReports', label: 'Relatórios Financeiros' },
+                { key: 'accessRepresentativeCommerce', label: 'Comércio Representante (Fábricas)' },
+                { key: 'accessRepresentativeOrders', label: 'Pedidos da Representada' },
+                { key: 'accessNotificationsEngine', label: 'Central de Notificações' },
                 { key: 'accessUserManagement', label: 'Controle de Colaboradores' },
                 { key: 'accessProduction', label: 'Produção & PCP (BOM/OP)' },
                 { key: 'accessIndustrialDashboard', label: 'Painel PCP & Indicadores' },

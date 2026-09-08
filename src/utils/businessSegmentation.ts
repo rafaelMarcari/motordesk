@@ -40,6 +40,7 @@ export const COMMERCE_EXCLUSIVE_PERMISSIONS: (keyof UserPermissions | string)[] 
   'accessCarriers',
   'accessUnitsOfMeasure',
   'accessRepresentativeCommerce',
+  'accessRepresentativeOrders',
 ];
 
 export const INDUSTRIAL_EXCLUSIVE_PERMISSIONS: (keyof UserPermissions | string)[] = [
@@ -279,6 +280,7 @@ export function normalizeUserPermissions(
 
     // Comércio Representante
     accessRepresentativeCommerce: permissions?.accessRepresentativeCommerce !== undefined ? Boolean(permissions.accessRepresentativeCommerce) : (normalizedRole === 'admin' || normalizedRole === 'gerente' || normalizedRole === 'atendente' || normalizedRole === 'qa'),
+    accessRepresentativeOrders: permissions?.accessRepresentativeOrders !== undefined ? Boolean(permissions.accessRepresentativeOrders) : (normalizedRole === 'admin' || normalizedRole === 'gerente' || normalizedRole === 'atendente' || normalizedRole === 'qa'),
     representativeOrdersCreate: permissions?.representativeOrdersCreate !== undefined ? Boolean(permissions.representativeOrdersCreate) : (normalizedRole !== 'mecanico'),
     representativeOrdersEdit: permissions?.representativeOrdersEdit !== undefined ? Boolean(permissions.representativeOrdersEdit) : (normalizedRole !== 'mecanico'),
     representativeOrdersCancel: permissions?.representativeOrdersCancel !== undefined ? Boolean(permissions.representativeOrdersCancel) : (normalizedRole === 'admin' || normalizedRole === 'gerente' || normalizedRole === 'qa'),
@@ -719,6 +721,7 @@ export function getDefaultGlobalModulesForBusinessType(businessType?: BusinessTy
         accessReports: true,
         accessHistory: true,
         accessRepresentativeCommerce: true,
+        accessRepresentativeOrders: true,
         accessNotificationEngine: true,
         accessUserManagement: true,
         accessQAPanel: true,
@@ -761,6 +764,7 @@ export function getDefaultGlobalModulesForBusinessType(businessType?: BusinessTy
         accessReports: true,
         accessHistory: true,
         accessRepresentativeCommerce: true,
+        accessRepresentativeOrders: true,
         accessNotificationEngine: true,
         accessUserManagement: true,
         accessQAPanel: true,
@@ -803,6 +807,7 @@ export function getDefaultGlobalModulesForBusinessType(businessType?: BusinessTy
         accessReports: true,
         accessHistory: true,
         accessRepresentativeCommerce: true,
+        accessRepresentativeOrders: true,
         accessNotificationEngine: true,
         accessUserManagement: true,
         accessQAPanel: true,

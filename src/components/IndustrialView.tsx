@@ -15,7 +15,7 @@ import {
   Boxes, RefreshCw, Hash, Calendar, User, ChevronRight, Download,
   Wrench, ShoppingCart, DollarSign, Activity
 } from 'lucide-react';
-import { AppDatabase } from '../data/mockData';
+import { AppDatabase, generateIndustrialSeedForCompany } from '../data/mockData';
 import { 
   BillOfMaterials, 
   ProductionOrder, 
@@ -102,9 +102,14 @@ export default function IndustrialView({
 
   // 1. Save or Create BOM
   const handleSaveBom = (newBom: BillOfMaterials) => {
+    const companyId = currentCompany?.id || 'comp-1';
+    const bomWithCompany = {
+      ...newBom,
+      companyId: newBom.companyId || companyId
+    };
     onUpdateDb(prev => {
       const existingBoms = prev.boms || prev.billOfMaterials || [];
-      const updated = [newBom, ...existingBoms.filter(b => b.id !== newBom.id)];
+      const updated = [bomWithCompany, ...existingBoms.filter(b => b.id !== bomWithCompany.id)];
       return {
         ...prev,
         boms: updated,
@@ -118,6 +123,64 @@ export default function IndustrialView({
       `Estrutura ${newBom.code} (${newBom.name || newBom.finishedProductName}) cadastrada com ${newBom.items?.length || 0} componentes.`,
       newBom.id,
       newBom.code
+    );
+  };
+
+  // 1.1 Save or Create Industrial Part (Finished good or component)
+  const handleSavePart = (newPart: Part) => {
+    const companyId = currentCompany?.id || 'comp-1';
+    const formattedPart: Part = {
+      ...newPart,
+      companyId: newPart.companyId || companyId
+    };
+    onUpdateDb(prev => {
+      const existingParts = prev.parts || [];
+      const updated = [formattedPart, ...existingParts.filter(p => p.id !== formattedPart.id)];
+      return {
+        ...prev,
+        parts: updated
+      };
+    });
+
+    onAddHistoryLog?.(
+      'STOCK',
+      'Item Cadastrado via PCP/BOM',
+      `Item ${formattedPart.code} - ${formattedPart.name} (${formattedPart.itemType || 'peça'}) adicionado ao catálogo industrial.`,
+      formattedPart.id,
+      formattedPart.code
+    );
+  };
+
+  // 1.2 Load sample industrial catalog for active company
+  const handleLoadSampleIndustrialData = () => {
+    const companyId = currentCompany?.id || 'comp-1';
+    const seed = generateIndustrialSeedForCompany(companyId);
+
+    onUpdateDb(prev => {
+      const existingParts = prev.parts || [];
+      const existingBoms = prev.boms || prev.billOfMaterials || [];
+
+      const existingPartCodes = new Set(existingParts.map(p => p.code));
+      const newPartsToAdd = seed.parts.filter(p => !existingPartCodes.has(p.code));
+
+      const existingBomCodes = new Set(existingBoms.map(b => b.code));
+      const newBomsToAdd = seed.boms.filter(b => !existingBomCodes.has(b.code));
+
+      const updatedParts = [...newPartsToAdd, ...existingParts];
+      const updatedBoms = [...newBomsToAdd, ...existingBoms];
+
+      return {
+        ...prev,
+        parts: updatedParts,
+        boms: updatedBoms,
+        billOfMaterials: updatedBoms
+      };
+    });
+
+    onAddHistoryLog?.(
+      'CONFIG',
+      'Catálogo Industrial Carregado',
+      `Catálogo padrão de manufatura (peças e estruturas BOM) carregado com sucesso para a empresa ${currentCompany?.name || companyId}.`
     );
   };
 
@@ -634,10 +697,13 @@ export default function IndustrialView({
           boms={boms}
           parts={parts}
           currentUser={currentUser}
+          activeCompanyId={currentCompany?.id || 'comp-1'}
           onSelectBomForOp={(bom) => {
             setActiveTab('production_orders');
           }}
           onSaveBom={handleSaveBom}
+          onSavePart={handleSavePart}
+          onLoadSampleIndustrialData={handleLoadSampleIndustrialData}
         />
       )}
 

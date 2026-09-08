@@ -584,6 +584,7 @@ export interface UserPermissions {
 
   // Permissões Granulares - Módulo Comércio Representante
   accessRepresentativeCommerce?: boolean;
+  accessRepresentativeOrders?: boolean;
   representativeOrdersView?: boolean;
   representativeOrdersCreate?: boolean;
   representativeOrdersEdit?: boolean;

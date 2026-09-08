@@ -159,7 +159,7 @@ const VIEW_PERMISSION_MAP: Record<ViewID, keyof UserPermissions | null> = {
   access_groups: 'accessUserManagement',
   notifications_engine: 'accessNotificationsEngine',
   representative_commerce: 'accessRepresentativeCommerce',
-  representative_orders: 'accessRepresentativeCommerce',
+  representative_orders: 'accessRepresentativeOrders',
   representative_reconciliation: 'accessRepresentativeCommerce',
   services: 'accessServices',
   budgets: 'accessBudgets',
@@ -870,7 +870,8 @@ export default function App() {
 
     const canClients = !isModuleLocked('accessClients') && Boolean(currentUser?.permissions?.accessClients);
     const canVehicles = !isModuleLocked('accessVehicles') && Boolean(currentUser?.permissions?.accessVehicles);
-    const canParts = !isModuleLocked('accessParts') && Boolean(currentUser?.permissions?.accessParts);
+    const canProduction = !isModuleLocked('accessProduction') && (Boolean(currentUser?.permissions?.accessProduction) || Boolean(currentUser?.permissions?.accessIndustrialDashboard));
+    const canParts = (!isModuleLocked('accessParts') && Boolean(currentUser?.permissions?.accessParts)) || canProduction;
     const canServices = !isModuleLocked('accessServices') && Boolean(currentUser?.permissions?.accessServices);
     const canBudgets = !isModuleLocked('accessBudgets') && Boolean(currentUser?.permissions?.accessBudgets);
     const canServiceOrders = !isModuleLocked('accessServiceOrders') && Boolean(currentUser?.permissions?.accessServiceOrders);
@@ -882,7 +883,6 @@ export default function App() {
     const canFiscal = !isModuleLocked('accessFiscal') && Boolean(currentUser?.permissions?.accessFiscal);
     const canCarriers = !isModuleLocked('accessCarriers') && Boolean(currentUser?.permissions?.accessCarriers);
     const canUnits = !isModuleLocked('accessUnitsOfMeasure') && Boolean(currentUser?.permissions?.accessUnitsOfMeasure);
-    const canProduction = !isModuleLocked('accessProduction') && (Boolean(currentUser?.permissions?.accessProduction) || Boolean(currentUser?.permissions?.accessIndustrialDashboard));
     const canWithdrawals = !isModuleLocked('accessWithdrawals') && (currentUser?.permissions?.accessWithdrawals ?? true);
 
     return {
@@ -3365,18 +3365,20 @@ export default function App() {
             )
           )}
 
-          {['representative_commerce', 'representative_orders', 'representative_reconciliation'].includes(activeView) && currentUser.permissions.accessRepresentativeCommerce && (
-            isModuleLocked('accessRepresentativeCommerce') ? renderLockedScreen() : (
-              <RepresentativeCommerceView 
-                db={scopedDb}
-                setDb={syncDb as any}
-                currentUser={currentUser}
-                activeCompanyId={activeCompanyId}
-                initialTab={activeView === 'representative_orders' ? 'orders' : activeView === 'representative_reconciliation' ? 'reconciliation' : undefined}
-                onAddHistoryLog={handleAddHistoryLog}
-                onNavigateToView={navigateToView}
-              />
-            )
+          {['representative_commerce', 'representative_orders', 'representative_reconciliation'].includes(activeView) && (
+            (activeView === 'representative_orders' ? (currentUser.permissions.accessRepresentativeOrders || currentUser.permissions.accessRepresentativeCommerce) : currentUser.permissions.accessRepresentativeCommerce) ? (
+              isModuleLocked(activeView === 'representative_orders' ? 'accessRepresentativeOrders' : 'accessRepresentativeCommerce') ? renderLockedScreen() : (
+                <RepresentativeCommerceView 
+                  db={scopedDb}
+                  setDb={syncDb as any}
+                  currentUser={currentUser}
+                  activeCompanyId={activeCompanyId}
+                  initialTab={activeView === 'representative_orders' ? 'orders' : activeView === 'representative_reconciliation' ? 'reconciliation' : undefined}
+                  onAddHistoryLog={handleAddHistoryLog}
+                  onNavigateToView={navigateToView}
+                />
+              )
+            ) : null
           )}
 
           {/* Fallback de Segurança caso a view não corresponda a nenhum componente renderizado - Previne 100% Tela Branca */}

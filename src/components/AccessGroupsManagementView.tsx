@@ -45,7 +45,8 @@ import {
   PlayCircle,
   TrendingDown,
   CreditCard,
-  RotateCcw
+  RotateCcw,
+  Building2
 } from 'lucide-react';
 import { 
   getEffectivePermissions, 
@@ -272,6 +273,23 @@ export const AccessGroupsManagementView: React.FC<AccessGroupsManagementViewProp
         { key: 'accessFinancial', label: 'Fluxo de Caixa & DRE', description: 'Extratos, conciliação e resultado líquido' },
         { key: 'financialExport', label: 'Exportar Relatórios Financeiros', description: 'Baixar relatórios e DRE' },
         { key: 'authorizeCreditLimitBypass', label: 'Liberar Limite de Crédito', description: 'Autorizar venda acima do teto' }
+      ]
+    },
+    {
+      category: 'REPRESENTATIVE',
+      title: 'Representação Comercial & Pedidos',
+      icon: <Building2 className="w-4 h-4 text-violet-500" />,
+      keys: [
+        { key: 'accessRepresentativeCommerce', label: 'Acesso Geral Representação', description: 'Visão geral, representadas e dashboard' },
+        { key: 'accessRepresentativeOrders', label: 'Pedidos da Representada', description: 'Emitir e acompanhar pedidos enviados às fábricas' },
+        { key: 'representativeOrdersCreate', label: 'Criar Pedidos Fábrica', description: 'Emitir novos pedidos comerciais' },
+        { key: 'representativeOrdersEdit', label: 'Editar Pedidos Fábrica', description: 'Alterar itens e valores de pedidos' },
+        { key: 'representativeOrdersCancel', label: 'Cancelar Pedidos Fábrica', description: 'Cancelar pedidos de representação' },
+        { key: 'representativeOrdersExport', label: 'Exportar Pedidos', description: 'Gerar relatórios e planilhas dos pedidos' },
+        { key: 'representativeReconciliationView', label: 'Conferência de Faturamento 1:N', description: 'Conciliar faturas e NFs com pedidos' },
+        { key: 'representativeCommissionView', label: 'Comissões de Representação', description: 'Visualizar extrato e liquidações de comissões' },
+        { key: 'representativeCommissionSettle', label: 'Baixar / Liquidar Comissões', description: 'Marcar comissões como recebidas' },
+        { key: 'representativeReportsView', label: 'Relatórios de Representação', description: 'Indicadores de fábricas e clientes' }
       ]
     },
     {
