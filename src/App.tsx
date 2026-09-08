@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { 
   getDatabase, 
   saveDatabase, 
@@ -74,7 +74,13 @@ import {
   Sparkles, 
   Wrench as ToolIcon,
   Ruler,
-  Factory
+  Factory,
+  Zap,
+  Eye,
+  EyeOff,
+  Clock,
+  KeyRound,
+  ShieldCheck
 } from 'lucide-react';
 
 // View Imports
@@ -115,7 +121,7 @@ import PrivacyLgpdModal, { PrivacyLgpdFooter } from './components/PrivacyLgpdMod
 import { sweepExpiredBudgets, checkLowStockAlerts, checkFinancialDueAlerts } from './utils/stockUtils';
 import { syncServiceOrdersWithBudgets } from './utils/serviceOrderUtils';
 import { AccountReceivable, AccountPayable, FinancialTransaction, FiscalDocument, BoletoDocument, InterBranchSaleLogistics, SefazApiConfig, TaxObligationGuide, AccessGroup, ViewID } from './types';
-import { Globe, FileText, FileCheck2, Scale, KeyRound, Shield } from 'lucide-react';
+import { Globe, FileText, FileCheck2, Scale, Shield } from 'lucide-react';
 import {
   getBusinessType,
   normalizeBusinessType,
@@ -177,21 +183,36 @@ export default function App() {
     return localStorage.getItem('motordesk_active_company_id') || '';
   });
   const [currentUser, setCurrentUser] = useState<User | null>(() => {
-    if (typeof localStorage === 'undefined') return null;
-    const token = localStorage.getItem('motordesk_auth_token');
-    const savedUserStr = localStorage.getItem('motordesk_active_user');
-    if (token && savedUserStr) {
+    // ------------------------------------------------------------------------
+    // POLÍTICA ESTRITA DE SEGURANÇA: SEMPRE PEDIR SENHA AO ACESSAR O SISTEMA
+    // ------------------------------------------------------------------------
+    // Nunca realiza login direto ou restauração automática de sessão sem senha.
+    // O usuário é sempre direcionado para a tela de autenticação onde a senha é obrigatória.
+    if (typeof window !== 'undefined' && typeof localStorage !== 'undefined') {
       try {
-        const parsed = JSON.parse(savedUserStr);
-        return parsed;
-      } catch (e) {
-        return null;
-      }
+        const searchParams = new URLSearchParams(window.location.search);
+        const urlView = searchParams.get('view');
+        const hashView = window.location.hash.replace('#', '');
+        const savedView = localStorage.getItem('motordesk_active_view');
+        const intended = urlView || hashView || savedView;
+        if (intended) {
+          localStorage.setItem('motordesk_intended_view', intended);
+        }
+        // Limpa tokens antigos para garantir que a autenticação por senha ocorra
+        localStorage.removeItem('motordesk_auth_token');
+        localStorage.removeItem('motordesk_active_user');
+      } catch (e) {}
     }
     return null;
   });
-  const [loginUsername, setLoginUsername] = useState('');
-  const [loginPassword, setLoginPassword] = useState('');
+
+  const [loginUsername, setLoginUsername] = useState<string>(() => {
+    if (typeof localStorage === 'undefined') return '';
+    return localStorage.getItem('motordesk_saved_username') || 'admin';
+  });
+  const [loginPassword, setLoginPassword] = useState<string>('');
+  const [showPassword, setShowPassword] = useState<boolean>(false);
+  const [sessionExpiredMessage, setSessionExpiredMessage] = useState<string>('');
   const [selectedLoginCompanyId, setSelectedLoginCompanyId] = useState<string>('');
   const [loginError, setLoginError] = useState('');
   const [loginHistory, setLoginHistory] = useState<{username: string, name: string, role: string, lastAccess: string}[]>([]);
@@ -230,15 +251,33 @@ export default function App() {
   });
 
   // 3. Navigation State
-  const [activeView, setActiveView] = useState<ViewID>('dashboard');
+  const [activeView, setActiveView] = useState<ViewID>(() => {
+    if (typeof window !== 'undefined') {
+      const searchParams = new URLSearchParams(window.location.search);
+      const urlView = searchParams.get('view');
+      if (urlView) return urlView as ViewID;
+      const hashView = window.location.hash.replace('#', '');
+      if (hashView) return hashView as ViewID;
+      const savedView = localStorage.getItem('motordesk_active_view');
+      if (savedView) return savedView as ViewID;
+    }
+    return 'dashboard';
+  });
+
+  useEffect(() => {
+    if (typeof localStorage !== 'undefined' && activeView) {
+      localStorage.setItem('motordesk_active_view', activeView);
+    }
+  }, [activeView]);
+
   const [isLanding, setIsLanding] = useState<boolean>(() => {
     if (typeof window !== 'undefined') {
-      const path = window.location.pathname.toLowerCase();
-      if (path.startsWith('/motordesk')) {
-        return false;
+      const search = window.location.search.toLowerCase();
+      if (search.includes('landing=true')) {
+        return true;
       }
     }
-    return true;
+    return false;
   });
 
   useEffect(() => {
@@ -1421,7 +1460,76 @@ export default function App() {
     }
   }, [matchingCompaniesForLogin]);
 
-  // Login handler with strict multi-tenant company block check
+  // --------------------------------------------------------------------------
+  // SEGURANÇA: ENCERRAMENTO AUTOMÁTICO DE SESSÃO POR TEMPO DE INATIVIDADE (15 MIN)
+  // --------------------------------------------------------------------------
+  const INACTIVITY_TIMEOUT_MS = 15 * 60 * 1000; // 15 minutos sem interação
+  const lastActivityTimestampRef = useRef<number>(Date.now());
+
+  // Monitora movimentos e cliques do usuário, encerrando a sessão caso fique 15 minutos inativo
+  useEffect(() => {
+    if (!currentUser) return;
+
+    lastActivityTimestampRef.current = Date.now();
+    try {
+      localStorage.setItem('motordesk_last_activity', Date.now().toString());
+    } catch (e) {}
+
+    let throttleTimer: NodeJS.Timeout | null = null;
+    const handleUserInteraction = () => {
+      if (!throttleTimer) {
+        throttleTimer = setTimeout(() => {
+          lastActivityTimestampRef.current = Date.now();
+          try {
+            localStorage.setItem('motordesk_last_activity', Date.now().toString());
+          } catch (e) {}
+          throttleTimer = null;
+        }, 3000); // Throttling para não sobrecarregar
+      }
+    };
+
+    const monitoredEvents = ['mousemove', 'mousedown', 'keydown', 'scroll', 'touchstart', 'click'];
+    monitoredEvents.forEach(evt => {
+      window.addEventListener(evt, handleUserInteraction, { passive: true });
+    });
+
+    // Verificação periódica de inatividade a cada 5 segundos
+    const inactivityChecker = setInterval(() => {
+      const now = Date.now();
+      const storedLast = localStorage.getItem('motordesk_last_activity');
+      const lastActive = storedLast ? parseInt(storedLast, 10) : lastActivityTimestampRef.current;
+      const elapsed = now - lastActive;
+
+      if (elapsed >= INACTIVITY_TIMEOUT_MS) {
+        // Encerra a sessão imediatamente por inatividade
+        const expiredUsername = currentUser.username;
+        const lastView = activeView;
+
+        try {
+          localStorage.setItem('motordesk_intended_view', lastView);
+          localStorage.setItem('motordesk_saved_username', expiredUsername);
+          localStorage.removeItem('motordesk_auth_token');
+          localStorage.removeItem('motordesk_active_user');
+          localStorage.removeItem('motordesk_last_activity');
+        } catch (e) {}
+
+        setCurrentUser(null);
+        setLoginUsername(expiredUsername);
+        setLoginPassword('');
+        setSessionExpiredMessage('Sua sessão foi encerrada por inatividade (15 minutos sem interação). Por segurança, confirme sua senha para continuar de onde parou.');
+      }
+    }, 5000);
+
+    return () => {
+      monitoredEvents.forEach(evt => {
+        window.removeEventListener(evt, handleUserInteraction);
+      });
+      if (throttleTimer) clearTimeout(throttleTimer);
+      clearInterval(inactivityChecker);
+    };
+  }, [currentUser, activeView]);
+
+  // Login handler with strict multi-tenant company block check, password requirement, and redirect preservation
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
     setLoginError('');
@@ -1435,6 +1543,17 @@ export default function App() {
 
     const cleanUsername = loginUsername.trim().toLowerCase();
     const enteredPassword = loginPassword.trim();
+
+    if (!cleanUsername) {
+      setLoginError('Por favor, informe o nome de usuário.');
+      return;
+    }
+
+    // EXIGÊNCIA OBRIGATÓRIA DE SENHA: Nunca aceita campo vazio ou bypass
+    if (!enteredPassword) {
+      setLoginError('A senha é obrigatória. Por favor, digite sua senha para acessar o sistema.');
+      return;
+    }
 
     // Determine target company:
     // If the user has access to only 1 company, strictly target that company.
@@ -1566,19 +1685,54 @@ export default function App() {
       const sessionToken = `motordesk_session_${matchedUser.id}_${Date.now()}`;
       localStorage.setItem('motordesk_auth_token', sessionToken);
       localStorage.setItem('motordesk_active_user', JSON.stringify(matchedUser));
+      localStorage.setItem('motordesk_saved_username', matchedUser.username);
+      localStorage.setItem('motordesk_last_activity', Date.now().toString());
 
-      // Determine default accessible landing view based on user permissions
+      // REDIRECIONAMENTOS CERTINHO:
+      // Verifica se o usuário pretendia acessar uma view específica (URL query param `?view=...`, hash `#...`, ou motordesk_intended_view)
+      const urlParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
+      const intendedFromStorage = localStorage.getItem('motordesk_intended_view');
+      const intendedFromUrl = urlParams ? urlParams.get('view') : null;
+      const intendedHash = typeof window !== 'undefined' ? window.location.hash.replace('#', '') : null;
+      const intendedCandidate = intendedFromStorage || intendedFromUrl || intendedHash;
+
       const matchedCompanyBusinessType = getBusinessType(matchedComp);
-      const firstAllowed = (Object.keys(VIEW_PERMISSION_MAP) as ViewID[]).find(v => {
-        if (!isViewAllowedForBusinessType(v, matchedCompanyBusinessType)) return false;
-        const perm = VIEW_PERMISSION_MAP[v];
-        return perm === null || (matchedUser!.permissions[perm] ?? true);
-      });
-      setActiveView(firstAllowed || 'profile');
-      
-      // Clear password inputs
+      let targetViewToActivate: ViewID | null = null;
+
+      if (intendedCandidate) {
+        const normalizedCandidate = normalizeViewId(intendedCandidate);
+        if (isViewAllowedForBusinessType(normalizedCandidate, matchedCompanyBusinessType)) {
+          const perm = VIEW_PERMISSION_MAP[normalizedCandidate];
+          if (perm === null || (matchedUser.permissions[perm] ?? true)) {
+            targetViewToActivate = normalizedCandidate;
+          }
+        }
+      }
+
+      // Se a view pretendida não puder ser acessada, usa a primeira tela permitida pelo perfil
+      if (!targetViewToActivate) {
+        const firstAllowed = (Object.keys(VIEW_PERMISSION_MAP) as ViewID[]).find(v => {
+          if (!isViewAllowedForBusinessType(v, matchedCompanyBusinessType)) return false;
+          const perm = VIEW_PERMISSION_MAP[v];
+          return perm === null || (matchedUser!.permissions[perm] ?? true);
+        });
+        targetViewToActivate = firstAllowed || 'dashboard';
+      }
+
+      setActiveView(targetViewToActivate);
+      if (typeof window !== 'undefined') {
+        const newUrl = new URL(window.location.href);
+        newUrl.searchParams.set('view', targetViewToActivate);
+        window.history.replaceState({}, '', newUrl.toString());
+      }
+      try {
+        localStorage.removeItem('motordesk_intended_view');
+      } catch (e) {}
+
+      // Limpa os campos de senha e mensagens
       setLoginPassword('');
-      setLoginUsername('');
+      setSessionExpiredMessage('');
+      setLoginError('');
     } else {
       setLoginError('Usuário ou senha incorretos. Por favor, verifique suas credenciais.');
     }
@@ -1591,16 +1745,24 @@ export default function App() {
     setLoginError('');
   };
 
-  // Logout routine (trigger checking)
+  // Logout routine com preservação de rota pretendida para redirecionamento certinho
   const handleLogout = () => {
+    if (activeView) {
+      try {
+        localStorage.setItem('motordesk_intended_view', activeView);
+      } catch (e) {}
+    }
     setCurrentUser(null);
     localStorage.removeItem('motordesk_auth_token');
     localStorage.removeItem('motordesk_active_user');
-    localStorage.removeItem('motordesk_active_company_id');
+    localStorage.removeItem('motordesk_last_activity');
     setActiveCompanyIdState('');
     setUnsavedTask(null);
     setShowUnsavedModal(false);
     setPendingTargetView(null);
+    setLoginPassword('');
+    setSessionExpiredMessage('');
+    setLoginError('');
   };
 
   // Normalizador resiliente de ViewID para compatibilidade de rotas e notificações
@@ -1673,6 +1835,11 @@ export default function App() {
       setShowUnsavedModal(true);
     } else {
       setActiveView(targetView);
+      if (typeof window !== 'undefined') {
+        const url = new URL(window.location.href);
+        url.searchParams.set('view', targetView);
+        window.history.replaceState({}, '', url.toString());
+      }
     }
   };
 
@@ -1940,6 +2107,51 @@ export default function App() {
               <p className="text-xs text-slate-500">{loginPageData.subtitle}</p>
             </div>
 
+            {/* Inactivity Session Expiration Banner */}
+            {sessionExpiredMessage && (
+              <div id="session-timeout-alert" className="p-3.5 bg-amber-50 border border-amber-300 rounded-xl text-amber-900 text-xs flex items-start gap-2.5 animate-fade-in shadow-xs">
+                <Clock className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                <div className="flex-1">
+                  <p className="font-bold text-amber-950">Sessão Encerrada por Inatividade</p>
+                  <p className="text-[11px] text-amber-800 mt-0.5 leading-relaxed">{sessionExpiredMessage}</p>
+                </div>
+              </div>
+            )}
+
+            {/* Intended Route Target Badge */}
+            {(() => {
+              const intended = typeof localStorage !== 'undefined' ? (localStorage.getItem('motordesk_intended_view') || (typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('view') : null)) : null;
+              if (!intended) return null;
+              const viewLabels: Record<string, string> = {
+                representative_orders: 'Pedidos Realizados (Fábricas)',
+                representative_commerce: 'Representação Comercial',
+                representative_reconciliation: 'Conciliação de Comissões',
+                serviceOrders: 'Ordens de Serviço',
+                sales: 'Vendas Balcão / PDV',
+                budgets: 'Orçamentos Comerciais',
+                clients: 'Clientes',
+                vehicles: 'Veículos & Frotas',
+                parts: 'Peças & Estoque',
+                services: 'Serviços & Mão de Obra',
+                accounts_receivable: 'Contas a Receber',
+                accounts_payable: 'Contas a Pagar',
+                financial: 'Financeiro & Fluxo de Caixa',
+                fiscal: 'Módulo Fiscal SEFAZ',
+                reports: 'Relatórios Estratégicos',
+                dashboard: 'Painel Geral (Dashboard)'
+              };
+              const label = viewLabels[intended] || intended;
+              return (
+                <div className="flex items-center gap-2.5 p-2.5 bg-indigo-50 border border-indigo-200 rounded-xl text-xs text-indigo-900 animate-fade-in" id="intended-redirect-banner">
+                  <KeyRound className="w-4 h-4 text-indigo-600 shrink-0" />
+                  <div className="min-w-0 flex-1">
+                    <span className="font-bold text-[11px] block text-indigo-950">Destino Agendado</span>
+                    <span className="text-[11px] text-indigo-700 truncate block">Após autenticar, você será redirecionado para <strong>{label}</strong>.</span>
+                  </div>
+                </div>
+              );
+            })()}
+
             {loginError && (
               <div id="login-error-alert" className="p-3 bg-rose-50 text-rose-800 text-xs font-medium rounded-lg border border-rose-100 animate-shake">
                 {loginError}
@@ -1948,7 +2160,10 @@ export default function App() {
 
             <form onSubmit={handleLogin} className="space-y-4" id="form-login">
               <div className="space-y-1.5">
-                <label className="text-xs font-bold text-slate-500 uppercase" htmlFor="login-username-input">Usuário (Username)</label>
+                <label className="text-xs font-bold text-slate-600 uppercase flex items-center justify-between" htmlFor="login-username-input">
+                  <span>Usuário (Username)</span>
+                  <span className="text-[10px] text-slate-400 font-semibold lowercase">obrigatório</span>
+                </label>
                 <input 
                   id="login-username-input"
                   type="text" 
@@ -2008,17 +2223,38 @@ export default function App() {
                 </div>
               )}
 
+              {/* Strict Password Input with Show/Hide Toggle */}
               <div className="space-y-1.5">
-                <label className="text-xs font-bold text-slate-500 uppercase" htmlFor="login-password-input">Senha</label>
-                <input 
-                  id="login-password-input"
-                  type="password" 
-                  value={loginPassword}
-                  onChange={e => setLoginPassword(e.target.value)}
-                  placeholder="Insira sua senha de operador (Ex: qa123)" 
-                  className="w-full text-xs px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:outline-hidden focus:bg-white focus:border-indigo-500 transition"
-                  required
-                />
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-slate-600 uppercase flex items-center gap-1.5" htmlFor="login-password-input">
+                    <Lock className="w-3.5 h-3.5 text-indigo-600" /> Senha de Acesso <span className="text-rose-500">*</span>
+                  </label>
+                  <span className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider">Obrigatória</span>
+                </div>
+                <div className="relative">
+                  <input 
+                    id="login-password-input"
+                    type={showPassword ? 'text' : 'password'} 
+                    value={loginPassword}
+                    onChange={e => setLoginPassword(e.target.value)}
+                    placeholder="Digite sua senha de operador (Ex: admin123 ou qa123)" 
+                    autoComplete="new-password"
+                    className="w-full text-xs px-3.5 py-2.5 pr-10 bg-slate-50 border border-slate-200 rounded-lg focus:outline-hidden focus:bg-white focus:border-indigo-500 transition font-sans"
+                    required
+                  />
+                  <button
+                    type="button"
+                    id="btn-toggle-password-visibility"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1 cursor-pointer transition"
+                    title={showPassword ? 'Ocultar senha' : 'Exibir senha digitada'}
+                  >
+                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+                <p className="text-[10px] text-slate-400">
+                  Por segurança, a senha é sempre exigida mesmo que o navegador tenha dados salvos.
+                </p>
               </div>
 
               <PrivacyLgpdFooter
@@ -2035,6 +2271,15 @@ export default function App() {
               >
                 <Lock className="w-4 h-4 text-indigo-400" /> {loginPageData.buttonText}
               </button>
+
+              <div className="flex items-center justify-between pt-2 border-t border-slate-100 text-[11px] text-slate-400">
+                <span className="flex items-center gap-1">
+                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" /> Sessão Segura
+                </span>
+                <span className="flex items-center gap-1">
+                  <Clock className="w-3.5 h-3.5 text-slate-400" /> Expira em 15 min sem uso
+                </span>
+              </div>
             </form>
           </div>
         </div>
@@ -3129,6 +3374,7 @@ export default function App() {
                 activeCompanyId={activeCompanyId}
                 initialTab={activeView === 'representative_orders' ? 'orders' : activeView === 'representative_reconciliation' ? 'reconciliation' : undefined}
                 onAddHistoryLog={handleAddHistoryLog}
+                onNavigateToView={navigateToView}
               />
             )
           )}
