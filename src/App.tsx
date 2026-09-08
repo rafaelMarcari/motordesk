@@ -2210,6 +2210,22 @@ export default function App() {
               </button>
             )}
 
+            {isViewAccessible('representative_orders') && (
+              <button 
+                id="menu-btn-representative-orders"
+                onClick={() => navigateToView('representative_orders')}
+                title="Pedidos Realizados (Representadas & Faturamento)"
+                className={`w-full flex items-center ${(!isSidebarCollapsed || isSidebarHovered) ? 'justify-between px-3' : 'justify-center px-2'} py-2.5 rounded-lg text-xs font-semibold tracking-wide transition ${
+                  activeView === 'representative_orders' ? 'bg-indigo-600 text-white font-bold shadow-xs' : 'hover:bg-slate-800 text-slate-300 hover:text-slate-100'
+                }`}
+              >
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <FileText className="w-4 h-4 shrink-0 text-indigo-400" />
+                  {(!isSidebarCollapsed || isSidebarHovered) && <span className="truncate">Pedidos Realizados</span>}
+                </div>
+              </button>
+            )}
+
             {isViewAccessible('withdrawals') && (
               <button 
                 id="menu-btn-withdrawals"
@@ -2389,6 +2405,20 @@ export default function App() {
                       >
                         <ArrowDownRight className="w-3.5 h-3.5 text-rose-400 shrink-0" />
                         <span className="truncate">Contas a Pagar</span>
+                      </button>
+                    )}
+
+                    {isViewAccessible('representative_orders') && (
+                      <button
+                        id="submenu-btn-representative-orders-fin"
+                        onClick={() => navigateToView('representative_orders')}
+                        title="Confronto de Pedidos Realizados e Previsões da Representada"
+                        className={`w-full text-left px-2.5 py-1.5 rounded-md text-[11px] font-medium transition flex items-center gap-2 cursor-pointer ${
+                          activeView === 'representative_orders' ? 'bg-indigo-500/20 text-indigo-200 font-bold border border-indigo-500/30' : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+                        }`}
+                      >
+                        <FileText className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
+                        <span className="truncate">Pedidos Realizados (Fábricas)</span>
                       </button>
                     )}
 

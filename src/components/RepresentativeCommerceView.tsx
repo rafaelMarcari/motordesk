@@ -62,6 +62,7 @@ interface RepresentativeCommerceViewProps {
   activeCompanyId: string;
   initialTab?: RepTabId;
   onAddHistoryLog?: (type: string, title: string, description: string, referenceId?: string, clientName?: string) => void;
+  onNavigateToView?: (view: any) => void;
 }
 
 export type RepTabId =
@@ -82,6 +83,7 @@ export const RepresentativeCommerceView: React.FC<RepresentativeCommerceViewProp
   activeCompanyId,
   initialTab,
   onAddHistoryLog,
+  onNavigateToView,
 }) => {
   const [activeTab, setActiveTab] = useState<RepTabId>(initialTab || 'dashboard');
   const [showImportModal, setShowImportModal] = useState(false);
@@ -185,6 +187,60 @@ export const RepresentativeCommerceView: React.FC<RepresentativeCommerceViewProp
         factoryOrderNumbers: ['45871', '45872', '45873'],
         createdBy: currentUser.name || currentUser.username,
         createdAt: '2026-09-01T10:00:00Z',
+      };
+
+      // Pedido 2: Enviado à fábrica, aguardando faturamento / NECESSITA ANÁLISE PARA LIGAR
+      const demoOrder2: RepresentativeOrder = {
+        id: `rep-ord-demo-2`,
+        companyId: activeCompanyId,
+        orderNumber: 'REP-000124',
+        code: 'REP-000124',
+        indexCode: 'IND-2026-092',
+        representedId: demoPrincipal.id,
+        representedName: demoPrincipal.tradeName,
+        clientId: 'cli-demo-2',
+        clientName: 'Centro Automotivo Paulista S/A',
+        clientCnpjCpf: '44.555.666/0001-11',
+        orderDate: '2026-09-08',
+        paymentCondition: '30/60 dias direto com a fábrica',
+        carrierName: 'Expresso Mercúrio Cargas',
+        freightType: 'CIF',
+        items: [
+          {
+            id: 'it-4',
+            description: 'Velas de Ignição Iridium Alta Performance',
+            quantity: 50,
+            tablePrice: 90,
+            discountPercentage: 0,
+            unitPrice: 90,
+            totalPrice: 4500,
+            commissionPercentage: 6,
+            commissionAmount: 270,
+          },
+          {
+            id: 'it-5',
+            description: 'Filtros de Óleo e Combustível Sintético',
+            quantity: 100,
+            tablePrice: 100,
+            discountPercentage: 0,
+            unitPrice: 100,
+            totalPrice: 10000,
+            commissionPercentage: 6,
+            commissionAmount: 600,
+          },
+        ],
+        subtotal: 14500,
+        totalDiscount: 0,
+        totalOrderAmount: 14500,
+        taxesAmount: 1740,
+        commissionPercentage: 6,
+        commissionAmount: 870,
+        estimatedTotalCommission: 870,
+        status: 'sent_to_factory',
+        factoryOrderNumbers: [], // VAZIO: Necessita de análise para ligar!
+        needsIndexingReview: true, // Destaque visual na tela!
+        createdBy: currentUser.name || currentUser.username,
+        createdAt: '2026-09-08T08:30:00Z',
       };
 
       const demoFactoryOrders: RepresentativeFactoryOrder[] = [
@@ -312,7 +368,7 @@ export const RepresentativeCommerceView: React.FC<RepresentativeCommerceViewProp
       setDb(prev => ({
         ...prev,
         representedCompanies: [demoPrincipal],
-        representativeOrders: [demoOrder],
+        representativeOrders: [demoOrder, demoOrder2],
         representativeFactoryOrders: demoFactoryOrders,
         factoryInvoices: demoInvoices,
         representativeCommissions: [demoCommission],
@@ -1033,6 +1089,8 @@ export const RepresentativeCommerceView: React.FC<RepresentativeCommerceViewProp
           onSaveOrder={handleSaveOrder}
           onUpdateStatus={handleUpdateOrderStatus}
           onAddFactoryOrder={handleAddFactoryOrder}
+          onNavigateToView={onNavigateToView}
+          onNavigateToTab={(tab: string) => setActiveTab(tab as any)}
         />
       )}
 

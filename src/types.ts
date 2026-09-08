@@ -3167,6 +3167,7 @@ export interface RepresentativeOrder {
   companyId: string; // Tenant
   orderNumber: string; // Ex: 'REP-000123'
   code?: string; // Sinônimo de orderNumber
+  indexCode?: string; // Chave/Código de indexação para correlação com a planilha da representada
   representedId: string; // ID da Representada
   representedName: string;
   clientId: string; // Cliente final comprador
@@ -3182,6 +3183,7 @@ export interface RepresentativeOrder {
   totalDiscount: number;
   totalOrderAmount: number;
   totalAmount?: number; // Compatibilidade com totalOrderAmount
+  taxesAmount?: number; // Total de impostos calculados/destacados
   commissionPercentage?: number;
   commissionRatePercent?: number; // Compatibilidade com commissionPercentage
   commissionAmount?: number;
@@ -3190,6 +3192,7 @@ export interface RepresentativeOrder {
   factoryInvoiceDate?: string;
   factoryOrderNumber?: string; // Número individual do pedido na fábrica
   factoryOrderNumbers?: string[]; // Lista de números de pedidos da representada (ex: ['45871', '45872', '45873'])
+  needsIndexingReview?: boolean; // Flag indicando que necessita de análise para ligar pedido recebido ao enviado
   status: RepresentativeOrderStatus;
   salespersonId?: string;
   notes?: string;
@@ -3211,10 +3214,16 @@ export interface RepresentativeFactoryOrder {
   representedCompanyId: string;
   representedCompanyName?: string;
   factoryOrderNumber: string; // ex: 45871, 45872, 45873
+  indexCode?: string; // Código de indexação do pedido enviado
   orderDate: string;
   customer: string;
   customerCnpjCpf?: string;
   totalValue: number;
+  taxesAmount?: number; // Impostos destacados (ICMS, IPI, PIS/COFINS, ST)
+  invoiceNumber?: string; // Número da NF correspondente
+  expectedPaymentDate?: string; // Previsão de pagamento/recebimento
+  commissionPercentage?: number;
+  commissionAmount?: number;
   status: 'open' | 'expedition' | 'invoiced' | 'partially_invoiced' | 'canceled';
   observations?: string;
   attachment?: string;
