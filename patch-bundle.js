@@ -79,5 +79,49 @@ if (code.includes(joSearch)) {
   console.warn('[PATCH] 6. Jo search string not found or already patched.');
 }
 
+// 7. Login: NÃO corromper o companyId de outros usuários com mesmo username ao logar
+const userMapSearch = `users:(Rs.users||[]).map(xs=>xs.id===Se.id||xs.username.toLowerCase()===Se.username.toLowerCase()?{...xs,companyId:Yt}:xs)`;
+const userMapReplace = `users:(Rs.users||[]).map(xs=>xs.id===Se.id?{...xs,companyId:Yt}:xs)`;
+
+if (code.includes(userMapSearch)) {
+  code = code.replace(userMapSearch, userMapReplace);
+  console.log('[PATCH] 7. Login user companyId isolation patched successfully.');
+} else {
+  console.warn('[PATCH] 7. userMap search string not found or already patched.');
+}
+
+// 8. Login: Respeitar a empresa Zt selecionada pelo usuário no dropdown e não sobrescrever com Ea.companyId
+const loginSearch = `let Se=(e.users||[]).find(Yt=>Yt.username.toLowerCase()===yt&&Yt.passwordHash===Dt&&(Yt.companyId||"comp-1")===Zt);if(!Se){const Yt=Ft.map(be=>be.id),Ea=(e.users||[]).find(be=>be.username.toLowerCase()===yt&&be.passwordHash===Dt&&(Yt.length===0||Yt.includes(be.companyId||"comp-1")));Ea&&(Se=Ea,Zt=Ea.companyId||Zt)}if(!Se){const Yt=Ft.map(be=>be.id),Ea=(e.users||[]).find(be=>be.username.toLowerCase()===yt&&be.passwordHash.toLowerCase()===Dt.toLowerCase()&&(Yt.length===0||Yt.includes(be.companyId||"comp-1")));Ea&&(Se=Ea,Zt=Ea.companyId||Zt)}`;
+const loginReplace = `let Se=(e.users||[]).find(Yt=>Yt.username.toLowerCase()===yt&&Yt.passwordHash===Dt&&(Yt.companyId===Zt||(Array.isArray(Yt.allowedCompanyIds)&&Yt.allowedCompanyIds.includes(Zt))));if(!Se){const Ea=(e.users||[]).find(be=>be.username.toLowerCase()===yt&&be.passwordHash===Dt&&(be.companyId===Zt||(Array.isArray(be.allowedCompanyIds)&&be.allowedCompanyIds.includes(Zt))));Ea&&(Se=Ea)}if(!Se){const Ea=(e.users||[]).find(be=>be.username.toLowerCase()===yt&&be.passwordHash===Dt);Ea&&(Se=Ea)}if(!Se){const Ea=(e.users||[]).find(be=>be.username.toLowerCase()===yt&&be.passwordHash.toLowerCase()===Dt.toLowerCase());Ea&&(Se=Ea)}`;
+
+if (code.includes(loginSearch)) {
+  code = code.replace(loginSearch, loginReplace);
+  console.log('[PATCH] 8. Login company Zt preservation and priority patched successfully.');
+} else {
+  console.warn('[PATCH] 8. loginSearch string not found or already patched.');
+}
+
+// 9. App Component: Sincronização do operador respeitando a empresa ativa Ia
+const appSyncSearch = `if(Ra!=null&&Ra.globalModules?Xe(Ra.globalModules):Yt.globalModules&&Xe(Yt.globalModules),n){const Cs=(Yt.users||[]).find(os=>os.id===n.id||os.username&&os.username.toLowerCase()===n.username.toLowerCase());`;
+const appSyncReplace = `if(Ra!=null&&Ra.globalModules?Xe(Ra.globalModules):Yt.globalModules&&Xe(Yt.globalModules),n){const Cs=(Yt.users||[]).find(os=>os.id===n.id&&os.companyId===Ia)||(Yt.users||[]).find(os=>os.username&&os.username.toLowerCase()===n.username.toLowerCase()&&(os.companyId===Ia||(Array.isArray(os.allowedCompanyIds)&&os.allowedCompanyIds.includes(Ia))))||(Yt.users||[]).find(os=>os.id===n.id);`;
+
+if (code.includes(appSyncSearch)) {
+  code = code.replace(appSyncSearch, appSyncReplace);
+  console.log('[PATCH] 9. App user sync by active company Ia patched successfully.');
+} else {
+  console.warn('[PATCH] 9. appSyncSearch string not found or already patched.');
+}
+
+// 10. Logout: Limpar intended view para não abrir segmento errado no próximo login
+const logoutSearch = `Ne=()=>{if(De)try{localStorage.setItem("motordesk_intended_view",De)}catch{}i(null),`;
+const logoutReplace = `Ne=()=>{try{localStorage.removeItem("motordesk_intended_view")}catch{}i(null),`;
+
+if (code.includes(logoutSearch)) {
+  code = code.replace(logoutSearch, logoutReplace);
+  console.log('[PATCH] 10. Logout intended view clear patched successfully.');
+} else {
+  console.warn('[PATCH] 10. logoutSearch string not found or already patched.');
+}
+
 fs.writeFileSync(bundlePath, code, 'utf8');
 console.log('[PATCH] Bundle patch completed successfully!');

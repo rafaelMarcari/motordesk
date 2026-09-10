@@ -276,10 +276,31 @@ export function mergeAppDatabase(existing: any, incoming: any): any {
   if (!existing || typeof existing !== 'object') return incoming;
   if (!incoming || typeof incoming !== 'object') return existing;
 
-  const rawCompanies = Array.isArray(incoming.registeredCompanies) && incoming.registeredCompanies.length > 0
-    ? incoming.registeredCompanies
-    : (Array.isArray(existing.registeredCompanies) ? existing.registeredCompanies : []);
+  // 1. Lossless merge of registeredCompanies
+  const companiesMap = new Map<string, any>();
+  if (Array.isArray(existing.registeredCompanies)) {
+    for (const c of existing.registeredCompanies) {
+      if (c && c.id) companiesMap.set(c.id, c);
+    }
+  }
+  if (existing.companyInfo && existing.companyInfo.id) {
+    const prev = companiesMap.get(existing.companyInfo.id);
+    companiesMap.set(existing.companyInfo.id, { ...prev, ...existing.companyInfo });
+  }
+  if (Array.isArray(incoming.registeredCompanies)) {
+    for (const c of incoming.registeredCompanies) {
+      if (c && c.id) {
+        const prev = companiesMap.get(c.id);
+        companiesMap.set(c.id, { ...prev, ...c });
+      }
+    }
+  }
+  if (incoming.companyInfo && incoming.companyInfo.id) {
+    const prev = companiesMap.get(incoming.companyInfo.id);
+    companiesMap.set(incoming.companyInfo.id, { ...prev, ...incoming.companyInfo });
+  }
 
+  const rawCompanies = Array.from(companiesMap.values());
   const normalizedCompanies = rawCompanies.map((c: any) => {
     const userLimit = typeof c?.userLimit === 'number' && c.userLimit > 0 ? c.userLimit : 5;
     const additionalUserPrice = typeof c?.additionalUserPrice === 'number' && c.additionalUserPrice >= 0 ? c.additionalUserPrice : 29.90;
@@ -313,41 +334,71 @@ export function mergeAppDatabase(existing: any, incoming: any): any {
     }
   } : null;
 
+  // 2. Lossless merge of users: preserve all users across companies, protecting companyId integrity
+  const usersMap = new Map<string, any>();
+  if (Array.isArray(existing.users)) {
+    for (const u of existing.users) {
+      if (u && u.id) usersMap.set(u.id, u);
+    }
+  }
+  if (Array.isArray(incoming.users)) {
+    for (const u of incoming.users) {
+      if (u && u.id) {
+        const prev = usersMap.get(u.id);
+        let safeCompanyId = u.companyId;
+        // If the user had an established companyId originally and incoming attempted to reassign it
+        // across unrelated companies without allowedCompanyIds, preserve the original company affiliation
+        if (prev && prev.companyId && prev.companyId !== u.companyId) {
+          if (u.id.includes(prev.companyId) || (prev.id.startsWith('usr-adm-') || prev.id.startsWith('usr-qa-') || prev.id === 'usr-1')) {
+            safeCompanyId = prev.companyId;
+          }
+        }
+        usersMap.set(u.id, {
+          ...prev,
+          ...u,
+          companyId: safeCompanyId,
+          allowedCompanyIds: u.allowedCompanyIds || (prev ? prev.allowedCompanyIds : undefined)
+        });
+      }
+    }
+  }
+  const mergedUsers = Array.from(usersMap.values());
+
   return {
     ...existing,
     ...incoming,
     companyInfo: normalizedCompanyInfo,
     registeredCompanies: normalizedCompanies,
-    users: Array.isArray(incoming.users) ? incoming.users : (existing.users || []),
-    clients: Array.isArray(incoming.clients) ? incoming.clients : (existing.clients || []),
-    vehicles: Array.isArray(incoming.vehicles) ? incoming.vehicles : (existing.vehicles || []),
-    parts: Array.isArray(incoming.parts) ? incoming.parts : (existing.parts || []),
-    sales: Array.isArray(incoming.sales) ? incoming.sales : (existing.sales || []),
-    goodsWithdrawals: Array.isArray(incoming.goodsWithdrawals) ? incoming.goodsWithdrawals : (existing.goodsWithdrawals || []),
-    carriers: Array.isArray(incoming.carriers) ? incoming.carriers : (existing.carriers || []),
-    unitsOfMeasure: Array.isArray(incoming.unitsOfMeasure) ? incoming.unitsOfMeasure : (existing.unitsOfMeasure || []),
-    services: Array.isArray(incoming.services) ? incoming.services : (existing.services || []),
-    budgets: Array.isArray(incoming.budgets) ? incoming.budgets : (existing.budgets || []),
-    serviceOrders: Array.isArray(incoming.serviceOrders) ? incoming.serviceOrders : (existing.serviceOrders || []),
-    history: Array.isArray(incoming.history) ? incoming.history : (existing.history || []),
-    suppliers: Array.isArray(incoming.suppliers) ? incoming.suppliers : (existing.suppliers || []),
-    supplierPartPrices: Array.isArray(incoming.supplierPartPrices) ? incoming.supplierPartPrices : (existing.supplierPartPrices || []),
-    quotations: Array.isArray(incoming.quotations) ? incoming.quotations : (existing.quotations || []),
-    accountsReceivable: Array.isArray(incoming.accountsReceivable) ? incoming.accountsReceivable : (existing.accountsReceivable || []),
-    accountsPayable: Array.isArray(incoming.accountsPayable) ? incoming.accountsPayable : (existing.accountsPayable || []),
-    financialTransactions: Array.isArray(incoming.financialTransactions) ? incoming.financialTransactions : (existing.financialTransactions || []),
-    paymentMethods: Array.isArray(incoming.paymentMethods) ? incoming.paymentMethods : (existing.paymentMethods || []),
-    maintenanceLogs: Array.isArray(incoming.maintenanceLogs) ? incoming.maintenanceLogs : (existing.maintenanceLogs || []),
-    fiscalDocuments: Array.isArray(incoming.fiscalDocuments) ? incoming.fiscalDocuments : (existing.fiscalDocuments || []),
-    boletos: Array.isArray(incoming.boletos) ? incoming.boletos : (existing.boletos || []),
-    interBranchSales: Array.isArray(incoming.interBranchSales) ? incoming.interBranchSales : (existing.interBranchSales || []),
-    stockMovements: Array.isArray(incoming.stockMovements) ? incoming.stockMovements : (existing.stockMovements || []),
-    notifications: Array.isArray(incoming.notifications) ? incoming.notifications : (existing.notifications || []),
-    testCases: Array.isArray(incoming.testCases) ? incoming.testCases : (existing.testCases || []),
-    taxOperationNatures: Array.isArray(incoming.taxOperationNatures) ? incoming.taxOperationNatures : (existing.taxOperationNatures || []),
-    taxRules: Array.isArray(incoming.taxRules) ? incoming.taxRules : (existing.taxRules || []),
-    xmlImportRecords: Array.isArray(incoming.xmlImportRecords) ? incoming.xmlImportRecords : (existing.xmlImportRecords || []),
-    loginHistory: Array.isArray(incoming.loginHistory) ? incoming.loginHistory : (existing.loginHistory || []),
+    users: mergedUsers,
+    clients: mergeEntityCollection(existing.clients, incoming.clients, 'id'),
+    vehicles: mergeEntityCollection(existing.vehicles, incoming.vehicles, 'id'),
+    parts: mergeEntityCollection(existing.parts, incoming.parts, 'id'),
+    sales: mergeEntityCollection(existing.sales, incoming.sales, 'id'),
+    goodsWithdrawals: mergeEntityCollection(existing.goodsWithdrawals, incoming.goodsWithdrawals, 'id'),
+    carriers: mergeEntityCollection(existing.carriers, incoming.carriers, 'id'),
+    unitsOfMeasure: mergeEntityCollection(existing.unitsOfMeasure, incoming.unitsOfMeasure, 'id'),
+    services: mergeEntityCollection(existing.services, incoming.services, 'id'),
+    budgets: mergeEntityCollection(existing.budgets, incoming.budgets, 'id'),
+    serviceOrders: mergeEntityCollection(existing.serviceOrders, incoming.serviceOrders, 'id'),
+    history: mergeEntityCollection(existing.history, incoming.history, 'id'),
+    suppliers: mergeEntityCollection(existing.suppliers, incoming.suppliers, 'id'),
+    supplierPartPrices: mergeEntityCollection(existing.supplierPartPrices, incoming.supplierPartPrices, 'id'),
+    quotations: mergeEntityCollection(existing.quotations, incoming.quotations, 'id'),
+    accountsReceivable: mergeEntityCollection(existing.accountsReceivable, incoming.accountsReceivable, 'id'),
+    accountsPayable: mergeEntityCollection(existing.accountsPayable, incoming.accountsPayable, 'id'),
+    financialTransactions: mergeEntityCollection(existing.financialTransactions, incoming.financialTransactions, 'id'),
+    paymentMethods: mergeEntityCollection(existing.paymentMethods, incoming.paymentMethods, 'id'),
+    maintenanceLogs: mergeEntityCollection(existing.maintenanceLogs, incoming.maintenanceLogs, 'id'),
+    fiscalDocuments: mergeEntityCollection(existing.fiscalDocuments, incoming.fiscalDocuments, 'id'),
+    boletos: mergeEntityCollection(existing.boletos, incoming.boletos, 'id'),
+    interBranchSales: mergeEntityCollection(existing.interBranchSales, incoming.interBranchSales, 'id'),
+    stockMovements: mergeEntityCollection(existing.stockMovements, incoming.stockMovements, 'id'),
+    notifications: mergeEntityCollection(existing.notifications, incoming.notifications, 'id'),
+    testCases: mergeEntityCollection(existing.testCases, incoming.testCases, 'id'),
+    taxOperationNatures: mergeEntityCollection(existing.taxOperationNatures, incoming.taxOperationNatures, 'id'),
+    taxRules: mergeEntityCollection(existing.taxRules, incoming.taxRules, 'id'),
+    xmlImportRecords: mergeEntityCollection(existing.xmlImportRecords, incoming.xmlImportRecords, 'id'),
+    loginHistory: mergeEntityCollection(existing.loginHistory, incoming.loginHistory, 'lastAccess', 'username'),
     globalModules: { ...(existing.globalModules || {}), ...(incoming.globalModules || {}) },
     alertSettings: { ...(existing.alertSettings || {}), ...(incoming.alertSettings || {}) },
     sefazConfig: { ...(existing.sefazConfig || {}), ...(incoming.sefazConfig || {}) },
