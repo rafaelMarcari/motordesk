@@ -280,15 +280,37 @@ export function mergeAppDatabase(existing: any, incoming: any): any {
     ? incoming.registeredCompanies
     : (Array.isArray(existing.registeredCompanies) ? existing.registeredCompanies : []);
 
-  const normalizedCompanies = rawCompanies.map((c: any) => ({
-    ...c,
-    businessType: normalizeBusinessType(c?.businessType, c?.name)
-  }));
+  const normalizedCompanies = rawCompanies.map((c: any) => {
+    const userLimit = typeof c?.userLimit === 'number' && c.userLimit > 0 ? c.userLimit : 5;
+    const additionalUserPrice = typeof c?.additionalUserPrice === 'number' && c.additionalUserPrice >= 0 ? c.additionalUserPrice : 29.90;
+    const globalModules = {
+      ...(c?.globalModules || {}),
+      accessBoletos: c?.globalModules?.accessBoletos !== undefined
+        ? Boolean(c.globalModules.accessBoletos)
+        : Boolean(c?.globalModules?.accessFiscal ?? true),
+    };
+
+    return {
+      ...c,
+      businessType: normalizeBusinessType(c?.businessType, c?.name),
+      userLimit,
+      additionalUserPrice,
+      globalModules,
+    };
+  });
 
   const rawCompanyInfo = incoming.companyInfo || existing.companyInfo || (normalizedCompanies.length > 0 ? normalizedCompanies[0] : null);
   const normalizedCompanyInfo = rawCompanyInfo ? {
     ...rawCompanyInfo,
-    businessType: normalizeBusinessType(rawCompanyInfo?.businessType, rawCompanyInfo?.name)
+    businessType: normalizeBusinessType(rawCompanyInfo?.businessType, rawCompanyInfo?.name),
+    userLimit: typeof rawCompanyInfo?.userLimit === 'number' && rawCompanyInfo.userLimit > 0 ? rawCompanyInfo.userLimit : 5,
+    additionalUserPrice: typeof rawCompanyInfo?.additionalUserPrice === 'number' && rawCompanyInfo.additionalUserPrice >= 0 ? rawCompanyInfo.additionalUserPrice : 29.90,
+    globalModules: {
+      ...(rawCompanyInfo?.globalModules || {}),
+      accessBoletos: rawCompanyInfo?.globalModules?.accessBoletos !== undefined
+        ? Boolean(rawCompanyInfo.globalModules.accessBoletos)
+        : Boolean(rawCompanyInfo?.globalModules?.accessFiscal ?? true),
+    }
   } : null;
 
   return {
@@ -715,6 +737,230 @@ app.get("/api/companies", async (req, res) => {
       return res.json({ success: true, companies, durationMs: Date.now() - startTime });
     }
     return res.json({ success: true, companies: [], error: err.message });
+  }
+});
+
+// Endpoint: Atualizar ou liberar módulos contratados de uma empresa pós-contrato (ex: Boletos, Vendas, Fiscal)
+app.post("/api/companies/:companyId/modules", requireAuth, async (req: any, res) => {
+  const { companyId } = req.params;
+  const { modules, contractModules } = req.body;
+  const config = resolveDatabaseConfig();
+
+  if (!modules || typeof modules !== 'object') {
+    return res.status(400).json({ success: false, error: "Objeto de módulos não fornecido" });
+  }
+
+  try {
+    const result = await enqueueDbWrite(async () => {
+      let currentData = serverAppStoreCache;
+      if (!currentData) {
+        const readRes = await executeSqlWithRetry(
+          'SELECT data FROM app_store WHERE id = $1',
+          ['motordesk_main'],
+          config.database
+        );
+        if (readRes.rows.length > 0) currentData = readRes.rows[0].data;
+      }
+
+      if (!currentData) {
+        return { success: false, error: "Dados da aplicação não encontrados" };
+      }
+
+      const companies = Array.isArray(currentData.registeredCompanies) ? [...currentData.registeredCompanies] : [];
+      let foundIndex = companies.findIndex((c: any) => c.id === companyId);
+      
+      let targetCompany = foundIndex !== -1 ? { ...companies[foundIndex] } : (currentData.companyInfo?.id === companyId ? { ...currentData.companyInfo } : null);
+      if (!targetCompany && companies.length > 0) {
+        targetCompany = { ...companies[0] };
+        foundIndex = 0;
+      }
+
+      if (!targetCompany) {
+        return { success: false, error: "Empresa não encontrada" };
+      }
+
+      // Atualizar módulos globais
+      const updatedGlobalModules = {
+        ...(targetCompany.globalModules || {}),
+        ...modules,
+      };
+
+      // Se contrato específico foi enviado
+      const updatedContractModules = contractModules 
+        ? { ...(targetCompany.contractModules || {}), ...contractModules }
+        : targetCompany.contractModules;
+
+      targetCompany.globalModules = updatedGlobalModules;
+      if (updatedContractModules) targetCompany.contractModules = updatedContractModules;
+
+      if (foundIndex !== -1) {
+        companies[foundIndex] = targetCompany;
+      } else {
+        companies.push(targetCompany);
+      }
+
+      currentData.registeredCompanies = companies;
+      if (currentData.companyInfo?.id === companyId || !currentData.companyInfo) {
+        currentData.companyInfo = targetCompany;
+      }
+
+      serverAppStoreCache = currentData;
+
+      const payloadStr = JSON.stringify(currentData);
+      await executeSqlWithRetry(
+        `INSERT INTO app_store (id, data, updated_at) VALUES ($1, $2, NOW())
+         ON CONFLICT (id) DO UPDATE SET data = $2, updated_at = NOW()`,
+        ['motordesk_main', payloadStr],
+        config.database
+      );
+
+      return { success: true, company: targetCompany };
+    });
+
+    if (result.success) {
+      currentDbVersion++;
+      currentDbUpdatedAt = new Date().toISOString();
+      broadcastDbUpdate({
+        updatedAt: currentDbUpdatedAt,
+        version: currentDbVersion,
+        companyId,
+        source: "modules_update"
+      });
+      return res.json(result);
+    }
+    return res.status(400).json(result);
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Endpoint: Atualizar limite de usuários e valor por usuário adicional da licença
+app.post("/api/companies/:companyId/license", requireAuth, async (req: any, res) => {
+  const { companyId } = req.params;
+  const { userLimit, additionalUserPrice, monthlyFee } = req.body;
+  const config = resolveDatabaseConfig();
+
+  try {
+    const result = await enqueueDbWrite(async () => {
+      let currentData = serverAppStoreCache;
+      if (!currentData) {
+        const readRes = await executeSqlWithRetry(
+          'SELECT data FROM app_store WHERE id = $1',
+          ['motordesk_main'],
+          config.database
+        );
+        if (readRes.rows.length > 0) currentData = readRes.rows[0].data;
+      }
+
+      if (!currentData) {
+        return { success: false, error: "Dados da aplicação não encontrados" };
+      }
+
+      const companies = Array.isArray(currentData.registeredCompanies) ? [...currentData.registeredCompanies] : [];
+      let foundIndex = companies.findIndex((c: any) => c.id === companyId);
+      let targetCompany = foundIndex !== -1 ? { ...companies[foundIndex] } : (currentData.companyInfo?.id === companyId ? { ...currentData.companyInfo } : null);
+
+      if (!targetCompany && companies.length > 0) {
+        targetCompany = { ...companies[0] };
+        foundIndex = 0;
+      }
+
+      if (!targetCompany) {
+        return { success: false, error: "Empresa não encontrada" };
+      }
+
+      if (userLimit !== undefined) {
+        const parsedLimit = parseInt(String(userLimit), 10);
+        targetCompany.userLimit = !isNaN(parsedLimit) && parsedLimit > 0 ? parsedLimit : 5;
+      }
+
+      if (additionalUserPrice !== undefined) {
+        const parsedPrice = parseFloat(String(additionalUserPrice));
+        targetCompany.additionalUserPrice = !isNaN(parsedPrice) && parsedPrice >= 0 ? parsedPrice : 29.90;
+      }
+
+      if (monthlyFee !== undefined) {
+        const parsedFee = parseFloat(String(monthlyFee));
+        if (!isNaN(parsedFee) && parsedFee >= 0) targetCompany.monthlyFee = parsedFee;
+      } else {
+        // Recalcular se necessário
+        const baseFee = targetCompany.basePlanFee ?? targetCompany.monthlyFee ?? 199.90;
+        const extraUsers = Math.max(0, (targetCompany.userLimit || 5) - 5);
+        targetCompany.monthlyFee = baseFee + (extraUsers * (targetCompany.additionalUserPrice || 29.90));
+      }
+
+      if (foundIndex !== -1) {
+        companies[foundIndex] = targetCompany;
+      } else {
+        companies.push(targetCompany);
+      }
+
+      currentData.registeredCompanies = companies;
+      if (currentData.companyInfo?.id === companyId || !currentData.companyInfo) {
+        currentData.companyInfo = targetCompany;
+      }
+
+      serverAppStoreCache = currentData;
+
+      const payloadStr = JSON.stringify(currentData);
+      await executeSqlWithRetry(
+        `INSERT INTO app_store (id, data, updated_at) VALUES ($1, $2, NOW())
+         ON CONFLICT (id) DO UPDATE SET data = $2, updated_at = NOW()`,
+        ['motordesk_main', payloadStr],
+        config.database
+      );
+
+      return { success: true, company: targetCompany };
+    });
+
+    if (result.success) {
+      currentDbVersion++;
+      currentDbUpdatedAt = new Date().toISOString();
+      broadcastDbUpdate({
+        updatedAt: currentDbUpdatedAt,
+        version: currentDbVersion,
+        companyId,
+        source: "license_update"
+      });
+      return res.json(result);
+    }
+    return res.status(400).json(result);
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Endpoint: Consultar status da licença e contagem de usuários
+app.get("/api/companies/:companyId/license", async (req: any, res) => {
+  const { companyId } = req.params;
+  try {
+    const currentData = serverAppStoreCache;
+    const companies = currentData?.registeredCompanies || (currentData?.companyInfo ? [currentData.companyInfo] : []);
+    const company = companies.find((c: any) => c.id === companyId) || currentData?.companyInfo;
+
+    const users = (currentData?.users || []).filter((u: any) => (u.companyId || 'comp-1') === companyId);
+    const userLimit = company?.userLimit || 5;
+    const additionalUserPrice = company?.additionalUserPrice !== undefined ? company.additionalUserPrice : 29.90;
+    const extraUsers = Math.max(0, userLimit - 5);
+    const extraUsersFee = extraUsers * additionalUserPrice;
+
+    return res.json({
+      success: true,
+      companyId,
+      companyName: company?.name || "Empresa",
+      userLimit,
+      currentUsersCount: users.length,
+      availableSlots: Math.max(0, userLimit - users.length),
+      isLimitReached: users.length >= userLimit,
+      baseUsersIncluded: 5,
+      extraUsers,
+      additionalUserPrice,
+      extraUsersFee,
+      monthlyFee: company?.monthlyFee || 199.90,
+      globalModules: company?.globalModules || {},
+    });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: err.message });
   }
 });
 

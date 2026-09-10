@@ -159,6 +159,10 @@ export const companies = pgTable('companies', {
   lastPaymentDate: text('last_payment_date'),
   legalRepresentativeName: text('legal_representative_name'),
   legalRepresentativeCpf: text('legal_representative_cpf'),
+  userLimit: integer('user_limit').default(5),
+  additionalUserPrice: real('additional_user_price').default(29.90),
+  globalModules: jsonb('global_modules'),
+  contractModules: jsonb('contract_modules'),
   notes: text('notes'),
 });
 

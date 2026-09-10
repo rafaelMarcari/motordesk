@@ -564,6 +564,25 @@ export function isModuleContractedForCompany(
     if (val === undefined && permissionKey === 'accessRepresentativeOrders') {
       val = company.globalModules['accessRepresentativeOrders'] ?? company.globalModules['accessRepresentativeCommerce'] ?? company.globalModules['representative_commerce'];
     }
+    // Tratamento dinâmico de Boletos Bancários e Cobrança
+    const isBoletoKey = 
+      permissionKey === 'accessBoletos' || 
+      permissionKey === 'boletoGenerate' || 
+      permissionKey === 'boletoView' || 
+      permissionKey === 'boletoReprint' || 
+      permissionKey === 'boletoConfig';
+
+    if (val === undefined && isBoletoKey) {
+      if (company.globalModules['accessBoletos'] !== undefined) {
+        val = company.globalModules['accessBoletos'];
+      } else if (company.globalModules['boletos'] !== undefined) {
+        val = company.globalModules['boletos'];
+      } else if (company.globalModules['accessFiscal'] === true || company.globalModules['accessFinancial'] === true) {
+        // Se a empresa possui o ecossistema Fiscal ou Financeiro contratado, boletos são liberados
+        val = true;
+      }
+    }
+
     if (val !== undefined) {
       return Boolean(val);
     }
@@ -597,6 +616,11 @@ export function isModuleContractedForCompany(
       accessAccountsReceivable: rawModules.financial,
       accessAccountsPayable: rawModules.financial,
       accessFiscal: rawModules.fiscal,
+      accessBoletos: rawModules.boletos ?? rawModules.accessBoletos ?? rawModules.fiscal ?? rawModules.financial,
+      boletoGenerate: rawModules.boletos ?? rawModules.accessBoletos ?? rawModules.fiscal ?? rawModules.financial,
+      boletoView: rawModules.boletos ?? rawModules.accessBoletos ?? rawModules.fiscal ?? rawModules.financial,
+      boletoReprint: rawModules.boletos ?? rawModules.accessBoletos ?? rawModules.fiscal ?? rawModules.financial,
+      boletoConfig: rawModules.boletos ?? rawModules.accessBoletos ?? rawModules.fiscal ?? rawModules.financial,
       accessHistory: rawModules.history,
       accessReports: rawModules.reports,
       accessProduction: rawModules.production ?? rawModules.industry,
@@ -1060,4 +1084,89 @@ export function getSafeAccessibleFallbackView(
 
   return 'profile';
 }
+
+/**
+ * Retorna o limite de usuários/operadores contratado para a empresa (Padrão: 5 usuários configurável)
+ */
+export function getCompanyUserLimit(company?: any | null): number {
+  if (!company) return 5;
+  const limit = Number(company.userLimit);
+  return Number.isFinite(limit) && limit > 0 ? limit : 5;
+}
+
+/**
+ * Retorna o valor mensal cobrado por usuário adicional acima do limite base de 5 usuários (Padrão: R$ 29,90 configurável)
+ */
+export function getCompanyAdditionalUserPrice(company?: any | null): number {
+  if (!company) return 29.90;
+  const price = Number(company.additionalUserPrice);
+  return Number.isFinite(price) && price >= 0 ? price : 29.90;
+}
+
+/**
+ * Calcula a mensalidade total da empresa somando o plano base, módulos opcionais e usuários adicionais contratados
+ */
+export function calculateCompanyTotalMonthlyFee(company?: any | null): {
+  baseFee: number;
+  userLimit: number;
+  baseUsers: number;
+  extraUsers: number;
+  additionalUserPrice: number;
+  extraUsersTotal: number;
+  totalMonthlyFee: number;
+} {
+  const baseFee = Number(company?.basePlanFee ?? company?.monthlyFee ?? 199.90);
+  const userLimit = getCompanyUserLimit(company);
+  const baseUsers = 5;
+  const extraUsers = Math.max(0, userLimit - baseUsers);
+  const additionalUserPrice = getCompanyAdditionalUserPrice(company);
+  const extraUsersTotal = extraUsers * additionalUserPrice;
+  const totalMonthlyFee = baseFee + extraUsersTotal;
+
+  return {
+    baseFee,
+    userLimit,
+    baseUsers,
+    extraUsers,
+    additionalUserPrice,
+    extraUsersTotal,
+    totalMonthlyFee,
+  };
+}
+
+/**
+ * Valida se um novo operador pode ser cadastrado respeitando a licença da empresa
+ */
+export function checkCompanyUserLimit(
+  company: any | undefined | null,
+  currentUsersCount: number
+): {
+  allowed: boolean;
+  userLimit: number;
+  currentUsersCount: number;
+  additionalUserPrice: number;
+  message?: string;
+} {
+  const userLimit = getCompanyUserLimit(company);
+  const additionalUserPrice = getCompanyAdditionalUserPrice(company);
+  const allowed = currentUsersCount < userLimit;
+
+  if (!allowed) {
+    return {
+      allowed: false,
+      userLimit,
+      currentUsersCount,
+      additionalUserPrice,
+      message: `Limite de operadores atingido: a licença da empresa permite até ${userLimit} usuários (atualmente ${currentUsersCount} cadastrados). Para cadastrar mais operadores, aumente o limite de usuários na Gestão de Assinatura (R$ ${additionalUserPrice.toFixed(2)} por usuário adicional).`,
+    };
+  }
+
+  return {
+    allowed: true,
+    userLimit,
+    currentUsersCount,
+    additionalUserPrice,
+  };
+}
+
 
