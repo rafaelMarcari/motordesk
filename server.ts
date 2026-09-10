@@ -14,7 +14,7 @@ import { fiscalBackendService } from "./server/fiscalProviderService.js";
 dotenv.config();
 
 const app = express();
-const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
+const PORT = 3000;
 
 // Default whitelisted origins for MotorDesk production & development
 const DEFAULT_ALLOWED_ORIGINS = [
@@ -132,14 +132,18 @@ app.use(express.json({ limit: "50mb" }));
 
 // 3. Ensure JSON response header for API routes
 app.use((req, res, next) => {
-  if (req.path.startsWith("/api") || req.path === "/health" || req.path === "/") {
+  if (req.path.startsWith("/api") || req.path === "/health") {
     res.setHeader("Content-Type", "application/json");
   }
   next();
 });
 
-// Root API Welcome route
-app.get("/", (req, res) => {
+// Root API Welcome route (only for non-HTML API requests)
+app.get("/", (req, res, next) => {
+  if (req.headers.accept && req.headers.accept.includes("text/html")) {
+    return next();
+  }
+  res.setHeader("Content-Type", "application/json");
   res.json({
     service: "MotorDesk REST API",
     status: "online",
@@ -267,12 +271,15 @@ function normalizeBusinessType(type: any, companyName?: string): string {
   return 'OFICINA';
 }
 
-// Server-side Intelligent Bidirectional Merge: protects against stale client overwrites
+// Server-side Intelligent Bidirectional Merge: respects client CRUD operations (create, update, delete) while preserving defaults
 export function mergeAppDatabase(existing: any, incoming: any): any {
   if (!existing || typeof existing !== 'object') return incoming;
   if (!incoming || typeof incoming !== 'object') return existing;
 
-  const rawCompanies = mergeEntityCollection(existing.registeredCompanies, incoming.registeredCompanies, 'id', 'cnpj');
+  const rawCompanies = Array.isArray(incoming.registeredCompanies) && incoming.registeredCompanies.length > 0
+    ? incoming.registeredCompanies
+    : (Array.isArray(existing.registeredCompanies) ? existing.registeredCompanies : []);
+
   const normalizedCompanies = rawCompanies.map((c: any) => ({
     ...c,
     businessType: normalizeBusinessType(c?.businessType, c?.name)
@@ -289,41 +296,61 @@ export function mergeAppDatabase(existing: any, incoming: any): any {
     ...incoming,
     companyInfo: normalizedCompanyInfo,
     registeredCompanies: normalizedCompanies,
-    users: mergeEntityCollection(existing.users, incoming.users, 'id', 'username'),
-    clients: mergeEntityCollection(existing.clients, incoming.clients, 'id', 'cpf'),
-    vehicles: mergeEntityCollection(existing.vehicles, incoming.vehicles, 'id', 'plate'),
-    parts: mergeEntityCollection(existing.parts, incoming.parts, 'id', 'code'),
-    sales: mergeEntityCollection(existing.sales, incoming.sales, 'id', 'code'),
-    goodsWithdrawals: mergeEntityCollection(existing.goodsWithdrawals, incoming.goodsWithdrawals, 'id', 'code'),
-    carriers: mergeEntityCollection(existing.carriers, incoming.carriers, 'id', 'cnpj'),
-    unitsOfMeasure: mergeEntityCollection(existing.unitsOfMeasure, incoming.unitsOfMeasure, 'id', 'acronym'),
-    services: mergeEntityCollection(existing.services, incoming.services, 'id'),
-    budgets: mergeEntityCollection(existing.budgets, incoming.budgets, 'id'),
-    serviceOrders: mergeEntityCollection(existing.serviceOrders, incoming.serviceOrders, 'id'),
-    history: mergeEntityCollection(existing.history, incoming.history, 'id'),
-    suppliers: mergeEntityCollection(existing.suppliers, incoming.suppliers, 'id', 'cnpj'),
-    supplierPartPrices: mergeEntityCollection(existing.supplierPartPrices, incoming.supplierPartPrices, 'id'),
-    quotations: mergeEntityCollection(existing.quotations, incoming.quotations, 'id'),
-    accountsReceivable: mergeEntityCollection(existing.accountsReceivable, incoming.accountsReceivable, 'id'),
-    accountsPayable: mergeEntityCollection(existing.accountsPayable, incoming.accountsPayable, 'id'),
-    financialTransactions: mergeEntityCollection(existing.financialTransactions, incoming.financialTransactions, 'id'),
-    paymentMethods: mergeEntityCollection(existing.paymentMethods, incoming.paymentMethods, 'id', 'type'),
-    maintenanceLogs: mergeEntityCollection(existing.maintenanceLogs, incoming.maintenanceLogs, 'id'),
-    fiscalDocuments: mergeEntityCollection(existing.fiscalDocuments, incoming.fiscalDocuments, 'id'),
-    boletos: mergeEntityCollection(existing.boletos, incoming.boletos, 'id'),
-    interBranchSales: mergeEntityCollection(existing.interBranchSales, incoming.interBranchSales, 'id'),
-    stockMovements: mergeEntityCollection(existing.stockMovements, incoming.stockMovements, 'id'),
-    notifications: mergeEntityCollection(existing.notifications, incoming.notifications, 'id'),
-    testCases: mergeEntityCollection(existing.testCases, incoming.testCases, 'id'),
-    taxOperationNatures: mergeEntityCollection(existing.taxOperationNatures, incoming.taxOperationNatures, 'id', 'code'),
-    taxRules: mergeEntityCollection(existing.taxRules, incoming.taxRules, 'id'),
-    xmlImportRecords: mergeEntityCollection(existing.xmlImportRecords, incoming.xmlImportRecords, 'id'),
-    loginHistory: mergeEntityCollection(existing.loginHistory, incoming.loginHistory, 'username'),
+    users: Array.isArray(incoming.users) ? incoming.users : (existing.users || []),
+    clients: Array.isArray(incoming.clients) ? incoming.clients : (existing.clients || []),
+    vehicles: Array.isArray(incoming.vehicles) ? incoming.vehicles : (existing.vehicles || []),
+    parts: Array.isArray(incoming.parts) ? incoming.parts : (existing.parts || []),
+    sales: Array.isArray(incoming.sales) ? incoming.sales : (existing.sales || []),
+    goodsWithdrawals: Array.isArray(incoming.goodsWithdrawals) ? incoming.goodsWithdrawals : (existing.goodsWithdrawals || []),
+    carriers: Array.isArray(incoming.carriers) ? incoming.carriers : (existing.carriers || []),
+    unitsOfMeasure: Array.isArray(incoming.unitsOfMeasure) ? incoming.unitsOfMeasure : (existing.unitsOfMeasure || []),
+    services: Array.isArray(incoming.services) ? incoming.services : (existing.services || []),
+    budgets: Array.isArray(incoming.budgets) ? incoming.budgets : (existing.budgets || []),
+    serviceOrders: Array.isArray(incoming.serviceOrders) ? incoming.serviceOrders : (existing.serviceOrders || []),
+    history: Array.isArray(incoming.history) ? incoming.history : (existing.history || []),
+    suppliers: Array.isArray(incoming.suppliers) ? incoming.suppliers : (existing.suppliers || []),
+    supplierPartPrices: Array.isArray(incoming.supplierPartPrices) ? incoming.supplierPartPrices : (existing.supplierPartPrices || []),
+    quotations: Array.isArray(incoming.quotations) ? incoming.quotations : (existing.quotations || []),
+    accountsReceivable: Array.isArray(incoming.accountsReceivable) ? incoming.accountsReceivable : (existing.accountsReceivable || []),
+    accountsPayable: Array.isArray(incoming.accountsPayable) ? incoming.accountsPayable : (existing.accountsPayable || []),
+    financialTransactions: Array.isArray(incoming.financialTransactions) ? incoming.financialTransactions : (existing.financialTransactions || []),
+    paymentMethods: Array.isArray(incoming.paymentMethods) ? incoming.paymentMethods : (existing.paymentMethods || []),
+    maintenanceLogs: Array.isArray(incoming.maintenanceLogs) ? incoming.maintenanceLogs : (existing.maintenanceLogs || []),
+    fiscalDocuments: Array.isArray(incoming.fiscalDocuments) ? incoming.fiscalDocuments : (existing.fiscalDocuments || []),
+    boletos: Array.isArray(incoming.boletos) ? incoming.boletos : (existing.boletos || []),
+    interBranchSales: Array.isArray(incoming.interBranchSales) ? incoming.interBranchSales : (existing.interBranchSales || []),
+    stockMovements: Array.isArray(incoming.stockMovements) ? incoming.stockMovements : (existing.stockMovements || []),
+    notifications: Array.isArray(incoming.notifications) ? incoming.notifications : (existing.notifications || []),
+    testCases: Array.isArray(incoming.testCases) ? incoming.testCases : (existing.testCases || []),
+    taxOperationNatures: Array.isArray(incoming.taxOperationNatures) ? incoming.taxOperationNatures : (existing.taxOperationNatures || []),
+    taxRules: Array.isArray(incoming.taxRules) ? incoming.taxRules : (existing.taxRules || []),
+    xmlImportRecords: Array.isArray(incoming.xmlImportRecords) ? incoming.xmlImportRecords : (existing.xmlImportRecords || []),
+    loginHistory: Array.isArray(incoming.loginHistory) ? incoming.loginHistory : (existing.loginHistory || []),
     globalModules: { ...(existing.globalModules || {}), ...(incoming.globalModules || {}) },
     alertSettings: { ...(existing.alertSettings || {}), ...(incoming.alertSettings || {}) },
     sefazConfig: { ...(existing.sefazConfig || {}), ...(incoming.sefazConfig || {}) },
     landingContent: incoming.landingContent || existing.landingContent || null,
   };
+}
+
+// Real-time synchronization hub across multiple browsers, tabs, and computers
+let currentDbVersion = 1;
+let currentDbUpdatedAt = new Date().toISOString();
+const sseSubscribers = new Set<express.Response>();
+
+export function broadcastDbUpdate(payload: { updatedAt: string; version: number; companyId?: string; userId?: string; source?: string }) {
+  const dataString = JSON.stringify({
+    ...payload,
+    serverTime: Date.now(),
+  });
+  const sseMsg = `event: db_update\ndata: ${dataString}\n\n`;
+  for (const client of sseSubscribers) {
+    try {
+      client.write(sseMsg);
+    } catch (e) {
+      sseSubscribers.delete(client);
+    }
+  }
 }
 
 // Helper: Extract user and company identity context from request
@@ -470,6 +497,43 @@ app.get("/api/db", requireAuth, async (req: any, res) => {
   }
 });
 
+// Live SSE Stream for real-time synchronization across multiple browsers, tabs, and computers
+app.get("/api/db/stream", (req, res) => {
+  res.writeHead(200, {
+    "Content-Type": "text/event-stream",
+    "Cache-Control": "no-cache, no-transform",
+    "Connection": "keep-alive",
+    "Access-Control-Allow-Origin": "*",
+  });
+  res.write(`event: connected\ndata: ${JSON.stringify({ connected: true, version: currentDbVersion, updatedAt: currentDbUpdatedAt })}\n\n`);
+
+  sseSubscribers.add(res);
+
+  const keepAliveTimer = setInterval(() => {
+    try {
+      res.write(": keep-alive\n\n");
+    } catch (e) {
+      clearInterval(keepAliveTimer);
+      sseSubscribers.delete(res);
+    }
+  }, 12000);
+
+  req.on("close", () => {
+    clearInterval(keepAliveTimer);
+    sseSubscribers.delete(res);
+  });
+});
+
+// Lightweight database version check for ultra-fast polling without transferring large payloads
+app.get("/api/db/version", (req, res) => {
+  res.json({
+    success: true,
+    version: currentDbVersion,
+    updatedAt: currentDbUpdatedAt,
+    serverTime: Date.now(),
+  });
+});
+
 app.post("/api/db", requireAuth, async (req: any, res) => {
   const startTime = Date.now();
   const requestId = `req-post-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
@@ -570,6 +634,17 @@ app.post("/api/db", requireAuth, async (req: any, res) => {
       };
     });
 
+    // Update version tracking and broadcast change to all connected browsers & computers in real-time
+    currentDbVersion++;
+    currentDbUpdatedAt = updatedAt;
+    broadcastDbUpdate({
+      updatedAt,
+      version: currentDbVersion,
+      companyId: inCompanyId,
+      userId,
+      source: "cloud_sql",
+    });
+
     return res.json({
       success: true,
       message: "Database saved and merged to PostgreSQL Cloud SQL",
@@ -578,12 +653,23 @@ app.post("/api/db", requireAuth, async (req: any, res) => {
       database: config.database,
       durationMs,
       updatedAt,
+      version: currentDbVersion,
     });
   } catch (err: any) {
     const pgErr = extractPgErrorDetails(err);
     console.warn(`[DB-TRACE] POST /api/db ERROR\nrequestId=${requestId}\nuserId=${userId}\nresult=ERROR\nerror=${pgErr.message}\nlatencyMs=${Date.now() - startTime}`);
     
     // Server cache holds the data safely even if Cloud SQL is transiently busy or disconnected
+    const fallbackUpdatedAt = new Date().toISOString();
+    currentDbVersion++;
+    currentDbUpdatedAt = fallbackUpdatedAt;
+    broadcastDbUpdate({
+      updatedAt: fallbackUpdatedAt,
+      version: currentDbVersion,
+      userId,
+      source: "server_cache",
+    });
+
     return res.json({
       success: true,
       message: "Database saved and preserved in server cache",
@@ -591,7 +677,8 @@ app.post("/api/db", requireAuth, async (req: any, res) => {
       source: "server_cache",
       database: config.database,
       durationMs: Date.now() - startTime,
-      updatedAt: new Date().toISOString(),
+      updatedAt: fallbackUpdatedAt,
+      version: currentDbVersion,
     });
   }
 });
@@ -947,19 +1034,31 @@ app.post("/api/fiscal/inutilize", requireAuth, requireContractedModule("Fiscal",
 
 // Handle development vs production modes
 async function startServer() {
+  // Serve static assets from dist and public
+  app.use(express.static(path.resolve(process.cwd(), "dist")));
+  app.use(express.static(path.resolve(process.cwd(), "public")));
+
   if (process.env.NODE_ENV !== "production") {
     // In local development mode, attach Vite middleware for AI Studio live preview
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: "spa",
-    });
-    app.use(vite.middlewares);
-  } else {
-    // Pure Backend API mode on Cloud Run - NEVER serve HTML or SPA fallback
-    app.use((req, res) => {
-      res.status(404).json({ error: "API endpoint not found", path: req.path });
-    });
+    try {
+      const vite = await createViteServer({
+        server: { middlewareMode: true },
+        appType: "spa",
+      });
+      app.use(vite.middlewares);
+    } catch (viteErr) {
+      console.warn("Vite middleware fallback to static serving:", viteErr);
+    }
   }
+
+  // SPA fallback for frontend routes
+  app.get("*", (req, res, next) => {
+    if (req.path.startsWith("/api") || req.path === "/health") {
+      return next();
+    }
+    const indexPath = path.resolve(process.cwd(), "dist/index.html");
+    res.sendFile(indexPath);
+  });
 
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`MotorDesk Express REST API running on http://0.0.0.0:${PORT}`);

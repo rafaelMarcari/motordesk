@@ -12,16 +12,27 @@ export const WORKSHOP_EXCLUSIVE_VIEWS: ViewID[] = [
   'vehicles',
   'services',
   'serviceOrders',
+  'budgets',
 ];
 
-export const COMMERCE_EXCLUSIVE_VIEWS: ViewID[] = [
+// Views de vendas de balcão e representação comercial (exclusivas de Comércio e Híbrido, bloqueadas na Indústria pura e na Oficina pura)
+export const COMMERCE_SALES_AND_REPRESENTATION_VIEWS: ViewID[] = [
   'sales',
   'withdrawals',
-  'carriers',
-  'units_of_measure',
   'representative_commerce',
   'representative_orders',
   'representative_reconciliation',
+];
+
+// Módulos de suprimentos e transportes (utilizados tanto em Comércio quanto em Indústria, mas bloqueados na Oficina pura)
+export const COMMERCIAL_SUPPLY_VIEWS: ViewID[] = [
+  'carriers',
+  'units_of_measure',
+];
+
+export const COMMERCE_EXCLUSIVE_VIEWS: ViewID[] = [
+  ...COMMERCE_SALES_AND_REPRESENTATION_VIEWS,
+  ...COMMERCIAL_SUPPLY_VIEWS,
 ];
 
 export const INDUSTRIAL_EXCLUSIVE_VIEWS: ViewID[] = [
@@ -32,15 +43,34 @@ export const WORKSHOP_EXCLUSIVE_PERMISSIONS: (keyof UserPermissions | string)[] 
   'accessVehicles',
   'accessServices',
   'accessServiceOrders',
+  'accessBudgets',
+  'canEditBudgets',
+];
+
+// Permissões puramente de comércio de balcão / PDV e representação de fábricas (bloqueadas na Indústria pura e na Oficina pura)
+export const COMMERCE_SALES_AND_REPRESENTATION_PERMISSIONS: (keyof UserPermissions | string)[] = [
+  'accessSales',
+  'accessWithdrawals',
+  'accessRepresentativeCommerce',
+  'accessRepresentativeOrders',
+  'representativeOrdersCreate',
+  'representativeOrdersEdit',
+  'representativeOrdersCancel',
+  'representativeOrdersExport',
+  'representativeReconcile',
+  'representativeCommissionsManage',
+  'restrictToOwnSales',
+  'canSellOtherStoresStock',
+];
+
+export const COMMERCIAL_SUPPLY_PERMISSIONS: (keyof UserPermissions | string)[] = [
+  'accessCarriers',
+  'accessUnitsOfMeasure',
 ];
 
 export const COMMERCE_EXCLUSIVE_PERMISSIONS: (keyof UserPermissions | string)[] = [
-  'accessSales',
-  'accessWithdrawals',
-  'accessCarriers',
-  'accessUnitsOfMeasure',
-  'accessRepresentativeCommerce',
-  'accessRepresentativeOrders',
+  ...COMMERCE_SALES_AND_REPRESENTATION_PERMISSIONS,
+  ...COMMERCIAL_SUPPLY_PERMISSIONS,
 ];
 
 export const INDUSTRIAL_EXCLUSIVE_PERMISSIONS: (keyof UserPermissions | string)[] = [
@@ -455,11 +485,11 @@ export function isWorkshopBusiness(businessType?: BusinessType | string | null):
 
 /**
  * Verifica se a empresa atende operações de comércio / balcão / PDV (Vendas rápidas, Balcão)
- * Retorna true para 'COMERCIO', 'INDUSTRIA' e 'OFICINA_COMERCIO'
+ * Retorna true para 'COMERCIO' e 'OFICINA_COMERCIO' (Indústria pura opera sob PCP/OPs, sem PDV balcão)
  */
 export function isCommerceBusiness(businessType?: BusinessType | string | null): boolean {
   const norm = normalizeBusinessType(businessType);
-  return norm === 'COMERCIO' || norm === 'INDUSTRIA' || norm === 'OFICINA_COMERCIO';
+  return norm === 'COMERCIO' || norm === 'OFICINA_COMERCIO';
 }
 
 /**
@@ -496,7 +526,11 @@ export function isViewAllowedForBusinessType(
   const type = normalizeBusinessType(businessType);
 
   if (type === 'INDUSTRIA') {
-    if (WORKSHOP_EXCLUSIVE_VIEWS.includes(viewId)) {
+    // Indústria pura não deve acessar telas de oficina mecânica NEM telas de balcão/comércio/representação
+    if (
+      WORKSHOP_EXCLUSIVE_VIEWS.includes(viewId) ||
+      COMMERCE_SALES_AND_REPRESENTATION_VIEWS.includes(viewId)
+    ) {
       return false;
     }
     return true;
@@ -530,7 +564,11 @@ export function isModuleAllowedForBusinessType(
   const type = normalizeBusinessType(businessType);
 
   if (type === 'INDUSTRIA') {
-    if (WORKSHOP_EXCLUSIVE_PERMISSIONS.includes(permissionKey)) {
+    // Indústria pura não deve ter permissões de oficina mecânica NEM de comércio balcão/PDV e representação
+    if (
+      WORKSHOP_EXCLUSIVE_PERMISSIONS.includes(permissionKey) ||
+      COMMERCE_SALES_AND_REPRESENTATION_PERMISSIONS.includes(permissionKey)
+    ) {
       return false;
     }
     return true;
@@ -540,12 +578,14 @@ export function isModuleAllowedForBusinessType(
     if (WORKSHOP_EXCLUSIVE_PERMISSIONS.includes(permissionKey) || INDUSTRIAL_EXCLUSIVE_PERMISSIONS.includes(permissionKey)) {
       return false;
     }
+    return true;
   }
 
   if (type === 'OFICINA') {
     if (COMMERCE_EXCLUSIVE_PERMISSIONS.includes(permissionKey) || INDUSTRIAL_EXCLUSIVE_PERMISSIONS.includes(permissionKey)) {
       return false;
     }
+    return true;
   }
 
   return true;
@@ -624,7 +664,7 @@ export function getSegmentMetadata(businessType?: BusinessType | string | null) 
         activePillClass: 'bg-cyan-600 text-white',
         description: 'PCP, Estrutura do Produto (BOM), Ordens de Produção (OP), Lotes, Custos e Estoque Operacional.',
         isWorkshop: false,
-        isCommerce: true,
+        isCommerce: false,
         isIndustry: true,
       };
     case 'COMERCIO':
@@ -730,8 +770,8 @@ export function getDefaultGlobalModulesForBusinessType(businessType?: BusinessTy
     case 'INDUSTRIA':
       return {
         accessDashboard: true,
-        accessSales: true,
-        accessWithdrawals: true,
+        accessSales: false, // Bloqueado: Exclusivo de Comércio / Balcão
+        accessWithdrawals: false, // Bloqueado: Exclusivo de Comércio / Balcão
         accessCarriers: true,
         accessUnitsOfMeasure: true,
         accessClients: true,
@@ -763,8 +803,8 @@ export function getDefaultGlobalModulesForBusinessType(businessType?: BusinessTy
         accessFiscal: true,
         accessReports: true,
         accessHistory: true,
-        accessRepresentativeCommerce: true,
-        accessRepresentativeOrders: true,
+        accessRepresentativeCommerce: false, // Bloqueado: Exclusivo de Comércio / Representação
+        accessRepresentativeOrders: false, // Bloqueado: Exclusivo de Comércio / Representação
         accessNotificationEngine: true,
         accessUserManagement: true,
         accessQAPanel: true,
