@@ -453,7 +453,7 @@
               <input 
                 id="lock-password-input" 
                 type="password" 
-                placeholder="Digite sua senha de acesso"
+                placeholder="Informe sua senha"
                 required
                 autocomplete="current-password"
                 style="

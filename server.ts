@@ -1,6 +1,7 @@
 import express from "express";
 import cors from "cors";
 import path from "path";
+import fs from "fs";
 import { createServer as createViteServer } from "vite";
 import { getDbInstance, checkDatabaseHealth, ensureAppStoreTableExists, createPool, extractPgErrorDetails, resolveDatabaseConfig, executeSqlWithRetry } from "./src/db/index.js";
 import { appStore, clients as clientsTable, vehicles as vehiclesTable, parts as partsTable, serviceOrders as serviceOrdersTable } from "./src/db/schema.js";
@@ -1436,8 +1437,31 @@ async function startServer() {
     if (req.path.startsWith("/api") || req.path === "/health") {
       return next();
     }
-    const indexPath = path.resolve(process.cwd(), "dist/index.html");
-    res.sendFile(indexPath);
+    const distIndexPath = path.resolve(process.cwd(), "dist/index.html");
+    const rootIndexPath = path.resolve(process.cwd(), "index.html");
+
+    if (fs.existsSync(distIndexPath)) {
+      return res.sendFile(distIndexPath, (err) => {
+        if (err && !res.headersSent) {
+          if (fs.existsSync(rootIndexPath)) {
+            res.sendFile(rootIndexPath);
+          } else {
+            res.status(200).send("<!doctype html><html><body>Carregando MotorDesk...</body></html>");
+          }
+        }
+      });
+    }
+
+    if (fs.existsSync(rootIndexPath)) {
+      try {
+        const distDir = path.resolve(process.cwd(), "dist");
+        if (!fs.existsSync(distDir)) fs.mkdirSync(distDir, { recursive: true });
+        fs.copyFileSync(rootIndexPath, distIndexPath);
+      } catch {}
+      return res.sendFile(rootIndexPath);
+    }
+
+    res.status(200).send("<!doctype html><html><body>Carregando MotorDesk...</body></html>");
   });
 
   app.listen(PORT, "0.0.0.0", () => {
