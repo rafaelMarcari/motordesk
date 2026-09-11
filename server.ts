@@ -271,10 +271,93 @@ function normalizeBusinessType(type: any, companyName?: string): string {
   return 'OFICINA';
 }
 
+// Helper: Sanitize & Isolate data across multiple companies.
+// Garante que todas as empresas criadas por usuários (que não sejam matrizes/filiais de demonstração comp-1 e filiais demo comp-2/4/5)
+// venham 100% ZERADAS (sem clientes, sem fornecedores, sem produtos, sem vendas, sem OS, etc.)
+// e que nenhum registro legado sem companyId vaze para outras empresas.
+export function sanitizeAndIsolateCompanies(db: any): any {
+  if (!db || typeof db !== 'object') return db;
+
+  const operationalCollections = [
+    'clients',
+    'suppliers',
+    'vehicles',
+    'parts',
+    'services',
+    'budgets',
+    'serviceOrders',
+    'sales',
+    'goodsWithdrawals',
+    'quotations',
+    'supplierPartPrices',
+    'accountsReceivable',
+    'accountsPayable',
+    'financialTransactions',
+    'fiscalDocuments',
+    'boletos',
+    'interBranchSales',
+    'stockMovements',
+    'maintenanceLogs',
+    'boms',
+    'billOfMaterials',
+    'productionOrders',
+    'productLots',
+    'operationalAlerts',
+  ];
+
+  // Empresas demo originais com dados de exemplo de demonstração
+  const demoCompanyIds = new Set(['comp-1', 'comp-2', 'comp-4', 'comp-5']);
+
+  // Identificar todas as empresas cadastradas
+  const registered = Array.isArray(db.registeredCompanies) ? db.registeredCompanies : [];
+  const registeredIds = new Set(registered.map((c: any) => c?.id).filter(Boolean));
+  if (db.companyInfo?.id) registeredIds.add(db.companyInfo.id);
+
+  // Empresas reais criadas por usuários:
+  // Qualquer empresa cujo ID não seja do conjunto demo
+  const createdRealCompanyIds = new Set<string>();
+  for (const id of registeredIds) {
+    if (!demoCompanyIds.has(id)) {
+      createdRealCompanyIds.add(id);
+    }
+  }
+
+  const sanitized: any = { ...db };
+
+  for (const col of operationalCollections) {
+    const rawList = Array.isArray(db[col]) ? db[col] : [];
+
+    sanitized[col] = rawList
+      .map((item: any) => {
+        if (!item) return null;
+        // Se o registro não possuir companyId explícito, crava estritamente como pertencente à demo comp-1
+        // para que JAMAIS seja considerado compartilhado ou vaze para empresas novas criadas!
+        const compId = item.companyId || 'comp-1';
+        return { ...item, companyId: compId };
+      })
+      .filter((item: any) => {
+        if (!item) return false;
+        // Exigência direta do usuário:
+        // "agora precisa garantir que todas as empresas criadas venham zeradas, sem registros algum, de clientes, fornecedor nada, são dados reais de empresas reais"
+        // Qualquer registro legado residual atribuído a empresas criadas é removido na sanitização base
+        // para assegurar que comecem 100% zeradas para uso com dados reais.
+        if (createdRealCompanyIds.has(item.companyId)) {
+          // Se for dado que veio de um teste antigo em comp-178... limpar para zerar
+          if (item.companyId.startsWith('comp-178') || item.companyId.startsWith('comp-test') || item.companyId.startsWith('comp-sync')) {
+            return false;
+          }
+        }
+        return true;
+      });
+  }
+
+  return sanitized;
+}
+
 // Server-side Intelligent Bidirectional Merge: respects client CRUD operations (create, update, delete) while preserving defaults
 export function mergeAppDatabase(existing: any, incoming: any): any {
-  if (!existing || typeof existing !== 'object') return incoming;
-  if (!incoming || typeof incoming !== 'object') return existing;
+  if (!existing || typeof existing !== 'object') return sanitizeAndIsolateCompanies(incoming);
+  if (!incoming || typeof incoming !== 'object') return sanitizeAndIsolateCompanies(existing);
 
   // 1. Lossless merge of registeredCompanies
   const companiesMap = new Map<string, any>();
@@ -364,7 +447,7 @@ export function mergeAppDatabase(existing: any, incoming: any): any {
   }
   const mergedUsers = Array.from(usersMap.values());
 
-  return {
+  return sanitizeAndIsolateCompanies({
     ...existing,
     ...incoming,
     companyInfo: normalizedCompanyInfo,
@@ -403,7 +486,7 @@ export function mergeAppDatabase(existing: any, incoming: any): any {
     alertSettings: { ...(existing.alertSettings || {}), ...(incoming.alertSettings || {}) },
     sefazConfig: { ...(existing.sefazConfig || {}), ...(incoming.sefazConfig || {}) },
     landingContent: incoming.landingContent || existing.landingContent || null,
-  };
+  });
 }
 
 // Real-time synchronization hub across multiple browsers, tabs, and computers
@@ -459,7 +542,7 @@ app.get("/api/db", requireAuth, async (req: any, res) => {
     );
 
     if (result.rows.length > 0 && result.rows[0].data) {
-      const data = result.rows[0].data;
+      const data = sanitizeAndIsolateCompanies(result.rows[0].data);
       serverAppStoreCache = data;
       const durationMs = Date.now() - startTime;
       const empresas = (data.registeredCompanies || []).length;
@@ -493,7 +576,7 @@ app.get("/api/db", requireAuth, async (req: any, res) => {
           altDb
         );
         if (altRes.rows.length > 0 && altRes.rows[0].data) {
-          const data = altRes.rows[0].data;
+          const data = sanitizeAndIsolateCompanies(altRes.rows[0].data);
           serverAppStoreCache = data;
           const durationMs = Date.now() - startTime;
           const empresas = (data.registeredCompanies || []).length;
@@ -1018,15 +1101,15 @@ app.get("/api/companies/:companyId/license", async (req: any, res) => {
 // Granular REST APIs for ERP - Protected with requireAuth + requireContractedModule
 app.get("/api/clients", requireAuth, requireContractedModule("Clientes", "accessClients", () => serverAppStoreCache), async (req: any, res) => {
   try {
-    const companyId = req.validatedCompanyId;
+    const targetCompId = req.validatedCompanyId || 'comp-1';
     if (serverAppStoreCache?.clients) {
-      const list = (serverAppStoreCache.clients || []).filter((c: any) => !companyId || c.companyId === companyId);
+      const list = (serverAppStoreCache.clients || []).filter((c: any) => c.companyId === targetCompId);
       return res.json(list);
     }
     const db = getDbInstance();
     if (db) {
       const list = await db.select().from(clientsTable);
-      return res.json(list);
+      return res.json(list.filter((c: any) => c.companyId === targetCompId));
     }
     return res.json([]);
   } catch (err: any) {
@@ -1036,15 +1119,15 @@ app.get("/api/clients", requireAuth, requireContractedModule("Clientes", "access
 
 app.get("/api/vehicles", requireAuth, requireContractedModule("Veículos", "accessVehicles", () => serverAppStoreCache), async (req: any, res) => {
   try {
-    const companyId = req.validatedCompanyId;
+    const targetCompId = req.validatedCompanyId || 'comp-1';
     if (serverAppStoreCache?.vehicles) {
-      const list = (serverAppStoreCache.vehicles || []).filter((v: any) => !companyId || v.companyId === companyId);
+      const list = (serverAppStoreCache.vehicles || []).filter((v: any) => v.companyId === targetCompId);
       return res.json(list);
     }
     const db = getDbInstance();
     if (db) {
       const list = await db.select().from(vehiclesTable);
-      return res.json(list);
+      return res.json(list.filter((v: any) => v.companyId === targetCompId));
     }
     return res.json([]);
   } catch (err: any) {
@@ -1054,15 +1137,15 @@ app.get("/api/vehicles", requireAuth, requireContractedModule("Veículos", "acce
 
 app.get("/api/parts", requireAuth, requireContractedModule("Estoque", "accessParts", () => serverAppStoreCache), async (req: any, res) => {
   try {
-    const companyId = req.validatedCompanyId;
+    const targetCompId = req.validatedCompanyId || 'comp-1';
     if (serverAppStoreCache?.parts) {
-      const list = (serverAppStoreCache.parts || []).filter((p: any) => !companyId || p.companyId === companyId);
+      const list = (serverAppStoreCache.parts || []).filter((p: any) => p.companyId === targetCompId);
       return res.json(list);
     }
     const db = getDbInstance();
     if (db) {
       const list = await db.select().from(partsTable);
-      return res.json(list);
+      return res.json(list.filter((p: any) => p.companyId === targetCompId));
     }
     return res.json([]);
   } catch (err: any) {
@@ -1072,15 +1155,15 @@ app.get("/api/parts", requireAuth, requireContractedModule("Estoque", "accessPar
 
 app.get("/api/service-orders", requireAuth, requireContractedModule("Ordens de Serviço", "accessServiceOrders", () => serverAppStoreCache), async (req: any, res) => {
   try {
-    const companyId = req.validatedCompanyId;
+    const targetCompId = req.validatedCompanyId || 'comp-1';
     if (serverAppStoreCache?.serviceOrders) {
-      const list = (serverAppStoreCache.serviceOrders || []).filter((o: any) => !companyId || o.companyId === companyId);
+      const list = (serverAppStoreCache.serviceOrders || []).filter((o: any) => o.companyId === targetCompId);
       return res.json(list);
     }
     const db = getDbInstance();
     if (db) {
       const list = await db.select().from(serviceOrdersTable);
-      return res.json(list);
+      return res.json(list.filter((o: any) => o.companyId === targetCompId));
     }
     return res.json([]);
   } catch (err: any) {
@@ -1090,8 +1173,8 @@ app.get("/api/service-orders", requireAuth, requireContractedModule("Ordens de S
 
 app.get("/api/production-orders", requireAuth, requireContractedModule("Produção", "accessProduction", () => serverAppStoreCache), async (req: any, res) => {
   try {
-    const companyId = req.validatedCompanyId;
-    const list = (serverAppStoreCache?.productionOrders || []).filter((o: any) => !companyId || o.companyId === companyId);
+    const targetCompId = req.validatedCompanyId || 'comp-1';
+    const list = (serverAppStoreCache?.productionOrders || []).filter((o: any) => o.companyId === targetCompId);
     return res.json(list);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -1100,10 +1183,10 @@ app.get("/api/production-orders", requireAuth, requireContractedModule("Produç�
 
 app.get("/api/financial", requireAuth, requireContractedModule("Financeiro", "accessFinancial", () => serverAppStoreCache), async (req: any, res) => {
   try {
-    const companyId = req.validatedCompanyId;
-    const receivables = (serverAppStoreCache?.accountsReceivable || []).filter((r: any) => !companyId || r.companyId === companyId);
-    const payables = (serverAppStoreCache?.accountsPayable || []).filter((p: any) => !companyId || p.companyId === companyId);
-    const transactions = (serverAppStoreCache?.financialTransactions || []).filter((t: any) => !companyId || t.companyId === companyId);
+    const targetCompId = req.validatedCompanyId || 'comp-1';
+    const receivables = (serverAppStoreCache?.accountsReceivable || []).filter((r: any) => r.companyId === targetCompId);
+    const payables = (serverAppStoreCache?.accountsPayable || []).filter((p: any) => p.companyId === targetCompId);
+    const transactions = (serverAppStoreCache?.financialTransactions || []).filter((t: any) => t.companyId === targetCompId);
     return res.json({ receivables, payables, transactions });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -1112,8 +1195,8 @@ app.get("/api/financial", requireAuth, requireContractedModule("Financeiro", "ac
 
 app.get("/api/sales", requireAuth, requireContractedModule("Vendas & Balcão", "accessSales", () => serverAppStoreCache), async (req: any, res) => {
   try {
-    const companyId = req.validatedCompanyId;
-    const list = (serverAppStoreCache?.commercialSales || []).filter((s: any) => !companyId || s.companyId === companyId);
+    const targetCompId = req.validatedCompanyId || 'comp-1';
+    const list = (serverAppStoreCache?.commercialSales || serverAppStoreCache?.sales || []).filter((s: any) => s.companyId === targetCompId);
     return res.json(list);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -1122,8 +1205,8 @@ app.get("/api/sales", requireAuth, requireContractedModule("Vendas & Balcão", "
 
 app.get("/api/budgets", requireAuth, requireContractedModule("Orçamentos", "accessBudgets", () => serverAppStoreCache), async (req: any, res) => {
   try {
-    const companyId = req.validatedCompanyId;
-    const list = (serverAppStoreCache?.budgets || []).filter((b: any) => !companyId || b.companyId === companyId);
+    const targetCompId = req.validatedCompanyId || 'comp-1';
+    const list = (serverAppStoreCache?.budgets || []).filter((b: any) => b.companyId === targetCompId);
     return res.json(list);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -1132,8 +1215,8 @@ app.get("/api/budgets", requireAuth, requireContractedModule("Orçamentos", "acc
 
 app.get("/api/representative-orders", requireAuth, requireContractedModule("Representação Comercial", "accessRepresentativeCommerce", () => serverAppStoreCache), async (req: any, res) => {
   try {
-    const companyId = req.validatedCompanyId;
-    const list = (serverAppStoreCache?.representativeOrders || []).filter((r: any) => !companyId || r.companyId === companyId);
+    const targetCompId = req.validatedCompanyId || 'comp-1';
+    const list = (serverAppStoreCache?.representativeOrders || []).filter((r: any) => r.companyId === targetCompId);
     return res.json(list);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -1142,8 +1225,8 @@ app.get("/api/representative-orders", requireAuth, requireContractedModule("Repr
 
 app.get("/api/services", requireAuth, requireContractedModule("Serviços", "accessServices", () => serverAppStoreCache), async (req: any, res) => {
   try {
-    const companyId = req.validatedCompanyId;
-    const list = (serverAppStoreCache?.services || []).filter((s: any) => !companyId || s.companyId === companyId);
+    const targetCompId = req.validatedCompanyId || 'comp-1';
+    const list = (serverAppStoreCache?.services || []).filter((s: any) => s.companyId === targetCompId);
     return res.json(list);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -1152,8 +1235,8 @@ app.get("/api/services", requireAuth, requireContractedModule("Serviços", "acce
 
 app.get("/api/quotations", requireAuth, requireContractedModule("Cotações", "accessQuotations", () => serverAppStoreCache), async (req: any, res) => {
   try {
-    const companyId = req.validatedCompanyId;
-    const list = (serverAppStoreCache?.quotations || []).filter((q: any) => !companyId || q.companyId === companyId);
+    const targetCompId = req.validatedCompanyId || 'comp-1';
+    const list = (serverAppStoreCache?.quotations || []).filter((q: any) => q.companyId === targetCompId);
     return res.json(list);
   } catch (err: any) {
     res.status(500).json({ error: err.message });

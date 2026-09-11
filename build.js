@@ -10,6 +10,18 @@ const publicDir = path.join(__dirname, 'public');
 // 1. Ensure dist directory exists
 fs.mkdirSync(distDir, { recursive: true });
 
+// 1.5. Compile report exporter bundle to public
+console.log('Compiling report exporter bundle...');
+await esbuild.build({
+  entryPoints: [path.join(__dirname, 'src', 'utils', 'reportExporter.ts')],
+  bundle: true,
+  format: 'iife',
+  globalName: 'ReportExporterBundle',
+  platform: 'browser',
+  outfile: path.join(publicDir, 'report-exporter-bundle.js'),
+  minify: true
+});
+
 // 2. Copy public directory contents to dist
 if (fs.existsSync(publicDir)) {
   fs.cpSync(publicDir, distDir, { recursive: true });
