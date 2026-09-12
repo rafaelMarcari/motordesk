@@ -139,6 +139,30 @@ app.use((req, res, next) => {
   next();
 });
 
+// 4. Middleware de Segurança Corporativa: Revogação Imediata de Acesso para Colaboradores Demitidos
+app.use((req: any, res: any, next: any) => {
+  if (!req.path.startsWith("/api") || req.path === "/api/health" || req.path === "/health") {
+    return next();
+  }
+  const userId = req.headers["x-user-id"] || req.headers["X-User-Id"];
+  if (userId && serverAppStoreCache && Array.isArray(serverAppStoreCache.users)) {
+    const user = serverAppStoreCache.users.find(
+      (u: any) => u.id === userId || (u.username && u.username.toLowerCase() === String(userId).toLowerCase())
+    );
+    if (user) {
+      const hasContractEndDate = Boolean(user.contractEndDate && String(user.contractEndDate).trim().length > 0);
+      if (hasContractEndDate || user.isTerminated) {
+        return res.status(403).json({
+          error: "Forbidden: Access Revoked",
+          code: "USER_CONTRACT_TERMINATED",
+          message: `Acesso Revogado: O colaborador "${user.name}" teve seu vínculo de trabalho finalizado em ${user.contractEndDate || user.terminationDate || "data anterior"}. Todos os acessos ao sistema foram cancelados pela administração.`
+        });
+      }
+    }
+  }
+  next();
+});
+
 // Root API Welcome route (only for non-HTML API requests)
 app.get("/", (req, res, next) => {
   if (req.headers.accept && req.headers.accept.includes("text/html")) {
@@ -404,7 +428,27 @@ export function mergeAppDatabase(existing: any, incoming: any): any {
     };
   });
 
-  const rawCompanyInfo = incoming.companyInfo || existing.companyInfo || (normalizedCompanies.length > 0 ? normalizedCompanies[0] : null);
+  // Unicidade estrita de empresas: Proibir criação ou duplicação de empresas com mesmo CNPJ ou mesma Inscrição Estadual (IE)
+  const seenCnpjs = new Set<string>();
+  const seenIes = new Set<string>();
+  const uniqueCompanies: any[] = [];
+  for (const c of normalizedCompanies) {
+    const cleanCnpj = String(c?.cnpj || '').replace(/\D/g, '');
+    const cleanIe = String(c?.stateRegistration || '').trim().replace(/\D/g, '');
+    if (cleanCnpj && seenCnpjs.has(cleanCnpj)) {
+      console.warn(`[DUPLICATE-PREVENTION] Rejeitando empresa duplicada com mesmo CNPJ: ${c.name} (${c.cnpj})`);
+      continue;
+    }
+    if (cleanIe && cleanIe.length > 0 && cleanIe !== 'ISENTO' && seenIes.has(cleanIe)) {
+      console.warn(`[DUPLICATE-PREVENTION] Rejeitando empresa duplicada com mesma Inscrição Estadual (IE): ${c.name} (${c.stateRegistration})`);
+      continue;
+    }
+    if (cleanCnpj) seenCnpjs.add(cleanCnpj);
+    if (cleanIe && cleanIe !== 'ISENTO') seenIes.add(cleanIe);
+    uniqueCompanies.push(c);
+  }
+
+  const rawCompanyInfo = incoming.companyInfo || existing.companyInfo || (uniqueCompanies.length > 0 ? uniqueCompanies[0] : null);
   const normalizedCompanyInfo = rawCompanyInfo ? {
     ...rawCompanyInfo,
     businessType: normalizeBusinessType(rawCompanyInfo?.businessType, rawCompanyInfo?.name),
@@ -448,13 +492,82 @@ export function mergeAppDatabase(existing: any, incoming: any): any {
   }
   const mergedUsers = Array.from(usersMap.values());
 
+  // Regra de Desligamento / Demissão de Usuários:
+  // Se o campo de data de término de contrato estiver preenchido, revogar TODOS os acessos ao sistema
+  const sanitizedUsers = mergedUsers.map((u: any) => {
+    const hasContractEndDate = Boolean(u?.contractEndDate && String(u.contractEndDate).trim().length > 0);
+    const isTerminated = hasContractEndDate || Boolean(u?.isTerminated);
+    if (isTerminated) {
+      return {
+        ...u,
+        contractEndDate: u.contractEndDate || u.terminationDate || new Date().toISOString().split('T')[0],
+        isTerminated: true,
+        isActive: false,
+        status: 'terminated',
+        terminationDate: u.contractEndDate || u.terminationDate || new Date().toISOString().split('T')[0],
+        permissions: {}, // revoga 100% dos acessos ao sistema
+      };
+    }
+    return u;
+  });
+
+  // Função para garantir unicidade de clientes (sem duplicados por CPF/CNPJ ou Nome na mesma empresa)
+  const mergedClientsRaw = mergeEntityCollection(existing.clients, incoming.clients, 'id');
+  const seenClientDocs = new Map<string, string>();
+  const uniqueClients: any[] = [];
+  for (const client of mergedClientsRaw) {
+    if (!client) continue;
+    const comp = client.companyId || 'comp-1';
+    const docDigits = String(client.cpf || client.cpfCnpj || '').replace(/\D/g, '');
+    const cleanName = String(client.name || '').trim().toLowerCase();
+    const docKey = docDigits ? `${comp}_doc_${docDigits}` : null;
+    const nameKey = cleanName ? `${comp}_name_${cleanName}` : null;
+
+    if (docKey && seenClientDocs.has(docKey)) {
+      console.warn(`[DUPLICATE-PREVENTION] Cliente duplicado com mesmo CPF/CNPJ (${docDigits}) ignorado: ${client.name}`);
+      continue;
+    }
+    if (nameKey && seenClientDocs.has(nameKey) && !docDigits) {
+      console.warn(`[DUPLICATE-PREVENTION] Cliente duplicado com mesmo Nome (${cleanName}) ignorado.`);
+      continue;
+    }
+    if (docKey) seenClientDocs.set(docKey, client.id);
+    if (nameKey) seenClientDocs.set(nameKey, client.id);
+    uniqueClients.push(client);
+  }
+
+  // Função para garantir unicidade de fornecedores (sem duplicados por CNPJ/CPF ou Razão Social na mesma empresa)
+  const mergedSuppliersRaw = mergeEntityCollection(existing.suppliers, incoming.suppliers, 'id');
+  const seenSupplierDocs = new Map<string, string>();
+  const uniqueSuppliers: any[] = [];
+  for (const supplier of mergedSuppliersRaw) {
+    if (!supplier) continue;
+    const comp = supplier.companyId || 'comp-1';
+    const docDigits = String(supplier.cnpjCpf || supplier.cnpj || supplier.cpf || '').replace(/\D/g, '');
+    const cleanName = String(supplier.name || '').trim().toLowerCase();
+    const docKey = docDigits ? `${comp}_doc_${docDigits}` : null;
+    const nameKey = cleanName ? `${comp}_name_${cleanName}` : null;
+
+    if (docKey && seenSupplierDocs.has(docKey)) {
+      console.warn(`[DUPLICATE-PREVENTION] Fornecedor duplicado com mesmo CNPJ/CPF (${docDigits}) ignorado: ${supplier.name}`);
+      continue;
+    }
+    if (nameKey && seenSupplierDocs.has(nameKey) && !docDigits) {
+      console.warn(`[DUPLICATE-PREVENTION] Fornecedor duplicado com mesma Razão Social (${cleanName}) ignorado.`);
+      continue;
+    }
+    if (docKey) seenSupplierDocs.set(docKey, supplier.id);
+    if (nameKey) seenSupplierDocs.set(nameKey, supplier.id);
+    uniqueSuppliers.push(supplier);
+  }
+
   return sanitizeAndIsolateCompanies({
     ...existing,
     ...incoming,
     companyInfo: normalizedCompanyInfo,
-    registeredCompanies: normalizedCompanies,
-    users: mergedUsers,
-    clients: mergeEntityCollection(existing.clients, incoming.clients, 'id'),
+    registeredCompanies: uniqueCompanies,
+    users: sanitizedUsers,
+    clients: uniqueClients,
     vehicles: mergeEntityCollection(existing.vehicles, incoming.vehicles, 'id'),
     parts: mergeEntityCollection(existing.parts, incoming.parts, 'id'),
     sales: mergeEntityCollection(existing.sales, incoming.sales, 'id'),
@@ -465,7 +578,7 @@ export function mergeAppDatabase(existing: any, incoming: any): any {
     budgets: mergeEntityCollection(existing.budgets, incoming.budgets, 'id'),
     serviceOrders: mergeEntityCollection(existing.serviceOrders, incoming.serviceOrders, 'id'),
     history: mergeEntityCollection(existing.history, incoming.history, 'id'),
-    suppliers: mergeEntityCollection(existing.suppliers, incoming.suppliers, 'id'),
+    suppliers: uniqueSuppliers,
     supplierPartPrices: mergeEntityCollection(existing.supplierPartPrices, incoming.supplierPartPrices, 'id'),
     quotations: mergeEntityCollection(existing.quotations, incoming.quotations, 'id'),
     accountsReceivable: mergeEntityCollection(existing.accountsReceivable, incoming.accountsReceivable, 'id'),

@@ -117,6 +117,7 @@
       console.warn('[Dashboard Engine] React instance não encontrada.');
       return null;
     }
+    if (!window.React) window.React = React;
 
     const { db, onNavigate, businessType = 'OFICINA', icons = {}, charts = {} } = context;
 
@@ -125,12 +126,13 @@
       onNavigate,
       businessType,
       icons,
-      charts
+      charts,
+      React
     });
   };
 
   function SpecialistDashboardComponent(props) {
-    const React = window.React || window.ReactInstance;
+    const React = props.React || window.React || window.ReactInstance;
     const { db = {}, onNavigate = () => {}, businessType = 'OFICINA', icons = {}, charts = {} } = props;
 
     // Segmentos disponíveis

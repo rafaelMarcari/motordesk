@@ -690,6 +690,368 @@
     }
   }
 
+  // --- REGRAS CORPORATIVAS: UNICIDADE (EMPRESAS, CLIENTES, FORNECEDORES) E GESTÃO DE CONTRATOS / DEMISSÃO COM REVOGAÇÃO DE ACESSOS ---
+
+  /**
+   * Obtém os dados completos do banco de dados salvos localmente
+   */
+  function getAppDatabaseSafe() {
+    try {
+      const activeUserStr = localStorage.getItem('motordesk_active_user');
+      const activeUser = activeUserStr ? JSON.parse(activeUserStr) : null;
+      // Procura banco no cache da janela ou localStorage
+      if (window.__motordesk_current_db) return window.__motordesk_current_db;
+      const cached = localStorage.getItem('motordesk_app_database');
+      if (cached) return JSON.parse(cached);
+    } catch (e) {
+      // silencioso
+    }
+    return null;
+  }
+
+  /**
+   * Monitora a modal de Novo / Editar Operador para injetar os dois campos:
+   * 1. Data de Início do Contrato (Admissão)
+   * 2. Data de Término do Contrato (Desligamento / Demissão)
+   * Se a Data de Término estiver preenchida, revoga visualmente todas as permissões
+   */
+  function setupUserContractManagement() {
+    // Verificar se há modal de usuário aberta
+    const userModal = document.querySelector('#modal-user-permissions, [id*="user-permissions"], [id*="user-error-alert"]')?.closest('.fixed.inset-0') ||
+                      document.querySelector('input[placeholder*="Ex: João da Silva"]')?.closest('.bg-white.rounded-2xl, .bg-white.rounded-xl, [role="dialog"]');
+    
+    if (!userModal) return;
+
+    // Verificar se o container de contrato já foi injetado
+    if (userModal.querySelector('#user-contract-fields-container')) {
+      // Atualizar comportamento reativo com base no valor de data de término
+      const endDateInput = userModal.querySelector('#user-contract-end-date');
+      const banner = userModal.querySelector('#user-contract-status-banner');
+      if (endDateInput && banner) {
+        const isTerminated = Boolean(endDateInput.value && endDateInput.value.trim().length > 0);
+        if (isTerminated) {
+          banner.className = 'p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-800 flex items-start gap-2.5';
+          banner.innerHTML = `
+            <span class="text-base leading-none">🔴</span>
+            <div>
+              <strong class="font-bold block text-rose-900">Colaborador Demitido / Vínculo Encerrado</strong>
+              <p class="mt-0.5 text-rose-700">Com a data de término preenchida, <strong>todos os acessos ao sistema serão permanentemente revogados</strong>. As caixas de permissões foram zeradas.</p>
+            </div>
+          `;
+          // Desmarcar e desabilitar caixas de permissão
+          const permBoxes = userModal.querySelectorAll('input[type="checkbox"]');
+          permBoxes.forEach(cb => {
+            if (cb.id !== 'user-agree-terms') {
+              cb.checked = false;
+              cb.disabled = true;
+              cb.classList.add('opacity-40', 'cursor-not-allowed');
+            }
+          });
+        } else {
+          banner.className = 'p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-800 flex items-start gap-2.5';
+          banner.innerHTML = `
+            <span class="text-base leading-none">🟢</span>
+            <div>
+              <strong class="font-bold block text-emerald-900">Vínculo Contratual Ativo</strong>
+              <p class="mt-0.5 text-emerald-700">Colaborador em exercício. Os acessos e permissões atribuídos abaixo estão regulares.</p>
+            </div>
+          `;
+          // Reabilitar caixas de permissão
+          const permBoxes = userModal.querySelectorAll('input[type="checkbox"]');
+          permBoxes.forEach(cb => {
+            cb.disabled = false;
+            cb.classList.remove('opacity-40', 'cursor-not-allowed');
+          });
+        }
+      }
+      return;
+    }
+
+    // Localizar ponto de inserção: após o bloco de dados bancários/pix ou antes da seção de permissões
+    const nameInput = userModal.querySelector('input[placeholder*="Ex: João da Silva"]') || userModal.querySelector('input');
+    if (!nameInput) return;
+
+    // Encontrar container de campos para injetar
+    const formContainer = nameInput.closest('form') || nameInput.closest('.space-y-4') || nameInput.closest('.p-6') || nameInput.parentElement;
+    if (!formContainer) return;
+
+    // Criar o container de contrato com os dois campos solicitados pelo usuário
+    const contractDiv = document.createElement('div');
+    contractDiv.id = 'user-contract-fields-container';
+    contractDiv.className = 'mt-4 pt-4 border-t border-slate-200 space-y-3';
+    contractDiv.innerHTML = `
+      <div class="flex items-center justify-between">
+        <label class="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+          <span>📋</span> Vínculo Contratual & Controle de Demissão
+        </label>
+        <span class="text-[10px] text-slate-500 font-medium">Controle de Segurança & Acessos</span>
+      </div>
+
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div class="space-y-1">
+          <label class="block text-[11px] font-semibold text-slate-600" for="user-contract-start-date">
+            Data Início do Contrato (Admissão)
+          </label>
+          <input 
+            id="user-contract-start-date" 
+            type="date" 
+            class="w-full text-xs p-2.5 border border-slate-200 rounded-lg bg-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition text-slate-700" 
+          />
+        </div>
+
+        <div class="space-y-1">
+          <label class="block text-[11px] font-semibold text-slate-600 flex items-center justify-between" for="user-contract-end-date">
+            <span>Data Término do Contrato (Desligamento)</span>
+            <span class="text-rose-600 font-bold text-[10px]">Revoga Acesso</span>
+          </label>
+          <input 
+            id="user-contract-end-date" 
+            type="date" 
+            class="w-full text-xs p-2.5 border border-slate-200 rounded-lg bg-white focus:ring-2 focus:ring-rose-500 focus:border-rose-500 transition text-slate-700 font-medium" 
+            placeholder="DD/MM/AAAA"
+          />
+        </div>
+      </div>
+
+      <div id="user-contract-status-banner" class="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-800 flex items-start gap-2.5 transition-all">
+        <span class="text-base leading-none">🟢</span>
+        <div>
+          <strong class="font-bold block text-emerald-900">Vínculo Contratual Ativo</strong>
+          <p class="mt-0.5 text-emerald-700">Colaborador em exercício. Os acessos e permissões atribuídos abaixo estão regulares.</p>
+        </div>
+      </div>
+    `;
+
+    // Inserir antes da área de permissões
+    const permSection = userModal.querySelector('[class*="grid-cols-2"], [class*="grid-cols-3"], [id*="perm"]') || formContainer.querySelector('.border-t');
+    if (permSection && permSection.parentElement === formContainer) {
+      formContainer.insertBefore(contractDiv, permSection);
+    } else {
+      formContainer.appendChild(contractDiv);
+    }
+
+    // Tentar pré-carregar datas caso seja edição de operador
+    try {
+      const usernameInput = userModal.querySelector('input[placeholder*="usuario"]');
+      const currentUName = usernameInput ? usernameInput.value.trim().toLowerCase() : '';
+      if (currentUName) {
+        const db = getAppDatabaseSafe();
+        if (db && Array.isArray(db.users)) {
+          const userObj = db.users.find(u => u.username && u.username.toLowerCase() === currentUName);
+          if (userObj) {
+            const startInput = contractDiv.querySelector('#user-contract-start-date');
+            const endInput = contractDiv.querySelector('#user-contract-end-date');
+            if (startInput && userObj.contractStartDate) startInput.value = userObj.contractStartDate;
+            if (endInput && (userObj.contractEndDate || userObj.terminationDate)) {
+              endInput.value = userObj.contractEndDate || userObj.terminationDate;
+            }
+          }
+        }
+      }
+    } catch (e) {
+      // silencioso
+    }
+
+    // Ouvir alterações no input de data de término
+    const endDateInput = contractDiv.querySelector('#user-contract-end-date');
+    if (endDateInput) {
+      endDateInput.addEventListener('input', () => {
+        setupUserContractManagement();
+      });
+      endDateInput.addEventListener('change', () => {
+        setupUserContractManagement();
+      });
+    }
+  }
+
+  /**
+   * Monitora a modal de Nova Empresa para injetar o campo de Inscrição Estadual (IE)
+   * e validar unicidade estrita de CNPJ e IE contra empresas já cadastradas
+   */
+  function setupCompanyUniquenessGuard() {
+    const newCompModal = document.querySelector('#modal-new-company, [id*="company-modal"]')?.closest('.fixed.inset-0') ||
+                         document.querySelector('input[placeholder*="CNPJ da Nova Empresa"], input[placeholder*="00.000.000/0000-00"]')?.closest('.bg-white.rounded-2xl, .bg-white.rounded-xl, [role="dialog"]');
+    
+    if (!newCompModal) return;
+
+    const cnpjInput = newCompModal.querySelector('input[placeholder*="00.000.000/0000-00"], input[placeholder*="CNPJ da Nova Empresa"]');
+    if (!cnpjInput) return;
+
+    // Se o campo IE ainda não foi adicionado
+    if (!newCompModal.querySelector('#new-comp-ie')) {
+      const cnpjGroup = cnpjInput.closest('.space-y-1') || cnpjInput.parentElement;
+      if (cnpjGroup && cnpjGroup.parentElement) {
+        const ieGroup = document.createElement('div');
+        ieGroup.id = 'group-comp-ie';
+        ieGroup.className = 'space-y-1 mt-3';
+        ieGroup.innerHTML = `
+          <div class="flex items-center justify-between">
+            <label class="text-xs font-bold text-slate-700 uppercase" for="new-comp-ie">Inscrição Estadual (IE)</label>
+            <span class="text-[10px] text-slate-500">Opcional ou "ISENTO"</span>
+          </div>
+          <input 
+            id="new-comp-ie" 
+            type="text" 
+            placeholder="Ex: 110.042.490.114 ou ISENTO" 
+            class="w-full text-xs p-2.5 border border-slate-200 rounded-lg bg-white font-mono uppercase focus:ring-2 focus:ring-indigo-500 transition" 
+          />
+          <p id="comp-ie-dup-warning" class="text-[11px] text-rose-600 font-bold hidden"></p>
+        `;
+        cnpjGroup.parentElement.insertBefore(ieGroup, cnpjGroup.nextSibling);
+
+        // Aviso de CNPJ duplicado
+        if (!cnpjGroup.querySelector('#comp-cnpj-dup-warning')) {
+          const cnpjWarn = document.createElement('p');
+          cnpjWarn.id = 'comp-cnpj-dup-warning';
+          cnpjWarn.className = 'text-[11px] text-rose-600 font-bold hidden mt-1';
+          cnpjGroup.appendChild(cnpjWarn);
+        }
+      }
+    }
+
+    // Validação em tempo real
+    const cnpjWarn = newCompModal.querySelector('#comp-cnpj-dup-warning');
+    const ieInput = newCompModal.querySelector('#new-comp-ie');
+    const ieWarn = newCompModal.querySelector('#comp-ie-dup-warning');
+    const submitBtn = newCompModal.querySelector('button[type="submit"], button.bg-indigo-600');
+
+    const validateUnique = () => {
+      const db = getAppDatabaseSafe();
+      const allCompanies = db ? [...(db.registeredCompanies || []), ...(db.companyInfo ? [db.companyInfo] : [])] : [];
+      
+      const cleanCnpj = cnpjInput.value.replace(/\D/g, '');
+      const rawIe = ieInput ? ieInput.value.trim().toUpperCase() : '';
+      const cleanIe = rawIe.replace(/\D/g, '');
+
+      let hasError = false;
+
+      // Validar CNPJ
+      if (cleanCnpj.length === 14) {
+        const dupC = allCompanies.find(c => c.cnpj && c.cnpj.replace(/\D/g, '') === cleanCnpj);
+        if (dupC) {
+          hasError = true;
+          if (cnpjWarn) {
+            cnpjWarn.innerText = `❌ CNPJ já cadastrado na empresa "${dupC.name}". O CNPJ deve ser único.`;
+            cnpjWarn.classList.remove('hidden');
+          }
+        } else {
+          if (cnpjWarn) cnpjWarn.classList.add('hidden');
+        }
+      } else {
+        if (cnpjWarn) cnpjWarn.classList.add('hidden');
+      }
+
+      // Validar IE
+      if (cleanIe.length >= 8 && rawIe !== 'ISENTO') {
+        const dupIe = allCompanies.find(c => c.stateRegistration && c.stateRegistration.replace(/\D/g, '') === cleanIe);
+        if (dupIe) {
+          hasError = true;
+          if (ieWarn) {
+            ieWarn.innerText = `❌ Inscrição Estadual já cadastrada na empresa "${dupIe.name}". A IE deve ser única.`;
+            ieWarn.classList.remove('hidden');
+          }
+        } else {
+          if (ieWarn) ieWarn.classList.add('hidden');
+        }
+      } else {
+        if (ieWarn) ieWarn.classList.add('hidden');
+      }
+
+      if (submitBtn) {
+        if (hasError) {
+          submitBtn.disabled = true;
+          submitBtn.classList.add('opacity-50', 'cursor-not-allowed');
+        } else {
+          submitBtn.disabled = false;
+          submitBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+        }
+      }
+    };
+
+    if (cnpjInput && !cnpjInput._boundUnique) {
+      cnpjInput._boundUnique = true;
+      cnpjInput.addEventListener('input', validateUnique);
+    }
+    if (ieInput && !ieInput._boundUnique) {
+      ieInput._boundUnique = true;
+      ieInput.addEventListener('input', validateUnique);
+    }
+  }
+
+  /**
+   * Adiciona badges de colaboradores demitidos na tabela de Operadores
+   */
+  function setupUserTableBadges() {
+    const userRows = document.querySelectorAll('button[id^="btn-edit-user-permissions-"]');
+    if (!userRows || userRows.length === 0) return;
+
+    const db = getAppDatabaseSafe();
+    if (!db || !Array.isArray(db.users)) return;
+
+    userRows.forEach(btn => {
+      const userId = btn.id.replace('btn-edit-user-permissions-', '');
+      const userObj = db.users.find(u => u.id === userId);
+      if (!userObj) return;
+
+      const isTerminated = Boolean(userObj.contractEndDate && String(userObj.contractEndDate).trim().length > 0) || Boolean(userObj.isTerminated);
+      const rowContainer = btn.closest('.p-4, .p-3, tr') || btn.parentElement?.parentElement;
+      if (!rowContainer) return;
+
+      // Se for demitido e ainda não tiver o badge
+      const existingBadge = rowContainer.querySelector('.badge-user-terminated');
+      if (isTerminated && !existingBadge) {
+        const badge = document.createElement('span');
+        badge.className = 'badge-user-terminated inline-flex items-center gap-1 bg-rose-100 text-rose-800 border border-rose-300 px-2 py-0.5 rounded text-[11px] font-bold shrink-0';
+        badge.innerHTML = `🔴 Demitido • Término: ${userObj.contractEndDate || userObj.terminationDate} (Acessos Revogados)`;
+        
+        // Encontrar onde inserir (próximo ao nome do usuário ou ao badge de cargo)
+        const nameEl = rowContainer.querySelector('h3, h4, .font-bold, .font-semibold');
+        if (nameEl && nameEl.parentElement) {
+          nameEl.parentElement.appendChild(badge);
+        }
+      }
+    });
+  }
+
+  /**
+   * Verifica em tempo real se o usuário autenticado na sessão atual foi desligado
+   * Se sim, encerra a sessão imediatamente com aviso claro
+   */
+  function checkActiveUserTerminationStatus() {
+    try {
+      const activeUserStr = localStorage.getItem('motordesk_active_user');
+      if (!activeUserStr) return;
+      const activeUser = JSON.parse(activeUserStr);
+      if (!activeUser || !activeUser.username) return;
+
+      const db = getAppDatabaseSafe();
+      if (!db || !Array.isArray(db.users)) return;
+
+      const foundUser = db.users.find(u => u.username && u.username.toLowerCase() === activeUser.username.toLowerCase());
+      if (foundUser) {
+        const isTerminated = Boolean(foundUser.contractEndDate && String(foundUser.contractEndDate).trim().length > 0) || Boolean(foundUser.isTerminated);
+        if (isTerminated) {
+          console.warn('[SECURITY] Colaborador demitido detectado na sessão ativa. Forçando logout imediato.');
+          localStorage.removeItem('motordesk_auth_token');
+          localStorage.removeItem('motordesk_active_user');
+          localStorage.removeItem('motordesk_last_activity');
+          alert(`Sessão Encerrada por Segurança:\n\nO vínculo empregatício do colaborador "${foundUser.name}" foi finalizado em ${foundUser.contractEndDate || foundUser.terminationDate || 'data anterior'}.\n\nTodos os acessos ao sistema MotorDesk foram revogados pela administração.`);
+          window.location.href = '/?view=login';
+        }
+      }
+    } catch (e) {
+      // silencioso
+    }
+  }
+
+  // Loop contínuo e leve para os guards da interface
+  setInterval(() => {
+    setupUserContractManagement();
+    setupCompanyUniquenessGuard();
+    setupUserTableBadges();
+    checkActiveUserTerminationStatus();
+  }, 1000);
+
   // Expor API global
   window.__motordesk_lock_session = function(options) {
     showInactivityLockScreen(options);
