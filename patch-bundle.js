@@ -123,5 +123,43 @@ if (code.includes(logoutSearch)) {
   console.warn('[PATCH] 10. logoutSearch string not found or already patched.');
 }
 
+// 11. Login Company Selector: exibir seletor quando usuário tiver acesso a mais de uma empresa ou for admin
+const ftSearch = `Ft=$o.useMemo(()=>{if(!e)return[];const ft=[];e.registeredCompanies&&e.registeredCompanies.length>0?ft.push(...e.registeredCompanies):e.companyInfo&&ft.push(e.companyInfo);const yt=o.trim().toLowerCase();if(!yt)return[];const Dt=(e.users||[]).filter(Vt=>Vt.username.toLowerCase()===yt);if(Dt.length===0)return[];const Zt=new Set;return Dt.forEach(Vt=>{Vt.companyId&&Zt.add(Vt.companyId),Array.isArray(Vt.allowedCompanyIds)&&Vt.allowedCompanyIds.forEach(ga=>Zt.add(ga))}),Zt.size===0&&Zt.add("comp-1"),ft.filter(Vt=>Zt.has(Vt.id))},[e,o]);`;
+const ftReplace = `Ft=$o.useMemo(()=>{if(!e)return[];const ft=[];e.registeredCompanies&&e.registeredCompanies.length>0?ft.push(...e.registeredCompanies):e.companyInfo&&ft.push(e.companyInfo);const yt=o.trim().toLowerCase();if(!yt)return ft;const Dt=(e.users||[]).filter(Vt=>Vt.username&&Vt.username.toLowerCase()===yt);if(yt==="admin"||Dt.some(Vt=>Vt.role==="admin"||(Array.isArray(Vt.allowedCompanyIds)&&Vt.allowedCompanyIds.includes("*"))))return ft;if(Dt.length===0)return ft;const Zt=new Set;Dt.forEach(Vt=>{Vt.companyId&&Zt.add(Vt.companyId),Array.isArray(Vt.allowedCompanyIds)&&Vt.allowedCompanyIds.forEach(ga=>Zt.add(ga))});const matching=ft.filter(Vt=>Zt.has(Vt.id));return matching.length>0?matching:ft},[e,o]);`;
+
+if (code.includes(ftSearch)) {
+  code = code.replace(ftSearch, ftReplace);
+  console.log('[PATCH] 11. Login company selector Ft patched successfully.');
+} else {
+  console.warn('[PATCH] 11. ftSearch string not found or already patched.');
+}
+
+// 12. Dashboard Header Company Switcher: exibir todas as empresas autorizadas (ou todas se for admin)
+const ktSearch = `const Kt=$o.useMemo(()=>{const ft=e!=null&&e.registeredCompanies&&e.registeredCompanies.length>0?e.registeredCompanies:[(e==null?void 0:e.companyInfo)||{id:"comp-1",name:"MotorDesk",cnpj:"",phone:"",whatsapp:"",email:"",address:"",welcomeMessage:"",registeredAt:""}];if(!n)return ft;if(n.allowedCompanyIds&&n.allowedCompanyIds.length>0)return n.allowedCompanyIds.includes("*")?ft:ft.filter(Dt=>{var Zt;return(Zt=n.allowedCompanyIds)==null?void 0:Zt.includes(Dt.id)});const yt=n.companyId||"comp-1";return ft.filter(Dt=>Dt.id===yt)},[e==null?void 0:e.registeredCompanies,e==null?void 0:e.companyInfo,n])`;
+const ktReplace = `const Kt=$o.useMemo(()=>{const ft=e!=null&&e.registeredCompanies&&e.registeredCompanies.length>0?e.registeredCompanies:[(e==null?void 0:e.companyInfo)||{id:"comp-1",name:"MotorDesk",cnpj:"",phone:"",whatsapp:"",email:"",address:"",welcomeMessage:"",registeredAt:""}];if(!n)return ft;if(n.role==="admin"||(n.username&&n.username.toLowerCase()==="admin")||(Array.isArray(n.allowedCompanyIds)&&n.allowedCompanyIds.includes("*")))return ft;if(Array.isArray(n.allowedCompanyIds)&&n.allowedCompanyIds.length>0){const st=new Set([...n.allowedCompanyIds,n.companyId].filter(Boolean));return ft.filter(Dt=>st.has(Dt.id))}const yt=n.companyId||"comp-1";return ft.filter(Dt=>Dt.id===yt)},[e==null?void 0:e.registeredCompanies,e==null?void 0:e.companyInfo,n])`;
+
+if (code.includes(ktSearch)) {
+  code = code.replace(ktSearch, ktReplace);
+  console.log('[PATCH] 12. Topbar company switcher Kt patched successfully.');
+} else {
+  console.warn('[PATCH] 12. ktSearch string not found or already patched.');
+}
+
+// 13. Isolamento Estrito de Usuários e Empresas na Gestão de Usuários (SOe)
+const soeSearch = `function SOe({db:e,currentUser:a,onSaveUsers:s,onSaveCompanyInfo:r,onSaveRegisteredCompanies:n,onAddHistoryLog:i,globalModules:o,onUpdateGlobalModules:l,onSwitchActiveCompany:c,activeWorkspaceCompanyId:d}){const[m,p]=b.useState(!1),[f,h]=b.useState(null),[A,v]=b.useState("subscription"),N=e.registeredCompanies&&e.registeredCompanies.length>0?e.registeredCompanies:[e.companyInfo],`;
+const soeReplace = `function SOe({db:e,currentUser:a,onSaveUsers:s,onSaveCompanyInfo:r,onSaveRegisteredCompanies:n,onAddHistoryLog:i,globalModules:o,onUpdateGlobalModules:l,onSwitchActiveCompany:c,activeWorkspaceCompanyId:d}){const[m,p]=b.useState(!1),[f,h]=b.useState(null),[A,v]=b.useState("subscription"),N=(a&&(a.role==="admin"||(a.username&&a.username.toLowerCase()==="admin")||(Array.isArray(a.allowedCompanyIds)&&a.allowedCompanyIds.includes("*"))))?(e.registeredCompanies&&e.registeredCompanies.length>0?e.registeredCompanies:[e.companyInfo]):((e.registeredCompanies&&e.registeredCompanies.length>0?e.registeredCompanies:[e.companyInfo]).filter(cmp=>cmp&&(cmp.id===(a==null?void 0:a.companyId)||(Array.isArray(a==null?void 0:a.allowedCompanyIds)&&a.allowedCompanyIds.includes(cmp.id))))).length>0?((e.registeredCompanies&&e.registeredCompanies.length>0?e.registeredCompanies:[e.companyInfo]).filter(cmp=>cmp&&(cmp.id===(a==null?void 0:a.companyId)||(Array.isArray(a==null?void 0:a.allowedCompanyIds)&&a.allowedCompanyIds.includes(cmp.id))))):[e.companyInfo],`;
+
+if (code.includes(soeSearch)) {
+  code = code.replace(soeSearch, soeReplace);
+  console.log('[PATCH] 13. Strict User and Company isolation in SOe patched successfully.');
+} else {
+  console.warn('[PATCH] 13. soeSearch string not found or already patched.');
+}
+
 fs.writeFileSync(bundlePath, code, 'utf8');
+const distBundlePath = path.join(__dirname, 'dist', 'assets', 'index-CUxTo0fH.js');
+if (fs.existsSync(distBundlePath)) {
+  fs.writeFileSync(distBundlePath, code, 'utf8');
+  console.log('[PATCH] Also updated dist bundle at:', distBundlePath);
+}
 console.log('[PATCH] Bundle patch completed successfully!');

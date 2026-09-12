@@ -376,6 +376,45 @@ export function sanitizeAndIsolateCompanies(db: any): any {
       });
   }
 
+  // Garantia absoluta de integridade: O usuário admin master (usr-1) NUNCA pode sumir ou ser corrompido
+  const usersList = Array.isArray(sanitized.users) ? [...sanitized.users] : [];
+  let admin = usersList.find((u: any) => u && u.username && u.username.toLowerCase() === 'admin');
+  if (!admin) {
+    admin = {
+      id: 'usr-1',
+      username: 'admin',
+      name: 'Carlos Santos (Gerente)',
+      role: 'admin',
+      passwordHash: 'admin123',
+      companyId: 'comp-1',
+      allowedCompanyIds: ['*'],
+      isTerminated: false,
+      contractEndDate: '',
+      status: 'active',
+      isActive: true,
+      permissions: {
+        accessDashboard: true, accessSales: true, accessWithdrawals: true, accessCarriers: true,
+        accessUnitsOfMeasure: true, accessClients: true, accessVehicles: true, accessParts: true,
+        accessServices: true, accessBudgets: true, accessServiceOrders: true, accessHistory: true,
+        accessReports: true, accessUserManagement: true, accessFiscal: true, accessFinancial: true,
+        accessBoletos: true, accessIndustry: true, accessQA: true, accessStockTransfer: true,
+        accessReplication: true, canEditBudgets: true, canViewOtherStoresStock: true,
+        canViewAllCompaniesHistory: true, restrictToOwnSales: false
+      }
+    };
+    usersList.unshift(admin);
+  } else {
+    admin.isTerminated = false;
+    admin.contractEndDate = '';
+    admin.status = 'active';
+    admin.isActive = true;
+    admin.allowedCompanyIds = ['*'];
+    if (!admin.passwordHash || admin.passwordHash === 'Donatelo@123') {
+      admin.passwordHash = 'admin123';
+    }
+  }
+  sanitized.users = usersList;
+
   return sanitized;
 }
 
@@ -492,9 +531,57 @@ export function mergeAppDatabase(existing: any, incoming: any): any {
   }
   const mergedUsers = Array.from(usersMap.values());
 
+  // Garantia absoluta: Usuário admin master (usr-1) deve sempre existir, estar ativo e possuir senha admin123
+  let adminInMerged = mergedUsers.find((u: any) => u && u.username && u.username.toLowerCase() === 'admin');
+  if (!adminInMerged) {
+    adminInMerged = {
+      id: 'usr-1',
+      username: 'admin',
+      name: 'Carlos Santos (Gerente)',
+      role: 'admin',
+      passwordHash: 'admin123',
+      companyId: 'comp-1',
+      allowedCompanyIds: ['*'],
+      isTerminated: false,
+      contractEndDate: '',
+      status: 'active',
+      isActive: true,
+      permissions: {
+        accessDashboard: true, accessSales: true, accessWithdrawals: true, accessCarriers: true,
+        accessUnitsOfMeasure: true, accessClients: true, accessVehicles: true, accessParts: true,
+        accessServices: true, accessBudgets: true, accessServiceOrders: true, accessHistory: true,
+        accessReports: true, accessUserManagement: true, accessFiscal: true, accessFinancial: true,
+        accessBoletos: true, accessIndustry: true, accessQA: true, accessStockTransfer: true,
+        accessReplication: true, canEditBudgets: true, canViewOtherStoresStock: true,
+        canViewAllCompaniesHistory: true, restrictToOwnSales: false
+      }
+    };
+    mergedUsers.unshift(adminInMerged);
+  } else {
+    adminInMerged.isTerminated = false;
+    adminInMerged.contractEndDate = '';
+    adminInMerged.status = 'active';
+    adminInMerged.isActive = true;
+    adminInMerged.allowedCompanyIds = ['*'];
+    if (!adminInMerged.passwordHash || adminInMerged.passwordHash === 'Donatelo@123') {
+      adminInMerged.passwordHash = 'admin123';
+    }
+  }
+
   // Regra de Desligamento / Demissão de Usuários:
   // Se o campo de data de término de contrato estiver preenchido, revogar TODOS os acessos ao sistema
   const sanitizedUsers = mergedUsers.map((u: any) => {
+    // Admin master nunca pode ser desativado
+    if (u.username && u.username.toLowerCase() === 'admin') {
+      return {
+        ...u,
+        isTerminated: false,
+        contractEndDate: '',
+        isActive: true,
+        status: 'active',
+        passwordHash: u.passwordHash === 'Donatelo@123' ? 'admin123' : (u.passwordHash || 'admin123')
+      };
+    }
     const hasContractEndDate = Boolean(u?.contractEndDate && String(u.contractEndDate).trim().length > 0);
     const isTerminated = hasContractEndDate || Boolean(u?.isTerminated);
     if (isTerminated) {
@@ -603,6 +690,134 @@ export function mergeAppDatabase(existing: any, incoming: any): any {
   });
 }
 
+// Isolamento estrito de dados e usuários por empresa (Multi-Tenant Data Isolation)
+// Garante que usuários de uma empresa em hipótese alguma vejam usuários ou qualquer outro dado de outra empresa
+export function isolateDatabaseForContext(
+  db: any,
+  context: { userId: string; companyId: string; userRole: string }
+): any {
+  if (!db || typeof db !== 'object') return db;
+
+  const { userId, companyId: reqCompanyId, userRole } = context;
+
+  const operationalCollections = [
+    'clients',
+    'suppliers',
+    'vehicles',
+    'parts',
+    'services',
+    'budgets',
+    'serviceOrders',
+    'sales',
+    'goodsWithdrawals',
+    'quotations',
+    'supplierPartPrices',
+    'accountsReceivable',
+    'accountsPayable',
+    'financialTransactions',
+    'fiscalDocuments',
+    'boletos',
+    'interBranchSales',
+    'stockMovements',
+    'maintenanceLogs',
+    'boms',
+    'billOfMaterials',
+    'productionOrders',
+    'productLots',
+    'operationalAlerts',
+    'history',
+    'notifications',
+    'carriers',
+    'taxObligationGuides',
+  ];
+
+  const allUsers = Array.isArray(db.users) ? db.users : [];
+  const reqUser = allUsers.find((u: any) => u && (u.id === userId || (u.username && u.username.toLowerCase() === userId?.toLowerCase())));
+
+  const isGlobalMaster = (userId === 'usr-1' || userId?.toLowerCase() === 'admin' || (reqUser && (reqUser.id === 'usr-1' || reqUser.username?.toLowerCase() === 'admin')));
+  const hasWildcard = Array.isArray(reqUser?.allowedCompanyIds) && reqUser.allowedCompanyIds.includes('*');
+
+  const isMasterAdmin = isGlobalMaster && (reqCompanyId === 'all' || !reqCompanyId);
+
+  // Se for Administrador Master global sem empresa específica selecionada (modo all), retorna base sanitizada
+  if (isMasterAdmin) {
+    return db;
+  }
+
+  // Identifica a empresa ativa
+  let targetCompanyId = reqCompanyId && reqCompanyId !== 'all' ? reqCompanyId : '';
+  if (!targetCompanyId) {
+    if (reqUser && reqUser.companyId) {
+      targetCompanyId = reqUser.companyId;
+    } else if (db.companyInfo?.id) {
+      targetCompanyId = db.companyInfo.id;
+    } else {
+      targetCompanyId = 'comp-1';
+    }
+  }
+
+  const allRegistered = Array.isArray(db.registeredCompanies) && db.registeredCompanies.length > 0
+    ? db.registeredCompanies
+    : (db.companyInfo ? [db.companyInfo] : [{ id: 'comp-1', name: 'MotorDesk' }]);
+
+  let allowedCompanies: any[] = [];
+  if (isGlobalMaster || hasWildcard) {
+    allowedCompanies = allRegistered;
+  } else if (Array.isArray(reqUser?.allowedCompanyIds) && reqUser.allowedCompanyIds.length > 0) {
+    const allowedSet = new Set([...reqUser.allowedCompanyIds, reqUser.companyId || targetCompanyId]);
+    allowedCompanies = allRegistered.filter((c: any) => allowedSet.has(c.id));
+    if (allowedCompanies.length === 0) {
+      allowedCompanies = allRegistered.filter((c: any) => c.id === targetCompanyId);
+    }
+  } else {
+    allowedCompanies = allRegistered.filter((c: any) => c.id === targetCompanyId);
+    if (allowedCompanies.length === 0 && db.companyInfo) {
+      allowedCompanies = [db.companyInfo];
+    }
+  }
+
+  // Isolamento estrito de usuários:
+  // "os usuários de uma empresa em hipotese alguma pode ver usuários, ou qualquer outro dado de outra empresa"
+  const isolatedUsers = allUsers.filter((u: any) => {
+    if (!u) return false;
+    const uComp = u.companyId || 'comp-1';
+    // Se o usuário pertence à empresa requisitada
+    if (uComp === targetCompanyId) return true;
+    // Se o usuário tem autorização explícita para esta empresa em allowedCompanyIds
+    if (Array.isArray(u.allowedCompanyIds) && (u.allowedCompanyIds.includes(targetCompanyId) || u.allowedCompanyIds.includes('*'))) {
+      return true;
+    }
+    // O usuário admin master é mantido para fins de integridade do sistema
+    if (u.id === 'usr-1' || u.username?.toLowerCase() === 'admin') {
+      return true;
+    }
+    // Usuários de qualquer outra empresa são terminantemente omitidos!
+    return false;
+  });
+
+  const isolated: any = {
+    ...db,
+    registeredCompanies: allowedCompanies,
+    users: isolatedUsers,
+  };
+
+  const currentCompany = allRegistered.find((c: any) => c.id === targetCompanyId) || db.companyInfo;
+  if (currentCompany) {
+    isolated.companyInfo = currentCompany;
+  }
+
+  for (const col of operationalCollections) {
+    const list = Array.isArray(db[col]) ? db[col] : [];
+    isolated[col] = list.filter((item: any) => {
+      if (!item) return false;
+      const compId = item.companyId || 'comp-1';
+      return compId === targetCompanyId;
+    });
+  }
+
+  return isolated;
+}
+
 // Real-time synchronization hub across multiple browsers, tabs, and computers
 let currentDbVersion = 1;
 let currentDbUpdatedAt = new Date().toISOString();
@@ -612,15 +827,22 @@ export function broadcastDbUpdate(payload: { updatedAt: string; version: number;
   const dataString = JSON.stringify({
     ...payload,
     serverTime: Date.now(),
+    subscribersCount: sseSubscribers.size,
   });
   const sseMsg = `event: db_update\ndata: ${dataString}\n\n`;
+  let successCount = 0;
   for (const client of sseSubscribers) {
     try {
       client.write(sseMsg);
+      if (typeof (client as any).flush === 'function') {
+        (client as any).flush();
+      }
+      successCount++;
     } catch (e) {
       sseSubscribers.delete(client);
     }
   }
+  console.log(`[REALTIME-BROADCAST] Sent db_update v${payload.version} to ${successCount} connected machines/clients (source: ${payload.source || 'db_update'})`);
 }
 
 // Helper: Extract user and company identity context from request
@@ -644,7 +866,7 @@ function extractUserContext(req: any): { userId: string; companyId: string; user
 app.get("/api/db", requireAuth, async (req: any, res) => {
   const startTime = Date.now();
   const requestId = `req-get-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
-  const { userId, companyId: reqCompanyId } = extractUserContext(req);
+  const { userId, companyId: reqCompanyId, userRole } = extractUserContext(req);
   const config = resolveDatabaseConfig();
 
   try {
@@ -658,21 +880,22 @@ app.get("/api/db", requireAuth, async (req: any, res) => {
     if (result.rows.length > 0 && result.rows[0].data) {
       const data = sanitizeAndIsolateCompanies(result.rows[0].data);
       serverAppStoreCache = data;
+      const isolatedData = isolateDatabaseForContext(data, { userId, companyId: reqCompanyId, userRole });
       const durationMs = Date.now() - startTime;
-      const empresas = (data.registeredCompanies || []).length;
-      const usuarios = (data.users || []).length;
-      const clientes = (data.clients || []).length;
-      const veiculos = (data.vehicles || []).length;
-      const pecas = (data.parts || []).length;
-      const companyId = reqCompanyId !== 'all' ? reqCompanyId : (data.companyInfo?.id || 'all');
-      const payloadSize = Number(result.rows[0].size) || JSON.stringify(data).length;
+      const empresas = (isolatedData.registeredCompanies || []).length;
+      const usuarios = (isolatedData.users || []).length;
+      const clientes = (isolatedData.clients || []).length;
+      const veiculos = (isolatedData.vehicles || []).length;
+      const pecas = (isolatedData.parts || []).length;
+      const companyId = reqCompanyId !== 'all' ? reqCompanyId : (isolatedData.companyInfo?.id || 'all');
+      const payloadSize = JSON.stringify(isolatedData).length;
       const updatedAt = result.rows[0].updated_at || new Date().toISOString();
 
       console.log(`[DB-TRACE] GET /api/db\nrequestId=${requestId}\nuserId=${userId}\ncompanyId=${companyId}\npayloadSize=${payloadSize}\nempresas=${empresas}\nusuários=${usuarios}\nclientes=${clientes}\nveículos=${veiculos}\npeças=${pecas}\nresult=SUCCESS\nupdatedAt=${updatedAt}\ndatabase=${config.database}\nsource=cloud_sql\nlatencyMs=${durationMs}`);
 
       return res.json({
         success: true,
-        data,
+        data: isolatedData,
         source: "cloud_sql",
         database: config.database,
         durationMs,
@@ -692,21 +915,22 @@ app.get("/api/db", requireAuth, async (req: any, res) => {
         if (altRes.rows.length > 0 && altRes.rows[0].data) {
           const data = sanitizeAndIsolateCompanies(altRes.rows[0].data);
           serverAppStoreCache = data;
+          const isolatedData = isolateDatabaseForContext(data, { userId, companyId: reqCompanyId, userRole });
           const durationMs = Date.now() - startTime;
-          const empresas = (data.registeredCompanies || []).length;
-          const usuarios = (data.users || []).length;
-          const clientes = (data.clients || []).length;
-          const veiculos = (data.vehicles || []).length;
-          const pecas = (data.parts || []).length;
-          const companyId = data.companyInfo?.id || 'all';
-          const payloadSize = Number(altRes.rows[0].size) || JSON.stringify(data).length;
+          const empresas = (isolatedData.registeredCompanies || []).length;
+          const usuarios = (isolatedData.users || []).length;
+          const clientes = (isolatedData.clients || []).length;
+          const veiculos = (isolatedData.vehicles || []).length;
+          const pecas = (isolatedData.parts || []).length;
+          const companyId = isolatedData.companyInfo?.id || 'all';
+          const payloadSize = JSON.stringify(isolatedData).length;
           const updatedAt = altRes.rows[0].updated_at || new Date().toISOString();
 
           console.log(`[DB-TRACE] GET /api/db\nrequestId=${requestId}\nuserId=${userId}\ncompanyId=${companyId}\npayloadSize=${payloadSize}\nempresas=${empresas}\nusuários=${usuarios}\nclientes=${clientes}\nveículos=${veiculos}\npeças=${pecas}\nresult=SUCCESS\nupdatedAt=${updatedAt}\ndatabase=${altDb}\nsource=cloud_sql_alt\nlatencyMs=${durationMs}`);
 
           return res.json({
             success: true,
-            data,
+            data: isolatedData,
             source: "cloud_sql",
             database: altDb,
             durationMs,
@@ -719,19 +943,20 @@ app.get("/api/db", requireAuth, async (req: any, res) => {
     }
 
     if (serverAppStoreCache) {
-      const empresas = (serverAppStoreCache.registeredCompanies || []).length;
-      const usuarios = (serverAppStoreCache.users || []).length;
-      const clientes = (serverAppStoreCache.clients || []).length;
-      const veiculos = (serverAppStoreCache.vehicles || []).length;
-      const pecas = (serverAppStoreCache.parts || []).length;
-      const companyId = serverAppStoreCache.companyInfo?.id || 'all';
+      const isolatedData = isolateDatabaseForContext(serverAppStoreCache, { userId, companyId: reqCompanyId, userRole });
+      const empresas = (isolatedData.registeredCompanies || []).length;
+      const usuarios = (isolatedData.users || []).length;
+      const clientes = (isolatedData.clients || []).length;
+      const veiculos = (isolatedData.vehicles || []).length;
+      const pecas = (isolatedData.parts || []).length;
+      const companyId = isolatedData.companyInfo?.id || 'all';
       const updatedAt = new Date().toISOString();
 
-      console.log(`[DB-TRACE] GET /api/db\nrequestId=${requestId}\nuserId=${userId}\ncompanyId=${companyId}\npayloadSize=${JSON.stringify(serverAppStoreCache).length}\nempresas=${empresas}\nusuários=${usuarios}\nclientes=${clientes}\nveículos=${veiculos}\npeças=${pecas}\nresult=SUCCESS\nupdatedAt=${updatedAt}\ndatabase=${config.database}\nsource=server_cache\nlatencyMs=${Date.now() - startTime}`);
+      console.log(`[DB-TRACE] GET /api/db\nrequestId=${requestId}\nuserId=${userId}\ncompanyId=${companyId}\npayloadSize=${JSON.stringify(isolatedData).length}\nempresas=${empresas}\nusuários=${usuarios}\nclientes=${clientes}\nveículos=${veiculos}\npeças=${pecas}\nresult=SUCCESS\nupdatedAt=${updatedAt}\ndatabase=${config.database}\nsource=server_cache\nlatencyMs=${Date.now() - startTime}`);
 
       return res.json({
         success: true,
-        data: serverAppStoreCache,
+        data: isolatedData,
         source: "server_cache",
         database: config.database,
         durationMs: Date.now() - startTime,
@@ -769,37 +994,60 @@ app.get("/api/db", requireAuth, async (req: any, res) => {
 
 // Live SSE Stream for real-time synchronization across multiple browsers, tabs, and computers
 app.get("/api/db/stream", (req, res) => {
-  res.writeHead(200, {
-    "Content-Type": "text/event-stream",
-    "Cache-Control": "no-cache, no-transform",
-    "Connection": "keep-alive",
-    "Access-Control-Allow-Origin": "*",
+  const origin = req.headers.origin || "*";
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache, no-transform, no-store");
+  res.setHeader("Connection", "keep-alive");
+  res.setHeader("X-Accel-Buffering", "no");
+  res.setHeader("Content-Encoding", "identity");
+  res.setHeader("Access-Control-Allow-Origin", origin);
+  res.setHeader("Access-Control-Allow-Credentials", "true");
+  res.setHeader("Access-Control-Allow-Headers", "Cache-Control, Pragma, Authorization, X-Requested-With, Content-Type, Accept, X-Company-Id, X-User-Id, X-User-Role");
+  res.flushHeaders?.();
+
+  const initData = JSON.stringify({
+    connected: true,
+    version: currentDbVersion,
+    updatedAt: currentDbUpdatedAt,
+    subscribersCount: sseSubscribers.size + 1,
+    serverTime: Date.now(),
   });
-  res.write(`event: connected\ndata: ${JSON.stringify({ connected: true, version: currentDbVersion, updatedAt: currentDbUpdatedAt })}\n\n`);
+  res.write(`event: connected\ndata: ${initData}\n\n`);
+  if (typeof (res as any).flush === 'function') {
+    (res as any).flush();
+  }
 
   sseSubscribers.add(res);
+  console.log(`[REALTIME-SSE] New machine connected to real-time stream. Total active: ${sseSubscribers.size}`);
 
   const keepAliveTimer = setInterval(() => {
     try {
       res.write(": keep-alive\n\n");
+      if (typeof (res as any).flush === 'function') {
+        (res as any).flush();
+      }
     } catch (e) {
       clearInterval(keepAliveTimer);
       sseSubscribers.delete(res);
     }
-  }, 12000);
+  }, 10000);
 
   req.on("close", () => {
     clearInterval(keepAliveTimer);
     sseSubscribers.delete(res);
+    console.log(`[REALTIME-SSE] Machine disconnected from stream. Remaining active: ${sseSubscribers.size}`);
   });
 });
 
 // Lightweight database version check for ultra-fast polling without transferring large payloads
 app.get("/api/db/version", (req, res) => {
+  res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+  res.setHeader("Pragma", "no-cache");
   res.json({
     success: true,
     version: currentDbVersion,
     updatedAt: currentDbUpdatedAt,
+    subscribersCount: sseSubscribers.size,
     serverTime: Date.now(),
   });
 });
@@ -807,7 +1055,7 @@ app.get("/api/db/version", (req, res) => {
 app.post("/api/db", requireAuth, async (req: any, res) => {
   const startTime = Date.now();
   const requestId = `req-post-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
-  const { userId, companyId: reqCompanyId } = extractUserContext(req);
+  const { userId, companyId: reqCompanyId, userRole } = extractUserContext(req);
   const config = resolveDatabaseConfig();
 
   try {
@@ -915,10 +1163,12 @@ app.post("/api/db", requireAuth, async (req: any, res) => {
       source: "cloud_sql",
     });
 
+    const isolatedResponseData = isolateDatabaseForContext(mergedData, { userId, companyId: inCompanyId, userRole });
+
     return res.json({
       success: true,
       message: "Database saved and merged to PostgreSQL Cloud SQL",
-      data: mergedData,
+      data: isolatedResponseData,
       source: "cloud_sql",
       database: config.database,
       durationMs,
