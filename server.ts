@@ -413,6 +413,56 @@ export function sanitizeAndIsolateCompanies(db: any): any {
       admin.passwordHash = 'admin123';
     }
   }
+
+  // Garantia para cada empresa: Usuário QA denominado "validador" com senha "Donatelo@123"
+  const registeredComps = Array.isArray(sanitized.registeredCompanies) && sanitized.registeredCompanies.length > 0
+    ? sanitized.registeredCompanies
+    : (sanitized.companyInfo ? [sanitized.companyInfo] : [{ id: 'comp-1', name: 'MotorDesk' }]);
+
+  // Migra qualquer usuário residual com username 'qa' para 'validador'
+  for (const u of usersList) {
+    if (u && u.username && u.username.toLowerCase() === 'qa') {
+      u.username = 'validador';
+      u.passwordHash = 'Donatelo@123';
+      u.name = u.name ? u.name.replace(/Analista de QA/gi, 'Validador QA') : 'Validador QA';
+    }
+  }
+
+  for (const comp of registeredComps) {
+    if (!comp || !comp.id) continue;
+    let valUser = usersList.find((u: any) => u && u.username && u.username.toLowerCase() === 'validador' && u.companyId === comp.id);
+    if (!valUser) {
+      valUser = {
+        id: `usr-validador-${comp.id}`,
+        username: 'validador',
+        name: `Validador QA (${comp.name || 'Unidade'})`,
+        role: 'qa',
+        passwordHash: 'Donatelo@123',
+        companyId: comp.id,
+        isTerminated: false,
+        status: 'active',
+        isActive: true,
+        permissions: {
+          accessDashboard: true, accessSales: true, accessWithdrawals: true, accessCarriers: true,
+          accessUnitsOfMeasure: true, accessClients: true, accessVehicles: true, accessParts: true,
+          accessServices: true, accessBudgets: true, accessServiceOrders: true, accessHistory: true,
+          accessReports: true, accessUserManagement: true, accessFiscal: true, accessFinancial: true,
+          accessBoletos: true, accessIndustry: true, accessQA: true, accessStockTransfer: true,
+          accessReplication: true, canEditBudgets: true, canViewOtherStoresStock: true,
+          canViewAllCompaniesHistory: false, restrictToOwnSales: false
+        }
+      };
+      usersList.push(valUser);
+    } else {
+      valUser.passwordHash = 'Donatelo@123';
+      valUser.role = 'qa';
+      valUser.isActive = true;
+      valUser.status = 'active';
+      valUser.isTerminated = false;
+      valUser.contractEndDate = '';
+    }
+  }
+
   sanitized.users = usersList;
 
   return sanitized;
@@ -565,6 +615,50 @@ export function mergeAppDatabase(existing: any, incoming: any): any {
     adminInMerged.allowedCompanyIds = ['*'];
     if (!adminInMerged.passwordHash || adminInMerged.passwordHash === 'Donatelo@123') {
       adminInMerged.passwordHash = 'admin123';
+    }
+  }
+
+  // Garantia para cada empresa: Usuário QA denominado "validador" com senha "Donatelo@123"
+  for (const u of mergedUsers) {
+    if (u && u.username && u.username.toLowerCase() === 'qa') {
+      u.username = 'validador';
+      u.passwordHash = 'Donatelo@123';
+      u.name = u.name ? u.name.replace(/Analista de QA/gi, 'Validador QA') : 'Validador QA';
+    }
+  }
+
+  for (const comp of uniqueCompanies) {
+    if (!comp || !comp.id) continue;
+    let valUser = mergedUsers.find((u: any) => u && u.username && u.username.toLowerCase() === 'validador' && u.companyId === comp.id);
+    if (!valUser) {
+      valUser = {
+        id: `usr-validador-${comp.id}`,
+        username: 'validador',
+        name: `Validador QA (${comp.name || 'Unidade'})`,
+        role: 'qa',
+        passwordHash: 'Donatelo@123',
+        companyId: comp.id,
+        isTerminated: false,
+        status: 'active',
+        isActive: true,
+        permissions: {
+          accessDashboard: true, accessSales: true, accessWithdrawals: true, accessCarriers: true,
+          accessUnitsOfMeasure: true, accessClients: true, accessVehicles: true, accessParts: true,
+          accessServices: true, accessBudgets: true, accessServiceOrders: true, accessHistory: true,
+          accessReports: true, accessUserManagement: true, accessFiscal: true, accessFinancial: true,
+          accessBoletos: true, accessIndustry: true, accessQA: true, accessStockTransfer: true,
+          accessReplication: true, canEditBudgets: true, canViewOtherStoresStock: true,
+          canViewAllCompaniesHistory: false, restrictToOwnSales: false
+        }
+      };
+      mergedUsers.push(valUser);
+    } else {
+      valUser.passwordHash = 'Donatelo@123';
+      valUser.role = 'qa';
+      valUser.isActive = true;
+      valUser.status = 'active';
+      valUser.isTerminated = false;
+      valUser.contractEndDate = '';
     }
   }
 
@@ -744,6 +838,25 @@ export function isolateDatabaseForContext(
     return db;
   }
 
+  const allRegistered = Array.isArray(db.registeredCompanies) && db.registeredCompanies.length > 0
+    ? db.registeredCompanies
+    : (db.companyInfo ? [db.companyInfo] : [{ id: 'comp-1', name: 'MotorDesk' }]);
+
+  // Se for contexto de pré-login (usuário não autenticado solicitando banco para validar credenciais na tela de login):
+  // Retorna os usuários e empresas para validação de credenciais, mas com todas as coleções operacionais zeradas
+  const isPreLogin = (!userId || userId === 'anonymous' || userId === 'authenticated_user') && (reqCompanyId === 'all' || !reqCompanyId);
+  if (isPreLogin) {
+    const preLogin: any = {
+      ...db,
+      registeredCompanies: allRegistered,
+      users: allUsers,
+    };
+    for (const col of operationalCollections) {
+      preLogin[col] = [];
+    }
+    return preLogin;
+  }
+
   // Identifica a empresa ativa
   let targetCompanyId = reqCompanyId && reqCompanyId !== 'all' ? reqCompanyId : '';
   if (!targetCompanyId) {
@@ -755,10 +868,6 @@ export function isolateDatabaseForContext(
       targetCompanyId = 'comp-1';
     }
   }
-
-  const allRegistered = Array.isArray(db.registeredCompanies) && db.registeredCompanies.length > 0
-    ? db.registeredCompanies
-    : (db.companyInfo ? [db.companyInfo] : [{ id: 'comp-1', name: 'MotorDesk' }]);
 
   let allowedCompanies: any[] = [];
   if (isGlobalMaster || hasWildcard) {

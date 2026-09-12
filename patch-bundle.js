@@ -123,15 +123,28 @@ if (code.includes(logoutSearch)) {
   console.warn('[PATCH] 10. logoutSearch string not found or already patched.');
 }
 
-// 11. Login Company Selector: exibir seletor quando usuário tiver acesso a mais de uma empresa ou for admin
-const ftSearch = `Ft=$o.useMemo(()=>{if(!e)return[];const ft=[];e.registeredCompanies&&e.registeredCompanies.length>0?ft.push(...e.registeredCompanies):e.companyInfo&&ft.push(e.companyInfo);const yt=o.trim().toLowerCase();if(!yt)return[];const Dt=(e.users||[]).filter(Vt=>Vt.username.toLowerCase()===yt);if(Dt.length===0)return[];const Zt=new Set;return Dt.forEach(Vt=>{Vt.companyId&&Zt.add(Vt.companyId),Array.isArray(Vt.allowedCompanyIds)&&Vt.allowedCompanyIds.forEach(ga=>Zt.add(ga))}),Zt.size===0&&Zt.add("comp-1"),ft.filter(Vt=>Zt.has(Vt.id))},[e,o]);`;
-const ftReplace = `Ft=$o.useMemo(()=>{if(!e)return[];const ft=[];e.registeredCompanies&&e.registeredCompanies.length>0?ft.push(...e.registeredCompanies):e.companyInfo&&ft.push(e.companyInfo);const yt=o.trim().toLowerCase();if(!yt)return ft;const Dt=(e.users||[]).filter(Vt=>Vt.username&&Vt.username.toLowerCase()===yt);if(yt==="admin"||Dt.some(Vt=>Vt.role==="admin"||(Array.isArray(Vt.allowedCompanyIds)&&Vt.allowedCompanyIds.includes("*"))))return ft;if(Dt.length===0)return ft;const Zt=new Set;Dt.forEach(Vt=>{Vt.companyId&&Zt.add(Vt.companyId),Array.isArray(Vt.allowedCompanyIds)&&Vt.allowedCompanyIds.forEach(ga=>Zt.add(ga))});const matching=ft.filter(Vt=>Zt.has(Vt.id));return matching.length>0?matching:ft},[e,o]);`;
+// 11. Login Company Selector: NÃO exibir lista de empresas antes de informar o usuário. Ao informar o usuário, apresentar SOMENTE as empresas às quais o usuário está vinculado.
+const ftSearchCandidates = [
+  `Ft=$o.useMemo(()=>{if(!e)return[];const ft=[];e.registeredCompanies&&e.registeredCompanies.length>0?ft.push(...e.registeredCompanies):e.companyInfo&&ft.push(e.companyInfo);const yt=o.trim().toLowerCase();if(!yt)return ft;const Dt=(e.users||[]).filter(Vt=>Vt.username&&Vt.username.toLowerCase()===yt);if(yt==="admin"||Dt.some(Vt=>Vt.role==="admin"||(Array.isArray(Vt.allowedCompanyIds)&&Vt.allowedCompanyIds.includes("*"))))return ft;if(Dt.length===0)return ft;const Zt=new Set;Dt.forEach(Vt=>{Vt.companyId&&Zt.add(Vt.companyId),Array.isArray(Vt.allowedCompanyIds)&&Vt.allowedCompanyIds.forEach(ga=>Zt.add(ga))});const matching=ft.filter(Vt=>Zt.has(Vt.id));return matching.length>0?matching:ft},[e,o]);`,
+  `Ft=$o.useMemo(()=>{if(!e)return[];const ft=[];e.registeredCompanies&&e.registeredCompanies.length>0?ft.push(...e.registeredCompanies):e.companyInfo&&ft.push(e.companyInfo);const yt=o.trim().toLowerCase();if(!yt)return[];const Dt=(e.users||[]).filter(Vt=>Vt.username.toLowerCase()===yt);if(Dt.length===0)return[];const Zt=new Set;return Dt.forEach(Vt=>{Vt.companyId&&Zt.add(Vt.companyId),Array.isArray(Vt.allowedCompanyIds)&&Vt.allowedCompanyIds.forEach(ga=>Zt.add(ga))}),Zt.size===0&&Zt.add("comp-1"),ft.filter(Vt=>Zt.has(Vt.id))},[e,o]);`
+];
+const ftReplace = `Ft=$o.useMemo(()=>{if(!e)return[];const ft=[];e.registeredCompanies&&e.registeredCompanies.length>0?ft.push(...e.registeredCompanies):e.companyInfo&&ft.push(e.companyInfo);const yt=o.trim().toLowerCase();if(!yt)return[];const Dt=(e.users||[]).filter(Vt=>Vt.username&&Vt.username.toLowerCase()===yt);if(Dt.length===0&&yt!=="admin")return[];if(yt==="admin"||Dt.some(Vt=>Vt.role==="admin"||(Array.isArray(Vt.allowedCompanyIds)&&Vt.allowedCompanyIds.includes("*"))))return ft;const Zt=new Set;Dt.forEach(Vt=>{Vt.companyId&&Zt.add(Vt.companyId),Array.isArray(Vt.allowedCompanyIds)&&Vt.allowedCompanyIds.forEach(ga=>Zt.add(ga))});return ft.filter(Vt=>Zt.has(Vt.id))},[e,o]);`;
 
-if (code.includes(ftSearch)) {
-  code = code.replace(ftSearch, ftReplace);
-  console.log('[PATCH] 11. Login company selector Ft patched successfully.');
-} else {
-  console.warn('[PATCH] 11. ftSearch string not found or already patched.');
+let ftPatched = false;
+for (const cand of ftSearchCandidates) {
+  if (code.includes(cand)) {
+    code = code.replace(cand, ftReplace);
+    ftPatched = true;
+    console.log('[PATCH] 11. Login company selector Ft patched: companies only appear when user is entered.');
+    break;
+  }
+}
+if (!ftPatched) {
+  if (code.includes(ftReplace)) {
+    console.log('[PATCH] 11. Login company selector Ft already correctly patched.');
+  } else {
+    console.warn('[PATCH] 11. ftSearch candidate strings not found.');
+  }
 }
 
 // 12. Dashboard Header Company Switcher: exibir todas as empresas autorizadas (ou todas se for admin)
@@ -154,6 +167,28 @@ if (code.includes(soeSearch)) {
   console.log('[PATCH] 13. Strict User and Company isolation in SOe patched successfully.');
 } else {
   console.warn('[PATCH] 13. soeSearch string not found or already patched.');
+}
+
+// 14. Criação de nova empresa: Não gerar usuários redundantes; somente criar usuário QA: validador com senha Donatelo@123
+const newCompUsersSearch = `lUserPrice:29.9,baseUsersIncluded:5,enableWithdrawalAndDelivery:le,levelPermissions:Ym,globalModules:rv(Q)},nr=[...N,Ga],Hs=KA(rv(Q),"admin"),Fo={id:\`usr-qa-\${Date.now()}\`,username:"qa",name:\`Analista de QA (\${Ga.name})\`,role:"qa",passwordHash:"qa123",companyId:Ut,permissions:Hs},Tn={id:\`usr-adm-\${Date.now()}\`,username:"admin",name:\`Administrador (\${Ga.name})\`,role:"admin",passwordHash:"admin123",companyId:Ut,permissions:Hs},$l=[Fo,Tn];if(console.log(\`[TRACE-PERSISTENCE] COMPANY CREATE: id=\${Ga.id}, name=\${Ga.name}, cnpj=\${Ga.cnpj}, type=\${Ga.companyType}\`),n)n(nr,Ut,$l);else{const ld=[...e.users||[],...$l];s(ld)}i("system",\`Nova Empresa Cadastrada: \${Ga.name}\`,\`Nova empresa contratante "\${Ga.name}" (CNPJ \${Ga.cnpj}) foi cadastrada. Usuários @admin (senha 'admin123') e @qa (senha 'qa123') criados com acesso master liberado.\`,"","")`;
+const newCompUsersReplace = `lUserPrice:29.9,baseUsersIncluded:5,enableWithdrawalAndDelivery:le,levelPermissions:Ym,globalModules:rv(Q)},nr=[...N,Ga],Hs=KA(rv(Q),"admin"),Fo={id:\`usr-validador-\${Date.now()}\`,username:"validador",name:\`Validador QA (\${Ga.name})\`,role:"qa",passwordHash:"Donatelo@123",companyId:Ut,permissions:Hs,status:"active",isActive:!0},$l=[Fo];if(console.log(\`[TRACE-PERSISTENCE] COMPANY CREATE: id=\${Ga.id}, name=\${Ga.name}, cnpj=\${Ga.cnpj}, type=\${Ga.companyType}\`),n)n(nr,Ut,$l);else{const ld=[...e.users||[],...$l];s(ld)}i("system",\`Nova Empresa Cadastrada: \${Ga.name}\`,\`Nova empresa contratante "\${Ga.name}" (CNPJ \${Ga.cnpj}) cadastrada com dados zerados. Usuário QA @validador (senha 'Donatelo@123') criado com acesso liberado.\`,"","")`;
+
+if (code.includes(newCompUsersSearch)) {
+  code = code.replace(newCompUsersSearch, newCompUsersReplace);
+  console.log('[PATCH] 14. Company creation: only QA user validador with Donatelo@123 patched successfully.');
+} else {
+  console.warn('[PATCH] 14. newCompUsersSearch string not found or already patched.');
+}
+
+// 15. QA Panel: Empresa rápida somente com usuário QA validador com senha Donatelo@123
+const qaPanelUserSearch = `He={id:\`usr-qa-\${Date.now()}\`,username:"qa",name:\`Analista de QA (\${Le.name})\`,role:"qa",passwordHash:"qa123",companyId:At,permissions:{accessDashboard:!0,accessSales:!0,accessClients:!0,accessVehicles:!0,accessParts:!0,accessServices:!0,accessBudgets:!0,accessServiceOrders:!0,accessHistory:!0,accessReports:!0,accessUserManagement:!0,accessQAPanel:!0,accessQuotations:!0,accessNotifications:!0,accessAccountsReceivable:!0,accessAccountsPayable:!0,accessFinancial:!0,accessFiscal:!0,canEditBudgets:!0}}`;
+const qaPanelUserReplace = `He={id:\`usr-validador-\${Date.now()}\`,username:"validador",name:\`Validador QA (\${Le.name})\`,role:"qa",passwordHash:"Donatelo@123",companyId:At,status:"active",isActive:!0,permissions:{accessDashboard:!0,accessSales:!0,accessClients:!0,accessVehicles:!0,accessParts:!0,accessServices:!0,accessBudgets:!0,accessServiceOrders:!0,accessHistory:!0,accessReports:!0,accessUserManagement:!0,accessQAPanel:!0,accessQuotations:!0,accessNotifications:!0,accessAccountsReceivable:!0,accessAccountsPayable:!0,accessFinancial:!0,accessFiscal:!0,canEditBudgets:!0}}`;
+
+if (code.includes(qaPanelUserSearch)) {
+  code = code.replace(qaPanelUserSearch, qaPanelUserReplace);
+  console.log('[PATCH] 15. QA Panel test company user validador patched successfully.');
+} else {
+  console.warn('[PATCH] 15. qaPanelUserSearch string not found or already patched.');
 }
 
 fs.writeFileSync(bundlePath, code, 'utf8');
