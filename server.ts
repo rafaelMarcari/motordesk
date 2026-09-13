@@ -387,7 +387,7 @@ export function sanitizeAndIsolateCompanies(db: any): any {
       role: 'admin',
       passwordHash: 'admin123',
       companyId: 'comp-1',
-      allowedCompanyIds: ['*'],
+      allowedCompanyIds: ['comp-1'],
       isTerminated: false,
       contractEndDate: '',
       status: 'active',
@@ -399,7 +399,7 @@ export function sanitizeAndIsolateCompanies(db: any): any {
         accessReports: true, accessUserManagement: true, accessFiscal: true, accessFinancial: true,
         accessBoletos: true, accessIndustry: true, accessQA: true, accessStockTransfer: true,
         accessReplication: true, canEditBudgets: true, canViewOtherStoresStock: true,
-        canViewAllCompaniesHistory: true, restrictToOwnSales: false
+        canViewAllCompaniesHistory: false, restrictToOwnSales: false
       }
     };
     usersList.unshift(admin);
@@ -408,7 +408,10 @@ export function sanitizeAndIsolateCompanies(db: any): any {
     admin.contractEndDate = '';
     admin.status = 'active';
     admin.isActive = true;
-    admin.allowedCompanyIds = ['*'];
+    admin.companyId = admin.companyId || 'comp-1';
+    admin.allowedCompanyIds = Array.isArray(admin.allowedCompanyIds) && !admin.allowedCompanyIds.includes('*')
+      ? admin.allowedCompanyIds
+      : [admin.companyId];
     if (!admin.passwordHash || admin.passwordHash === 'Donatelo@123') {
       admin.passwordHash = 'admin123';
     }
@@ -591,7 +594,7 @@ export function mergeAppDatabase(existing: any, incoming: any): any {
       role: 'admin',
       passwordHash: 'admin123',
       companyId: 'comp-1',
-      allowedCompanyIds: ['*'],
+      allowedCompanyIds: ['comp-1'],
       isTerminated: false,
       contractEndDate: '',
       status: 'active',
@@ -603,7 +606,7 @@ export function mergeAppDatabase(existing: any, incoming: any): any {
         accessReports: true, accessUserManagement: true, accessFiscal: true, accessFinancial: true,
         accessBoletos: true, accessIndustry: true, accessQA: true, accessStockTransfer: true,
         accessReplication: true, canEditBudgets: true, canViewOtherStoresStock: true,
-        canViewAllCompaniesHistory: true, restrictToOwnSales: false
+        canViewAllCompaniesHistory: false, restrictToOwnSales: false
       }
     };
     mergedUsers.unshift(adminInMerged);
@@ -612,7 +615,10 @@ export function mergeAppDatabase(existing: any, incoming: any): any {
     adminInMerged.contractEndDate = '';
     adminInMerged.status = 'active';
     adminInMerged.isActive = true;
-    adminInMerged.allowedCompanyIds = ['*'];
+    adminInMerged.companyId = adminInMerged.companyId || 'comp-1';
+    adminInMerged.allowedCompanyIds = Array.isArray(adminInMerged.allowedCompanyIds) && !adminInMerged.allowedCompanyIds.includes('*')
+      ? adminInMerged.allowedCompanyIds
+      : [adminInMerged.companyId];
     if (!adminInMerged.passwordHash || adminInMerged.passwordHash === 'Donatelo@123') {
       adminInMerged.passwordHash = 'admin123';
     }
@@ -828,9 +834,8 @@ export function isolateDatabaseForContext(
   const allUsers = Array.isArray(db.users) ? db.users : [];
   const reqUser = allUsers.find((u: any) => u && (u.id === userId || (u.username && u.username.toLowerCase() === userId?.toLowerCase())));
 
-  const isGlobalMaster = (userId === 'usr-1' || userId?.toLowerCase() === 'admin' || (reqUser && (reqUser.id === 'usr-1' || reqUser.username?.toLowerCase() === 'admin')));
   const hasWildcard = Array.isArray(reqUser?.allowedCompanyIds) && reqUser.allowedCompanyIds.includes('*');
-
+  const isGlobalMaster = hasWildcard;
   const isMasterAdmin = isGlobalMaster && (reqCompanyId === 'all' || !reqCompanyId);
 
   // Se for Administrador Master global sem empresa específica selecionada (modo all), retorna base sanitizada
@@ -870,7 +875,7 @@ export function isolateDatabaseForContext(
   }
 
   let allowedCompanies: any[] = [];
-  if (isGlobalMaster || hasWildcard) {
+  if (hasWildcard) {
     allowedCompanies = allRegistered;
   } else if (Array.isArray(reqUser?.allowedCompanyIds) && reqUser.allowedCompanyIds.length > 0) {
     const allowedSet = new Set([...reqUser.allowedCompanyIds, reqUser.companyId || targetCompanyId]);
@@ -878,6 +883,8 @@ export function isolateDatabaseForContext(
     if (allowedCompanies.length === 0) {
       allowedCompanies = allRegistered.filter((c: any) => c.id === targetCompanyId);
     }
+  } else if (reqUser?.companyId) {
+    allowedCompanies = allRegistered.filter((c: any) => c.id === reqUser.companyId);
   } else {
     allowedCompanies = allRegistered.filter((c: any) => c.id === targetCompanyId);
     if (allowedCompanies.length === 0 && db.companyInfo) {
@@ -894,10 +901,6 @@ export function isolateDatabaseForContext(
     if (uComp === targetCompanyId) return true;
     // Se o usuário tem autorização explícita para esta empresa em allowedCompanyIds
     if (Array.isArray(u.allowedCompanyIds) && (u.allowedCompanyIds.includes(targetCompanyId) || u.allowedCompanyIds.includes('*'))) {
-      return true;
-    }
-    // O usuário admin master é mantido para fins de integridade do sistema
-    if (u.id === 'usr-1' || u.username?.toLowerCase() === 'admin') {
       return true;
     }
     // Usuários de qualquer outra empresa são terminantemente omitidos!

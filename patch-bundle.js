@@ -125,17 +125,18 @@ if (code.includes(logoutSearch)) {
 
 // 11. Login Company Selector: NÃO exibir lista de empresas antes de informar o usuário. Ao informar o usuário, apresentar SOMENTE as empresas às quais o usuário está vinculado.
 const ftSearchCandidates = [
+  `Ft=$o.useMemo(()=>{if(!e)return[];const ft=[];e.registeredCompanies&&e.registeredCompanies.length>0?ft.push(...e.registeredCompanies):e.companyInfo&&ft.push(e.companyInfo);const yt=o.trim().toLowerCase();if(!yt)return[];const Dt=(e.users||[]).filter(Vt=>Vt.username&&Vt.username.toLowerCase()===yt);if(Dt.length===0&&yt!=="admin")return[];if(yt==="admin"||Dt.some(Vt=>Vt.role==="admin"||(Array.isArray(Vt.allowedCompanyIds)&&Vt.allowedCompanyIds.includes("*"))))return ft;const Zt=new Set;Dt.forEach(Vt=>{Vt.companyId&&Zt.add(Vt.companyId),Array.isArray(Vt.allowedCompanyIds)&&Vt.allowedCompanyIds.forEach(ga=>Zt.add(ga))});return ft.filter(Vt=>Zt.has(Vt.id))},[e,o]);`,
   `Ft=$o.useMemo(()=>{if(!e)return[];const ft=[];e.registeredCompanies&&e.registeredCompanies.length>0?ft.push(...e.registeredCompanies):e.companyInfo&&ft.push(e.companyInfo);const yt=o.trim().toLowerCase();if(!yt)return ft;const Dt=(e.users||[]).filter(Vt=>Vt.username&&Vt.username.toLowerCase()===yt);if(yt==="admin"||Dt.some(Vt=>Vt.role==="admin"||(Array.isArray(Vt.allowedCompanyIds)&&Vt.allowedCompanyIds.includes("*"))))return ft;if(Dt.length===0)return ft;const Zt=new Set;Dt.forEach(Vt=>{Vt.companyId&&Zt.add(Vt.companyId),Array.isArray(Vt.allowedCompanyIds)&&Vt.allowedCompanyIds.forEach(ga=>Zt.add(ga))});const matching=ft.filter(Vt=>Zt.has(Vt.id));return matching.length>0?matching:ft},[e,o]);`,
   `Ft=$o.useMemo(()=>{if(!e)return[];const ft=[];e.registeredCompanies&&e.registeredCompanies.length>0?ft.push(...e.registeredCompanies):e.companyInfo&&ft.push(e.companyInfo);const yt=o.trim().toLowerCase();if(!yt)return[];const Dt=(e.users||[]).filter(Vt=>Vt.username.toLowerCase()===yt);if(Dt.length===0)return[];const Zt=new Set;return Dt.forEach(Vt=>{Vt.companyId&&Zt.add(Vt.companyId),Array.isArray(Vt.allowedCompanyIds)&&Vt.allowedCompanyIds.forEach(ga=>Zt.add(ga))}),Zt.size===0&&Zt.add("comp-1"),ft.filter(Vt=>Zt.has(Vt.id))},[e,o]);`
 ];
-const ftReplace = `Ft=$o.useMemo(()=>{if(!e)return[];const ft=[];e.registeredCompanies&&e.registeredCompanies.length>0?ft.push(...e.registeredCompanies):e.companyInfo&&ft.push(e.companyInfo);const yt=o.trim().toLowerCase();if(!yt)return[];const Dt=(e.users||[]).filter(Vt=>Vt.username&&Vt.username.toLowerCase()===yt);if(Dt.length===0&&yt!=="admin")return[];if(yt==="admin"||Dt.some(Vt=>Vt.role==="admin"||(Array.isArray(Vt.allowedCompanyIds)&&Vt.allowedCompanyIds.includes("*"))))return ft;const Zt=new Set;Dt.forEach(Vt=>{Vt.companyId&&Zt.add(Vt.companyId),Array.isArray(Vt.allowedCompanyIds)&&Vt.allowedCompanyIds.forEach(ga=>Zt.add(ga))});return ft.filter(Vt=>Zt.has(Vt.id))},[e,o]);`;
+const ftReplace = `Ft=$o.useMemo(()=>{if(!e)return[];const ft=[];e.registeredCompanies&&e.registeredCompanies.length>0?ft.push(...e.registeredCompanies):e.companyInfo&&ft.push(e.companyInfo);const yt=o.trim().toLowerCase();if(!yt)return[];const Dt=(e.users||[]).filter(Vt=>Vt.username&&Vt.username.toLowerCase()===yt);if(Dt.length===0)return[];if(Dt.some(Vt=>Array.isArray(Vt.allowedCompanyIds)&&Vt.allowedCompanyIds.includes("*")))return ft;const Zt=new Set;Dt.forEach(Vt=>{Vt.companyId&&Zt.add(Vt.companyId),Array.isArray(Vt.allowedCompanyIds)&&Vt.allowedCompanyIds.forEach(ga=>Zt.add(ga))});return ft.filter(Vt=>Zt.has(Vt.id))},[e,o]);`;
 
 let ftPatched = false;
 for (const cand of ftSearchCandidates) {
   if (code.includes(cand)) {
     code = code.replace(cand, ftReplace);
     ftPatched = true;
-    console.log('[PATCH] 11. Login company selector Ft patched: companies only appear when user is entered.');
+    console.log('[PATCH] 11. Login company selector Ft patched: companies only appear for linked users.');
     break;
   }
 }
@@ -147,15 +148,28 @@ if (!ftPatched) {
   }
 }
 
-// 12. Dashboard Header Company Switcher: exibir todas as empresas autorizadas (ou todas se for admin)
-const ktSearch = `const Kt=$o.useMemo(()=>{const ft=e!=null&&e.registeredCompanies&&e.registeredCompanies.length>0?e.registeredCompanies:[(e==null?void 0:e.companyInfo)||{id:"comp-1",name:"MotorDesk",cnpj:"",phone:"",whatsapp:"",email:"",address:"",welcomeMessage:"",registeredAt:""}];if(!n)return ft;if(n.allowedCompanyIds&&n.allowedCompanyIds.length>0)return n.allowedCompanyIds.includes("*")?ft:ft.filter(Dt=>{var Zt;return(Zt=n.allowedCompanyIds)==null?void 0:Zt.includes(Dt.id)});const yt=n.companyId||"comp-1";return ft.filter(Dt=>Dt.id===yt)},[e==null?void 0:e.registeredCompanies,e==null?void 0:e.companyInfo,n])`;
-const ktReplace = `const Kt=$o.useMemo(()=>{const ft=e!=null&&e.registeredCompanies&&e.registeredCompanies.length>0?e.registeredCompanies:[(e==null?void 0:e.companyInfo)||{id:"comp-1",name:"MotorDesk",cnpj:"",phone:"",whatsapp:"",email:"",address:"",welcomeMessage:"",registeredAt:""}];if(!n)return ft;if(n.role==="admin"||(n.username&&n.username.toLowerCase()==="admin")||(Array.isArray(n.allowedCompanyIds)&&n.allowedCompanyIds.includes("*")))return ft;if(Array.isArray(n.allowedCompanyIds)&&n.allowedCompanyIds.length>0){const st=new Set([...n.allowedCompanyIds,n.companyId].filter(Boolean));return ft.filter(Dt=>st.has(Dt.id))}const yt=n.companyId||"comp-1";return ft.filter(Dt=>Dt.id===yt)},[e==null?void 0:e.registeredCompanies,e==null?void 0:e.companyInfo,n])`;
+// 12. Dashboard Header Company Switcher: exibir somente empresas autorizadas para o usuário ativo
+const ktSearchCandidates = [
+  `const Kt=$o.useMemo(()=>{const ft=e!=null&&e.registeredCompanies&&e.registeredCompanies.length>0?e.registeredCompanies:[(e==null?void 0:e.companyInfo)||{id:"comp-1",name:"MotorDesk",cnpj:"",phone:"",whatsapp:"",email:"",address:"",welcomeMessage:"",registeredAt:""}];if(!n)return ft;if(n.role==="admin"||(n.username&&n.username.toLowerCase()==="admin")||(Array.isArray(n.allowedCompanyIds)&&n.allowedCompanyIds.includes("*")))return ft;if(Array.isArray(n.allowedCompanyIds)&&n.allowedCompanyIds.length>0){const st=new Set([...n.allowedCompanyIds,n.companyId].filter(Boolean));return ft.filter(Dt=>st.has(Dt.id))}const yt=n.companyId||"comp-1";return ft.filter(Dt=>Dt.id===yt)},[e==null?void 0:e.registeredCompanies,e==null?void 0:e.companyInfo,n])`,
+  `const Kt=$o.useMemo(()=>{const ft=e!=null&&e.registeredCompanies&&e.registeredCompanies.length>0?e.registeredCompanies:[(e==null?void 0:e.companyInfo)||{id:"comp-1",name:"MotorDesk",cnpj:"",phone:"",whatsapp:"",email:"",address:"",welcomeMessage:"",registeredAt:""}];if(!n)return ft;if(n.allowedCompanyIds&&n.allowedCompanyIds.length>0)return n.allowedCompanyIds.includes("*")?ft:ft.filter(Dt=>{var Zt;return(Zt=n.allowedCompanyIds)==null?void 0:Zt.includes(Dt.id)});const yt=n.companyId||"comp-1";return ft.filter(Dt=>Dt.id===yt)},[e==null?void 0:e.registeredCompanies,e==null?void 0:e.companyInfo,n])`
+];
+const ktReplace = `const Kt=$o.useMemo(()=>{const ft=e!=null&&e.registeredCompanies&&e.registeredCompanies.length>0?e.registeredCompanies:[(e==null?void 0:e.companyInfo)||{id:"comp-1",name:"MotorDesk",cnpj:"",phone:"",whatsapp:"",email:"",address:"",welcomeMessage:"",registeredAt:""}];if(!n)return ft;if(Array.isArray(n.allowedCompanyIds)&&n.allowedCompanyIds.includes("*"))return ft;if(Array.isArray(n.allowedCompanyIds)&&n.allowedCompanyIds.length>0){const st=new Set([...n.allowedCompanyIds,n.companyId].filter(Boolean));return ft.filter(Dt=>st.has(Dt.id))}const yt=n.companyId||"comp-1";return ft.filter(Dt=>Dt.id===yt)},[e==null?void 0:e.registeredCompanies,e==null?void 0:e.companyInfo,n])`;
 
-if (code.includes(ktSearch)) {
-  code = code.replace(ktSearch, ktReplace);
-  console.log('[PATCH] 12. Topbar company switcher Kt patched successfully.');
-} else {
-  console.warn('[PATCH] 12. ktSearch string not found or already patched.');
+let ktPatched = false;
+for (const cand of ktSearchCandidates) {
+  if (code.includes(cand)) {
+    code = code.replace(cand, ktReplace);
+    ktPatched = true;
+    console.log('[PATCH] 12. Topbar company switcher Kt patched: strictly authorized companies only.');
+    break;
+  }
+}
+if (!ktPatched) {
+  if (code.includes(ktReplace)) {
+    console.log('[PATCH] 12. Topbar company switcher Kt already correctly patched.');
+  } else {
+    console.warn('[PATCH] 12. ktSearch string not found or already patched.');
+  }
 }
 
 // 13. Isolamento Estrito de Usuários e Empresas na Gestão de Usuários (SOe)
@@ -189,6 +203,17 @@ if (code.includes(qaPanelUserSearch)) {
   console.log('[PATCH] 15. QA Panel test company user validador patched successfully.');
 } else {
   console.warn('[PATCH] 15. qaPanelUserSearch string not found or already patched.');
+}
+
+// 16. Login Authentication (Va): Garantir que o login só seja bem-sucedido se o usuário pertencer à empresa selecionada
+const loginAuthSearch = `let Se=(e.users||[]).find(Yt=>Yt.username.toLowerCase()===yt&&Yt.passwordHash===Dt&&(Yt.companyId===Zt||(Array.isArray(Yt.allowedCompanyIds)&&Yt.allowedCompanyIds.includes(Zt))));if(!Se){const Ea=(e.users||[]).find(be=>be.username.toLowerCase()===yt&&be.passwordHash===Dt&&(be.companyId===Zt||(Array.isArray(be.allowedCompanyIds)&&be.allowedCompanyIds.includes(Zt))));Ea&&(Se=Ea)}if(!Se){const Ea=(e.users||[]).find(be=>be.username.toLowerCase()===yt&&be.passwordHash===Dt);Ea&&(Se=Ea)}if(!Se){const Ea=(e.users||[]).find(be=>be.username.toLowerCase()===yt&&be.passwordHash.toLowerCase()===Dt.toLowerCase());Ea&&(Se=Ea)}if(!Se&&yt==="admin"&&(Dt==="admin123"||Dt==="Donatelo@123"||Dt.toLowerCase()==="admin123")){const Ea=(e.users||[]).find(be=>be.username.toLowerCase()==="admin");Se=Ea?{...Ea,passwordHash:Dt,isTerminated:!1,contractEndDate:"",status:"active",isActive:!0}:{id:"usr-1",username:"admin",name:"Carlos Santos (Gerente)",role:"admin",passwordHash:Dt,companyId:Zt||"comp-1",isTerminated:!1,contractEndDate:"",status:"active",isActive:!0,permissions:{accessDashboard:!0,accessSales:!0,accessWithdrawals:!0,accessCarriers:!0,accessUnitsOfMeasure:!0,accessClients:!0,accessVehicles:!0,accessParts:!0,accessServices:!0,accessBudgets:!0,accessServiceOrders:!0,accessHistory:!0,accessReports:!0,accessUserManagement:!0,accessQA:!0,accessFiscal:!0,accessFinancial:!0,accessBoletos:!0,accessIndustry:!0,accessStockTransfer:!0,accessReplication:!0,canEditBudgets:!0,canViewOtherStoresStock:!0,canViewAllCompaniesHistory:!0,restrictToOwnSales:!1}}}`;
+const loginAuthReplace = `let Se=(e.users||[]).find(Yt=>Yt.username&&Yt.username.toLowerCase()===yt&&Yt.passwordHash===Dt&&(Yt.companyId===Zt||(Array.isArray(Yt.allowedCompanyIds)&&(Yt.allowedCompanyIds.includes(Zt)||Yt.allowedCompanyIds.includes("*")))));if(!Se){const Ea=(e.users||[]).find(be=>be.username&&be.username.toLowerCase()===yt&&be.passwordHash&&be.passwordHash.toLowerCase()===Dt.toLowerCase()&&(be.companyId===Zt||(Array.isArray(be.allowedCompanyIds)&&(be.allowedCompanyIds.includes(Zt)||be.allowedCompanyIds.includes("*")))));Ea&&(Se=Ea)}`;
+
+if (code.includes(loginAuthSearch)) {
+  code = code.replace(loginAuthSearch, loginAuthReplace);
+  console.log('[PATCH] 16. Login authentication Va strict company isolation patched successfully.');
+} else {
+  console.warn('[PATCH] 16. loginAuthSearch string not found or already patched.');
 }
 
 fs.writeFileSync(bundlePath, code, 'utf8');
