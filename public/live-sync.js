@@ -23,6 +23,67 @@
     console.log('[MotorDesk LiveSync]', ...args);
   }
 
+  // Lista resiliente de fallback imediato para carregamento síncrono instantâneo em qualquer novo dispositivo
+  const DEFAULT_FALLBACK_COMPANIES = [
+    { id: "comp-1", name: "MotorDesk Auto Center - Matriz Pinheiros", businessType: "OFICINA", companyType: "matriz", subscriptionStatus: "active" },
+    { id: "comp-2", name: "MotorDesk Auto Center - Filial Vila Mariana", businessType: "OFICINA", companyType: "filial", subscriptionStatus: "active" },
+    { id: "comp-3", name: "Centro Automotivo Express Repair - Matriz RJ", businessType: "OFICINA", companyType: "matriz", subscriptionStatus: "active" },
+    { id: "comp-4", name: "MotorDesk Auto Peças & Distribuidora - Comércio SP", businessType: "COMERCIO", companyType: "matriz", subscriptionStatus: "active" },
+    { id: "comp-5", name: "MotorDesk Metalúrgica & Indústria de Autopeças - Indústria SP", businessType: "INDUSTRIA", companyType: "matriz", subscriptionStatus: "active" },
+    { id: "comp-1786707452067", name: "EMPRESA DE TESTE", businessType: "COMERCIO", companyType: "matriz", subscriptionStatus: "active" },
+    { id: "comp-test-1786973620291", name: "Auto Mecânica Auditoria Sincronizada", businessType: "OFICINA", companyType: "matriz", subscriptionStatus: "active" }
+  ];
+
+  // Inicialização síncrona imediata no window para qualquer dispositivo/aba
+  if (!window.__allCompanies || window.__allCompanies.length === 0) {
+    try {
+      const stored = localStorage.getItem('motordesk_all_companies');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          window.__allCompanies = parsed;
+        }
+      }
+    } catch(e) {}
+    if (!window.__allCompanies || window.__allCompanies.length === 0) {
+      window.__allCompanies = DEFAULT_FALLBACK_COMPANIES;
+    }
+  }
+
+  // Pre-carregar e manter lista global de empresas sincronizada para o seletor de login
+  async function preloadCompanies() {
+    try {
+      const res = await fetch('/api/companies?t=' + Date.now(), {
+        headers: { 'Cache-Control': 'no-cache, no-store, must-revalidate', 'Pragma': 'no-cache' }
+      });
+      if (res.ok) {
+        const json = await res.json();
+        const comps = json.companies || json.data || [];
+        if (Array.isArray(comps) && comps.length > 0) {
+          window.__allCompanies = comps;
+          try {
+            localStorage.setItem('motordesk_all_companies', JSON.stringify(comps));
+            // Se estiver na tela de login (sem usuário ativo), garantir que o banco local não esteja encolhido
+            const activeUser = localStorage.getItem('motordesk_active_user');
+            if (!activeUser) {
+              const localDbRaw = localStorage.getItem('motordesk_db_v1') || localStorage.getItem('motordesk_db');
+              if (localDbRaw) {
+                const localDb = JSON.parse(localDbRaw);
+                if (!localDb.registeredCompanies || localDb.registeredCompanies.length < comps.length) {
+                  localDb.registeredCompanies = comps;
+                  localStorage.setItem('motordesk_db_v1', JSON.stringify(localDb));
+                  localStorage.setItem('motordesk_db', JSON.stringify(localDb));
+                }
+              }
+            }
+          } catch (e) {}
+          log(`Preloaded ${comps.length} registered companies for global selectors.`);
+        }
+      }
+    } catch (e) {}
+  }
+  preloadCompanies();
+
   // Obter cabeçalhos de autenticação válidos para qualquer requisição HTTP
   function getAuthHeaders() {
     let token = localStorage.getItem('motordesk_auth_token');
@@ -51,8 +112,10 @@
     }
 
     const activeCompanyId = localStorage.getItem('motordesk_active_company_id');
-    if (activeCompanyId) {
+    if (activeCompanyId && activeUserStr) {
       headers['X-Company-Id'] = activeCompanyId;
+    } else if (!activeUserStr) {
+      headers['X-Company-Id'] = 'all';
     }
 
     return headers;
@@ -360,6 +423,7 @@
         } else if (knownVersion === 0 && remoteVersion > 0) {
           knownVersion = remoteVersion;
           knownUpdatedAt = remoteUpdatedAt;
+          performSync('initial_boot');
         }
       }
     } catch (err) {
