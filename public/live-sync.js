@@ -250,6 +250,20 @@
         try {
           localStorage.setItem('motordesk_db_v1', JSON.stringify(freshDb));
           localStorage.setItem('motordesk_db', JSON.stringify(freshDb));
+
+          // Sincronizar dados do usuário ativo da sessão atual
+          const rawActiveUser = localStorage.getItem('motordesk_active_user');
+          if (rawActiveUser && Array.isArray(freshDb.users)) {
+            const activeUser = JSON.parse(rawActiveUser);
+            const freshUser = freshDb.users.find(u => u.id === activeUser.id);
+            if (freshUser) {
+              const mergedActive = { ...activeUser, ...freshUser };
+              localStorage.setItem('motordesk_active_user', JSON.stringify(mergedActive));
+              if (typeof window.__motorDeskCheckFirstAccess === 'function') {
+                window.__motorDeskCheckFirstAccess();
+              }
+            }
+          }
         } catch (e) {}
 
         // Aplicar estado reativo na UI

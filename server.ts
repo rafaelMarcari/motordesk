@@ -407,12 +407,12 @@ export function sanitizeAndIsolateCompanies(db: any): any {
     admin.isActive = true;
     admin.companyId = admin.companyId || 'comp-1';
     admin.allowedCompanyIds = ['*'];
-    if (!admin.passwordHash || admin.passwordHash === 'Donatelo@123') {
+    if (!admin.passwordHash) {
       admin.passwordHash = 'admin123';
     }
   }
 
-  // Garantia para cada empresa: Usuário QA denominado "validador" com senha "Donatelo@123"
+  // Garantia para cada empresa: Usuário QA denominado "validador" com senha inicial "Donatelo@123"
   const registeredComps = Array.isArray(sanitized.registeredCompanies) && sanitized.registeredCompanies.length > 0
     ? sanitized.registeredCompanies
     : (sanitized.companyInfo ? [sanitized.companyInfo] : [{ id: 'comp-1', name: 'MotorDesk' }]);
@@ -421,7 +421,7 @@ export function sanitizeAndIsolateCompanies(db: any): any {
   for (const u of usersList) {
     if (u && u.username && u.username.toLowerCase() === 'qa') {
       u.username = 'validador';
-      u.passwordHash = 'Donatelo@123';
+      if (!u.passwordHash) u.passwordHash = 'Donatelo@123';
       u.allowedCompanyIds = ['*'];
       u.name = u.name ? u.name.replace(/Analista de QA/gi, 'Validador QA') : 'Validador QA';
     }
@@ -430,41 +430,41 @@ export function sanitizeAndIsolateCompanies(db: any): any {
     }
   }
 
-  for (const comp of registeredComps) {
-    if (!comp || !comp.id) continue;
-    let valUser = usersList.find((u: any) => u && u.username && u.username.toLowerCase() === 'validador' && u.companyId === comp.id);
-    if (!valUser) {
-      valUser = {
-        id: `usr-validador-${comp.id}`,
-        username: 'validador',
-        name: `Validador QA (${comp.name || 'Unidade'})`,
-        role: 'qa',
-        passwordHash: 'Donatelo@123',
-        companyId: comp.id,
-        allowedCompanyIds: ['*'],
-        isTerminated: false,
-        status: 'active',
-        isActive: true,
-        permissions: {
-          accessDashboard: true, accessSales: true, accessWithdrawals: true, accessCarriers: true,
-          accessUnitsOfMeasure: true, accessClients: true, accessVehicles: true, accessParts: true,
-          accessServices: true, accessBudgets: true, accessServiceOrders: true, accessHistory: true,
-          accessReports: true, accessUserManagement: true, accessFiscal: true, accessFinancial: true,
-          accessBoletos: true, accessIndustry: true, accessQA: true, accessStockTransfer: true,
-          accessReplication: true, canEditBudgets: true, canViewOtherStoresStock: true,
-          canViewAllCompaniesHistory: false, restrictToOwnSales: false
-        }
-      };
-      usersList.push(valUser);
-    } else {
+  // Garantia: Único usuário QA master denominado "validador" com acesso irrestrito e senha preservada
+  let valUser = usersList.find((u: any) => u && u.username && u.username.toLowerCase() === 'validador');
+  if (!valUser) {
+    valUser = {
+      id: 'usr-validador-master',
+      username: 'validador',
+      name: 'Validador QA (Geral)',
+      role: 'qa',
+      passwordHash: 'Donatelo@123',
+      companyId: 'comp-1',
+      allowedCompanyIds: ['*'],
+      isTerminated: false,
+      status: 'active',
+      isActive: true,
+      permissions: {
+        accessDashboard: true, accessSales: true, accessWithdrawals: true, accessCarriers: true,
+        accessUnitsOfMeasure: true, accessClients: true, accessVehicles: true, accessParts: true,
+        accessServices: true, accessBudgets: true, accessServiceOrders: true, accessHistory: true,
+        accessReports: true, accessUserManagement: true, accessFiscal: true, accessFinancial: true,
+        accessBoletos: true, accessIndustry: true, accessQA: true, accessStockTransfer: true,
+        accessReplication: true, canEditBudgets: true, canViewOtherStoresStock: true,
+        canViewAllCompaniesHistory: false, restrictToOwnSales: false
+      }
+    };
+    usersList.push(valUser);
+  } else {
+    if (!valUser.passwordHash) {
       valUser.passwordHash = 'Donatelo@123';
-      valUser.role = 'qa';
-      valUser.isActive = true;
-      valUser.status = 'active';
-      valUser.isTerminated = false;
-      valUser.contractEndDate = '';
-      valUser.allowedCompanyIds = ['*'];
     }
+    valUser.role = 'qa';
+    valUser.isActive = true;
+    valUser.status = 'active';
+    valUser.isTerminated = false;
+    valUser.contractEndDate = '';
+    valUser.allowedCompanyIds = ['*'];
   }
 
   // Garantia: Criação automática de usuário padrão respectivo para cada funcionário/operador cadastrado
@@ -505,6 +505,9 @@ export function sanitizeAndIsolateCompanies(db: any): any {
           contractEndDate: '',
           status: op.status === 'INATIVO' ? 'terminated' : 'active',
           isActive: op.status !== 'INATIVO',
+          firstAccess: true,
+          mustChangePassword: true,
+          hasChosenPassword: false,
           permissions: {
             accessDashboard: true,
             accessParts: true,
@@ -523,7 +526,39 @@ export function sanitizeAndIsolateCompanies(db: any): any {
     }
   }
 
-  sanitized.users = usersList;
+  // Deduplicar usersList por username: garante unicidade estrita de usernames em todo o sistema
+  const deduplicatedUsers: any[] = [];
+  const seenUsernames = new Map<string, any>();
+  for (const u of usersList) {
+    if (!u) continue;
+    const lower = (u.username || '').trim().toLowerCase();
+    if (!lower) {
+      deduplicatedUsers.push(u);
+      continue;
+    }
+    if (!seenUsernames.has(lower)) {
+      seenUsernames.set(lower, u);
+      deduplicatedUsers.push(u);
+    } else {
+      const existing = seenUsernames.get(lower);
+      const existingTime = existing.passwordUpdatedAt || 0;
+      const incomingTime = u.passwordUpdatedAt || 0;
+      if (incomingTime > existingTime) {
+        existing.passwordHash = u.passwordHash;
+        existing.passwordUpdatedAt = incomingTime;
+        existing.hasChosenPassword = u.hasChosenPassword ?? existing.hasChosenPassword;
+        existing.firstAccess = u.firstAccess ?? existing.firstAccess;
+        existing.mustChangePassword = u.mustChangePassword ?? existing.mustChangePassword;
+      }
+      if (Array.isArray(u.allowedCompanyIds) && Array.isArray(existing.allowedCompanyIds)) {
+        for (const cid of u.allowedCompanyIds) {
+          if (!existing.allowedCompanyIds.includes(cid)) existing.allowedCompanyIds.push(cid);
+        }
+      }
+    }
+  }
+
+  sanitized.users = deduplicatedUsers;
 
   return sanitized;
 }
@@ -630,9 +665,32 @@ export function mergeAppDatabase(existing: any, incoming: any): any {
             safeCompanyId = prev.companyId;
           }
         }
+        // Proteção estrita de Senhas: Se a senha foi atualizada, preservar sempre a mais recente
+        let safePassword = u.passwordHash || (prev ? prev.passwordHash : undefined);
+        let safePasswordUpdatedAt = u.passwordUpdatedAt || (prev ? prev.passwordUpdatedAt : undefined);
+
+        if (prev && prev.passwordUpdatedAt && u.passwordUpdatedAt) {
+          if (prev.passwordUpdatedAt > u.passwordUpdatedAt) {
+            safePassword = prev.passwordHash;
+            safePasswordUpdatedAt = prev.passwordUpdatedAt;
+          }
+        } else if (prev && prev.passwordUpdatedAt && !u.passwordUpdatedAt) {
+          safePassword = prev.passwordHash;
+          safePasswordUpdatedAt = prev.passwordUpdatedAt;
+        }
+
+        const safeFirstAccess = u.firstAccess !== undefined ? u.firstAccess : (prev ? prev.firstAccess : undefined);
+        const safeMustChange = u.mustChangePassword !== undefined ? u.mustChangePassword : (prev ? prev.mustChangePassword : undefined);
+        const safeHasChosen = u.hasChosenPassword !== undefined ? u.hasChosenPassword : (prev ? prev.hasChosenPassword : undefined);
+
         usersMap.set(u.id, {
           ...prev,
           ...u,
+          passwordHash: safePassword,
+          passwordUpdatedAt: safePasswordUpdatedAt,
+          firstAccess: safeFirstAccess,
+          mustChangePassword: safeMustChange,
+          hasChosenPassword: safeHasChosen,
           companyId: safeCompanyId,
           allowedCompanyIds: u.allowedCompanyIds || (prev ? prev.allowedCompanyIds : undefined)
         });
@@ -641,8 +699,25 @@ export function mergeAppDatabase(existing: any, incoming: any): any {
   }
   const mergedUsers = Array.from(usersMap.values());
 
-  // Garantia absoluta: Usuário admin master (usr-1) deve sempre existir, estar ativo e possuir senha admin123
-  let adminInMerged = mergedUsers.find((u: any) => u && u.username && u.username.toLowerCase() === 'admin');
+  // Deduplicação estrita de usernames: impede duplicidade de login no sistema
+  const uniqueUsersByUsername = new Map<string, any>();
+  for (const u of mergedUsers) {
+    if (!u || !u.username) continue;
+    const uname = String(u.username).trim().toLowerCase();
+    if (!uniqueUsersByUsername.has(uname)) {
+      uniqueUsersByUsername.set(uname, u);
+    } else {
+      const existingUser = uniqueUsersByUsername.get(uname);
+      // Preservar o registro que possui senha ou timestamp mais recente
+      if (u.passwordUpdatedAt && (!existingUser.passwordUpdatedAt || u.passwordUpdatedAt > existingUser.passwordUpdatedAt)) {
+        uniqueUsersByUsername.set(uname, { ...existingUser, ...u });
+      }
+    }
+  }
+  const deduplicatedUsers = Array.from(uniqueUsersByUsername.values());
+
+  // Garantia absoluta: Usuário admin master (usr-1) deve sempre existir, estar ativo e possuir senha admin123 se não customizada
+  let adminInMerged = deduplicatedUsers.find((u: any) => u && u.username && u.username.toLowerCase() === 'admin');
   if (!adminInMerged) {
     adminInMerged = {
       id: 'usr-1',
@@ -676,58 +751,59 @@ export function mergeAppDatabase(existing: any, incoming: any): any {
     adminInMerged.allowedCompanyIds = Array.isArray(adminInMerged.allowedCompanyIds) && !adminInMerged.allowedCompanyIds.includes('*')
       ? adminInMerged.allowedCompanyIds
       : [adminInMerged.companyId];
-    if (!adminInMerged.passwordHash || adminInMerged.passwordHash === 'Donatelo@123') {
+    if (!adminInMerged.passwordHash) {
       adminInMerged.passwordHash = 'admin123';
     }
   }
 
-  // Garantia para cada empresa: Usuário QA denominado "validador" com senha "Donatelo@123"
-  for (const u of mergedUsers) {
+  // Garantia para o usuário QA master denominado "validador" com senha inicial "Donatelo@123"
+  for (const u of deduplicatedUsers) {
     if (u && u.username && u.username.toLowerCase() === 'qa') {
       u.username = 'validador';
-      u.passwordHash = 'Donatelo@123';
+      if (!u.passwordHash) u.passwordHash = 'Donatelo@123';
       u.name = u.name ? u.name.replace(/Analista de QA/gi, 'Validador QA') : 'Validador QA';
     }
   }
 
-  for (const comp of uniqueCompanies) {
-    if (!comp || !comp.id) continue;
-    let valUser = mergedUsers.find((u: any) => u && u.username && u.username.toLowerCase() === 'validador' && u.companyId === comp.id);
-    if (!valUser) {
-      valUser = {
-        id: `usr-validador-${comp.id}`,
-        username: 'validador',
-        name: `Validador QA (${comp.name || 'Unidade'})`,
-        role: 'qa',
-        passwordHash: 'Donatelo@123',
-        companyId: comp.id,
-        isTerminated: false,
-        status: 'active',
-        isActive: true,
-        permissions: {
-          accessDashboard: true, accessSales: true, accessWithdrawals: true, accessCarriers: true,
-          accessUnitsOfMeasure: true, accessClients: true, accessVehicles: true, accessParts: true,
-          accessServices: true, accessBudgets: true, accessServiceOrders: true, accessHistory: true,
-          accessReports: true, accessUserManagement: true, accessFiscal: true, accessFinancial: true,
-          accessBoletos: true, accessIndustry: true, accessQA: true, accessStockTransfer: true,
-          accessReplication: true, canEditBudgets: true, canViewOtherStoresStock: true,
-          canViewAllCompaniesHistory: false, restrictToOwnSales: false
-        }
-      };
-      mergedUsers.push(valUser);
-    } else {
-      valUser.passwordHash = 'Donatelo@123';
-      valUser.role = 'qa';
-      valUser.isActive = true;
-      valUser.status = 'active';
-      valUser.isTerminated = false;
-      valUser.contractEndDate = '';
+  let validadorMaster = deduplicatedUsers.find((u: any) => u && u.username && u.username.toLowerCase() === 'validador');
+  if (!validadorMaster) {
+    validadorMaster = {
+      id: 'usr-validador-master',
+      username: 'validador',
+      name: 'Validador QA (Master)',
+      role: 'qa',
+      passwordHash: 'Donatelo@123',
+      companyId: 'comp-1',
+      allowedCompanyIds: ['*'],
+      isTerminated: false,
+      status: 'active',
+      isActive: true,
+      permissions: {
+        accessDashboard: true, accessSales: true, accessWithdrawals: true, accessCarriers: true,
+        accessUnitsOfMeasure: true, accessClients: true, accessVehicles: true, accessParts: true,
+        accessServices: true, accessBudgets: true, accessServiceOrders: true, accessHistory: true,
+        accessReports: true, accessUserManagement: true, accessFiscal: true, accessFinancial: true,
+        accessBoletos: true, accessIndustry: true, accessQA: true, accessStockTransfer: true,
+        accessReplication: true, canEditBudgets: true, canViewOtherStoresStock: true,
+        canViewAllCompaniesHistory: true, restrictToOwnSales: false
+      }
+    };
+    deduplicatedUsers.push(validadorMaster);
+  } else {
+    if (!validadorMaster.passwordHash) {
+      validadorMaster.passwordHash = 'Donatelo@123';
     }
+    validadorMaster.role = 'qa';
+    validadorMaster.isActive = true;
+    validadorMaster.status = 'active';
+    validadorMaster.isTerminated = false;
+    validadorMaster.contractEndDate = '';
+    validadorMaster.allowedCompanyIds = ['*'];
   }
 
   // Regra de Desligamento / Demissão de Usuários:
   // Se o campo de data de término de contrato estiver preenchido, revogar TODOS os acessos ao sistema
-  const sanitizedUsers = mergedUsers.map((u: any) => {
+  const sanitizedUsers = deduplicatedUsers.map((u: any) => {
     // Admin master nunca pode ser desativado e tem acesso a todas as empresas
     if (u.username && u.username.toLowerCase() === 'admin') {
       return {
@@ -737,7 +813,7 @@ export function mergeAppDatabase(existing: any, incoming: any): any {
         isActive: true,
         status: 'active',
         allowedCompanyIds: ['*'],
-        passwordHash: u.passwordHash === 'Donatelo@123' ? 'admin123' : (u.passwordHash || 'admin123')
+        passwordHash: u.passwordHash || 'admin123'
       };
     }
     // Validador QA tem acesso a todas as empresas para homologação contínua
@@ -749,7 +825,7 @@ export function mergeAppDatabase(existing: any, incoming: any): any {
         isActive: true,
         status: 'active',
         allowedCompanyIds: ['*'],
-        passwordHash: 'Donatelo@123'
+        passwordHash: u.passwordHash || 'Donatelo@123'
       };
     }
     const hasContractEndDate = Boolean(u?.contractEndDate && String(u.contractEndDate).trim().length > 0);
@@ -995,25 +1071,25 @@ export function isolateDatabaseForContext(
     }
   }
 
-  // Se for QA Validador ou Admin, deve enxergar TODOS os usuários para gestão, auditoria e integridade plena
-  // Se for usuário comum, enxerga os operadores da sua unidade e os administradores/validadores globais
-  const isolatedUsers = isMasterUser
-    ? allUsers
-    : allUsers.filter((u: any) => {
-        if (!u) return false;
-        // Administradores e validadores mestres estão sempre acessíveis
-        if (u.role === 'admin' || u.role === 'qa' || (u.username && (u.username.toLowerCase() === 'admin' || u.username.toLowerCase() === 'validador'))) {
-          return true;
-        }
-        const uComp = u.companyId || 'comp-1';
-        // Se o usuário pertence à empresa requisitada
-        if (uComp === targetCompanyId) return true;
-        // Se o usuário tem autorização explícita para esta empresa em allowedCompanyIds
-        if (Array.isArray(u.allowedCompanyIds) && (u.allowedCompanyIds.includes(targetCompanyId) || u.allowedCompanyIds.includes('*'))) {
-          return true;
-        }
-        return false;
-      });
+  // Isolamento estrito de operadores: usuários comuns ou administradores de outras unidades
+  // JAMAIS devem vazar para uma empresa para a qual não possuem acesso explícito.
+  // Apenas operadores vinculados à targetCompanyId ou mestres globais com wildcard (*) são visíveis.
+  const isolatedUsers = allUsers.filter((u: any) => {
+    if (!u) return false;
+    // Administradores e validadores mestres globais
+    if ((u.username && (u.username.toLowerCase() === 'admin' || u.username.toLowerCase() === 'validador')) ||
+        (Array.isArray(u.allowedCompanyIds) && u.allowedCompanyIds.includes('*'))) {
+      return true;
+    }
+    const uComp = u.companyId || 'comp-1';
+    // Se o usuário pertence à empresa requisitada
+    if (uComp === targetCompanyId) return true;
+    // Se o usuário tem autorização explícita para esta empresa em allowedCompanyIds
+    if (Array.isArray(u.allowedCompanyIds) && (u.allowedCompanyIds.includes(targetCompanyId) || u.allowedCompanyIds.includes('*'))) {
+      return true;
+    }
+    return false;
+  });
 
   const isolated: any = {
     ...db,
@@ -1682,6 +1758,113 @@ app.get("/api/companies/:companyId/license", async (req: any, res) => {
       globalModules: company?.globalModules || {},
     });
   } catch (err: any) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Endpoint dedicado e atômico para alteração / primeiro acesso de senha de usuários
+app.post("/api/users/update-password", async (req: any, res) => {
+  const { userId, username, companyId, newPassword, keepCurrent } = req.body || {};
+  const config = resolveDatabaseConfig();
+
+  if (!userId && !username) {
+    return res.status(400).json({ success: false, error: "Identificador do usuário ausente" });
+  }
+
+  if (!keepCurrent && (!newPassword || String(newPassword).trim().length < 4)) {
+    return res.status(400).json({ success: false, error: "A nova senha deve possuir no mínimo 4 caracteres" });
+  }
+
+  try {
+    const { updatedUser, updatedAt } = await enqueueDbWrite(async () => {
+      let currentStoredData: any = serverAppStoreCache;
+      try {
+        const curRes = await executeSqlWithRetry(
+          'SELECT data FROM app_store WHERE id = $1',
+          ['motordesk_main'],
+          config.database
+        );
+        if (curRes.rows.length > 0 && curRes.rows[0].data) {
+          currentStoredData = curRes.rows[0].data;
+        }
+      } catch (readErr) {}
+
+      if (!currentStoredData || !Array.isArray(currentStoredData.users)) {
+        throw new Error("Banco de dados não inicializado.");
+      }
+
+      const user = currentStoredData.users.find((u: any) =>
+        (userId && u.id === userId) ||
+        (username && u.username && u.username.toLowerCase() === String(username).toLowerCase() && (!companyId || u.companyId === companyId))
+      );
+
+      if (!user) {
+        throw new Error("Usuário não encontrado.");
+      }
+
+      const now = Date.now();
+      if (!keepCurrent && newPassword) {
+        user.passwordHash = String(newPassword).trim();
+      }
+      user.firstAccess = false;
+      user.mustChangePassword = false;
+      user.hasChosenPassword = true;
+      user.passwordUpdatedAt = now;
+      user.updatedAt = new Date().toISOString();
+
+      serverAppStoreCache = currentStoredData;
+
+      const payloadStr = JSON.stringify(currentStoredData);
+      const insertRes = await executeSqlWithRetry(
+        `INSERT INTO app_store (id, data, updated_at) VALUES ($1, $2, NOW())
+         ON CONFLICT (id) DO UPDATE SET data = $2, updated_at = NOW()
+         RETURNING updated_at`,
+        ['motordesk_main', payloadStr],
+        config.database
+      );
+
+      const opUpdatedAt = insertRes.rows[0]?.updated_at || new Date().toISOString();
+
+      const altDbs = ["cloud_sql_production_database", "cloud_sql_development_database"].filter(d => d !== config.database);
+      for (const altDb of altDbs) {
+        executeSqlWithRetry(
+          `INSERT INTO app_store (id, data, updated_at) VALUES ($1, $2, NOW())
+           ON CONFLICT (id) DO UPDATE SET data = $2, updated_at = NOW()`,
+          ['motordesk_main', payloadStr],
+          altDb
+        ).catch(() => {});
+      }
+
+      return {
+        updatedUser: {
+          id: user.id,
+          username: user.username,
+          name: user.name,
+          role: user.role,
+          companyId: user.companyId,
+          firstAccess: user.firstAccess,
+          mustChangePassword: user.mustChangePassword,
+          hasChosenPassword: user.hasChosenPassword,
+          passwordUpdatedAt: user.passwordUpdatedAt
+        },
+        updatedAt: opUpdatedAt
+      };
+    });
+
+    currentDbVersion++;
+    currentDbUpdatedAt = updatedAt;
+    broadcastDbUpdate({
+      updatedAt,
+      version: currentDbVersion,
+      companyId: companyId || updatedUser.companyId,
+      userId: updatedUser.id,
+      source: "password_update"
+    });
+
+    console.log(`[USER-PASSWORD] Senha salva com sucesso para @${updatedUser.username} (${updatedUser.id})`);
+    return res.json({ success: true, user: updatedUser, version: currentDbVersion });
+  } catch (err: any) {
+    console.error("[USER-PASSWORD] Erro:", err.message);
     return res.status(500).json({ success: false, error: err.message });
   }
 });

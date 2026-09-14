@@ -296,25 +296,154 @@ if (code.includes(adSearch)) {
   }
 }
 
-// 21. Gestão de Usuários (SOe): Administrador master e usuários wildcard sempre visíveis no quadro de operadores de todas as empresas
-const soeUserListSearch = `const Re=e.users.filter(Ut=>(Ut.companyId||"comp-1")===w);return Re.length===0`;
-const soeUserListReplace = `const Re=e.users.filter(Ut=>(Ut.companyId||"comp-1")===w||Ut.role==="admin"||(Ut.username&&Ut.username.toLowerCase()==="admin")||(Array.isArray(Ut.allowedCompanyIds)&&Ut.allowedCompanyIds.includes("*")));return Re.length===0`;
+// 21. Gestão de Usuários (SOe): Administrador master e usuários wildcard visíveis; isolar estritamente administradores locais
+const soeUserListCandidates = [
+  `const Re=e.users.filter(Ut=>(Ut.companyId||"comp-1")===w||Ut.role==="admin"||(Ut.username&&Ut.username.toLowerCase()==="admin")||(Array.isArray(Ut.allowedCompanyIds)&&Ut.allowedCompanyIds.includes("*")));return Re.length===0`,
+  `const Re=e.users.filter(Ut=>(Ut.companyId||"comp-1")===w);return Re.length===0`
+];
+const soeUserListReplace = `const Re=e.users.filter(Ut=>(Ut.companyId||"comp-1")===w||(Ut.username&&(Ut.username.toLowerCase()==="admin"||Ut.username.toLowerCase()==="validador"))||(Array.isArray(Ut.allowedCompanyIds)&&(Ut.allowedCompanyIds.includes(w)||Ut.allowedCompanyIds.includes("*"))));return Re.length===0`;
 
-if (code.includes(soeUserListSearch)) {
-  code = code.replace(soeUserListSearch, soeUserListReplace);
-  console.log('[PATCH] 21. SOe user table admin visibility patched successfully.');
-} else {
-  console.warn('[PATCH] 21. soeUserListSearch string not found or already patched.');
+let soeUserListPatched = false;
+for (const cand of soeUserListCandidates) {
+  if (code.includes(cand)) {
+    code = code.replace(cand, soeUserListReplace);
+    soeUserListPatched = true;
+    console.log('[PATCH] 21. SOe user table strict company isolation patched successfully.');
+    break;
+  }
+}
+if (!soeUserListPatched) {
+  if (code.includes(soeUserListReplace)) {
+    console.log('[PATCH] 21. SOe user table strict company isolation already present.');
+  } else {
+    console.warn('[PATCH] 21. soeUserListSearch string not found or already patched.');
+  }
 }
 
-const soeUserCountSearch = `" Operadores da Empresa (",e.users.filter(Re=>(Re.companyId||"comp-1")===w).length,")"`;
-const soeUserCountReplace = `" Operadores da Empresa (",e.users.filter(Re=>(Re.companyId||"comp-1")===w||Re.role==="admin"||(Re.username&&Re.username.toLowerCase()==="admin")||(Array.isArray(Re.allowedCompanyIds)&&Re.allowedCompanyIds.includes("*"))).length,")"`;
+const soeUserCountCandidates = [
+  `" Operadores da Empresa (",e.users.filter(Re=>(Re.companyId||"comp-1")===w||Re.role==="admin"||(Re.username&&Re.username.toLowerCase()==="admin")||(Array.isArray(Re.allowedCompanyIds)&&Re.allowedCompanyIds.includes("*"))).length,")"`,
+  `" Operadores da Empresa (",e.users.filter(Re=>(Re.companyId||"comp-1")===w).length,")"`
+];
+const soeUserCountReplace = `" Operadores da Empresa (",e.users.filter(Re=>(Re.companyId||"comp-1")===w||(Re.username&&(Re.username.toLowerCase()==="admin"||Re.username.toLowerCase()==="validador"))||(Array.isArray(Re.allowedCompanyIds)&&(Re.allowedCompanyIds.includes(w)||Re.allowedCompanyIds.includes("*")))).length,")"`;
 
-if (code.includes(soeUserCountSearch)) {
-  code = code.replace(soeUserCountSearch, soeUserCountReplace);
-  console.log('[PATCH] 21b. SOe user counter patched successfully.');
+let soeUserCountPatched = false;
+for (const cand of soeUserCountCandidates) {
+  if (code.includes(cand)) {
+    code = code.replace(cand, soeUserCountReplace);
+    soeUserCountPatched = true;
+    console.log('[PATCH] 21b. SOe user counter strict company isolation patched successfully.');
+    break;
+  }
+}
+if (!soeUserCountPatched) {
+  if (code.includes(soeUserCountReplace)) {
+    console.log('[PATCH] 21b. SOe user counter strict company isolation already present.');
+  } else {
+    console.warn('[PATCH] 21b. soeUserCountSearch string not found or already patched.');
+  }
+}
+
+// 22. API Gateway Base URL: remover URL externa legada e usar origem relativa do navegador atual
+const legacyApiUrl = "https://motordesk-605741677403.us-east1.run.app";
+if (code.includes(legacyApiUrl)) {
+  code = code.split(legacyApiUrl).join("");
+  console.log('[PATCH] 22. Legacy external API URL purged. Axios Np now uses relative path origin for all browsers/devices.');
 } else {
-  console.warn('[PATCH] 21b. soeUserCountSearch string not found or already patched.');
+  console.log('[PATCH] 22. Legacy external API URL already removed or not present.');
+}
+
+// 23. HE() Inicialização: Preservar senha de validador se já customizada pelo usuário
+const heValidadorSearch = `n.username.toLowerCase()==="validador"?{...n,passwordHash:"Donatelo@123",role:"admin"}:n`;
+const heValidadorReplace = `n.username.toLowerCase()==="validador"?{...n,passwordHash:n.passwordHash||"Donatelo@123",role:"admin"}:n`;
+if (code.includes(heValidadorSearch)) {
+  code = code.replace(heValidadorSearch, heValidadorReplace);
+  console.log('[PATCH] 23. HE() validador password preservation patched successfully.');
+} else {
+  console.log('[PATCH] 23. HE() validador password already patched or not found.');
+}
+
+// 24. Alteração de senha no perfil: persistência atômica com timestamp e sincronização com /api/users/update-password
+const profilePassChangeSearch = `const N=a.users.map(w=>w.id===e.id?{...w,passwordHash:o}:w);s(N),r("user_activity","Alteração de Senha"`;
+const profilePassChangeReplace = `const N=a.users.map(w=>w.id===e.id?{...w,passwordHash:o,passwordUpdatedAt:Date.now()}:w);try{const _u=JSON.parse(localStorage.getItem("motordesk_active_user")||"{}");if(_u.id===e.id){_u.passwordHash=o;_u.passwordUpdatedAt=Date.now();localStorage.setItem("motordesk_active_user",JSON.stringify(_u));}}catch(_e){}fetch("/api/users/update-password",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({userId:e.id,username:e.username,companyId:e.companyId,newPassword:o})}).catch(()=>{});s(N),r("user_activity","Alteração de Senha"`;
+if (code.includes(profilePassChangeSearch)) {
+  code = code.replace(profilePassChangeSearch, profilePassChangeReplace);
+  console.log('[PATCH] 24. Profile password change atomic persistence patched successfully.');
+} else {
+  console.log('[PATCH] 24. Profile password change already patched or not found.');
+}
+
+// 25. Chão de fábrica / RH Operacional (vVe): Usuário padrão com flags de primeiro acesso
+const opUserFirstAccessSearch = `jobTitle:H.role,passwordHash:"123456",companyId:s,allowedCompanyIds:[s],isTerminated:!1`;
+const opUserFirstAccessReplace = `jobTitle:H.role,passwordHash:"123456",firstAccess:!0,mustChangePassword:!0,hasChosenPassword:!1,companyId:s,allowedCompanyIds:[s],isTerminated:!1`;
+if (code.includes(opUserFirstAccessSearch)) {
+  code = code.replace(opUserFirstAccessSearch, opUserFirstAccessReplace);
+  console.log('[PATCH] 25. Operator default user first access flags patched successfully.');
+} else {
+  console.log('[PATCH] 25. Operator default user first access flags already patched or not found.');
+}
+
+// 26. Prevenção de duplicidade global de usuários no cadastro de operadores (SOe)
+const soeDupUserCandidates = [
+  `if((f?f.username.toLowerCase()!==Gi.trim().toLowerCase():!0)&&e.users.some(nr=>(nr.companyId||"comp-1")===w&&nr.username.toLowerCase()===Gi.trim().toLowerCase())){uo(\`O nome de usuário "\${Gi}" já está cadastrado nesta empresa.\`);return}`,
+  `if((f?f.username.toLowerCase()!==Gi.trim().toLowerCase():!0)&&e.users.some(nr=>nr.username&&nr.username.toLowerCase()===Gi.trim().toLowerCase())){uo(\`O nome de usuário "\${Gi}" já existe no sistema. Escolha outro nome de usuário único.\`);return}`
+];
+const soeDupUserReplace = `if((f?f.username.toLowerCase()!==Gi.trim().toLowerCase():!0)&&e.users.some(nr=>nr.username&&nr.username.toLowerCase()===Gi.trim().toLowerCase())){uo(\`O nome de usuário "\${Gi}" já existe no sistema. Escolha outro nome de usuário único.\`);return}`;
+if (code.includes(soeDupUserCandidates[0])) {
+  code = code.replace(soeDupUserCandidates[0], soeDupUserReplace);
+  console.log('[PATCH] 26. SOe global duplicate user prevention patched successfully.');
+} else if (code.includes(soeDupUserReplace)) {
+  console.log('[PATCH] 26. SOe global duplicate user prevention already present.');
+} else {
+  console.warn('[PATCH] 26. soeDupUserSearch string not found.');
+}
+
+// 27. Criação de operadores (SOe): Flags atômicas de primeiro acesso e aviso claro de senha inicial
+const soeCreateUserSearch = `status:_isTerm?"terminated":"active",terminationDate:_isTerm?_ced:"",companyId:w,jobTitle:Uc.trim()||void 0,baseSalary:ai>0?ai:void 0,commissionPercent:bl>0?bl:void 0,commissionType:Zo,pixKey:Nl.trim()||void 0,pixKeyType:Nl?Br:void 0,bankName:wl.trim()||void 0,bankAgency:cc.trim()||void 0,bankAccount:_d.trim()||void 0};Oa=[...e.users,Ga],s(Oa),i("user_activity","Novo Usuário Cadastrado",\`Operador \${Ga.name} (@\${Ga.username}) adicionado à empresa \${Ue}.\`,"","");const nr=Object.keys(Ga.permissions).filter(Hs=>Ga.permissions[Hs]).map(Hs=>Yb[Hs]||Hs);Li({title:"Novo Operador Cadastrado!",message:\`O operador "\${Ga.name}" (@\${Ga.username}) foi cadastrado para a empresa \${Ue}.\``;
+const soeCreateUserReplace = `status:_isTerm?"terminated":"active",terminationDate:_isTerm?_ced:"",companyId:w,allowedCompanyIds:[w],firstAccess:!0,mustChangePassword:!0,hasChosenPassword:!1,passwordUpdatedAt:Date.now(),jobTitle:Uc.trim()||void 0,baseSalary:ai>0?ai:void 0,commissionPercent:bl>0?bl:void 0,commissionType:Zo,pixKey:Nl.trim()||void 0,pixKeyType:Nl?Br:void 0,bankName:wl.trim()||void 0,bankAgency:cc.trim()||void 0,bankAccount:_d.trim()||void 0};Oa=[...e.users,Ga],s(Oa),i("user_activity","Novo Usuário Cadastrado",\`Operador \${Ga.name} (@\${Ga.username}) adicionado à empresa \${Ue}.\`,"","");const nr=Object.keys(Ga.permissions).filter(Hs=>Ga.permissions[Hs]).map(Hs=>Yb[Hs]||Hs);Li({title:"Novo Operador Cadastrado!",message:\`O operador "\${Ga.name}" (@\${Ga.username}) foi cadastrado para a empresa \${Ue}. Senha de acesso definida: \${gl||"123456"}. No 1º acesso, o colaborador poderá alterar ou manter a senha.\``;
+if (code.includes(soeCreateUserSearch)) {
+  code = code.replace(soeCreateUserSearch, soeCreateUserReplace);
+  console.log('[PATCH] 27. SOe operator creation first access flags and password notification patched successfully.');
+} else if (code.includes(soeCreateUserReplace)) {
+  console.log('[PATCH] 27. SOe operator creation first access flags already present.');
+} else {
+  console.warn('[PATCH] 27. soeCreateUserSearch string not found.');
+}
+
+// 28. Ordens de Serviço: Isolar mecânicos e operadores estritamente por empresa
+const osMechSearch1 = `const Ke=e.users.filter(rt=>rt.role==="mecanico"||rt.role==="admin");Ke.length>0?ue(Ke[0].id):ue((a==null?void 0:a.id)||"usr-3");`;
+const osMechReplace1 = `const _osCompId=(oe&&oe.companyId)||(e.companyInfo&&e.companyInfo.id)||"comp-1";const Ke=e.users.filter(rt=>(rt.role==="mecanico"||rt.role==="admin")&&((rt.companyId||"comp-1")===_osCompId||(Array.isArray(rt.allowedCompanyIds)&&(rt.allowedCompanyIds.includes(_osCompId)||rt.allowedCompanyIds.includes("*")))||rt.username==="admin"||rt.username==="validador"));Ke.length>0?ue(Ke[0].id):ue((a==null?void 0:a.id)||"usr-3");`;
+
+const osMechSearch2 = `children:e.users.filter(oe=>oe.role==="mecanico"||oe.role==="admin").map(oe=>t.jsxs("option",{value:oe.id,children:[oe.name," (",oe.role==="mecanico"?"Mecânico"`;
+const osMechReplace2 = `children:e.users.filter(oe=>(oe.role==="mecanico"||oe.role==="admin")&&((oe.companyId||"comp-1")===((e.companyInfo&&e.companyInfo.id)||"comp-1")||(Array.isArray(oe.allowedCompanyIds)&&(oe.allowedCompanyIds.includes((e.companyInfo&&e.companyInfo.id)||"comp-1")||oe.allowedCompanyIds.includes("*")))||oe.username==="admin"||oe.username==="validador")).map(oe=>t.jsxs("option",{value:oe.id,children:[oe.name," (",oe.role==="mecanico"?"Mecânico"`;
+
+if (code.includes(osMechSearch1)) {
+  code = code.replace(osMechSearch1, osMechReplace1);
+  console.log('[PATCH] 28a. OS mechanic auto-assignment company isolation patched successfully.');
+} else if (code.includes(osMechReplace1)) {
+  console.log('[PATCH] 28a. OS mechanic auto-assignment company isolation already present.');
+} else {
+  console.warn('[PATCH] 28a. osMechSearch1 string not found.');
+}
+
+if (code.includes(osMechSearch2)) {
+  code = code.replace(osMechSearch2, osMechReplace2);
+  console.log('[PATCH] 28b. OS mechanic dropdown company isolation patched successfully.');
+} else if (code.includes(osMechReplace2)) {
+  console.log('[PATCH] 28b. OS mechanic dropdown company isolation already present.');
+} else {
+  console.warn('[PATCH] 28b. osMechSearch2 string not found.');
+}
+
+// 29. Controle Estrito de Módulos (IA): Apenas liberar módulos contratados pela empresa e permitidos ao usuário
+const iaModuleSearch = `function IA(e,a,s,r){if(!e||!a||a.active===!1)return!1;if(s==="profile")return!0;if(!gI(e))return s==="users"&&a.role==="admin";const n=Id(e.businessType);if(!FA(s,n))return!1;const i=zre[s];if(!i)return!0;if(!Wd(i,e,n))return!1;const o=bI(a,e,r||void 0);return!(!o||!o[i])}`;
+const iaModuleReplace = `function IA(e,a,s,r){if(!e||!a||a.active===!1||a.isActive===!1||a.isTerminated===!0||a.status==="terminated")return!1;const _isM=(a.username&&(a.username.toLowerCase()==="admin"||a.username.toLowerCase()==="validador"))||(Array.isArray(a.allowedCompanyIds)&&a.allowedCompanyIds.includes("*"));if(!_isM){const _uC=a.companyId||"comp-1";if(_uC!==e.id&&!(Array.isArray(a.allowedCompanyIds)&&a.allowedCompanyIds.includes(e.id)))return!1;}if(s==="profile")return!0;if(!gI(e))return s==="users"&&(a.role==="admin"||_isM);const n=Id(e.businessType);if(!FA(s,n))return!1;const i=zre[s];if(!i)return!0;if(!Wd(i,e,n))return!1;const o=bI(a,e,r||void 0);return!(!o||!o[i])}`;
+if (code.includes(iaModuleSearch)) {
+  code = code.replace(iaModuleSearch, iaModuleReplace);
+  console.log('[PATCH] 29. Strict module authorization and company permission (IA) patched successfully.');
+} else if (code.includes(iaModuleReplace)) {
+  console.log('[PATCH] 29. Strict module authorization (IA) already present.');
+} else {
+  console.warn('[PATCH] 29. iaModuleSearch string not found.');
 }
 
 fs.writeFileSync(bundlePath, code, 'utf8');
