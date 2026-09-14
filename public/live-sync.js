@@ -31,7 +31,11 @@
     { id: "comp-4", name: "MotorDesk Auto Peças & Distribuidora - Comércio SP", businessType: "COMERCIO", companyType: "matriz", subscriptionStatus: "active" },
     { id: "comp-5", name: "MotorDesk Metalúrgica & Indústria de Autopeças - Indústria SP", businessType: "INDUSTRIA", companyType: "matriz", subscriptionStatus: "active" },
     { id: "comp-1786707452067", name: "EMPRESA DE TESTE", businessType: "COMERCIO", companyType: "matriz", subscriptionStatus: "active" },
-    { id: "comp-test-1786973620291", name: "Auto Mecânica Auditoria Sincronizada", businessType: "OFICINA", companyType: "matriz", subscriptionStatus: "active" }
+    { id: "comp-test-1786973620291", name: "Auto Mecânica Auditoria Sincronizada", businessType: "OFICINA", companyType: "matriz", subscriptionStatus: "active" },
+    { id: "comp-1787053175032", name: "Cerâmica de Pisos LTDA", businessType: "INDUSTRIA", companyType: "matriz", subscriptionStatus: "active" },
+    { id: "comp-1788186013297", name: "A F X Solucoes em Embalagens Afx Representacoes Comerciais LTDA", businessType: "COMERCIO", companyType: "matriz", subscriptionStatus: "active" },
+    { id: "comp-1788356473331", name: "INDUSTRIA FABRICAÇÃO LTDA", businessType: "INDUSTRIA", companyType: "matriz", subscriptionStatus: "active" },
+    { id: "comp-1789044350982", name: "COMERCIO COMERCIAL LTDA", businessType: "COMERCIO", companyType: "matriz", subscriptionStatus: "active" }
   ];
 
   // Inicialização síncrona imediata no window para qualquer dispositivo/aba
@@ -98,7 +102,8 @@
       'Authorization': `Bearer ${token}`,
       'Cache-Control': 'no-cache, no-store, must-revalidate',
       'Pragma': 'no-cache',
-      'X-Requested-With': 'XMLHttpRequest'
+      'X-Requested-With': 'XMLHttpRequest',
+      'X-Sync-Mode': 'full'
     };
 
     const activeUserStr = localStorage.getItem('motordesk_active_user');

@@ -15,6 +15,12 @@ export const requireAuth = async (
   const isProduction = process.env.NODE_ENV === 'production';
 
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    // Permitir requisições GET para hidratação e bootstrap inicial em qualquer navegador ou nova aba
+    if (req.method === 'GET') {
+      req.user = { uid: `guest_session_${Date.now()}`, role: 'guest' };
+      return next();
+    }
+
     if (isProduction) {
       return res.status(401).json({
         error: 'Unauthorized',

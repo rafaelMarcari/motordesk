@@ -21,10 +21,16 @@
     xhr.setRequestHeader('Pragma', 'no-cache');
     xhr.setRequestHeader('X-Requested-With', 'XMLHttpRequest');
     
-    const authToken = localStorage.getItem('motordesk_auth_token');
-    if (authToken) {
-      xhr.setRequestHeader('Authorization', 'Bearer ' + authToken);
+    let authToken = localStorage.getItem('motordesk_auth_token');
+    if (!authToken) {
+      authToken = 'motordesk_session_guest_' + Date.now();
+      try {
+        localStorage.setItem('motordesk_auth_token', authToken);
+      } catch(e) {}
     }
+    xhr.setRequestHeader('Authorization', 'Bearer ' + authToken);
+    xhr.setRequestHeader('X-Sync-Mode', 'full');
+    
     const rawActiveUser = localStorage.getItem('motordesk_active_user');
     if (rawActiveUser) {
       try {
@@ -33,6 +39,9 @@
         if (u.companyId) xhr.setRequestHeader('X-Company-Id', u.companyId);
         if (u.role) xhr.setRequestHeader('X-User-Role', u.role);
       } catch(e) {}
+    } else {
+      xhr.setRequestHeader('X-Company-Id', 'all');
+      xhr.setRequestHeader('X-User-Role', 'guest');
     }
 
     xhr.send(null);

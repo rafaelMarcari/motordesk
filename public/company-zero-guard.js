@@ -70,15 +70,7 @@
         })
         .filter(item => {
           if (!item) return false;
-          // Para empresas criadas (reais), remover resíduos de testes anteriores em comp-178...
-          if (userCreatedCompanyIds.has(item.companyId)) {
-            if (item.companyId.startsWith('comp-178') || item.companyId.startsWith('comp-test')) {
-              // Verifica se são dados de teste residuais
-              if (item.id && (item.id.includes('test') || item.id.includes('demo') || item.id.startsWith('client-') || item.id.startsWith('sale-'))) {
-                return false;
-              }
-            }
-          }
+          // Preservar 100% de todos os dados legítimos criados pelo usuário
           return true;
         });
 

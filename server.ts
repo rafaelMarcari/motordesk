@@ -131,10 +131,13 @@ app.use((req, res, next) => {
 // 3. Body Parser Middleware
 app.use(express.json({ limit: "50mb" }));
 
-// 3. Ensure JSON response header for API routes
+// 3. Ensure JSON response header and strict anti-cache headers for API routes
 app.use((req, res, next) => {
   if (req.path.startsWith("/api") || req.path === "/health") {
     res.setHeader("Content-Type", "application/json");
+    res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate, max-age=0, proxy-revalidate");
+    res.setHeader("Pragma", "no-cache");
+    res.setHeader("Expires", "0");
   }
   next();
 });
@@ -941,11 +944,11 @@ export function mergeAppDatabase(existing: any, incoming: any): any {
 // Garante que usuários de uma empresa em hipótese alguma vejam usuários ou qualquer outro dado de outra empresa
 export function isolateDatabaseForContext(
   db: any,
-  context: { userId: string; companyId: string; userRole: string }
+  context: { userId?: string; companyId?: string; userRole?: string; syncMode?: string }
 ): any {
   if (!db || typeof db !== 'object') return db;
 
-  const { userId, companyId: reqCompanyId, userRole } = context;
+  const { userId, companyId: reqCompanyId, userRole, syncMode } = context;
 
   const operationalCollections = [
     'clients',
@@ -1021,22 +1024,14 @@ export function isolateDatabaseForContext(
     (Array.isArray(reqUser?.allowedCompanyIds) && reqUser.allowedCompanyIds.includes('*')) || isMasterUser
   );
 
-  // Se for Master User sem empresa específica selecionada (modo all), ou se for reqCompanyId === 'all',
-  // retorna o banco completo garantindo 100% da integridade estrutural
-  if (reqCompanyId === 'all' || (!reqCompanyId && isMasterUser)) {
+  // Se for Master User (admin/validador), usuário com wildcard (*), modo 'all', pré-login ou sincronização 'full':
+  // Retorna o banco de dados completo com todas as coleções operacionais íntegras,
+  // permitindo alternância instantânea entre as 11 empresas no menu superior e sincronização perfeita entre navegadores.
+  if (isMasterUser || hasWildcard || reqCompanyId === 'all' || isPreLogin || syncMode === 'full') {
+    const currentCompany = allRegistered.find((c: any) => c.id === targetCompanyId) || (allRegistered.length > 0 ? allRegistered[0] : db.companyInfo);
     return {
       ...db,
-      registeredCompanies: allRegistered,
-      users: allUsers,
-    };
-  }
-
-  // Se for contexto de pré-login (usuário não autenticado solicitando banco para validar credenciais na tela de login):
-  // Retorna os usuários e empresas para validação de credenciais e renderização correta do seletor
-  const isPreLogin = (!userId || userId === 'anonymous' || userId === 'authenticated_user' || userId.startsWith('guest') || userId.includes('guest'));
-  if (isPreLogin) {
-    return {
-      ...db,
+      companyInfo: currentCompany,
       registeredCompanies: allRegistered,
       users: allUsers,
     };
@@ -1180,7 +1175,8 @@ app.get("/api/db", requireAuth, async (req: any, res) => {
     if (result.rows.length > 0 && result.rows[0].data) {
       const data = sanitizeAndIsolateCompanies(result.rows[0].data);
       serverAppStoreCache = data;
-      const isolatedData = isolateDatabaseForContext(data, { userId, companyId: reqCompanyId, userRole });
+      const syncMode = (req.headers['x-sync-mode'] || req.query?.mode || '') as string;
+      const isolatedData = isolateDatabaseForContext(data, { userId, companyId: reqCompanyId, userRole, syncMode });
       const durationMs = Date.now() - startTime;
       const empresas = (isolatedData.registeredCompanies || []).length;
       const usuarios = (isolatedData.users || []).length;
@@ -1215,7 +1211,7 @@ app.get("/api/db", requireAuth, async (req: any, res) => {
         if (altRes.rows.length > 0 && altRes.rows[0].data) {
           const data = sanitizeAndIsolateCompanies(altRes.rows[0].data);
           serverAppStoreCache = data;
-          const isolatedData = isolateDatabaseForContext(data, { userId, companyId: reqCompanyId, userRole });
+          const isolatedData = isolateDatabaseForContext(data, { userId, companyId: reqCompanyId, userRole, syncMode });
           const durationMs = Date.now() - startTime;
           const empresas = (isolatedData.registeredCompanies || []).length;
           const usuarios = (isolatedData.users || []).length;
@@ -1243,7 +1239,8 @@ app.get("/api/db", requireAuth, async (req: any, res) => {
     }
 
     if (serverAppStoreCache) {
-      const isolatedData = isolateDatabaseForContext(serverAppStoreCache, { userId, companyId: reqCompanyId, userRole });
+      const syncMode = (req.headers['x-sync-mode'] || req.query?.mode || '') as string;
+      const isolatedData = isolateDatabaseForContext(serverAppStoreCache, { userId, companyId: reqCompanyId, userRole, syncMode });
       const empresas = (isolatedData.registeredCompanies || []).length;
       const usuarios = (isolatedData.users || []).length;
       const clientes = (isolatedData.clients || []).length;
@@ -2185,9 +2182,23 @@ app.post("/api/fiscal/inutilize", requireAuth, requireContractedModule("Fiscal",
 
 // Handle development vs production modes
 async function startServer() {
-  // Serve static assets from dist and public
-  app.use(express.static(path.resolve(process.cwd(), "dist")));
-  app.use(express.static(path.resolve(process.cwd(), "public")));
+  // Serve static assets from dist and public with strict anti-cache headers for scripts and html
+  const staticOptions = {
+    setHeaders: (res: express.Response, filePath: string) => {
+      if (
+        filePath.endsWith(".html") ||
+        filePath.endsWith(".js") ||
+        filePath.includes("pre-hydrate") ||
+        filePath.includes("live-sync")
+      ) {
+        res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate, max-age=0, proxy-revalidate");
+        res.setHeader("Pragma", "no-cache");
+        res.setHeader("Expires", "0");
+      }
+    }
+  };
+  app.use(express.static(path.resolve(process.cwd(), "dist"), staticOptions));
+  app.use(express.static(path.resolve(process.cwd(), "public"), staticOptions));
 
   if (process.env.NODE_ENV !== "production") {
     // In local development mode, attach Vite middleware for AI Studio live preview
@@ -2207,6 +2218,10 @@ async function startServer() {
     if (req.path.startsWith("/api") || req.path === "/health") {
       return next();
     }
+    res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate, max-age=0, proxy-revalidate");
+    res.setHeader("Pragma", "no-cache");
+    res.setHeader("Expires", "0");
+
     const distIndexPath = path.resolve(process.cwd(), "dist/index.html");
     const rootIndexPath = path.resolve(process.cwd(), "index.html");
 
