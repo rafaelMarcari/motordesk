@@ -393,6 +393,17 @@
         }
       });
 
+      // SSE: Evento de integridade corporativa - sessão derrubada por acesso em outro computador
+      sseSource.addEventListener('session_revoked', function (e) {
+        try {
+          const data = JSON.parse(e.data);
+          log('SSE session_revoked received from server:', data);
+          window.dispatchEvent(new CustomEvent('motordesk_session_revoked', { detail: data }));
+        } catch (err) {
+          console.warn('[LiveSync] Error handling session_revoked event:', err);
+        }
+      });
+
       sseSource.onerror = function () {
         updateIndicatorStatus('offline');
         if (sseSource) {

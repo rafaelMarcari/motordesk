@@ -57,13 +57,18 @@ if (rvIndex !== -1) {
   console.log('[PATCH] 4. rv function patched with accessBoletos:!0.');
 }
 
-// 5. Ul: Validação de limite de operadores da empresa (padrão 5 usuários)
+// 5. Ul: Validação de limite de operadores da empresa (padrão 5 usuários, QA ISENTO)
 const ulSearch = `}else{if(!gl.trim()){uo("Senha inicial é obrigatória para novos operadores.");return}`;
-const ulReplace = `}else{const _cL=(za&&typeof za.userLimit==="number"&&za.userLimit>0)?za.userLimit:5;const _uC=e.users.filter(u=>(u.companyId||"comp-1")===w).length;if(_uC>=_cL){const _eP=(za&&typeof za.additionalUserPrice==="number")?za.additionalUserPrice:29.9;uo(\`Limite de operadores atingido: a licença da empresa "\${Ue}" permite até \${_cL} usuários (atualmente \${_uC} cadastrados). Para cadastrar mais operadores, aumente o limite de usuários na Gestão de Assinatura (R$ \${_eP.toFixed(2)} por usuário adicional).\`);return}if(!gl.trim()){uo("Senha inicial é obrigatória para novos operadores.");return}`;
+const ulPrevPatched = `}else{const _cL=(za&&typeof za.userLimit==="number"&&za.userLimit>0)?za.userLimit:5;const _uC=e.users.filter(u=>(u.companyId||"comp-1")===w).length;if(_uC>=_cL){const _eP=(za&&typeof za.additionalUserPrice==="number")?za.additionalUserPrice:29.9;uo(\`Limite de operadores atingido: a licença da empresa "\${Ue}" permite até \${_cL} usuários (atualmente \${_uC} cadastrados). Para cadastrar mais operadores, aumente o limite de usuários na Gestão de Assinatura (R$ \${_eP.toFixed(2)} por usuário adicional).\`);return}if(!gl.trim()){uo("Senha inicial é obrigatória para novos operadores.");return}`;
 
-if (code.includes(ulSearch)) {
+const ulReplace = `}else{const _isQa=u=>u&&(u.role==="qa"||u.role==="QA"||u.userType==="qa"||(u.username&&(u.username.toLowerCase()==="validador"||u.username.toLowerCase()==="qa")));const _isCreatingQa=(sd==="qa"||sd==="QA"||Gi.trim().toLowerCase()==="validador"||Gi.trim().toLowerCase()==="qa");const _cL=(za&&typeof za.userLimit==="number"&&za.userLimit>0)?za.userLimit:5;const _uC=e.users.filter(u=>(u.companyId||"comp-1")===w&&!_isQa(u)).length;if(!_isCreatingQa&&_uC>=_cL){const _eP=(za&&typeof za.additionalUserPrice==="number")?za.additionalUserPrice:29.9;uo(\`Limite de operadores atingido: a licença da empresa "\${Ue}" inclui até \${_cL} operadores vinculados ao plano (atualmente \${_uC} regulares cadastrados; usuários QA são isentos). Para liberar mais operadores, aumente o limite de usuários na Gestão de Assinatura (acréscimo configurável de R$ \${_eP.toFixed(2)}/mês por usuário adicional).\`);return}if(!gl.trim()){uo("Senha inicial é obrigatória para novos operadores.");return}`;
+
+if (code.includes(ulPrevPatched)) {
+  code = code.replace(ulPrevPatched, ulReplace);
+  console.log('[PATCH] 5. Ul user limit with QA EXEMPTION updated successfully.');
+} else if (code.includes(ulSearch)) {
   code = code.replace(ulSearch, ulReplace);
-  console.log('[PATCH] 5. Ul user limit enforcement patched successfully.');
+  console.log('[PATCH] 5. Ul user limit with QA EXEMPTION patched successfully.');
 } else {
   console.warn('[PATCH] 5. Ul search string not found or already patched.');
 }

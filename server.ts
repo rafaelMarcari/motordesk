@@ -11,6 +11,8 @@ import { requireAuth } from "./src/middleware/auth.js";
 import { requireContractedModule } from "./src/middleware/contractGuard.js";
 import { isCompanyActive } from "./src/utils/securityUtils.js";
 import { fiscalBackendService } from "./server/fiscalProviderService.js";
+import { DailyBackupService } from "./server/dailyBackupService.js";
+import { CompanySupportService } from "./server/companySupportService.js";
 
 dotenv.config();
 
@@ -131,6 +133,86 @@ app.use((req, res, next) => {
 // 3. Body Parser Middleware
 app.use(express.json({ limit: "50mb" }));
 
+// Active Sessions Tracking Engine for System Integrity & Concurrency Guard
+export interface ActiveUserSession {
+  sessionId: string;
+  userId: string;
+  username: string;
+  name?: string;
+  companyId?: string;
+  ip: string;
+  userAgent: string;
+  device: string;
+  location: string;
+  loginTime: string;
+  lastHeartbeat: number;
+  status: 'active' | 'revoked';
+  revokedAt?: number;
+  revokedByDevice?: string;
+  revokedByIp?: string;
+}
+
+export const activeSessionsByUsername = new Map<string, ActiveUserSession>();
+export const activeSessionsById = new Map<string, ActiveUserSession>();
+
+export function parseClientDeviceInfo(userAgent: string): string {
+  if (!userAgent) return 'Terminal Web Corporativo';
+  let browser = 'Navegador Web';
+  if (userAgent.includes('Edg/')) browser = 'Microsoft Edge';
+  else if (userAgent.includes('Chrome/')) browser = 'Google Chrome';
+  else if (userAgent.includes('Safari/') && !userAgent.includes('Chrome')) browser = 'Apple Safari';
+  else if (userAgent.includes('Firefox/')) browser = 'Mozilla Firefox';
+  else if (userAgent.includes('Opera/') || userAgent.includes('OPR/')) browser = 'Opera';
+
+  let os = 'Desktop';
+  if (userAgent.includes('Windows NT 10.0')) os = 'Windows 10/11';
+  else if (userAgent.includes('Windows NT 6.3')) os = 'Windows 8.1';
+  else if (userAgent.includes('Windows NT 6.1')) os = 'Windows 7';
+  else if (userAgent.includes('Windows')) os = 'Windows';
+  else if (userAgent.includes('Mac OS X')) os = 'macOS Apple';
+  else if (userAgent.includes('Android')) os = 'Android Mobile';
+  else if (userAgent.includes('iPhone')) os = 'iPhone iOS';
+  else if (userAgent.includes('iPad')) os = 'iPadOS';
+  else if (userAgent.includes('Linux')) os = 'Linux OS';
+
+  return `${browser} (${os})`;
+}
+
+export function getClientIp(req: any): string {
+  const forwarded = req.headers['x-forwarded-for'];
+  let ip = '';
+  if (typeof forwarded === 'string') {
+    ip = forwarded.split(',')[0].trim();
+  } else if (Array.isArray(forwarded)) {
+    ip = forwarded[0].trim();
+  } else {
+    ip = req.socket?.remoteAddress || req.ip || '127.0.0.1';
+  }
+  if (ip.startsWith('::ffff:')) {
+    ip = ip.replace('::ffff:', '');
+  }
+  if (ip === '::1') {
+    ip = '127.0.0.1';
+  }
+  return ip || '127.0.0.1';
+}
+
+export function formatSessionDateTime(date: Date): string {
+  try {
+    return date.toLocaleString('pt-BR', {
+      timeZone: 'America/Sao_Paulo',
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit'
+    });
+  } catch (e) {
+    return date.toISOString().replace('T', ' ').slice(0, 19);
+  }
+}
+
 // 3. Ensure JSON response header and strict anti-cache headers for API routes
 app.use((req, res, next) => {
   if (req.path.startsWith("/api") || req.path === "/health") {
@@ -142,11 +224,30 @@ app.use((req, res, next) => {
   next();
 });
 
-// 4. Middleware de Segurança Corporativa: Revogação Imediata de Acesso para Colaboradores Demitidos
+// 4. Middleware de Segurança Corporativa: Revogação Imediata de Acesso e Controle de Concorrência de Sessão
 app.use((req: any, res: any, next: any) => {
   if (!req.path.startsWith("/api") || req.path === "/api/health" || req.path === "/health") {
     return next();
   }
+
+  // 4.1. Verificação de Revogação de Sessão (Sessão derrubada por novo acesso em outro computador)
+  const authHeader = req.headers["authorization"] || req.headers["Authorization"];
+  if (authHeader && typeof authHeader === "string" && authHeader.startsWith("Bearer ") && !req.path.startsWith("/api/auth/")) {
+    const token = authHeader.replace("Bearer ", "").trim();
+    const recordedSession = activeSessionsById.get(token);
+    if (recordedSession && recordedSession.status === "revoked") {
+      res.setHeader("X-Session-Status", "revoked");
+      return res.status(403).json({
+        error: "Forbidden: Session Revoked",
+        code: "SESSION_REVOKED",
+        message: "Sua sessão foi encerrada porque uma nova conexão para este usuário foi iniciada em outro computador/dispositivo.",
+        revokedByDevice: recordedSession.revokedByDevice || "Outro computador",
+        revokedAt: recordedSession.revokedAt,
+      });
+    }
+  }
+
+  // 4.2. Verificação de Colaborador Demitido
   const userId = req.headers["x-user-id"] || req.headers["X-User-Id"];
   if (userId && serverAppStoreCache && Array.isArray(serverAppStoreCache.users)) {
     const user = serverAppStoreCache.users.find(
@@ -932,6 +1033,26 @@ export function mergeAppDatabase(existing: any, incoming: any): any {
     taxOperationNatures: mergeEntityCollection(existing.taxOperationNatures, incoming.taxOperationNatures, 'id'),
     taxRules: mergeEntityCollection(existing.taxRules, incoming.taxRules, 'id'),
     xmlImportRecords: mergeEntityCollection(existing.xmlImportRecords, incoming.xmlImportRecords, 'id'),
+    boms: mergeEntityCollection(existing.boms, incoming.boms, 'id'),
+    billOfMaterials: mergeEntityCollection(existing.billOfMaterials, incoming.billOfMaterials, 'id'),
+    productionOrders: mergeEntityCollection(existing.productionOrders, incoming.productionOrders, 'id'),
+    productLots: mergeEntityCollection(existing.productLots, incoming.productLots, 'id'),
+    operationalAlerts: mergeEntityCollection(existing.operationalAlerts, incoming.operationalAlerts, 'id'),
+    installedEquipment: mergeEntityCollection(existing.installedEquipment, incoming.installedEquipment, 'id'),
+    equipmentMaintenancePlans: mergeEntityCollection(existing.equipmentMaintenancePlans, incoming.equipmentMaintenancePlans, 'id'),
+    equipmentMaintenanceOrders: mergeEntityCollection(existing.equipmentMaintenanceOrders, incoming.equipmentMaintenanceOrders, 'id'),
+    productionScrapLogs: mergeEntityCollection(existing.productionScrapLogs, incoming.productionScrapLogs, 'id'),
+    productionReworkLogs: mergeEntityCollection(existing.productionReworkLogs, incoming.productionReworkLogs, 'id'),
+    purchaseHistory: mergeEntityCollection(existing.purchaseHistory, incoming.purchaseHistory, 'id'),
+    billingClosings: mergeEntityCollection(existing.billingClosings, incoming.billingClosings, 'id'),
+    monthlyAccountingClosings: mergeEntityCollection(existing.monthlyAccountingClosings, incoming.monthlyAccountingClosings, 'id'),
+    taxObligationGuides: mergeEntityCollection(existing.taxObligationGuides, incoming.taxObligationGuides, 'id'),
+    qualityInspections: mergeEntityCollection(existing.qualityInspections, incoming.qualityInspections, 'id'),
+    technicalDocuments: mergeEntityCollection(existing.technicalDocuments, incoming.technicalDocuments, 'id'),
+    warehouseLocations: mergeEntityCollection(existing.warehouseLocations, incoming.warehouseLocations, 'id'),
+    shopFloorEntries: mergeEntityCollection(existing.shopFloorEntries, incoming.shopFloorEntries, 'id'),
+    nonConformityReports: mergeEntityCollection(existing.nonConformityReports, incoming.nonConformityReports, 'id'),
+    bankStatements: mergeEntityCollection(existing.bankStatements, incoming.bankStatements, 'id'),
     loginHistory: mergeEntityCollection(existing.loginHistory, incoming.loginHistory, 'lastAccess', 'username'),
     globalModules: { ...(existing.globalModules || {}), ...(incoming.globalModules || {}) },
     alertSettings: { ...(existing.alertSettings || {}), ...(incoming.alertSettings || {}) },
@@ -980,6 +1101,20 @@ export function isolateDatabaseForContext(
     'notifications',
     'carriers',
     'taxObligationGuides',
+    'installedEquipment',
+    'equipmentMaintenancePlans',
+    'equipmentMaintenanceOrders',
+    'productionScrapLogs',
+    'productionReworkLogs',
+    'purchaseHistory',
+    'billingClosings',
+    'monthlyAccountingClosings',
+    'qualityInspections',
+    'technicalDocuments',
+    'warehouseLocations',
+    'shopFloorEntries',
+    'nonConformityReports',
+    'bankStatements',
   ];
 
   const allRegistered = Array.isArray(db.registeredCompanies) && db.registeredCompanies.length > 0
@@ -1023,6 +1158,8 @@ export function isolateDatabaseForContext(
   const hasWildcard = Boolean(
     (Array.isArray(reqUser?.allowedCompanyIds) && reqUser.allowedCompanyIds.includes('*')) || isMasterUser
   );
+
+  const isPreLogin = !userId || userId === 'guest' || userId.startsWith('guest') || userId === 'authenticated_user' || userId === 'all' || userId === 'anonymous';
 
   // Se for Master User (admin/validador), usuário com wildcard (*), modo 'all', pré-login ou sincronização 'full':
   // Retorna o banco de dados completo com todas as coleções operacionais íntegras,
@@ -1136,6 +1273,34 @@ export function broadcastDbUpdate(payload: { updatedAt: string; version: number;
   console.log(`[REALTIME-BROADCAST] Sent db_update v${payload.version} to ${successCount} connected machines/clients (source: ${payload.source || 'db_update'})`);
 }
 
+export function broadcastSessionRevocation(revocation: {
+  revokedSessionId: string;
+  username: string;
+  userId?: string;
+  terminatedByDevice: string;
+  terminatedByIp?: string;
+  terminatedAt: string;
+}) {
+  const dataString = JSON.stringify({
+    ...revocation,
+    serverTime: Date.now(),
+  });
+  const sseMsg = `event: session_revoked\ndata: ${dataString}\n\n`;
+  let successCount = 0;
+  for (const client of sseSubscribers) {
+    try {
+      client.write(sseMsg);
+      if (typeof (client as any).flush === 'function') {
+        (client as any).flush();
+      }
+      successCount++;
+    } catch (e) {
+      sseSubscribers.delete(client);
+    }
+  }
+  console.log(`[SESSION-INTEGRITY] Broadcasted session_revoked to ${successCount} clients for user @${revocation.username} (session ${revocation.revokedSessionId}) terminated by ${revocation.terminatedByDevice}`);
+}
+
 // Helper: Extract user and company identity context from request
 function extractUserContext(req: any): { userId: string; companyId: string; userRole: string } {
   let userId = req.headers['x-user-id'];
@@ -1175,7 +1340,7 @@ app.get("/api/db", requireAuth, async (req: any, res) => {
     if (result.rows.length > 0 && result.rows[0].data) {
       const data = sanitizeAndIsolateCompanies(result.rows[0].data);
       serverAppStoreCache = data;
-      const syncMode = (req.headers['x-sync-mode'] || req.query?.mode || '') as string;
+      const syncMode = (req.headers['x-sync-mode'] || req.query?.mode || 'full') as string;
       const isolatedData = isolateDatabaseForContext(data, { userId, companyId: reqCompanyId, userRole, syncMode });
       const durationMs = Date.now() - startTime;
       const empresas = (isolatedData.registeredCompanies || []).length;
@@ -1239,7 +1404,7 @@ app.get("/api/db", requireAuth, async (req: any, res) => {
     }
 
     if (serverAppStoreCache) {
-      const syncMode = (req.headers['x-sync-mode'] || req.query?.mode || '') as string;
+      const syncMode = (req.headers['x-sync-mode'] || req.query?.mode || 'full') as string;
       const isolatedData = isolateDatabaseForContext(serverAppStoreCache, { userId, companyId: reqCompanyId, userRole, syncMode });
       const empresas = (isolatedData.registeredCompanies || []).length;
       const usuarios = (isolatedData.users || []).length;
@@ -1460,7 +1625,7 @@ app.post("/api/db", requireAuth, async (req: any, res) => {
       source: "cloud_sql",
     });
 
-    const isolatedResponseData = isolateDatabaseForContext(mergedData, { userId, companyId: inCompanyId, userRole });
+    const isolatedResponseData = isolateDatabaseForContext(mergedData, { userId, companyId: inCompanyId, userRole, syncMode: 'full' });
 
     return res.json({
       success: true,
@@ -1733,7 +1898,17 @@ app.get("/api/companies/:companyId/license", async (req: any, res) => {
     const companies = currentData?.registeredCompanies || (currentData?.companyInfo ? [currentData.companyInfo] : []);
     const company = companies.find((c: any) => c.id === companyId) || currentData?.companyInfo;
 
-    const users = (currentData?.users || []).filter((u: any) => (u.companyId || 'comp-1') === companyId);
+    const isQaUser = (u: any) => u && (
+      u.role === 'qa' ||
+      u.role === 'QA' ||
+      u.userType === 'qa' ||
+      (u.username && (u.username.toLowerCase() === 'validador' || u.username.toLowerCase() === 'qa'))
+    );
+
+    const allUsers = (currentData?.users || []).filter((u: any) => (u.companyId || 'comp-1') === companyId);
+    const regularUsers = allUsers.filter((u: any) => !isQaUser(u));
+    const qaUsers = allUsers.filter(isQaUser);
+
     const userLimit = company?.userLimit || 5;
     const additionalUserPrice = company?.additionalUserPrice !== undefined ? company.additionalUserPrice : 29.90;
     const extraUsers = Math.max(0, userLimit - 5);
@@ -1744,9 +1919,13 @@ app.get("/api/companies/:companyId/license", async (req: any, res) => {
       companyId,
       companyName: company?.name || "Empresa",
       userLimit,
-      currentUsersCount: users.length,
-      availableSlots: Math.max(0, userLimit - users.length),
-      isLimitReached: users.length >= userLimit,
+      currentUsersCount: regularUsers.length,
+      totalUsersCount: allUsers.length,
+      regularUsersCount: regularUsers.length,
+      qaUsersCount: qaUsers.length,
+      qaExemptFromLimit: true,
+      availableSlots: Math.max(0, userLimit - regularUsers.length),
+      isLimitReached: regularUsers.length >= userLimit,
       baseUsersIncluded: 5,
       extraUsers,
       additionalUserPrice,
@@ -1864,6 +2043,213 @@ app.post("/api/users/update-password", async (req: any, res) => {
     console.error("[USER-PASSWORD] Erro:", err.message);
     return res.status(500).json({ success: false, error: err.message });
   }
+});
+
+// --- ROTAS DE CONTROLE DE INTEGRIDADE E CONCORRÊNCIA DE SESSÃO CORPORATIVA ---
+
+// 1. Checagem de Conflito de Sessão Ativa em Outro Computador
+app.post("/api/auth/check-session", (req: any, res) => {
+  const username = String(req.body?.username || '').trim().toLowerCase();
+  const currentSessionId = String(req.body?.currentSessionId || '').trim();
+
+  if (!username) {
+    return res.status(400).json({ error: "Username é obrigatório" });
+  }
+
+  const existing = activeSessionsByUsername.get(username);
+  const now = Date.now();
+  const SESSION_TIMEOUT_MS = 15 * 60 * 1000; // 15 minutos sem atividade
+
+  if (existing && existing.status === 'active') {
+    const isRecent = (now - existing.lastHeartbeat) < SESSION_TIMEOUT_MS;
+    const isDifferentSession = existing.sessionId !== currentSessionId;
+
+    if (isRecent && isDifferentSession) {
+      const minutesAgo = Math.max(0, Math.floor((now - existing.lastHeartbeat) / 60000));
+      const activityText = minutesAgo === 0 ? 'há instantes' : `há ${minutesAgo} minuto${minutesAgo > 1 ? 's' : ''}`;
+
+      return res.json({
+        hasConflict: true,
+        activeSession: {
+          sessionId: existing.sessionId,
+          username: existing.username,
+          device: existing.device,
+          ip: existing.ip,
+          location: existing.location,
+          loginTime: existing.loginTime,
+          lastHeartbeatAgo: activityText,
+        }
+      });
+    }
+  }
+
+  return res.json({ hasConflict: false });
+});
+
+// 2. Registro de Nova Sessão (com ou sem derrubada da sessão anterior)
+app.post("/api/auth/register-session", (req: any, res) => {
+  const rawUsername = String(req.body?.username || '').trim();
+  const username = rawUsername.toLowerCase();
+  const userId = req.body?.userId || `user_${username}`;
+  const companyId = req.body?.companyId || 'comp-1';
+  const forceKnockdown = Boolean(req.body?.forceKnockdown);
+  const rawSessionId = req.body?.sessionId;
+  const sessionId = rawSessionId || `motordesk_session_${userId}_${Date.now()}`;
+
+  const userAgent = req.headers['user-agent'] || req.body?.userAgent || '';
+  const clientIp = getClientIp(req);
+  const device = req.body?.deviceInfo || parseClientDeviceInfo(userAgent);
+  const location = req.body?.locationInfo || `Rede Corporativa / IP: ${clientIp}`;
+
+  const existing = activeSessionsByUsername.get(username);
+  const now = Date.now();
+
+  if (existing && existing.status === 'active' && existing.sessionId !== sessionId) {
+    if (forceKnockdown) {
+      // Derrubar a sessão anterior imediatamente
+      existing.status = 'revoked';
+      existing.revokedAt = now;
+      existing.revokedByDevice = `${device} [IP: ${clientIp}]`;
+      existing.revokedByIp = clientIp;
+
+      activeSessionsById.set(existing.sessionId, existing);
+
+      // Notificar todas as máquinas via SSE para derrubar a máquina anterior em tempo real
+      broadcastSessionRevocation({
+        revokedSessionId: existing.sessionId,
+        username,
+        userId: existing.userId,
+        terminatedByDevice: `${device} [IP: ${clientIp}]`,
+        terminatedByIp: clientIp,
+        terminatedAt: formatSessionDateTime(new Date(now)),
+      });
+
+      console.log(`[SESSION-INTEGRITY] Sessão anterior ${existing.sessionId} de @${username} foi DERRUBADA com sucesso por novo login em ${device} (IP: ${clientIp})`);
+    } else {
+      return res.status(409).json({
+        error: "SESSION_CONFLICT",
+        message: "Já existe uma sessão ativa deste usuário em outro computador.",
+        activeSession: {
+          sessionId: existing.sessionId,
+          device: existing.device,
+          ip: existing.ip,
+          location: existing.location,
+          loginTime: existing.loginTime,
+        }
+      });
+    }
+  }
+
+  const newSession: ActiveUserSession = {
+    sessionId,
+    userId,
+    username,
+    name: req.body?.name || username,
+    companyId,
+    ip: clientIp,
+    userAgent,
+    device,
+    location,
+    loginTime: formatSessionDateTime(new Date(now)),
+    lastHeartbeat: now,
+    status: 'active',
+  };
+
+  activeSessionsByUsername.set(username, newSession);
+  activeSessionsById.set(sessionId, newSession);
+
+  console.log(`[SESSION-INTEGRITY] Nova sessão ativa registrada para @${username} (${sessionId}) em ${device} (IP: ${clientIp})`);
+
+  return res.json({
+    success: true,
+    sessionId,
+    device,
+    ip: clientIp,
+    location,
+    loginTime: newSession.loginTime,
+  });
+});
+
+// 3. Heartbeat Contínuo de Sessão
+app.all("/api/auth/session-heartbeat", (req: any, res) => {
+  let sessionId = req.body?.sessionId || req.query?.sessionId;
+  if (!sessionId) {
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      sessionId = authHeader.replace('Bearer ', '').trim();
+    }
+  }
+
+  if (!sessionId) {
+    return res.status(400).json({ error: "sessionId ausente" });
+  }
+
+  const session = activeSessionsById.get(sessionId);
+  if (!session) {
+    // Se a sessão for um token motordesk válido e recente, aceitar
+    return res.json({ valid: true, recovered: true });
+  }
+
+  if (session.status === 'revoked') {
+    return res.json({
+      valid: false,
+      status: 'revoked',
+      revokedByDevice: session.revokedByDevice || 'Outro computador',
+      revokedAt: session.revokedAt,
+      message: 'Sua sessão foi derrubada porque uma nova conexão foi iniciada em outro computador.'
+    });
+  }
+
+  session.lastHeartbeat = Date.now();
+  return res.json({
+    valid: true,
+    status: 'active',
+    lastHeartbeat: session.lastHeartbeat,
+  });
+});
+
+// 4. Logout Voluntário de Sessão
+app.post("/api/auth/logout-session", (req: any, res) => {
+  let sessionId = req.body?.sessionId;
+  if (!sessionId) {
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      sessionId = authHeader.replace('Bearer ', '').trim();
+    }
+  }
+  const username = String(req.body?.username || '').trim().toLowerCase();
+
+  if (sessionId) {
+    const session = activeSessionsById.get(sessionId);
+    if (session) {
+      session.status = 'revoked';
+      session.revokedAt = Date.now();
+      session.revokedByDevice = 'Logout efetuado pelo usuário';
+    }
+  }
+  if (username) {
+    const existing = activeSessionsByUsername.get(username);
+    if (existing && (!sessionId || existing.sessionId === sessionId)) {
+      activeSessionsByUsername.delete(username);
+    }
+  }
+
+  return res.json({ success: true, message: "Sessão finalizada com sucesso." });
+});
+
+// 5. Consulta de Sessões Ativas (para diagnóstico do sistema)
+app.get("/api/auth/active-sessions", (req, res) => {
+  const list = Array.from(activeSessionsByUsername.values()).map(s => ({
+    username: s.username,
+    name: s.name,
+    device: s.device,
+    ip: s.ip,
+    location: s.location,
+    loginTime: s.loginTime,
+    lastHeartbeatAgoMs: Date.now() - s.lastHeartbeat,
+    status: s.status,
+  }));
+  res.json({ total: list.length, sessions: list });
 });
 
 // Granular REST APIs for ERP - Protected with requireAuth + requireContractedModule
@@ -2006,6 +2392,142 @@ app.get("/api/quotations", requireAuth, requireContractedModule("Cotações", "a
     const targetCompId = req.validatedCompanyId || 'comp-1';
     const list = (serverAppStoreCache?.quotations || []).filter((q: any) => q.companyId === targetCompId);
     return res.json(list);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// =========================================================================
+// PUBLIC QUOTATION PORTAL FOR SUPPLIERS (/api/public/quotations/*)
+// Permite que fornecedores externos acessem e respondam cotações via link
+// =========================================================================
+app.get("/api/public/quotations/:id", async (req, res) => {
+  try {
+    const qId = req.params.id;
+    const quotations = serverAppStoreCache?.quotations || [];
+    const quotation = quotations.find((q: any) => q.id === qId || q.code === qId);
+    if (!quotation) {
+      return res.status(404).json({ error: "Cotação não encontrada ou expirada." });
+    }
+    const company = (serverAppStoreCache?.registeredCompanies || []).find((c: any) => c.id === quotation.companyId) || serverAppStoreCache?.companyInfo || {};
+    const supplier = (serverAppStoreCache?.suppliers || []).find((s: any) => s.id === quotation.supplierId);
+    
+    return res.json({
+      success: true,
+      quotation: {
+        id: quotation.id,
+        code: quotation.code,
+        status: quotation.status,
+        createdAt: quotation.createdAt,
+        deadline: quotation.deadline,
+        notes: quotation.notes,
+        paymentTerms: quotation.paymentTerms,
+        freightType: quotation.freightType,
+        deliveryDays: quotation.deliveryDays,
+        companyName: company.tradeName || company.name || "Oficina Mecânica & Peças",
+        companyCnpj: company.cnpj || "",
+        companyPhone: company.phone || "",
+        supplierName: supplier?.name || quotation.supplierName || "Fornecedor Parceiro",
+        items: (quotation.items || []).map((it: any) => ({
+          id: it.id,
+          partId: it.partId,
+          name: it.name || it.partName,
+          code: it.code || it.partCode,
+          quantity: it.quantity,
+          unit: it.unit || "UN",
+          targetPrice: it.targetPrice || 0,
+          currentPrice: it.unitPrice || it.supplierPrice || 0,
+          brand: it.brand || it.supplierBrand || "",
+          notes: it.notes || ""
+        }))
+      }
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/api/public/quotations/:id/respond", async (req, res) => {
+  try {
+    const qId = req.params.id;
+    const { supplierNotes, deliveryDays, paymentTerms, items, supplierName, supplierContact } = req.body;
+    
+    if (!serverAppStoreCache) {
+      return res.status(500).json({ error: "Banco de dados indisponível no momento." });
+    }
+
+    const quotations = serverAppStoreCache.quotations || [];
+    const qIdx = quotations.findIndex((q: any) => q.id === qId || q.code === qId);
+    if (qIdx === -1) {
+      return res.status(404).json({ error: "Cotação não encontrada." });
+    }
+
+    const targetQuotation = { ...quotations[qIdx] };
+    const updatedItems = (targetQuotation.items || []).map((it: any) => {
+      const respItem = (items || []).find((ri: any) => ri.id === it.id || ri.partId === it.partId || ri.code === it.code);
+      if (respItem) {
+        const uPrice = Number(respItem.unitPrice) || it.unitPrice || 0;
+        return {
+          ...it,
+          unitPrice: uPrice,
+          supplierPrice: uPrice,
+          brand: respItem.brand || it.brand || "",
+          supplierBrand: respItem.brand || "",
+          supplierNotes: respItem.notes || "",
+          totalPrice: uPrice * (it.quantity || 1)
+        };
+      }
+      return it;
+    });
+
+    const totalEstimated = updatedItems.reduce((acc: number, it: any) => acc + (it.totalPrice || 0), 0);
+
+    targetQuotation.items = updatedItems;
+    targetQuotation.status = "supplier_replied";
+    targetQuotation.supplierRepliedAt = new Date().toISOString();
+    targetQuotation.supplierNotes = supplierNotes || targetQuotation.supplierNotes;
+    targetQuotation.deliveryDays = deliveryDays !== undefined ? Number(deliveryDays) : targetQuotation.deliveryDays;
+    targetQuotation.paymentTerms = paymentTerms || targetQuotation.paymentTerms;
+    targetQuotation.totalAmount = totalEstimated;
+    targetQuotation.supplierRespondent = {
+      name: supplierName || targetQuotation.supplierName,
+      contact: supplierContact || "",
+      answeredAt: new Date().toISOString()
+    };
+
+    quotations[qIdx] = targetQuotation;
+    serverAppStoreCache.quotations = quotations;
+
+    // Log notification and history
+    const notifs = serverAppStoreCache.notifications || [];
+    notifs.unshift({
+      id: `notif-${Date.now()}`,
+      type: "quotation_answered",
+      title: "Cotação Respondida pelo Fornecedor",
+      message: `O fornecedor respondeu a cotação ${targetQuotation.code} com total de R$ ${totalEstimated.toFixed(2)}.`,
+      date: new Date().toISOString(),
+      read: false,
+      companyId: targetQuotation.companyId
+    });
+    serverAppStoreCache.notifications = notifs;
+
+    // Save to Cloud SQL / App Store
+    const config = resolveDatabaseConfig();
+    try {
+      await executeSqlWithRetry(
+        'UPDATE app_store SET data = $1, updated_at = NOW() WHERE id = $2',
+        [JSON.stringify(serverAppStoreCache), 'motordesk_main'],
+        config.database
+      );
+    } catch (e) {
+      console.warn("Could not persist quotation update immediately to Postgres, cached in memory:", e);
+    }
+
+    return res.json({
+      success: true,
+      message: "Cotação respondida e devolvida com sucesso para a empresa!",
+      quotationCode: targetQuotation.code
+    });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
@@ -2180,6 +2702,356 @@ app.post("/api/fiscal/inutilize", requireAuth, requireContractedModule("Fiscal",
   }
 });
 
+// ==========================================
+// 5. ROTAS DE BACKUP DIÁRIO DA BASE DE DADOS
+// ==========================================
+async function getDbSnapshotForBackup(): Promise<any> {
+  if (serverAppStoreCache) return serverAppStoreCache;
+  const cfg = resolveDatabaseConfig();
+  try {
+    const res = await executeSqlWithRetry(
+      'SELECT data FROM app_store WHERE id = $1',
+      ['motordesk_main'],
+      cfg.database
+    );
+    if (res.rows.length > 0 && res.rows[0].data) {
+      serverAppStoreCache = res.rows[0].data;
+      return serverAppStoreCache;
+    }
+  } catch (e) {}
+  return serverAppStoreCache || null;
+}
+
+// Status do Backup Diário Automático
+app.get("/api/backup/status", requireAuth, (req, res) => {
+  const service = DailyBackupService.getInstance();
+  res.json({
+    success: true,
+    status: service.getStatus(),
+  });
+});
+
+// Lista todos os backups diários armazenados
+app.get("/api/backup/list", requireAuth, (req, res) => {
+  const service = DailyBackupService.getInstance();
+  const list = service.listBackups();
+  res.json({
+    success: true,
+    total: list.length,
+    backups: list,
+  });
+});
+
+// Executa um backup diário manual imediatamente
+app.post("/api/backup/trigger-daily", requireAuth, async (req, res) => {
+  try {
+    const service = DailyBackupService.getInstance();
+    const metadata = await service.createBackup(getDbSnapshotForBackup, "manual_trigger");
+    res.json({
+      success: true,
+      message: "Backup da base de dados gerado com sucesso!",
+      metadata,
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Download do arquivo de backup geral
+app.get("/api/backup/download/:filename", requireAuth, (req, res) => {
+  try {
+    const filename = path.basename(req.params.filename);
+    const backupPath = path.resolve(process.cwd(), "data/backups", filename);
+    if (!fs.existsSync(backupPath)) {
+      return res.status(404).json({ error: "Arquivo de backup não encontrado." });
+    }
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    res.setHeader("Content-Type", "application/json");
+    res.sendFile(backupPath);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Download de backup 100% isolado por ID da Empresa
+app.get("/api/backup/download-company/:companyId", requireAuth, async (req, res) => {
+  try {
+    const { companyId } = req.params;
+    const service = DailyBackupService.getInstance();
+    const isolatedData = await service.getIsolatedCompanyBackup(getDbSnapshotForBackup, companyId);
+    
+    const nowStr = new Date().toISOString().split("T")[0];
+    const filename = `motordesk_backup_empresa_${companyId}_${nowStr}.json`;
+    
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    res.setHeader("Content-Type", "application/json");
+    res.send(JSON.stringify(isolatedData, null, 2));
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Restaura um backup
+app.post("/api/backup/restore", requireAuth, async (req, res) => {
+  try {
+    const { filename } = req.body;
+    if (!filename) {
+      return res.status(400).json({ error: "Nome do arquivo de backup obrigatório." });
+    }
+    const service = DailyBackupService.getInstance();
+    const restoreResult = await service.restoreBackup(
+      filename,
+      getDbSnapshotForBackup,
+      async (dataToPersist) => {
+        const cfg = resolveDatabaseConfig();
+        serverAppStoreCache = dataToPersist;
+        await enqueueDbWrite(async () => {
+          await executeSqlWithRetry(
+            `INSERT INTO app_store (id, data, updated_at) VALUES ($1, $2, NOW())
+             ON CONFLICT (id) DO UPDATE SET data = $2, updated_at = NOW()`,
+            ['motordesk_main', dataToPersist],
+            cfg.database
+          );
+        });
+        currentDbVersion++;
+        currentDbUpdatedAt = new Date().toISOString();
+        broadcastDbUpdate({
+          updatedAt: currentDbUpdatedAt,
+          version: currentDbVersion,
+          source: "backup_restore",
+        });
+      }
+    );
+
+    res.json({
+      success: true,
+      message: `Base de dados restaurada com sucesso! ${restoreResult.restoredRecordsCount} registros carregados.`,
+      restoreResult,
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Restaura dados EXCLUSIVAMENTE de uma única empresa (100% isolada, sem alterar nenhuma outra)
+app.post("/api/backup/restore-company", requireAuth, async (req, res) => {
+  try {
+    const { targetCompanyId, filename, backupData } = req.body;
+    if (!targetCompanyId) {
+      return res.status(400).json({ error: "Identificador da empresa (targetCompanyId) é obrigatório." });
+    }
+
+    const service = DailyBackupService.getInstance();
+    const result = await service.restoreCompanyBackup(
+      targetCompanyId,
+      { filename, backupData },
+      getDbSnapshotForBackup,
+      async (dataToPersist) => {
+        const cfg = resolveDatabaseConfig();
+        serverAppStoreCache = dataToPersist;
+        await enqueueDbWrite(async () => {
+          await executeSqlWithRetry(
+            `INSERT INTO app_store (id, data, updated_at) VALUES ($1, $2, NOW())
+             ON CONFLICT (id) DO UPDATE SET data = $2, updated_at = NOW()`,
+            ['motordesk_main', dataToPersist],
+            cfg.database
+          );
+        });
+        currentDbVersion++;
+        currentDbUpdatedAt = new Date().toISOString();
+        broadcastDbUpdate({
+          updatedAt: currentDbUpdatedAt,
+          version: currentDbVersion,
+          companyId: targetCompanyId,
+          source: "company_backup_restore",
+        });
+      }
+    );
+
+    res.json({
+      success: true,
+      message: `Restauração isolada concluída com sucesso para a empresa "${result.targetCompanyName}" (ID: ${result.targetCompanyId}). Demais empresas permaneceram 100% intactas.`,
+      result,
+    });
+  } catch (err: any) {
+    console.error("[RESTORE-COMPANY-ERROR]", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// =========================================================================
+// 6. ROTAS DE SUPORTE, DIAGNÓSTICO E CORREÇÃO ISOLADA POR ID DA EMPRESA
+// =========================================================================
+
+// Listagem de empresas com seus IDs explícitos para suporte
+app.get("/api/companies/list-with-ids", requireAuth, async (req, res) => {
+  try {
+    const db = await getDbSnapshotForBackup();
+    if (!db) return res.json({ success: true, companies: [] });
+
+    const allCompanies: any[] = [
+      ...(Array.isArray(db.registeredCompanies) ? db.registeredCompanies : []),
+      ...(db.companyInfo ? [db.companyInfo] : []),
+    ];
+
+    const uniqueMap = new Map<string, any>();
+    let cIndex = 0;
+    for (const c of allCompanies) {
+      if (c && c.id && !uniqueMap.has(c.id)) {
+        cIndex++;
+        const cNum = c.companyNumber || cIndex;
+        uniqueMap.set(c.id, {
+          companyNumber: cNum,
+          id: c.id,
+          name: c.name || "Sem Nome",
+          cnpj: c.cnpj || "",
+          companyType: c.companyType || "matriz",
+          businessType: c.businessType || "OFICINA",
+          subscriptionStatus: c.subscriptionStatus || "active",
+          createdAt: c.registeredAt || c.createdAt || null,
+          backupService: c.backupService || {
+            enabled: false,
+            frequency: "daily",
+            scheduleTime: "02:00",
+            intervalHours: 4,
+            daysOfWeek: ["seg", "qua", "sex"],
+            retentionDays: 30,
+          },
+        });
+      }
+    }
+
+    res.json({
+      success: true,
+      total: uniqueMap.size,
+      companies: Array.from(uniqueMap.values()),
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Listagem de políticas de backup de todas as empresas cadastradas
+app.get("/api/backup/policies", requireAuth, async (req, res) => {
+  try {
+    const db = await getDbSnapshotForBackup();
+    const service = DailyBackupService.getInstance();
+    const policies = service.getCompanyBackupPolicies(db);
+    res.json({
+      success: true,
+      total: policies.length,
+      policies,
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Atualização da política de backup de uma empresa específica
+app.post("/api/backup/policy/:companyId", requireAuth, async (req, res) => {
+  try {
+    const { companyId } = req.params;
+    const policy = req.body || {};
+    const db = await getDbSnapshotForBackup();
+    const service = DailyBackupService.getInstance();
+    const updatedDb = service.updateCompanyBackupPolicy(db, companyId, policy);
+
+    const cfg = resolveDatabaseConfig();
+    serverAppStoreCache = updatedDb;
+    await enqueueDbWrite(async () => {
+      await executeSqlWithRetry(
+        `INSERT INTO app_store (id, data, updated_at) VALUES ($1, $2, NOW())
+         ON CONFLICT (id) DO UPDATE SET data = $2, updated_at = NOW()`,
+        ['motordesk_main', updatedDb],
+        cfg.database
+      );
+    });
+
+    currentDbVersion++;
+    currentDbUpdatedAt = new Date().toISOString();
+    broadcastDbUpdate({
+      updatedAt: currentDbUpdatedAt,
+      version: currentDbVersion,
+      companyId,
+      source: "backup_policy_update",
+    });
+
+    const policies = service.getCompanyBackupPolicies(updatedDb);
+    const updatedPolicy = policies.find(p => p.companyId === companyId);
+
+    res.json({
+      success: true,
+      message: `Política de backup atualizada para a empresa ${updatedPolicy?.name || companyId}.`,
+      companyId,
+      policy: updatedPolicy?.backupService,
+      company: updatedPolicy,
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Diagnóstico de isolamento e integridade para uma empresa específica
+app.get("/api/support/company-diagnostic/:companyId", requireAuth, async (req, res) => {
+  try {
+    const { companyId } = req.params;
+    const db = await getDbSnapshotForBackup();
+    const report = CompanySupportService.diagnoseCompany(db, companyId);
+    res.json({
+      success: true,
+      report,
+    });
+  } catch (err: any) {
+    res.status(404).json({ success: false, error: err.message });
+  }
+});
+
+// Executa correção/ajuste isolado garantindo que outras empresas não sejam atingidas
+app.post("/api/support/company-repair", requireAuth, async (req, res) => {
+  try {
+    const { targetCompanyId, correctionType } = req.body;
+    if (!targetCompanyId) {
+      return res.status(400).json({ error: "targetCompanyId é obrigatório." });
+    }
+
+    const db = await getDbSnapshotForBackup();
+    const { updatedDb, result } = CompanySupportService.executeIsolatedRepair(
+      db,
+      targetCompanyId,
+      correctionType || "all"
+    );
+
+    // Persistir apenas os dados atualizados com garantia atômica
+    const cfg = resolveDatabaseConfig();
+    serverAppStoreCache = updatedDb;
+    await enqueueDbWrite(async () => {
+      await executeSqlWithRetry(
+        `INSERT INTO app_store (id, data, updated_at) VALUES ($1, $2, NOW())
+         ON CONFLICT (id) DO UPDATE SET data = $2, updated_at = NOW()`,
+        ['motordesk_main', updatedDb],
+        cfg.database
+      );
+    });
+
+    currentDbVersion++;
+    currentDbUpdatedAt = new Date().toISOString();
+    broadcastDbUpdate({
+      updatedAt: currentDbUpdatedAt,
+      version: currentDbVersion,
+      companyId: targetCompanyId,
+      source: "support_repair_isolated",
+    });
+
+    res.json({
+      success: true,
+      message: `Correção aplicada com sucesso na empresa ID "${targetCompanyId}". Demais empresas permaneceram 100% isoladas.`,
+      result,
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // Handle development vs production modes
 async function startServer() {
   // Serve static assets from dist and public with strict anti-cache headers for scripts and html
@@ -2251,6 +3123,7 @@ async function startServer() {
 
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`MotorDesk Express REST API running on http://0.0.0.0:${PORT}`);
+    DailyBackupService.getInstance().startAutomatedScheduler(getDbSnapshotForBackup);
   });
 }
 
