@@ -22,6 +22,9 @@ await esbuild.build({
   minify: true
 });
 
+// 1.9. Integrate All Features (Fiscal XML, Representative Orders, Expedition, Boleto Notifications)
+await import('./scripts/integrate-all.js');
+
 // 2. Copy public directory contents to dist
 if (fs.existsSync(publicDir)) {
   fs.cpSync(publicDir, distDir, { recursive: true });

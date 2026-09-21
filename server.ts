@@ -3,7 +3,7 @@ import cors from "cors";
 import path from "path";
 import fs from "fs";
 import { createServer as createViteServer } from "vite";
-import { getDbInstance, checkDatabaseHealth, ensureAppStoreTableExists, createPool, extractPgErrorDetails, resolveDatabaseConfig, executeSqlWithRetry } from "./src/db/index.js";
+import { getDbInstance, checkDatabaseHealth, ensureAppStoreTableExists, createPool, extractPgErrorDetails, resolveDatabaseConfig, executeSqlWithRetry, warmUpDatabaseConnection, startDatabaseKeepAlive } from "./src/db/index.js";
 import { appStore, clients as clientsTable, vehicles as vehiclesTable, parts as partsTable, serviceOrders as serviceOrdersTable } from "./src/db/schema.js";
 import { eq } from "drizzle-orm";
 import dotenv from "dotenv";
@@ -73,25 +73,11 @@ const ALLOWED_CORS_HEADERS = [
   "x-requested-with"
 ];
 
-// Express CORS options
+// Express CORS options - permits multi-device, multi-location and external network access
 const corsOptions: cors.CorsOptions = {
   origin: (origin, callback) => {
-    // Non-browser requests (e.g. server-to-server, health checks) have no origin header
-    if (!origin) {
-      return callback(null, true);
-    }
-
-    const normalizedOrigin = origin.trim().replace(/\/+$/, "");
-    if (
-      whitelistedOrigins.includes(normalizedOrigin) ||
-      normalizedOrigin.endsWith(".run.app") ||
-      normalizedOrigin.endsWith("motordesk.app.br")
-    ) {
-      return callback(null, true);
-    }
-
-    console.warn(`[CORS Blocked] Origin '${origin}' is not in allowed whitelist:`, whitelistedOrigins);
-    return callback(null, false);
+    // Permit any browser origin or non-browser request from outside the network
+    return callback(null, true);
   },
   credentials: true,
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
@@ -106,25 +92,20 @@ app.use(cors(corsOptions));
 // 2. EXPLICITLY HANDLE ALL PREFLIGHT 'OPTIONS' REQUESTS BEFORE ANY OTHER ROUTE
 app.options("*", cors(corsOptions));
 app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (origin) {
+    res.setHeader("Access-Control-Allow-Origin", origin);
+    res.setHeader("Access-Control-Allow-Credentials", "true");
+  } else {
+    res.setHeader("Access-Control-Allow-Origin", "*");
+  }
+  res.setHeader("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS");
+  res.setHeader(
+    "Access-Control-Allow-Headers",
+    "Content-Type, Authorization, X-Requested-With, Accept, X-Company-Id, X-User-Id, X-User-Role, x-company-id, x-user-id, x-user-role"
+  );
+  res.setHeader("Access-Control-Max-Age", "86400");
   if (req.method === "OPTIONS") {
-    const origin = req.headers.origin;
-    if (origin) {
-      const normalizedOrigin = origin.trim().replace(/\/+$/, "");
-      if (
-        whitelistedOrigins.includes(normalizedOrigin) ||
-        normalizedOrigin.endsWith(".run.app") ||
-        normalizedOrigin.endsWith("motordesk.app.br")
-      ) {
-        res.setHeader("Access-Control-Allow-Origin", origin);
-        res.setHeader("Access-Control-Allow-Credentials", "true");
-      }
-    }
-    res.setHeader("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS");
-    res.setHeader(
-      "Access-Control-Allow-Headers",
-      "Content-Type, Authorization, X-Requested-With, Accept, X-Company-Id, X-User-Id, X-User-Role, x-company-id, x-user-id, x-user-role"
-    );
-    res.setHeader("Access-Control-Max-Age", "86400");
     return res.status(200).end();
   }
   next();
@@ -429,6 +410,8 @@ export function sanitizeAndIsolateCompanies(db: any): any {
     'productionOrders',
     'productLots',
     'operationalAlerts',
+    'solidworksProjects',
+    'materialSeparations',
   ];
 
   // Empresas demo originais com dados de exemplo de demonstração
@@ -1036,6 +1019,8 @@ export function mergeAppDatabase(existing: any, incoming: any): any {
     boms: mergeEntityCollection(existing.boms, incoming.boms, 'id'),
     billOfMaterials: mergeEntityCollection(existing.billOfMaterials, incoming.billOfMaterials, 'id'),
     productionOrders: mergeEntityCollection(existing.productionOrders, incoming.productionOrders, 'id'),
+    solidworksProjects: mergeEntityCollection(existing.solidworksProjects, incoming.solidworksProjects, 'id'),
+    materialSeparations: mergeEntityCollection(existing.materialSeparations, incoming.materialSeparations, 'id'),
     productLots: mergeEntityCollection(existing.productLots, incoming.productLots, 'id'),
     operationalAlerts: mergeEntityCollection(existing.operationalAlerts, incoming.operationalAlerts, 'id'),
     installedEquipment: mergeEntityCollection(existing.installedEquipment, incoming.installedEquipment, 'id'),
@@ -1094,6 +1079,8 @@ export function isolateDatabaseForContext(
     'boms',
     'billOfMaterials',
     'productionOrders',
+    'solidworksProjects',
+    'materialSeparations',
     'productLots',
     'operationalAlerts',
     'factoryOperators',
@@ -1322,6 +1309,33 @@ function extractUserContext(req: any): { userId: string; companyId: string; user
   return { userId, companyId, userRole };
 }
 
+// Global Session Integrity Check: Bloquear terminais cuja sessão foi revogada por outro acesso
+app.use((req: any, res, next) => {
+  // Ignorar rotas públicas e rotas de autenticação/heartbeat
+  if (req.path.startsWith('/api/auth/')) {
+    return next();
+  }
+
+  const authHeader = req.headers.authorization;
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    const token = authHeader.replace('Bearer ', '').trim();
+    if (token.startsWith('motordesk_session_')) {
+      const session = activeSessionsById.get(token);
+      if (session && session.status === 'revoked') {
+        res.setHeader('x-session-status', 'revoked');
+        return res.status(403).json({
+          error: 'SESSION_REVOKED',
+          code: 'SESSION_REVOKED',
+          message: 'Sua sessão neste terminal foi revogada porque uma nova conexão foi iniciada em outro navegador ou computador.',
+          terminatedByDevice: session.revokedByDevice || 'Outro terminal',
+          terminatedAt: session.revokedAt ? formatSessionDateTime(new Date(session.revokedAt)) : formatSessionDateTime(new Date()),
+        });
+      }
+    }
+  }
+  next();
+});
+
 // 4. ERP Database APIs - Cloud SQL PostgreSQL with seamless high-availability cache
 app.get("/api/db", requireAuth, async (req: any, res) => {
   const startTime = Date.now();
@@ -1494,11 +1508,17 @@ app.get("/api/db/stream", (req, res) => {
     }
   }, 10000);
 
-  req.on("close", () => {
+  const cleanup = () => {
     clearInterval(keepAliveTimer);
-    sseSubscribers.delete(res);
-    console.log(`[REALTIME-SSE] Machine disconnected from stream. Remaining active: ${sseSubscribers.size}`);
-  });
+    if (sseSubscribers.has(res)) {
+      sseSubscribers.delete(res);
+      console.log(`[REALTIME-SSE] Machine disconnected from stream. Remaining active: ${sseSubscribers.size}`);
+    }
+  };
+  req.on("close", cleanup);
+  res.on("close", cleanup);
+  res.on("finish", cleanup);
+  res.on("error", cleanup);
 });
 
 // Lightweight database version check for ultra-fast polling without transferring large payloads
@@ -2047,52 +2067,110 @@ app.post("/api/users/update-password", async (req: any, res) => {
 
 // --- ROTAS DE CONTROLE DE INTEGRIDADE E CONCORRÊNCIA DE SESSÃO CORPORATIVA ---
 
-// 1. Checagem de Conflito de Sessão Ativa em Outro Computador
+// 1. Checagem de Conflito de Sessão Ativa em Outro Computador / Navegador
 app.post("/api/auth/check-session", (req: any, res) => {
   const username = String(req.body?.username || '').trim().toLowerCase();
   const currentSessionId = String(req.body?.currentSessionId || '').trim();
-
   if (!username) {
     return res.status(400).json({ error: "Username é obrigatório" });
   }
 
-  const existing = activeSessionsByUsername.get(username);
-  const now = Date.now();
-  const SESSION_TIMEOUT_MS = 15 * 60 * 1000; // 15 minutos sem atividade
-
-  if (existing && existing.status === 'active') {
-    const isRecent = (now - existing.lastHeartbeat) < SESSION_TIMEOUT_MS;
-    const isDifferentSession = existing.sessionId !== currentSessionId;
-
-    if (isRecent && isDifferentSession) {
-      const minutesAgo = Math.max(0, Math.floor((now - existing.lastHeartbeat) / 60000));
-      const activityText = minutesAgo === 0 ? 'há instantes' : `há ${minutesAgo} minuto${minutesAgo > 1 ? 's' : ''}`;
-
-      return res.json({
-        hasConflict: true,
-        activeSession: {
-          sessionId: existing.sessionId,
-          username: existing.username,
-          device: existing.device,
-          ip: existing.ip,
-          location: existing.location,
-          loginTime: existing.loginTime,
-          lastHeartbeatAgo: activityText,
-        }
-      });
-    }
+  const existingSession = activeSessionsByUsername.get(username);
+  if (!existingSession) {
+    return res.json({ hasConflict: false });
   }
 
-  return res.json({ hasConflict: false });
+  // Se a sessão existente já foi revogada, limpar e liberar o login
+  if (existingSession.status !== 'active') {
+    activeSessionsByUsername.delete(username);
+    return res.json({ hasConflict: false });
+  }
+
+  // Se for a mesma sessão (mesmo token/sessionId), não há conflito
+  if (currentSessionId && existingSession.sessionId === currentSessionId) {
+    return res.json({ hasConflict: false });
+  }
+
+  const now = Date.now();
+  // Sessão é considerada ativa se enviou heartbeat nos últimos 60 segundos e seu status é 'active'
+  const HEARTBEAT_TIMEOUT_MS = 60000;
+  const isAlive = (now - existingSession.lastHeartbeat < HEARTBEAT_TIMEOUT_MS);
+
+  if (!isAlive) {
+    // Sessão expirada por ausência prolongada de heartbeat: liberar
+    activeSessionsByUsername.delete(username);
+    return res.json({ hasConflict: false });
+  }
+
+  // Conflito detectado: usuário ativo em outro navegador ou computador
+  const diffSec = Math.max(0, Math.round((now - existingSession.lastHeartbeat) / 1000));
+  const diffText = diffSec < 5 ? 'há poucos segundos' : `há ${diffSec} segundos`;
+
+  console.log(`[SESSION-CONFLICT] Tentativa de login para @${username} conflitante com sessão ativa em ${existingSession.device} (IP: ${existingSession.ip})`);
+
+  return res.json({
+    hasConflict: true,
+    activeSession: {
+      sessionId: existingSession.sessionId,
+      device: existingSession.device,
+      ip: existingSession.ip,
+      location: existingSession.location,
+      loginTime: existingSession.loginTime,
+      username: existingSession.username,
+      lastHeartbeatAgo: diffText,
+    }
+  });
 });
 
-// 2. Registro de Nova Sessão (com ou sem derrubada da sessão anterior)
+// 2. Derrubada de Sessão Anterior (Knockdown sob demanda)
+app.post("/api/auth/knockdown-session", (req: any, res) => {
+  const rawUsername = String(req.body?.username || '').trim();
+  const username = rawUsername.toLowerCase();
+  if (!username) {
+    return res.status(400).json({ error: "Username é obrigatório" });
+  }
+
+  const userAgent = req.headers['user-agent'] || req.body?.userAgent || '';
+  const clientIp = getClientIp(req);
+  const device = req.body?.deviceInfo || parseClientDeviceInfo(userAgent);
+  const now = Date.now();
+
+  const previousSession = activeSessionsByUsername.get(username);
+  let revokedSessionId = '';
+  if (previousSession) {
+    revokedSessionId = previousSession.sessionId;
+    previousSession.status = 'revoked';
+    previousSession.revokedAt = now;
+    previousSession.revokedByDevice = device;
+    console.log(`[SESSION-KNOCKDOWN] Sessão anterior (${previousSession.sessionId}) de @${username} no terminal "${previousSession.device}" foi DERRUBADA pelo novo terminal "${device}" (IP: ${clientIp}).`);
+
+    // Notificar via SSE para que o outro computador exiba a tela de encerramento imediatamente
+    broadcastSessionRevocation({
+      revokedSessionId: previousSession.sessionId,
+      username,
+      userId: previousSession.userId,
+      terminatedByDevice: device,
+      terminatedByIp: clientIp,
+      terminatedAt: formatSessionDateTime(new Date(now)),
+    });
+  }
+
+  // IMPORTANTE: Remover de activeSessionsByUsername para que a nova tentativa de login ocorra imediatamente sem conflito
+  activeSessionsByUsername.delete(username);
+
+  return res.json({
+    success: true,
+    revokedSessionId,
+    message: "Sessão anterior derrubada com sucesso. Acesso liberado."
+  });
+});
+
+// 3. Registro de Nova Sessão (após login bem-sucedido)
 app.post("/api/auth/register-session", (req: any, res) => {
   const rawUsername = String(req.body?.username || '').trim();
   const username = rawUsername.toLowerCase();
   const userId = req.body?.userId || `user_${username}`;
   const companyId = req.body?.companyId || 'comp-1';
-  const forceKnockdown = Boolean(req.body?.forceKnockdown);
   const rawSessionId = req.body?.sessionId;
   const sessionId = rawSessionId || `motordesk_session_${userId}_${Date.now()}`;
 
@@ -2100,44 +2178,25 @@ app.post("/api/auth/register-session", (req: any, res) => {
   const clientIp = getClientIp(req);
   const device = req.body?.deviceInfo || parseClientDeviceInfo(userAgent);
   const location = req.body?.locationInfo || `Rede Corporativa / IP: ${clientIp}`;
-
-  const existing = activeSessionsByUsername.get(username);
   const now = Date.now();
 
-  if (existing && existing.status === 'active' && existing.sessionId !== sessionId) {
-    if (forceKnockdown) {
-      // Derrubar a sessão anterior imediatamente
-      existing.status = 'revoked';
-      existing.revokedAt = now;
-      existing.revokedByDevice = `${device} [IP: ${clientIp}]`;
-      existing.revokedByIp = clientIp;
+  // Se houver sessão anterior para o mesmo usuário em outro terminal, revogar e derrubar
+  const previousSession = activeSessionsByUsername.get(username);
+  if (previousSession && previousSession.sessionId !== sessionId && previousSession.status === 'active') {
+    previousSession.status = 'revoked';
+    previousSession.revokedAt = now;
+    previousSession.revokedByDevice = device;
+    console.log(`[SESSION-KNOCKDOWN] Sessão anterior (${previousSession.sessionId}) de @${username} no terminal "${previousSession.device}" foi DERRUBADA pelo terminal "${device}" (IP: ${clientIp}).`);
 
-      activeSessionsById.set(existing.sessionId, existing);
-
-      // Notificar todas as máquinas via SSE para derrubar a máquina anterior em tempo real
-      broadcastSessionRevocation({
-        revokedSessionId: existing.sessionId,
-        username,
-        userId: existing.userId,
-        terminatedByDevice: `${device} [IP: ${clientIp}]`,
-        terminatedByIp: clientIp,
-        terminatedAt: formatSessionDateTime(new Date(now)),
-      });
-
-      console.log(`[SESSION-INTEGRITY] Sessão anterior ${existing.sessionId} de @${username} foi DERRUBADA com sucesso por novo login em ${device} (IP: ${clientIp})`);
-    } else {
-      return res.status(409).json({
-        error: "SESSION_CONFLICT",
-        message: "Já existe uma sessão ativa deste usuário em outro computador.",
-        activeSession: {
-          sessionId: existing.sessionId,
-          device: existing.device,
-          ip: existing.ip,
-          location: existing.location,
-          loginTime: existing.loginTime,
-        }
-      });
-    }
+    // Notificar via SSE para que o outro computador exiba a tela de encerramento imediatamente
+    broadcastSessionRevocation({
+      revokedSessionId: previousSession.sessionId,
+      username,
+      userId,
+      terminatedByDevice: device,
+      terminatedByIp: clientIp,
+      terminatedAt: formatSessionDateTime(new Date(now)),
+    });
   }
 
   const newSession: ActiveUserSession = {
@@ -2158,7 +2217,7 @@ app.post("/api/auth/register-session", (req: any, res) => {
   activeSessionsByUsername.set(username, newSession);
   activeSessionsById.set(sessionId, newSession);
 
-  console.log(`[SESSION-INTEGRITY] Nova sessão ativa registrada para @${username} (${sessionId}) em ${device} (IP: ${clientIp})`);
+  console.log(`[SESSION-INTEGRITY] Sessão ativa sincronizada para @${username} (${sessionId}) em ${device} (IP: ${clientIp})`);
 
   return res.json({
     success: true,
@@ -2170,7 +2229,7 @@ app.post("/api/auth/register-session", (req: any, res) => {
   });
 });
 
-// 3. Heartbeat Contínuo de Sessão
+// 4. Heartbeat Contínuo de Sessão
 app.all("/api/auth/session-heartbeat", (req: any, res) => {
   let sessionId = req.body?.sessionId || req.query?.sessionId;
   if (!sessionId) {
@@ -2185,22 +2244,19 @@ app.all("/api/auth/session-heartbeat", (req: any, res) => {
   }
 
   const session = activeSessionsById.get(sessionId);
-  if (!session) {
-    // Se a sessão for um token motordesk válido e recente, aceitar
-    return res.json({ valid: true, recovered: true });
-  }
-
-  if (session.status === 'revoked') {
-    return res.json({
+  if (!session || session.status === 'revoked') {
+    return res.status(403).json({
       valid: false,
       status: 'revoked',
-      revokedByDevice: session.revokedByDevice || 'Outro computador',
-      revokedAt: session.revokedAt,
-      message: 'Sua sessão foi derrubada porque uma nova conexão foi iniciada em outro computador.'
+      code: 'SESSION_REVOKED',
+      terminatedByDevice: session?.revokedByDevice || 'Outro terminal ou navegador',
+      terminatedAt: session?.revokedAt ? formatSessionDateTime(new Date(session.revokedAt)) : formatSessionDateTime(new Date()),
     });
   }
 
+  session.status = 'active';
   session.lastHeartbeat = Date.now();
+
   return res.json({
     valid: true,
     status: 'active',
@@ -2208,7 +2264,7 @@ app.all("/api/auth/session-heartbeat", (req: any, res) => {
   });
 });
 
-// 4. Logout Voluntário de Sessão
+// 5. Logout Voluntário de Sessão
 app.post("/api/auth/logout-session", (req: any, res) => {
   let sessionId = req.body?.sessionId;
   if (!sessionId) {
@@ -2228,12 +2284,17 @@ app.post("/api/auth/logout-session", (req: any, res) => {
     }
   }
   if (username) {
-    const existing = activeSessionsByUsername.get(username);
-    if (existing && (!sessionId || existing.sessionId === sessionId)) {
-      activeSessionsByUsername.delete(username);
+    activeSessionsByUsername.delete(username);
+  } else if (sessionId) {
+    for (const [u, s] of activeSessionsByUsername.entries()) {
+      if (s.sessionId === sessionId) {
+        activeSessionsByUsername.delete(u);
+        break;
+      }
     }
   }
 
+  console.log(`[SESSION-LOGOUT] Sessão voluntariamente encerrada para @${username || sessionId}`);
   return res.json({ success: true, message: "Sessão finalizada com sucesso." });
 });
 
@@ -2330,6 +2391,174 @@ app.get("/api/production-orders", requireAuth, requireContractedModule("Produç�
     const targetCompId = req.validatedCompanyId || 'comp-1';
     const list = (serverAppStoreCache?.productionOrders || []).filter((o: any) => o.companyId === targetCompId);
     return res.json(list);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// =========================================================================
+// INTEGRAÇÃO CAD SOLIDWORKS & AUTOMAÇÃO OPERACIONAL (PEDIDOS / SEPARAÇÃO)
+// =========================================================================
+app.get("/api/integrations/solidworks/projects", requireAuth, async (req: any, res) => {
+  try {
+    const targetCompId = req.validatedCompanyId || 'comp-1';
+    const list = (serverAppStoreCache?.solidworksProjects || []).filter((p: any) => !p.companyId || p.companyId === targetCompId);
+    return res.json(list);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/api/integrations/solidworks/sync-project", async (req: any, res) => {
+  try {
+    const targetCompId = req.headers['x-company-id'] || req.query.companyId || 'comp-1';
+    const payload = req.body || {};
+    
+    if (!payload.projectName && !payload.cadFile) {
+      return res.status(400).json({ error: "Dados inválidos: projectName ou cadFile é obrigatório." });
+    }
+
+    const now = new Date();
+    const dateStr = now.toISOString().slice(0, 10);
+    const timestampStr = now.toLocaleTimeString('pt-BR');
+    const uniqueSuffix = Date.now().toString().slice(-4);
+    const opId = `OP-SW-${uniqueSuffix}`;
+    const sepId = `SEP-SW-${uniqueSuffix}`;
+    const bomId = `BOM-SW-${uniqueSuffix}`;
+    const orderQty = Number(payload.orderQuantity) > 0 ? Number(payload.orderQuantity) : 1;
+    const rawItems = Array.isArray(payload.items) ? payload.items : [];
+
+    // Checagem de estoque e estruturação do picking
+    let shortageCount = 0;
+    const currentParts = serverAppStoreCache?.parts || [];
+    const processedItems = rawItems.map((item: any) => {
+      const qtyPerAssembly = Number(item.qtyPerAssembly) || Number(item.quantity) || 1;
+      const totalNeeded = qtyPerAssembly * orderQty;
+      const matchedPart = currentParts.find((p: any) => 
+        (p.companyId === targetCompId || !p.companyId) &&
+        (p.code?.toLowerCase() === (item.partNumber || '').toLowerCase() || p.name?.toLowerCase().includes((item.description || '').toLowerCase()))
+      );
+      const stockAvailable = matchedPart?.stock !== undefined ? Number(matchedPart.stock) : (item.inStock !== undefined ? Number(item.inStock) : 10);
+      const isShortage = stockAvailable < totalNeeded;
+      if (isShortage) shortageCount++;
+
+      return {
+        partNumber: item.partNumber || `PN-${Date.now()}`,
+        description: item.description || 'Componente CAD',
+        qtyPerAssembly,
+        totalQtyNeeded: totalNeeded,
+        unit: item.unit || 'UN',
+        material: item.material || 'Aço / Padrão',
+        itemType: item.itemType || 'PURCHASED',
+        location: item.location || 'Almoxarifado Central - Prateleira A1',
+        inStock: stockAvailable,
+        separatedQty: 0,
+        status: isShortage ? 'SHORTAGE' : 'PENDING',
+        processRoute: item.processRoute || item.route || []
+      };
+    });
+
+    const newProject = {
+      id: `SW-PROJ-${Date.now()}`,
+      companyId: targetCompId,
+      projectName: payload.projectName || 'Montagem Mecânica SolidWorks',
+      assemblyNumber: payload.assemblyNumber || 'ASM-SW-01',
+      revision: payload.revision || 'Rev A',
+      cadFile: payload.cadFile || 'MONTAGEM.SLDASM',
+      designer: payload.designer || 'Projetista CAD SolidWorks',
+      cadSoftware: payload.cadSoftware || 'SolidWorks 2025',
+      receivedAt: `${dateStr} ${timestampStr}`,
+      orderQuantity: orderQty,
+      customerName: payload.customerName || 'Estoque / Linha de Produção',
+      productionOrderId: opId,
+      separationId: sepId,
+      bomId: bomId,
+      totalItemsCount: processedItems.length,
+      separationStatus: 'PENDING',
+      shortageCount,
+      items: processedItems,
+      notes: payload.notes || 'Enviado diretamente via Add-in CAD SolidWorks.'
+    };
+
+    const dueDate = new Date();
+    dueDate.setDate(dueDate.getDate() + 15);
+    const newProductionOrder = {
+      id: opId,
+      companyId: targetCompId,
+      orderNumber: opId,
+      productName: newProject.projectName,
+      productCode: newProject.assemblyNumber,
+      quantity: orderQty,
+      customer: newProject.customerName,
+      source: 'Integração SolidWorks CAD 3D',
+      cadFile: newProject.cadFile,
+      revision: newProject.revision,
+      startDate: dateStr,
+      dueDate: dueDate.toISOString().slice(0, 10),
+      status: 'LIBERADA_PCP',
+      priority: 'ALTA',
+      notes: `Ordem gerada automaticamente a partir do SolidWorks (${newProject.cadFile}). Picking: ${sepId}`
+    };
+
+    const newBom = {
+      id: bomId,
+      companyId: targetCompId,
+      productName: newProject.projectName,
+      code: newProject.assemblyNumber,
+      revision: newProject.revision,
+      cadSource: newProject.cadSoftware,
+      cadFile: newProject.cadFile,
+      status: 'APPROVED',
+      items: processedItems.map((i: any) => ({
+        partNumber: i.partNumber,
+        description: i.description,
+        quantity: i.qtyPerAssembly,
+        unit: i.unit,
+        material: i.material,
+        route: i.processRoute
+      })),
+      updatedAt: dateStr
+    };
+
+    const newSeparation = {
+      id: sepId,
+      companyId: targetCompId,
+      productionOrderId: opId,
+      projectName: newProject.projectName,
+      assemblyNumber: newProject.assemblyNumber,
+      cadFile: newProject.cadFile,
+      orderQuantity: orderQty,
+      status: 'AGUARDANDO_SEPARACAO',
+      responsible: 'Almoxarifado & WMS',
+      createdAt: `${dateStr} ${timestampStr}`,
+      totalItems: processedItems.length,
+      shortageCount,
+      items: processedItems
+    };
+
+    if (serverAppStoreCache) {
+      if (!serverAppStoreCache.solidworksProjects) serverAppStoreCache.solidworksProjects = [];
+      if (!serverAppStoreCache.productionOrders) serverAppStoreCache.productionOrders = [];
+      if (!serverAppStoreCache.boms) serverAppStoreCache.boms = [];
+      if (!serverAppStoreCache.materialSeparations) serverAppStoreCache.materialSeparations = [];
+
+      serverAppStoreCache.solidworksProjects.unshift(newProject);
+      serverAppStoreCache.productionOrders.unshift(newProductionOrder);
+      serverAppStoreCache.boms.unshift(newBom);
+      serverAppStoreCache.materialSeparations.unshift(newSeparation);
+
+      await saveAppStoreToDb();
+    }
+
+    return res.status(201).json({
+      success: true,
+      message: "Projeto SolidWorks integrado com sucesso e operações fabris disparadas.",
+      project: newProject,
+      productionOrder: newProductionOrder,
+      bom: newBom,
+      separation: newSeparation,
+      shortages: shortageCount
+    });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
@@ -3121,8 +3350,17 @@ async function startServer() {
     res.status(200).send("<!doctype html><html><body>Carregando MotorDesk...</body></html>");
   });
 
-  app.listen(PORT, "0.0.0.0", () => {
+  app.listen(PORT, "0.0.0.0", async () => {
     console.log(`MotorDesk Express REST API running on http://0.0.0.0:${PORT}`);
+    try {
+      // Pré-aquecimento e manutenção contínua da conexão aberta com o banco
+      await warmUpDatabaseConnection();
+      startDatabaseKeepAlive(15000);
+      const config = resolveDatabaseConfig();
+      await ensureAppStoreTableExists(config.database);
+    } catch (dbBootErr: any) {
+      console.warn(`[MotorDesk Boot] Aviso ao inicializar conexão do banco: ${dbBootErr.message}`);
+    }
     DailyBackupService.getInstance().startAutomatedScheduler(getDbSnapshotForBackup);
   });
 }

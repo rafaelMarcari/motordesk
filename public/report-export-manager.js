@@ -199,13 +199,26 @@
     let companyName = 'MotorDesk ERP';
     let companyDoc = '';
     try {
-      const storedComp = localStorage.getItem('motordesk_company') || localStorage.getItem('motordesk_current_company');
-      if (storedComp) {
-        const parsed = JSON.parse(storedComp);
-        if (parsed.name) companyName = parsed.name;
-        if (parsed.cnpj) companyDoc = parsed.cnpj;
+      const activeCompId = localStorage.getItem('motordesk_active_company_id') || 'comp-1';
+      const rawDb = localStorage.getItem('motordesk_db_v1') || localStorage.getItem('motordesk_db');
+      if (rawDb) {
+        const parsed = JSON.parse(rawDb);
+        const comp = (parsed.registeredCompanies || []).find(c => c && c.id === activeCompId) || parsed.companyInfo;
+        if (comp) {
+          if (comp.name) companyName = comp.name;
+          if (comp.cnpj) companyDoc = comp.cnpj;
+        }
       }
     } catch (e) {}
+
+    let generatedBy = 'Operador do Sistema';
+    try {
+      const rawUser = localStorage.getItem('motordesk_active_user');
+      if (rawUser) {
+        const u = JSON.parse(rawUser);
+        if (u.name || u.username) generatedBy = u.name || u.username;
+      }
+    } catch(e) {}
 
     // Resumos Executivos (KPI Cards)
     const summaryCards = [];
@@ -298,7 +311,7 @@
       companyName,
       companyDoc,
       period: period || 'Consolidado Atual',
-      generatedBy: 'Operador do Sistema',
+      generatedBy: generatedBy || 'Operador do Sistema',
       generatedAt: new Date().toLocaleString('pt-BR'),
       summaryCards: summaryCards.slice(0, 6),
       columns,

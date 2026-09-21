@@ -629,6 +629,13 @@
           db.companyInfo = { ...db.companyInfo, backupService: policy };
         }
         localStorage.setItem('motordesk_db', JSON.stringify(db));
+        localStorage.setItem('motordesk_db_v1', JSON.stringify(db));
+        localStorage.setItem('motordesk_full_database', JSON.stringify(db));
+        if (Array.isArray(db.registeredCompanies)) {
+          localStorage.setItem('motordesk_all_companies', JSON.stringify(db.registeredCompanies));
+          window.__allCompanies = db.registeredCompanies;
+        }
+        window.__CURRENT_DB = db;
       }
 
       // 2. Chamar endpoint no backend para gravação durável
@@ -655,22 +662,11 @@
     }
   }
 
-  // 3. BOTÃO DE BACKUP: EXCLUSIVO PARA O USUÁRIO QA
+  // 3. BOTÃO DE BACKUP: LIBERADO PARA TODAS AS EMPRESAS E USUÁRIOS
   function injectBackupAndSupportNavbarButton() {
-    const isQA = isCurrentUserQA();
+    const rawUser = localStorage.getItem('motordesk_active_user');
+    if (!rawUser) return;
 
-    // Se NÃO for QA, remover qualquer botão existente e garantir que não apareça!
-    if (!isQA) {
-      const existingNav = document.getElementById('btn-navbar-backup-support');
-      if (existingNav) existingNav.remove();
-      const existingSide = document.getElementById('menu-btn-qa-backup');
-      if (existingSide) existingSide.remove();
-      const existingTop = document.getElementById('btn-top-qa-backup');
-      if (existingTop) existingTop.remove();
-      return;
-    }
-
-    // Se FOR QA:
     // 3.1 Injetar no Header / Navbar de Topo
     const header = document.querySelector('header#top-workspace-bar') || document.querySelector('header');
     if (header && !document.getElementById('btn-navbar-backup-support')) {
@@ -682,12 +678,12 @@
         const btn = document.createElement('button');
         btn.id = 'btn-navbar-backup-support';
         btn.type = 'button';
-        btn.title = 'Central de Backup & Políticas de Empresas (Exclusivo QA)';
+        btn.title = 'Central de Backup & Gestão de Políticas (Liberado para Todas as Empresas)';
         btn.className = 'flex items-center gap-1.5 px-3 py-1.5 bg-amber-500 hover:bg-amber-600 active:bg-amber-700 text-slate-950 rounded-lg text-xs font-black border border-amber-600 transition shadow-xs cursor-pointer select-none';
         btn.innerHTML = `
           <span class="text-sm leading-none">💾</span>
           <span class="hidden md:inline font-bold">Central de Backup</span>
-          <span class="bg-slate-950 text-amber-300 text-[9px] px-1.5 py-0.5 rounded font-mono font-black">QA</span>
+          <span class="bg-slate-950 text-amber-300 text-[9px] px-1.5 py-0.5 rounded font-mono font-black">BACKUP</span>
         `;
 
         btn.addEventListener('click', () => {
@@ -698,30 +694,35 @@
       }
     }
 
-    // 3.2 Injetar no Menu Lateral (Sidebar) logo abaixo do Painel QA
-    const qaMenuBtn = document.getElementById('menu-btn-qa-panel');
-    if (qaMenuBtn && !document.getElementById('menu-btn-qa-backup')) {
-      const sideBtn = document.createElement('button');
-      sideBtn.id = 'menu-btn-qa-backup';
-      sideBtn.type = 'button';
-      sideBtn.title = 'Central de Backup e Políticas por Empresa (Exclusivo QA)';
-      sideBtn.className = 'w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs font-semibold tracking-wide transition text-amber-300 hover:bg-slate-800 hover:text-amber-200 border border-amber-500/30 my-1 cursor-pointer';
-      sideBtn.innerHTML = `
-        <div class="flex items-center gap-2 min-w-0">
-          <span class="text-amber-400 shrink-0">💾</span>
-          <span class="truncate font-bold text-amber-200">Central de Backup</span>
-        </div>
-        <span class="bg-amber-500/20 text-amber-300 text-[10px] px-1.5 py-0.5 rounded font-mono font-bold border border-amber-500/40">QA</span>
-      `;
+    // 3.2 Injetar no Menu Lateral (Sidebar)
+    if (!document.getElementById('menu-btn-qa-backup')) {
+      const targetMenuBtn = document.getElementById('menu-btn-qa-panel') ||
+                            document.getElementById('menu-btn-settings') ||
+                            document.getElementById('menu-btn-reports') ||
+                            document.getElementById('menu-btn-history');
+      if (targetMenuBtn && targetMenuBtn.parentElement) {
+        const sideBtn = document.createElement('button');
+        sideBtn.id = 'menu-btn-qa-backup';
+        sideBtn.type = 'button';
+        sideBtn.title = 'Central de Backup e Políticas (Todas as Empresas)';
+        sideBtn.className = 'w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs font-semibold tracking-wide transition text-amber-300 hover:bg-slate-800 hover:text-amber-200 border border-amber-500/30 my-1 cursor-pointer';
+        sideBtn.innerHTML = `
+          <div class="flex items-center gap-2 min-w-0">
+            <span class="text-amber-400 shrink-0">💾</span>
+            <span class="truncate font-bold text-amber-200">Central de Backup</span>
+          </div>
+          <span class="bg-amber-500/20 text-amber-300 text-[10px] px-1.5 py-0.5 rounded font-mono font-bold border border-amber-500/40">TODAS AS EMPRESAS</span>
+        `;
 
-      sideBtn.addEventListener('click', () => {
-        openSupportAndBackupModal('backup');
-      });
+        sideBtn.addEventListener('click', () => {
+          openSupportAndBackupModal('backup');
+        });
 
-      if (qaMenuBtn.nextSibling) {
-        qaMenuBtn.parentElement.insertBefore(sideBtn, qaMenuBtn.nextSibling);
-      } else {
-        qaMenuBtn.parentElement.appendChild(sideBtn);
+        if (targetMenuBtn.nextSibling) {
+          targetMenuBtn.parentElement.insertBefore(sideBtn, targetMenuBtn.nextSibling);
+        } else {
+          targetMenuBtn.parentElement.appendChild(sideBtn);
+        }
       }
     }
 
@@ -777,8 +778,8 @@
                 <h3 class="text-base font-bold text-slate-900 dark:text-white font-display">
                   Central de Backup & Gestão de Políticas por Empresa
                 </h3>
-                <span class="bg-slate-900 text-amber-300 text-[10px] px-2 py-0.5 rounded-full font-mono font-black border border-amber-400/50">
-                  EXCLUSIVO QA
+                <span class="bg-emerald-600 text-white text-[10px] px-2 py-0.5 rounded-full font-mono font-black border border-emerald-400">
+                  LIBERADO EM TODAS AS EMPRESAS
                 </span>
               </div>
               <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">

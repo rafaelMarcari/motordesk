@@ -645,11 +645,11 @@ export class DailyBackupService {
       idx++;
       const cNum = c.companyNumber || idx;
       const backupService = c.backupService || {
-        enabled: false,
+        enabled: true,
         frequency: "daily",
         scheduleTime: "02:00",
         intervalHours: 4,
-        daysOfWeek: ["seg", "qua", "sex"],
+        daysOfWeek: ["seg", "ter", "qua", "qui", "sex", "sab", "dom"],
         retentionDays: 30,
       };
       list.push({
@@ -659,6 +659,7 @@ export class DailyBackupService {
         cnpj: c.cnpj || "",
         companyType: c.companyType || "matriz",
         backupService,
+        enabled: Boolean(backupService.enabled),
       });
     }
     return list;

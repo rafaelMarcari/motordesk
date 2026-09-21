@@ -135,29 +135,81 @@
     const React = props.React || window.React || window.ReactInstance;
     const { db = {}, onNavigate = () => {}, businessType = 'OFICINA', icons = {}, charts = {} } = props;
 
-    // Segmentos disponíveis
-    const segments = [
-      { id: 'OFICINA', label: 'Oficina Mecânica', icon: 'wrench', color: 'indigo', badge: 'Auto Center' },
-      { id: 'COMERCIO', label: 'Comércio & Balcão (PDV)', icon: 'cart', color: 'emerald', badge: 'Autopeças' },
-      { id: 'INDUSTRIA', label: 'Indústria & Manufatura (PCP)', icon: 'factory', color: 'cyan', badge: 'PCP & MES' },
-      { id: 'FINANCEIRO', label: 'Financeiro & DRE / Caixa', icon: 'dollar', color: 'violet', badge: 'Gestão Caixa' },
-      { id: 'REPRESENTACAO', label: 'Representação Comercial', icon: 'briefcase', color: 'amber', badge: 'Fábricas' },
-      { id: 'CONSOLIDADO', label: 'Visão Consolidada 360º', icon: 'layers', color: 'blue', badge: 'Multi-Setor' }
-    ];
+    // Segmentos disponíveis filtrados rigorosamente por segmento da empresa (SaaS Licensing)
+    const segments = React.useMemo(() => {
+      if (businessType === 'INDUSTRIA') {
+        return [
+          { id: 'INDUSTRIA', label: 'Indústria & Manufatura (PCP)', icon: 'factory', color: 'cyan', badge: 'PCP & MES' },
+          { id: 'FINANCEIRO', label: 'Financeiro & DRE / Custos', icon: 'dollar', color: 'violet', badge: 'Gestão Caixa' }
+        ];
+      }
+      if (businessType === 'COMERCIO') {
+        return [
+          { id: 'COMERCIO', label: 'Comércio & Balcão (PDV)', icon: 'cart', color: 'emerald', badge: 'Autopeças' },
+          { id: 'FINANCEIRO', label: 'Financeiro & DRE / Caixa', icon: 'dollar', color: 'violet', badge: 'Gestão Caixa' }
+        ];
+      }
+      if (businessType === 'OFICINA') {
+        return [
+          { id: 'OFICINA', label: 'Oficina Mecânica', icon: 'wrench', color: 'indigo', badge: 'Auto Center' },
+          { id: 'FINANCEIRO', label: 'Financeiro & DRE / Caixa', icon: 'dollar', color: 'violet', badge: 'Gestão Caixa' }
+        ];
+      }
+      return [
+        { id: 'OFICINA', label: 'Oficina Mecânica', icon: 'wrench', color: 'indigo', badge: 'Auto Center' },
+        { id: 'COMERCIO', label: 'Comércio & Balcão (PDV)', icon: 'cart', color: 'emerald', badge: 'Autopeças' },
+        { id: 'INDUSTRIA', label: 'Indústria & Manufatura (PCP)', icon: 'factory', color: 'cyan', badge: 'PCP & MES' },
+        { id: 'FINANCEIRO', label: 'Financeiro & DRE / Caixa', icon: 'dollar', color: 'violet', badge: 'Gestão Caixa' },
+        { id: 'REPRESENTACAO', label: 'Representação Comercial', icon: 'briefcase', color: 'amber', badge: 'Fábricas' },
+        { id: 'CONSOLIDADO', label: 'Visão Consolidada 360º', icon: 'layers', color: 'blue', badge: 'Multi-Setor' }
+      ];
+    }, [businessType]);
 
-    // Determinar aba inicial com persistência em sessionStorage
+    // Determinar aba inicial com persistência em sessionStorage e garantia de compatibilidade com o segmento
     const initialSegment = React.useMemo(() => {
       try {
         const saved = sessionStorage.getItem('motordesk_active_dashboard_tab');
-        if (saved && segments.some(s => s.id === saved)) return saved;
+        if (saved && segments.some(s => s.id === saved)) {
+          // Só reutiliza se o segmento salvo for compatível com o businessType atual
+          if (businessType === 'INDUSTRIA' && (saved === 'OFICINA' || saved === 'COMERCIO')) {
+            return 'INDUSTRIA';
+          }
+          if (businessType === 'COMERCIO' && (saved === 'OFICINA' || saved === 'INDUSTRIA')) {
+            return 'COMERCIO';
+          }
+          if (businessType === 'OFICINA' && (saved === 'COMERCIO' || saved === 'INDUSTRIA')) {
+            return 'OFICINA';
+          }
+          return saved;
+        }
       } catch {}
       if (businessType === 'INDUSTRIA') return 'INDUSTRIA';
       if (businessType === 'COMERCIO') return 'COMERCIO';
       if (businessType === 'OFICINA_COMERCIO') return 'CONSOLIDADO';
       return 'OFICINA';
-    }, [businessType]);
+    }, [businessType, segments]);
 
     const [activeTab, setActiveTab] = React.useState(initialSegment);
+
+    // Sincronização em tempo real do activeTab quando o businessType muda (troca de empresa ou segmento)
+    React.useEffect(() => {
+      if (businessType === 'INDUSTRIA') {
+        if (activeTab !== 'INDUSTRIA' && activeTab !== 'FINANCEIRO') {
+          setActiveTab('INDUSTRIA');
+          try { sessionStorage.setItem('motordesk_active_dashboard_tab', 'INDUSTRIA'); } catch {}
+        }
+      } else if (businessType === 'COMERCIO') {
+        if (activeTab !== 'COMERCIO' && activeTab !== 'FINANCEIRO') {
+          setActiveTab('COMERCIO');
+          try { sessionStorage.setItem('motordesk_active_dashboard_tab', 'COMERCIO'); } catch {}
+        }
+      } else if (businessType === 'OFICINA') {
+        if (activeTab !== 'OFICINA' && activeTab !== 'FINANCEIRO') {
+          setActiveTab('OFICINA');
+          try { sessionStorage.setItem('motordesk_active_dashboard_tab', 'OFICINA'); } catch {}
+        }
+      }
+    }, [businessType]);
     const [granularity, setGranularity] = React.useState('mensal');
     const [compareWithPrevious, setCompareWithPrevious] = React.useState(true);
 
@@ -1286,7 +1338,7 @@
         React.createElement('div', { className: 'flex items-center gap-2 shrink-0' },
           React.createElement('button', {
             type: 'button',
-            onClick: () => onNavigate(activeTab === 'OFICINA' ? 'serviceOrders' : activeTab === 'COMERCIO' ? 'sales' : 'budgets'),
+            onClick: () => onNavigate(activeTab === 'OFICINA' ? 'serviceOrders' : activeTab === 'COMERCIO' ? 'sales' : activeTab === 'INDUSTRIA' ? 'industry' : 'financial'),
             className: 'bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-3.5 py-2 rounded-xl transition shadow-xs cursor-pointer'
           }, '+ Primeiro Lançamento')
         )
@@ -1363,7 +1415,7 @@
 
           activeTab === 'INDUSTRIA' && React.createElement('button', {
             type: 'button',
-            onClick: () => onNavigate('industrial'),
+            onClick: () => onNavigate('industry'),
             className: 'bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold px-4 py-2 rounded-xl transition cursor-pointer shadow-xs'
           }, 'Abrir Módulo Industrial PCP'),
 

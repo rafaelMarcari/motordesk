@@ -6,25 +6,381 @@
     <link rel="icon" type="image/png" href="/favicon.png" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/manifest.json" />
+    <meta name="theme-color" content="#0284c7" />
     <title>MotorDesk</title>
     <meta name="description" content="Sistema ERP multi-empresa e multi-segmento integrado para Indústria (PCP, BOM, MES, WMS), Oficina Mecânica, Comércio e Autopeças, com controle modular RBAC, faturamento fiscal SEFAZ, boletos e PIX, gestão de assinaturas SaaS e central universal de exportação de relatórios (PDF, DOCX, XLSX, XLS, CSV, JSON, XML)." />
     <meta property="og:title" content="MotorDesk" />
     <meta property="og:description" content="Sistema ERP multi-empresa e multi-segmento integrado para Indústria (PCP, BOM, MES, WMS), Oficina Mecânica, Comércio e Autopeças, com controle modular RBAC, faturamento fiscal SEFAZ, boletos e PIX, gestão de assinaturas SaaS e central universal de exportação de relatórios (PDF, DOCX, XLSX, XLS, CSV, JSON, XML)." />
-    <script src="/pre-hydrate.js?v=20260913_sync_master"></script>
-    <script src="/first-access-guard.js?v=20260913_sync_master"></script>
-    <script src="/company-zero-guard.js?v=20260913_sync_master"></script>
-    <script src="/session-work-guard.js?v=20260913_sync_master"></script>
-    <script src="/session-integrity-guard.js?v=20260914_integrity_master"></script>
-    <script src="/company-support-guard.js?v=20260914_support_master"></script>
-    <script src="/live-sync.js?v=20260913_sync_master"></script>
-    <script src="/license-module-manager.js?v=20260913_sync_master"></script>
-    <script src="/report-exporter-bundle.js?v=20260913_sync_master"></script>
-    <script src="/report-export-manager.js?v=20260913_sync_master"></script>
-    <script src="/dashboard-manager.js?v=20260913_sync_master"></script>
-    <script type="module" crossorigin src="/assets/index-CUxTo0fH.js?v=20260913_sync_master"></script>
+    <script>
+      window.rateLimitCooloffUntil = 0;
+      var rateLimitCooloffUntil = 0;
+      window.sseReconnectDelay = 5000;
+      var sseReconnectDelay = 5000;
+
+      // Unregister any stale service workers to prevent serving cached scripts
+      if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
+        navigator.serviceWorker.getRegistrations().then(function(registrations) {
+          for (var reg of registrations) {
+            reg.unregister();
+          }
+        }).catch(function() {});
+      }
+      if (typeof window !== 'undefined' && 'caches' in window) {
+        caches.keys().then(function(names) {
+          for (var name of names) {
+            caches.delete(name);
+          }
+        }).catch(function() {});
+      }
+    </script>
+    <script src="/pre-hydrate.js?v=20260919_v7_large_menu_vision"></script>
+    <script src="/first-access-guard.js?v=20260919_v7_large_menu_vision"></script>
+    <script src="/company-zero-guard.js?v=20260919_v7_large_menu_vision"></script>
+    <script src="/session-work-guard.js?v=20260919_v7_large_menu_vision"></script>
+    <script src="/session-integrity-guard.js?v=20260919_v7_large_menu_vision"></script>
+    <script src="/company-support-guard.js?v=20260919_v7_large_menu_vision"></script>
+    <script src="/live-sync.js?v=20260919_v7_large_menu_vision"></script>
+    <script src="/license-module-manager.js?v=20260919_v7_large_menu_vision"></script>
+    <script src="/report-exporter-bundle.js?v=20260919_v8_industria_vision_fix"></script>
+    <script src="/report-export-manager.js?v=20260919_v8_industria_vision_fix"></script>
+    <script src="/dashboard-manager.js?v=20260919_v8_industria_vision_fix"></script>
+    <script src="/table-sorter.js?v=20260919_v8_industria_vision_fix"></script>
+    <script type="module" crossorigin src="/assets/index-CUxTo0fH.js?v=20260919_v8_industria_vision_fix"></script>
     <link rel="stylesheet" crossorigin href="/assets/index-BsCSK6B2.css">
+    <style>
+      /* =========================================================================
+         Tipografia Nítida, Ampliada e de Alto Contraste para Menus e Submenus
+         Acessibilidade Óculos / Visão Confortável para Todos os Usuários
+         ========================================================================= */
+      #sidebar-container nav button,
+      #sidebar-container [id^="menu-btn-"],
+      #sidebar-container [id^="menu-mod-"] {
+        font-size: 15.5px !important;
+        line-height: 1.4 !important;
+        font-weight: 700 !important;
+        letter-spacing: 0.035em !important;
+        text-transform: uppercase !important;
+        padding-top: 9px !important;
+        padding-bottom: 9px !important;
+        padding-left: 14px !important;
+        padding-right: 12px !important;
+        color: #f8fafc !important;
+        -webkit-font-smoothing: antialiased !important;
+        -moz-osx-font-smoothing: grayscale !important;
+      }
+      
+      #sidebar-container [id^="submenu-btn-"] {
+        font-size: 14.5px !important;
+        line-height: 1.4 !important;
+        font-weight: 700 !important;
+        letter-spacing: 0.03em !important;
+        text-transform: uppercase !important;
+        padding-top: 8px !important;
+        padding-bottom: 8px !important;
+        padding-left: 14px !important;
+        padding-right: 12px !important;
+        color: #e2e8f0 !important;
+        -webkit-font-smoothing: antialiased !important;
+        -moz-osx-font-smoothing: grayscale !important;
+      }
+
+      #sidebar-container nav button span,
+      #sidebar-container [id^="menu-btn-"] span,
+      #sidebar-container [id^="submenu-btn-"] span,
+      #sidebar-container [id^="menu-mod-"] span {
+        font-size: inherit !important;
+        font-weight: inherit !important;
+        letter-spacing: inherit !important;
+        text-transform: uppercase !important;
+      }
+
+      /* Ícones de Menu Ampliados para Fácil Reconhecimento Visual */
+      #sidebar-container nav button svg,
+      #sidebar-container [id^="menu-btn-"] svg,
+      #sidebar-container [id^="menu-mod-"] svg {
+        width: 20px !important;
+        height: 20px !important;
+        min-width: 20px !important;
+        min-height: 20px !important;
+      }
+
+      #sidebar-container [id^="submenu-btn-"] svg {
+        width: 17px !important;
+        height: 17px !important;
+        min-width: 17px !important;
+        min-height: 17px !important;
+      }
+
+      /* Barra Superior: Tipografia Nítida e Confortável */
+      #top-workspace-bar button,
+      #top-workspace-bar [id^="btn-top-"] {
+        font-size: 13.5px !important;
+        font-weight: 700 !important;
+        letter-spacing: 0.025em !important;
+      }
+
+      #top-workspace-bar select {
+        font-size: 13.5px !important;
+        font-weight: 700 !important;
+      }
+
+      /* Dropdowns de Relatórios e Submenus em Cascata */
+      #btn-menu-relatorios {
+        font-size: 13.5px !important;
+        font-weight: 700 !important;
+      }
+
+      /* Ambiente Mais Limpo de Informações e Mais Claro */
+      #top-workspace-bar {
+        background-color: #ffffff !important;
+        border-bottom: 1px solid #e2e8f0 !important;
+        box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.03) !important;
+      }
+      #workspace-main-content {
+        background-color: #f8fafc !important;
+      }
+
+      /* =========================================================================
+         MODOS ESPECIAIS DE CONFORTO VISUAL (PARA QUEM USA ÓCULOS / VISÃO AMPLIADA OU COMPACTA)
+         ========================================================================= */
+      html.font-zoom-small #sidebar-container nav button,
+      html.font-zoom-small #sidebar-container [id^="menu-btn-"],
+      html.font-zoom-small #sidebar-container [id^="menu-mod-"] {
+        font-size: 11.5px !important;
+        padding-top: 5px !important;
+        padding-bottom: 5px !important;
+      }
+      html.font-zoom-small #sidebar-container [id^="submenu-btn-"] {
+        font-size: 10.5px !important;
+        padding-top: 3px !important;
+        padding-bottom: 3px !important;
+      }
+      html.font-zoom-small #sidebar-container nav button svg,
+      html.font-zoom-small #sidebar-container [id^="menu-btn-"] svg,
+      html.font-zoom-small #sidebar-container [id^="menu-mod-"] svg {
+        width: 16px !important;
+        height: 16px !important;
+        min-width: 16px !important;
+        min-height: 16px !important;
+      }
+      html.font-zoom-small #sidebar-container [id^="submenu-btn-"] svg {
+        width: 14px !important;
+        height: 14px !important;
+        min-width: 14px !important;
+        min-height: 14px !important;
+      }
+      html.font-zoom-small #top-workspace-bar button,
+      html.font-zoom-small #top-workspace-bar [id^="btn-top-"],
+      html.font-zoom-small #top-workspace-bar select {
+        font-size: 12px !important;
+      }
+
+      html.font-zoom-large #sidebar-container nav button,
+      html.font-zoom-large #sidebar-container [id^="menu-btn-"],
+      html.font-zoom-large #sidebar-container [id^="menu-mod-"] {
+        font-size: 17.5px !important;
+        padding-top: 11px !important;
+        padding-bottom: 11px !important;
+      }
+      html.font-zoom-large #sidebar-container [id^="submenu-btn-"] {
+        font-size: 16px !important;
+        padding-top: 9px !important;
+        padding-bottom: 9px !important;
+      }
+      html.font-zoom-large #top-workspace-bar button,
+      html.font-zoom-large #top-workspace-bar [id^="btn-top-"],
+      html.font-zoom-large #top-workspace-bar select {
+        font-size: 15px !important;
+      }
+
+      html.font-zoom-xlarge #sidebar-container nav button,
+      html.font-zoom-xlarge #sidebar-container [id^="menu-btn-"],
+      html.font-zoom-xlarge #sidebar-container [id^="menu-mod-"] {
+        font-size: 19px !important;
+        padding-top: 13px !important;
+        padding-bottom: 13px !important;
+      }
+      html.font-zoom-xlarge #sidebar-container [id^="submenu-btn-"] {
+        font-size: 17.5px !important;
+        padding-top: 10px !important;
+        padding-bottom: 10px !important;
+      }
+      html.font-zoom-xlarge #top-workspace-bar button,
+      html.font-zoom-xlarge #top-workspace-bar [id^="btn-top-"],
+      html.font-zoom-xlarge #top-workspace-bar select {
+        font-size: 16px !important;
+      }
+
+      /* =========================================================================
+         Isolamento Total de Rolagem entre Menu Lateral e Área Principal
+         - Menu lateral tem barra de rolagem dedicada e estilizada (visível).
+         - Rolar o menu NÃO rola a tela/página toda.
+         - Rolar a tela NÃO rola o menu lateral.
+         ========================================================================= */
+      html, body, #root {
+        height: 100% !important;
+        max-height: 100vh !important;
+        width: 100% !important;
+        max-width: 100vw !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        overflow: hidden !important;
+        overscroll-behavior: none !important;
+        overscroll-behavior-y: none !important;
+      }
+
+      #app-workspace-shell {
+        height: 100vh !important;
+        max-height: 100vh !important;
+        min-height: 100vh !important;
+        width: 100vw !important;
+        max-width: 100vw !important;
+        overflow: hidden !important;
+        display: flex !important;
+        flex-direction: row !important;
+      }
+
+      #sidebar-container {
+        height: 100vh !important;
+        max-height: 100vh !important;
+        display: flex !important;
+        flex-direction: column !important;
+        overflow: hidden !important;
+        flex-shrink: 0 !important;
+      }
+
+      /* Barra de rolagem dedicada e de fácil visualização para o Menu Lateral */
+      #sidebar-container nav,
+      .custom-sidebar-nav-scroll {
+        flex: 1 1 0% !important;
+        min-height: 0 !important;
+        overflow-y: scroll !important; /* Sempre exibe calha/barra de rolagem */
+        overflow-x: hidden !important;
+        overscroll-behavior: contain !important;
+        overscroll-behavior-y: contain !important;
+        scrollbar-width: thin !important;
+        scrollbar-color: #6366f1 #090d16 !important;
+        scrollbar-gutter: stable !important;
+      }
+
+      #sidebar-container nav::-webkit-scrollbar,
+      .custom-sidebar-nav-scroll::-webkit-scrollbar {
+        width: 8px !important;
+        display: block !important;
+      }
+
+      #sidebar-container nav::-webkit-scrollbar-track,
+      .custom-sidebar-nav-scroll::-webkit-scrollbar-track {
+        background: #090d16 !important;
+        border-radius: 4px !important;
+      }
+
+      #sidebar-container nav::-webkit-scrollbar-thumb,
+      .custom-sidebar-nav-scroll::-webkit-scrollbar-thumb {
+        background: #4f46e5 !important;
+        border-radius: 4px !important;
+        border: 1.5px solid #090d16 !important;
+      }
+
+      #sidebar-container nav::-webkit-scrollbar-thumb:hover,
+      .custom-sidebar-nav-scroll::-webkit-scrollbar-thumb:hover {
+        background: #818cf8 !important;
+      }
+
+      /* Barra de rolagem dedicada para o Espaço de Trabalho (Workspace) */
+      #workspace-main-content,
+      .custom-workspace-scroll {
+        flex: 1 1 0% !important;
+        min-height: 0 !important;
+        height: 100% !important;
+        overflow-y: auto !important;
+        overflow-x: hidden !important;
+        overscroll-behavior: contain !important;
+        overscroll-behavior-y: contain !important;
+        scrollbar-width: thin !important;
+        scrollbar-color: #94a3b8 #f1f5f9 !important;
+        scrollbar-gutter: stable !important;
+      }
+
+      #workspace-main-content::-webkit-scrollbar,
+      .custom-workspace-scroll::-webkit-scrollbar {
+        width: 10px !important;
+      }
+
+      #workspace-main-content::-webkit-scrollbar-track,
+      .custom-workspace-scroll::-webkit-scrollbar-track {
+        background: #f1f5f9 !important;
+      }
+
+      #workspace-main-content::-webkit-scrollbar-thumb,
+      .custom-workspace-scroll::-webkit-scrollbar-thumb {
+        background: #94a3b8 !important;
+        border-radius: 5px !important;
+        border: 2px solid #f1f5f9 !important;
+      }
+
+      #workspace-main-content::-webkit-scrollbar-thumb:hover,
+      .custom-workspace-scroll::-webkit-scrollbar-thumb:hover {
+        background: #64748b !important;
+      }
+    </style>
+    <script>
+      (function() {
+        try {
+          var zoom = localStorage.getItem('motordesk_font_zoom');
+          if (zoom === 'small') document.documentElement.classList.add('font-zoom-small');
+          if (zoom === 'large') document.documentElement.classList.add('font-zoom-large');
+          if (zoom === 'xlarge') document.documentElement.classList.add('font-zoom-xlarge');
+        } catch(e) {}
+
+        // Isolamento de rolagem nativo estanque: impede encadeamento (scroll-chaining) de eventos wheel
+        function bindScrollBoundaryIsolation(el) {
+          if (!el || el.__scrollIsolationBound) return;
+          el.__scrollIsolationBound = true;
+          el.addEventListener('wheel', function(e) {
+            var atTop = el.scrollTop <= 0 && e.deltaY < 0;
+            var atBottom = (el.scrollTop + el.clientHeight >= el.scrollHeight - 1) && e.deltaY > 0;
+            if (atTop || atBottom) {
+              e.preventDefault();
+            }
+            e.stopPropagation();
+          }, { passive: false });
+        }
+
+        function setupScrollIsolation() {
+          var sidebarNav = document.querySelector('#sidebar-container nav');
+          var workspaceMain = document.querySelector('#workspace-main-content');
+          if (sidebarNav) bindScrollBoundaryIsolation(sidebarNav);
+          if (workspaceMain) bindScrollBoundaryIsolation(workspaceMain);
+        }
+
+        if (document.readyState === 'loading') {
+          document.addEventListener('DOMContentLoaded', setupScrollIsolation);
+        } else {
+          setupScrollIsolation();
+        }
+
+        var mutObs = new MutationObserver(function() {
+          setupScrollIsolation();
+        });
+        mutObs.observe(document.documentElement, { childList: true, subtree: true });
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', function() {
+          navigator.serviceWorker.register('/sw.js?v=20260919_v7_large_menu_vision').then(function(reg) {
+            reg.update();
+            console.log('[PWA] Service Worker registrado com sucesso:', reg.scope);
+          }).catch(function(err) {
+            console.warn('[PWA] Falha ao registrar Service Worker:', err);
+          });
+        });
+      }
+    </script>
   </body>
 </html>

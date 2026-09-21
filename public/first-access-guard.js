@@ -143,18 +143,11 @@
       .then(function (res) { return res.json(); })
       .then(function (data) {
         console.log('[FIRST-ACCESS] Resposta da API:', data);
-        // Também enviar atualização global do db para persistência cruzada
+        // Também enviar atualização global do db para persistência cruzada de forma gerenciada
         if (updatedDb) {
-          fetch('/api/db', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'X-User-Id': user.id,
-              'X-Company-Id': user.companyId || 'comp-1',
-              'X-User-Role': user.role || 'mecanico'
-            },
-            body: JSON.stringify(updatedDb)
-          }).catch(function () {});
+          if (window.__motorDeskDb && typeof window.__motorDeskDb.saveDatabase === 'function') {
+            window.__motorDeskDb.saveDatabase(updatedDb);
+          }
         }
       })
       .catch(function (err) {

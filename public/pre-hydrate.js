@@ -52,8 +52,18 @@
       if (freshDb && typeof freshDb === 'object' && Array.isArray(freshDb.registeredCompanies) && freshDb.registeredCompanies.length > 0) {
         localStorage.setItem('motordesk_db_v1', JSON.stringify(freshDb));
         localStorage.setItem('motordesk_db', JSON.stringify(freshDb));
+        localStorage.setItem('motordesk_full_database', JSON.stringify(freshDb));
         localStorage.setItem('motordesk_all_companies', JSON.stringify(freshDb.registeredCompanies));
         window.__allCompanies = freshDb.registeredCompanies;
+        window.__CURRENT_DB = freshDb;
+
+        // Garantir que a empresa ativa inicial seja válida em qualquer novo navegador/máquina
+        let activeCompId = localStorage.getItem('motordesk_active_company_id');
+        if (!activeCompId || !freshDb.registeredCompanies.some(c => c.id === activeCompId)) {
+          if (freshDb.registeredCompanies[0]?.id) {
+            localStorage.setItem('motordesk_active_company_id', freshDb.registeredCompanies[0].id);
+          }
+        }
 
         // Se houver usuário ativo logado, sincronizar imediatamente dados mais recentes (senha, permissões, status)
         if (rawActiveUser && Array.isArray(freshDb.users)) {

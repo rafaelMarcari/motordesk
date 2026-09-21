@@ -16,6 +16,12 @@
   let sseSource = null;
   let sseReconnectTimer = null;
   let activeSubscribersCount = 1;
+  let rateLimitCooloffUntil = (typeof window !== 'undefined' && window.rateLimitCooloffUntil) || 0;
+  let sseReconnectDelay = (typeof window !== 'undefined' && window.sseReconnectDelay) || 5000;
+  if (typeof window !== 'undefined') {
+    window.rateLimitCooloffUntil = window.rateLimitCooloffUntil || 0;
+    window.sseReconnectDelay = window.sseReconnectDelay || 5000;
+  }
 
   const syncChannel = typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('motordesk_live_sync') : null;
 
@@ -218,6 +224,10 @@
 
   // Execução central da sincronização
   async function performSync(triggerSource) {
+    if (Date.now() < rateLimitCooloffUntil) {
+      log('In rate limit cooloff. Deferring performSync (' + triggerSource + ')...');
+      return;
+    }
     if (isSyncing) {
       hasPendingSync = true;
       return;
@@ -242,6 +252,13 @@
         const res = await fetch('/api/db?t=' + Date.now(), {
           headers: getAuthHeaders(),
         });
+        if (res.status === 429) {
+          rateLimitCooloffUntil = Date.now() + 30000;
+          if (typeof window !== 'undefined') window.rateLimitCooloffUntil = rateLimitCooloffUntil;
+          log('Fetch /api/db received 429 Rate Exceeded. Setting 30s cooloff.');
+          updateIndicatorStatus('offline');
+          return;
+        }
         if (res.ok) {
           const json = await res.json();
           if (json && json.data) {
@@ -310,7 +327,7 @@
       isSyncing = false;
       if (hasPendingSync) {
         hasPendingSync = false;
-        setTimeout(() => performSync('pending_queue'), 100);
+        setTimeout(() => performSync('pending_queue'), 2500);
       }
     }
   }
@@ -363,6 +380,7 @@
           }
           if (data.updatedAt) knownUpdatedAt = data.updatedAt;
           if (data.subscribersCount) activeSubscribersCount = data.subscribersCount;
+          sseReconnectDelay = 5000;
           updateIndicatorStatus('connected');
           log(`SSE stream connected. Current DB version: ${knownVersion}, Active machines: ${activeSubscribersCount}`);
         } catch (err) {}
@@ -413,13 +431,15 @@
           sseSource = null;
         }
 
-        // Tentar reconectar imediatamente após 1 segundo
+        // Tentar reconectar com backoff exponencial (5s a 30s) para respeitar limites de API Gateway
         if (!sseReconnectTimer) {
+          const delay = sseReconnectDelay;
+          sseReconnectDelay = Math.min(sseReconnectDelay * 1.5, 30000);
           sseReconnectTimer = setTimeout(() => {
             sseReconnectTimer = null;
-            log('Reconnecting SSE stream after connection drop...');
+            log('Reconnecting SSE stream after connection drop (delay ' + Math.round(delay) + 'ms)...');
             connectSSE();
-          }, 1200);
+          }, delay);
         }
       };
     } catch (err) {
@@ -429,6 +449,7 @@
 
   // 3. Ultra-Fast Version Poller (a cada 1s) para contingência anti-firewall/proxy
   async function checkVersion() {
+    if (Date.now() < rateLimitCooloffUntil) return;
     try {
       const res = await fetch('/api/db/version?t=' + Date.now(), {
         headers: {
@@ -436,6 +457,13 @@
           'Pragma': 'no-cache'
         },
       });
+
+      if (res.status === 429) {
+        rateLimitCooloffUntil = Date.now() + 30000;
+        if (typeof window !== 'undefined') window.rateLimitCooloffUntil = rateLimitCooloffUntil;
+        console.warn('[MotorDesk LiveSync] API Gateway Rate limit (429) detectado. Pausando polling por 30s.');
+        return;
+      }
 
       if (!res.ok) return;
 
@@ -461,32 +489,55 @@
     }
   }
 
-  // Watchdog de integridade da conexão SSE
+  // Watchdog de integridade da conexão SSE (verificação suave a cada 30 segundos)
   setInterval(() => {
-    // Se não recebermos nenhum sinal (nem keep-alive) há mais de 25 segundos, reconectar SSE
-    if (Date.now() - lastReceivedSignalTime > 25000) {
-      log('SSE heartbeat timeout detected (>25s without signal). Re-establishing stream connection...');
+    if (Date.now() < rateLimitCooloffUntil) return;
+    if (Date.now() - lastReceivedSignalTime > 45000) {
+      log('SSE heartbeat timeout detected (>45s without signal). Re-establishing stream connection...');
       connectSSE();
     }
-  }, 10000);
+  }, 30000);
 
   // Iniciar SSE imediatamente
   connectSSE();
 
-  // Executar poller de alta frequência a cada 1000ms
-  setInterval(checkVersion, 1000);
+  // Poller de contingência: polling suave a cada 20 segundos apenas quando SSE estiver offline
+  setInterval(() => {
+    const isSseActive = sseSource && sseSource.readyState === 1; // EventSource.OPEN = 1
+    if (!isSseActive) {
+      checkVersion();
+    }
+  }, 20000);
 
-  // Monitorar foco de janela e visibilidade da aba
+  // Verificação de rotina leve a cada 60 segundos mesmo com SSE ativo
+  setInterval(() => {
+    checkVersion();
+  }, 60000);
+
+  // Monitorar foco de janela, visibilidade da aba e reconexão de rede (dispositivos móveis e navegadores)
   window.addEventListener('focus', () => {
     log('Window focused. Checking for real-time updates from other computers...');
+    if (!sseSource || sseSource.readyState !== 1) {
+      connectSSE();
+    }
     checkVersion();
   });
 
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') {
-      log('Tab became visible. Checking for real-time updates from other computers...');
+      log('Tab became visible. Re-verifying real-time stream and updates...');
+      if (!sseSource || sseSource.readyState !== 1) {
+        connectSSE();
+      }
       checkVersion();
     }
+  });
+
+  window.addEventListener('online', () => {
+    log('Network reconnected (online event). Reconnecting real-time stream and synchronizing database...');
+    connectSSE();
+    checkVersion();
+    performSync('network_online');
   });
 
   // Disparar sincronização em eventos de armazenamento local

@@ -91,13 +91,14 @@ export const createPool = (targetDb?: string): pg.Pool => {
       user: config.user,
       password: config.password,
       database: config.database,
-      max: 10,
-      connectionTimeoutMillis: 6000,
-      idleTimeoutMillis: 10000,
+      min: 3, // Mantém permanentemente no mínimo 3 conexões ativas e aquecidas no pool
+      max: 30, // Suporte robusto a múltiplos navegadores, abas e computadores simultâneos
+      connectionTimeoutMillis: 10000,
+      idleTimeoutMillis: 300000, // 5 minutos antes de reciclar conexões ociosas
       maxUses: 10000,
-      keepAlive: true,
-      keepAliveInitialDelayMillis: 1000,
-      allowExitOnIdle: true,
+      keepAlive: true, // Ativa keepAlive TCP a nível de socket
+      keepAliveInitialDelayMillis: 2000, // Envia keepAlive após 2 segundos
+      allowExitOnIdle: false, // JAMAIS desliga ou sai em ociosidade - conexão sempre aberta
     };
 
     if (!config.isUnixSocket) {
@@ -107,8 +108,8 @@ export const createPool = (targetDb?: string): pg.Pool => {
     existing = new Pool(poolConfig);
 
     existing.on('error', (err: any) => {
-      console.warn(`[MotorDesk DB_POOL] Idle client error on ${config.database}: ${err.message} (${err.code || 'NO_CODE'})`);
-      purgePool(targetDb);
+      console.warn(`[MotorDesk DB_POOL] Client socket event on ${config.database}: ${err.message} (${err.code || 'NO_CODE'})`);
+      // Não descarta o pool inteiro por erro transiente de um socket ocioso; o pool recria o cliente automaticamente
     });
 
     pools.set(poolKey, existing);
@@ -116,6 +117,59 @@ export const createPool = (targetDb?: string): pg.Pool => {
 
   return existing;
 };
+
+// Gerenciador global de Heartbeat / Keep-Alive para manter o banco permanentemente ativo
+let keepAliveTimer: NodeJS.Timeout | null = null;
+
+export function startDatabaseKeepAlive(intervalMs = 15000): void {
+  if (keepAliveTimer) return;
+
+  keepAliveTimer = setInterval(async () => {
+    try {
+      const config = resolveDatabaseConfig();
+      const res = await executeSqlWithRetry('SELECT 1 AS heartbeat, NOW() as current_time;', [], config.database, 2);
+      if (process.env.DEBUG_DB_HEARTBEAT === 'true') {
+        console.log(`[MotorDesk DB Heartbeat] Conexão ativa mantida aberta com sucesso: ${res.rows[0]?.current_time}`);
+      }
+    } catch (err: any) {
+      console.warn(`[MotorDesk DB Heartbeat] Alerta de reconexão: ${err.message}. Restaurando pool...`);
+    }
+  }, intervalMs);
+
+  // Mantém o timer permanentemente ativo para nunca fechar a conexão com o banco de dados
+  console.log(`[MotorDesk DB Heartbeat] Heartbeat ativo a cada ${intervalMs / 1000}s para manter a conexão aberta.`);
+}
+
+/**
+ * Aquece imediatamente a conexão do banco na inicialização do servidor.
+ * Garante que quando o usuário acessar de outro navegador ou outro computador,
+ * a conexão já estará 100% pronta e com latência mínima.
+ */
+export async function warmUpDatabaseConnection(targetDb?: string): Promise<boolean> {
+  try {
+    const config = resolveDatabaseConfig(targetDb);
+    console.log(`[MotorDesk DB] Aquecendo conexão persistente com o banco ${config.database}...`);
+    const pool = createPool(config.database);
+    
+    // Executa verificação imediata
+    const client = await pool.connect();
+    try {
+      await client.query('SELECT 1 AS warm_check;');
+    } finally {
+      client.release();
+    }
+    
+    // Inicia o heartbeat automático
+    startDatabaseKeepAlive(20000);
+    console.log(`[MotorDesk DB] Conexão persistente com ${config.database} aquecida e mantida permanentemente aberta.`);
+    return true;
+  } catch (err: any) {
+    console.warn(`[MotorDesk DB] Aviso ao pré-aquecer conexão: ${err.message}`);
+    // Inicia heartbeat mesmo em caso de erro transitório para tentar recuperar em background
+    startDatabaseKeepAlive(20000);
+    return false;
+  }
+}
 
 export function purgePool(targetDb?: string): void {
   const pools = global._postgresPoolsMap!;

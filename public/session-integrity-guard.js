@@ -480,12 +480,33 @@
     const btnRelogin = document.getElementById('btn-relogin-after-knockdown');
     if (btnRelogin) {
       btnRelogin.onclick = () => {
-        window.location.href = '/?view=login';
+        window.location.href = '/motordesk';
       };
     }
   }
 
   // --- INTERCEPTADOR DO FORMULÁRIO DE LOGIN (NA NOVA MÁQUINA) ---
+  function proceedWithLogin(form, submitBtn) {
+    try {
+      if (typeof form.requestSubmit === 'function') {
+        if (submitBtn) {
+          form.requestSubmit(submitBtn);
+        } else {
+          form.requestSubmit();
+        }
+      } else {
+        if (submitBtn) submitBtn.click();
+        else form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+      }
+    } catch (err) {
+      if (submitBtn) submitBtn.click();
+    }
+
+    setTimeout(() => {
+      isKnockdownConfirmed = false;
+    }, 2500);
+  }
+
   async function handleLoginSubmission(e) {
     if (isKnockdownConfirmed) {
       // O operador já confirmou derrubar a sessão anterior nesta tentativa; prosseguir livremente!
@@ -496,7 +517,7 @@
     const usernameInput = document.getElementById('login-username-input');
     const passwordInput = document.getElementById('login-password-input');
 
-    if (!usernameInput || !passwordInput) return true;
+    if (!form || !usernameInput || !passwordInput) return true;
 
     const username = (usernameInput.value || '').trim();
     const password = (passwordInput.value || '').trim();
@@ -552,7 +573,6 @@
             data.activeSession,
             // Callback: Usuário confirmou "Derrubar Sessão e Continuar"
             async () => {
-              isKnockdownConfirmed = true;
               if (submitBtn) {
                 submitBtn.disabled = true;
                 submitBtn.innerHTML = `
@@ -563,35 +583,29 @@
                 `;
               }
 
-              // Executar chamada de knockdown no backend
+              // Executar chamada de knockdown no backend para revogar sessão anterior e desocupar o usuário
               try {
-                await fetch('/api/auth/register-session', {
+                await fetch('/api/auth/knockdown-session', {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify({
                     username: username.toLowerCase(),
-                    forceKnockdown: true,
                     deviceInfo: getClientDeviceDescription(),
                     locationInfo: getClientLocationDescription()
                   })
                 });
-              } catch (err) {}
+              } catch (err) {
+                console.warn('[Session Guard] Erro na requisição de knockdown:', err);
+              }
 
-              // Re-disparar o submit para que o React processe o login
-              setTimeout(() => {
-                if (submitBtn) {
-                  submitBtn.disabled = false;
-                  submitBtn.innerHTML = originalBtnHtml;
-                  submitBtn.click();
-                } else if (form) {
-                  form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
-                }
+              // Liberar a submissão e disparar diretamente para que o React processe o login
+              isKnockdownConfirmed = true;
+              if (submitBtn) {
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = originalBtnHtml;
+              }
 
-                // Resetar a flag após o login processar
-                setTimeout(() => {
-                  isKnockdownConfirmed = false;
-                }, 2000);
-              }, 300);
+              proceedWithLogin(form, submitBtn);
             },
             // Callback: Usuário clicou em "Cancelar"
             () => {
@@ -616,33 +630,21 @@
     if (submitBtn) {
       submitBtn.disabled = false;
       submitBtn.innerHTML = originalBtnHtml;
-      submitBtn.click();
-    } else if (form) {
-      form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
     }
 
-    setTimeout(() => {
-      isKnockdownConfirmed = false;
-    }, 2000);
-
+    proceedWithLogin(form, submitBtn);
     return true;
   }
 
-  // Anexar interceptador na fase de captura (capture: true) para garantir precedência
+  // Anexar interceptador exclusivo no evento submit do formulário de login (fase de captura)
   document.addEventListener('submit', (e) => {
-    if (e.target && (e.target.id === 'form-login' || e.target.closest('#form-login'))) {
-      handleLoginSubmission(e);
-    }
-  }, true);
-
-  // Interceptar também clique direto no botão de submit
-  document.addEventListener('click', (e) => {
-    const btn = e.target.closest('#btn-login-submit');
-    if (btn && !isKnockdownConfirmed && !isCheckingActiveSession) {
-      const form = document.getElementById('form-login');
-      if (form) {
-        handleLoginSubmission(e);
+    const isLoginForm = e.target && (e.target.id === 'form-login' || e.target.closest('#form-login'));
+    if (isLoginForm) {
+      if (isKnockdownConfirmed) {
+        // O login já foi aprovado ou a sessão foi derrubada; permitir passagem direta ao React
+        return;
       }
+      handleLoginSubmission(e);
     }
   }, true);
 
@@ -652,29 +654,28 @@
     if (!detail) return;
 
     const myToken = localStorage.getItem('motordesk_auth_token');
-    const myUserStr = localStorage.getItem('motordesk_active_user');
-    let myUsername = '';
-    if (myUserStr) {
-      try {
-        const u = JSON.parse(myUserStr);
-        myUsername = (u.username || '').toLowerCase();
-      } catch (err) {}
-    }
+    // Se este terminal não possui token autenticado, NUNCA exibe encerramento
+    if (!myToken) return;
 
+    // CRUCIAL: Encerrar APENAS se o token deste terminal for EXATAMENTE o que foi revogado
+    // A máquina que derrubou ou que está realizando login agora NUNCA deve derrubar a si mesma!
     const isTargetSession = detail.revokedSessionId && detail.revokedSessionId === myToken;
-    const isTargetUser = detail.username && myUsername && detail.username.toLowerCase() === myUsername;
 
-    if (isTargetSession || isTargetUser) {
+    if (isTargetSession) {
       console.warn('[SESSION-GUARD] Esta sessão foi revogada por novo login em outro computador:', detail);
       showSessionTerminatedModal(detail);
     }
   });
 
-  // --- HEARTBEAT PERIÓDICO DE SESSÃO ATIVA (A CADA 4 SEGUNDOS) ---
+  // --- HEARTBEAT PERIÓDICO DE SESSÃO ATIVA (A CADA 25 SEGUNDOS COM PROTEÇÃO 429) ---
+  let sessionHeartbeatCooldownUntil = 0;
+
   function startSessionHeartbeat() {
     if (heartbeatTimer) clearInterval(heartbeatTimer);
 
     heartbeatTimer = setInterval(async () => {
+      if (Date.now() < sessionHeartbeatCooldownUntil) return;
+
       const token = localStorage.getItem('motordesk_auth_token');
       const activeUser = localStorage.getItem('motordesk_active_user');
 
@@ -687,6 +688,12 @@
             'Authorization': `Bearer ${token}`
           }
         });
+
+        if (res.status === 429) {
+          // Rate limit atingido: suspender heartbeat por 45 segundos
+          sessionHeartbeatCooldownUntil = Date.now() + 45000;
+          return;
+        }
 
         if (res.status === 403 || res.status === 401) {
           const data = await res.json().catch(() => ({}));
@@ -705,7 +712,7 @@
       } catch (err) {
         // Erros de rede temporários não derrubam a sessão
       }
-    }, 4000);
+    }, 25000);
   }
 
   // Iniciar heartbeat e monitoramento

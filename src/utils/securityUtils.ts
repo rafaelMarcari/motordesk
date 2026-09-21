@@ -158,6 +158,20 @@ export const ALL_PERMISSION_KEYS: Array<{
   { key: 'representativeOrdersExport', label: 'Exportar Pedidos e Resumo WhatsApp', category: 'sales', description: 'Permite gerar relatórios e resumos de pedidos para envio à fábrica' },
   { key: 'representativeReconcile', label: 'Conferência de Faturamento da Fábrica', category: 'sales', description: 'Permite importar e conciliar arquivos de faturamento das representadas' },
   { key: 'representativeCommissionsManage', label: 'Gestão e Baixa de Comissões', category: 'financial', description: 'Permite gerenciar, conferir e faturar comissões de representação' },
+
+  // Módulo Comercial B2B & Industrial
+  { key: 'accessCommercial' as any, label: 'Módulo Comercial B2B', category: 'sales', description: 'Visão geral do comercial fabril e prospecção B2B' },
+  { key: 'accessCommercialMarketing' as any, label: 'Marketing & Prospecção B2B', category: 'sales', description: 'Funil de prospecção ativa e marketing industrial' },
+  { key: 'accessCommercialBudgets' as any, label: 'Orçamentos Fabris & Cotações', category: 'sales', description: 'Elaboração e precificação de cotações B2B' },
+  { key: 'accessCommercialOrders' as any, label: 'Pedidos de Venda Fabris', category: 'sales', description: 'Emissão e gestão de pedidos industriais' },
+  { key: 'accessCommercialBacklog' as any, label: 'Carteira de Pedidos (Backlog)', category: 'sales', description: 'Acompanhamento do backlog de entregas' },
+  { key: 'accessCommercialAfterSales' as any, label: 'Pós-Venda & SAC Técnico', category: 'sales', description: 'Atendimento técnico e retenção de contas' },
+  { key: 'accessCommercialReports' as any, label: 'Relatórios Comerciais B2B', category: 'sales', description: 'Métricas de conversão e carteira' },
+
+  // Módulo Engenharia do Produto & Processos
+  { key: 'accessEngineering' as any, label: 'Engenharia do Produto & P&D', category: 'industrial', description: 'Desenvolvimento e fichas técnicas de produtos' },
+  { key: 'accessTechnicalDatasheet' as any, label: 'Ficha Técnica de Processo', category: 'industrial', description: 'Fichas técnicas e parâmetros de manufatura' },
+  { key: 'accessRevisionControl' as any, label: 'Controle de Revisões & ECN', category: 'industrial', description: 'Histórico de versões de engenharia' },
 ];
 
 /**
@@ -583,6 +597,42 @@ export function isModuleContractedForCompany(
       }
     }
 
+    // Tratamento dinâmico de Comercial Industrial / B2B
+    const isCommercialKey = 
+      permissionKey === 'accessCommercial' ||
+      permissionKey === 'accessCommercialMarketing' ||
+      permissionKey === 'accessCommercialBudgets' ||
+      permissionKey === 'accessCommercialOrders' ||
+      permissionKey === 'accessCommercialBacklog' ||
+      permissionKey === 'accessCommercialAfterSales' ||
+      permissionKey === 'accessCommercialReports';
+
+    if (val === undefined && isCommercialKey) {
+      if (company.globalModules['accessCommercial'] !== undefined) {
+        val = company.globalModules['accessCommercial'];
+      } else if (company.globalModules['commercial'] !== undefined) {
+        val = company.globalModules['commercial'];
+      } else if (company.globalModules['accessSales'] === true || company.globalModules['accessProduction'] === true) {
+        val = true;
+      }
+    }
+
+    // Tratamento dinâmico de Engenharia do Produto
+    const isEngineeringKey = 
+      permissionKey === 'accessEngineering' ||
+      permissionKey === 'accessTechnicalDatasheet' ||
+      permissionKey === 'accessRevisionControl';
+
+    if (val === undefined && isEngineeringKey) {
+      if (company.globalModules['accessEngineering'] !== undefined) {
+        val = company.globalModules['accessEngineering'];
+      } else if (company.globalModules['engineering'] !== undefined) {
+        val = company.globalModules['engineering'];
+      } else if (company.globalModules['accessProduction'] === true || company.globalModules['production'] === true) {
+        val = true;
+      }
+    }
+
     if (val !== undefined) {
       return Boolean(val);
     }
@@ -630,6 +680,16 @@ export function isModuleContractedForCompany(
       accessNotificationsEngine: rawModules.notifications_engine,
       accessRepresentativeCommerce: rawModules.representative_commerce ?? company.enableRepresentativeCommerce,
       accessRepresentativeOrders: rawModules.representative_orders ?? rawModules.representative_commerce ?? company.enableRepresentativeCommerce,
+      accessCommercial: rawModules.commercial ?? rawModules.accessCommercial,
+      accessCommercialMarketing: rawModules.commercial ?? rawModules.accessCommercial,
+      accessCommercialBudgets: rawModules.commercial ?? rawModules.accessCommercial,
+      accessCommercialOrders: rawModules.commercial ?? rawModules.accessCommercial,
+      accessCommercialBacklog: rawModules.commercial ?? rawModules.accessCommercial,
+      accessCommercialAfterSales: rawModules.commercial ?? rawModules.accessCommercial,
+      accessCommercialReports: rawModules.commercial ?? rawModules.accessCommercial,
+      accessEngineering: rawModules.engineering ?? rawModules.production,
+      accessTechnicalDatasheet: rawModules.engineering ?? rawModules.production,
+      accessRevisionControl: rawModules.engineering ?? rawModules.production,
     };
     if (modMap[permissionKey] !== undefined) {
       return Boolean(modMap[permissionKey]);
@@ -712,14 +772,15 @@ export function getEffectivePermissions(
     }
   }
 
-  // 4. REGRA: LIBERADO AO USUÁRIO (Prevalência estrita de revogações e exceções individuais do usuário)
-  // Se no cadastro do operador (userObj.permissions) a tela foi desmarcada/removida,
-  // ela é ESTRITAMENTE FALSE, nenhuma role ou grupo sobrepõe a remoção individual!
+  // 4. REGRA: LIBERAÇÃO E SOBREPOSIÇÃO INDIVIDUAL DO USUÁRIO
+  // "ao liberar um módulo para empresa liberar para o usuário quando selecionado o acesso, 
+  // se existir grupo de acesso vai respeitar e pode ocorrer que para um usuário tenha alguma tela diferente dos demais do mesmo grupo"
+  // Permissões explícitas no cadastro do usuário (userObj.permissions) sobrepõem o grupo (tanto true quanto false)
   if (userObj.permissions && typeof userObj.permissions === 'object') {
     (Object.keys(userObj.permissions) as (keyof UserPermissions)[]).forEach(permKey => {
       const uVal = userObj.permissions[permKey];
-      if (uVal === false) {
-        (basePerms as any)[permKey] = false;
+      if (typeof uVal === 'boolean') {
+        (basePerms as any)[permKey] = uVal;
       }
     });
   }
@@ -740,6 +801,24 @@ export function getEffectivePermissions(
       if (typeof customVal === 'boolean') {
         (basePerms as any)[permKey] = customVal;
       }
+    });
+  }
+
+  // Diferenciação de Telas Específicas por Usuário (allowedScreens e deniedScreens)
+  // Permite que um usuário específico possua telas adicionais ou restritas em relação aos demais do mesmo grupo
+  if (Array.isArray(userObj.allowedScreens)) {
+    userObj.allowedScreens.forEach((screenKey: string) => {
+      const mappedPerm = VIEW_TO_PRIMARY_PERMISSION_MAP[screenKey] || screenKey;
+      (basePerms as any)[mappedPerm] = true;
+      (basePerms as any)[screenKey] = true;
+    });
+  }
+
+  if (Array.isArray(userObj.deniedScreens)) {
+    userObj.deniedScreens.forEach((screenKey: string) => {
+      const mappedPerm = VIEW_TO_PRIMARY_PERMISSION_MAP[screenKey] || screenKey;
+      (basePerms as any)[mappedPerm] = false;
+      (basePerms as any)[screenKey] = false;
     });
   }
 
@@ -971,6 +1050,8 @@ export const VIEW_TO_PRIMARY_PERMISSION_MAP: Record<string, keyof UserPermission
   financial: 'accessFinancial',
   fiscal: 'accessFiscal',
   fiscal_conference: 'accessFiscal',
+  fiscal_xml_extraction: 'accessFiscal',
+  fiscal_xml: 'accessFiscal',
   tax_obligations: 'accessFiscal',
   representative_commerce: 'accessRepresentativeCommerce',
   representative_orders: 'accessRepresentativeOrders',
@@ -981,6 +1062,17 @@ export const VIEW_TO_PRIMARY_PERMISSION_MAP: Record<string, keyof UserPermission
   access_groups: 'accessUserManagement',
   qa_panel: 'accessQAPanel',
   data_migration: 'accessQAPanel',
+  commercial: 'accessCommercial',
+  commercial_marketing: 'accessCommercialMarketing',
+  commercial_budgets: 'accessCommercialBudgets',
+  commercial_orders: 'accessCommercialOrders',
+  commercial_backlog: 'accessCommercialBacklog',
+  commercial_after_sales: 'accessCommercialAfterSales',
+  commercial_reports: 'accessCommercialReports',
+  engineering: 'accessEngineering',
+  engineering_products: 'accessEngineering',
+  technical_datasheet: 'accessTechnicalDatasheet',
+  revision_control: 'accessRevisionControl',
 };
 
 /**
@@ -991,7 +1083,7 @@ export const VIEW_TO_PRIMARY_PERMISSION_MAP: Record<string, keyof UserPermission
  * 2. CONTRATO DO SAAS: O módulo foi efetivamente comprado/contratado pela empresa?
  *    isModuleContractedForCompany(permKey, company, company.businessType)
  * 3. PERMISSÕES EFETIVAS DO OPERADOR (RBAC v2.0): O usuário tem a permissão ativa após filtro do contrato?
- *    getEffectivePermissions(user, company, db)
+ *    Respeita grupo de acesso e sobreposições/exceções individuais do usuário (telas liberadas ou bloqueadas)
  *
  * REGRAS CRÍTICAS:
  * - ADMIN não bypassa o contrato da empresa nem as regras de segmento.
@@ -1021,6 +1113,13 @@ export function canAccessView(
     return false;
   }
 
+  // 1.1 SOBREPOSIÇÃO INDIVIDUAL DO USUÁRIO: Telas explicitamente revogadas para este usuário (deniedScreens)
+  if (Array.isArray(user.deniedScreens)) {
+    if (user.deniedScreens.includes(viewId as any) || (VIEW_TO_PRIMARY_PERMISSION_MAP[viewId] && user.deniedScreens.includes(VIEW_TO_PRIMARY_PERMISSION_MAP[viewId] as any))) {
+      return false;
+    }
+  }
+
   const businessType = normalizeBusinessType(company.businessType);
 
   // 2. Validação de SEGMENTO DA EMPRESA
@@ -1041,7 +1140,15 @@ export function canAccessView(
     return false;
   }
 
-  // 4. Validação de PERMISSÃO EFETIVA DO USUÁRIO (RBAC v2.0 filtrado pelo contrato da empresa)
+  // 3.1 SOBREPOSIÇÃO INDIVIDUAL DO USUÁRIO: Tela explicitamente liberada para este operador (allowedScreens)
+  // Permite que um usuário tenha uma tela diferente dos demais membros do mesmo grupo
+  if (Array.isArray(user.allowedScreens)) {
+    if (user.allowedScreens.includes(viewId as any) || user.allowedScreens.includes(permKey as any)) {
+      return true;
+    }
+  }
+
+  // 4. Validação de PERMISSÃO EFETIVA DO USUÁRIO (RBAC v2.0 com grupo de acesso e exceções individuais)
   const effectivePerms = getEffectivePermissions(user, company, db || undefined);
   if (!effectivePerms || !effectivePerms[permKey]) {
     return false;
@@ -1059,22 +1166,26 @@ export function getSafeAccessibleFallbackView(
   user: User | null | undefined,
   db?: AppDatabase | null
 ): ViewID {
-  const candidateViews: ViewID[] = [
-    'dashboard',
-    'sales',
-    'serviceOrders',
-    'budgets',
-    'clients',
-    'parts',
-    'services',
-    'representative_commerce',
-    'industry',
-    'financial',
-    'history',
-    'reports',
-    'users',
-    'profile'
-  ];
+  const businessType = getEffectiveBusinessType(company);
+  const candidateViews: ViewID[] = businessType === 'INDUSTRIA'
+    ? ['industry', 'parts', 'clients', 'financial', 'reports', 'users', 'profile']
+    : businessType === 'COMERCIO'
+    ? ['sales', 'parts', 'clients', 'financial', 'reports', 'users', 'profile']
+    : [
+        'dashboard',
+        'serviceOrders',
+        'budgets',
+        'sales',
+        'clients',
+        'parts',
+        'services',
+        'representative_commerce',
+        'financial',
+        'history',
+        'reports',
+        'users',
+        'profile'
+      ];
 
   for (const v of candidateViews) {
     if (canAccessView(company, user, v, db)) {
