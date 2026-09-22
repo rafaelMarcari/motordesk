@@ -53,36 +53,63 @@ interface DeviceConnectionsAndPermissionsModalProps {
 }
 
 export const SYSTEM_MODULES = [
-  { id: 'dashboard', key: 'accessDashboard', name: 'Dashboard Geral & Indicadores', category: 'Gestão', defaultGroups: ['admin', 'qa', 'gerente', 'atendente', 'vendedor', 'mecanico', 'financeiro'] },
-  { id: 'sales', key: 'accessSales', name: 'Vendas & Balcão PDV', category: 'Comercial', defaultGroups: ['admin', 'qa', 'gerente', 'atendente', 'vendedor'] },
-  { id: 'quotations', key: 'accessQuotations', name: 'Cotações & Propostas', category: 'Comercial', defaultGroups: ['admin', 'qa', 'gerente', 'atendente', 'vendedor'] },
-  { id: 'clients', key: 'accessClients', name: 'Cadastro de Clientes', category: 'Cadastros', defaultGroups: ['admin', 'qa', 'gerente', 'atendente', 'vendedor', 'financeiro'] },
-  { id: 'vehicles', key: 'accessVehicles', name: 'Frota & Veículos', category: 'Oficina', defaultGroups: ['admin', 'qa', 'gerente', 'atendente', 'mecanico'] },
-  { id: 'serviceOrders', key: 'accessServiceOrders', name: 'Ordens de Serviço (O.S.)', category: 'Oficina', defaultGroups: ['admin', 'qa', 'gerente', 'atendente', 'mecanico'] },
-  { id: 'parts', key: 'accessParts', name: 'Estoque de Peças / Produtos', category: 'Estoque', defaultGroups: ['admin', 'qa', 'gerente', 'atendente', 'mecanico', 'expedicao'] },
-  { id: 'financial', key: 'accessFinancial', name: 'Financeiro (Caixa & DRE)', category: 'Financeiro', defaultGroups: ['admin', 'qa', 'gerente', 'financeiro'] },
-  { id: 'accounts_receivable', key: 'accessAccountsReceivable', name: 'Contas a Receber & Boletos', category: 'Financeiro', defaultGroups: ['admin', 'qa', 'gerente', 'financeiro'] },
-  { id: 'accounts_payable', key: 'accessAccountsPayable', name: 'Contas a Pagar & Despesas', category: 'Financeiro', defaultGroups: ['admin', 'qa', 'gerente', 'financeiro'] },
-  { id: 'representative_orders', key: 'accessRepresentativeOrders', name: 'Pedidos Realizados (Fábricas)', category: 'Comercial', defaultGroups: ['admin', 'qa', 'gerente', 'vendedor'] },
-  { id: 'price_calculation', key: 'accessPriceCalculation', name: 'Formação de Preço & Markup', category: 'Financeiro', defaultGroups: ['admin', 'qa', 'gerente', 'financeiro'] },
-  { id: 'fiscal', key: 'accessFiscal', name: 'Fiscal, Boletos & SEFAZ', category: 'Fiscal', defaultGroups: ['admin', 'qa', 'gerente', 'financeiro'] },
-  { id: 'fiscal_conference', key: 'accessFiscalConference', name: 'Fila de Conferência Fiscal', category: 'Fiscal', defaultGroups: ['admin', 'qa', 'gerente', 'financeiro'] },
-  { id: 'fiscal_xml_extraction', key: 'accessFiscalXml', name: 'Extração XML & SPED', category: 'Fiscal', defaultGroups: ['admin', 'qa', 'gerente', 'financeiro'] },
-  { id: 'tax_obligations', key: 'accessTaxObligations', name: 'Obrigações Fiscais & DAS', category: 'Fiscal', defaultGroups: ['admin', 'qa', 'gerente', 'financeiro'] },
-  { id: 'withdrawals', key: 'accessWithdrawals', name: 'Sangrias & Retiradas de Caixa', category: 'Financeiro', defaultGroups: ['admin', 'qa', 'gerente', 'financeiro'] },
-  { id: 'carriers', key: 'accessCarriers', name: 'Cadastro de Transportadoras & Fretes', category: 'Cadastros', defaultGroups: ['admin', 'qa', 'gerente', 'expedicao'] },
-  { id: 'units_of_measure', key: 'accessUnitsOfMeasure', name: 'Unidades de Medida & Conversão', category: 'Cadastros', defaultGroups: ['admin', 'qa', 'gerente', 'expedicao'] },
-  { id: 'services', key: 'accessServices', name: 'Tabela de Mão de Obra & Serviços', category: 'Oficina', defaultGroups: ['admin', 'qa', 'gerente', 'mecanico'] },
-  { id: 'budgets', key: 'accessBudgets', name: 'Orçamentos & Pré-Vendas', category: 'Comercial', defaultGroups: ['admin', 'qa', 'gerente', 'atendente', 'vendedor'] },
-  { id: 'industry', key: 'accessProduction', name: 'Módulos Industriais (PCP, MES, CQ)', category: 'Indústria', defaultGroups: ['admin', 'qa', 'gerente'] },
-  { id: 'ind_pcp', key: 'accessProductionPCP', name: 'Indústria: Planejamento & MRP (PCP)', category: 'Indústria', defaultGroups: ['admin', 'qa', 'gerente'] },
-  { id: 'ind_engenharia', key: 'accessProductionEng', name: 'Indústria: Engenharia de Produto & BOM', category: 'Indústria', defaultGroups: ['admin', 'qa', 'gerente'] },
-  { id: 'ind_qualidade', key: 'accessProductionQuality', name: 'Indústria: Controle de Qualidade (CQ)', category: 'Indústria', defaultGroups: ['admin', 'qa', 'gerente'] },
-  { id: 'industrial_reports', key: 'accessIndustrialReports', name: 'Relatórios Industriais Avançados', category: 'Indústria', defaultGroups: ['admin', 'qa', 'gerente'] },
+  // 1. Gestão Geral & Indicadores
+  { id: 'dashboard', key: 'accessDashboard', name: 'Dashboard Geral & Indicadores KPI', category: 'Gestão', defaultGroups: ['admin', 'qa', 'gerente', 'atendente', 'vendedor', 'mecanico', 'financeiro', 'producao'] },
+  { id: 'reports', key: 'accessReports', name: 'Central de Relatórios Globais', category: 'Gestão', defaultGroups: ['admin', 'qa', 'gerente', 'financeiro'] },
+
+  // 2. Comercial & Vendas
+  { id: 'sales', key: 'accessSales', name: 'Vendas & Balcão PDV Express', category: 'Comercial', defaultGroups: ['admin', 'qa', 'gerente', 'atendente', 'vendedor'] },
+  { id: 'budgets', key: 'accessBudgets', name: 'Orçamentos & Propostas Comerciais', category: 'Comercial', defaultGroups: ['admin', 'qa', 'gerente', 'atendente', 'vendedor'] },
+  { id: 'quotations', key: 'accessQuotations', name: 'Cotações com Fornecedores & Compras', category: 'Comercial', defaultGroups: ['admin', 'qa', 'gerente', 'atendente', 'vendedor'] },
+  { id: 'representative_commerce', key: 'accessRepresentativeCommerce', name: 'Comércio Representante (Fábricas & Comissões)', category: 'Comercial', defaultGroups: ['admin', 'qa', 'gerente', 'vendedor'] },
+  { id: 'representative_orders', key: 'accessRepresentativeOrders', name: 'Pedidos da Representada (Fábrica B2B)', category: 'Comercial', defaultGroups: ['admin', 'qa', 'gerente', 'vendedor'] },
+
+  // 3. Expedição, Retiradas & Logística
+  { id: 'withdrawals', key: 'accessWithdrawals', name: 'Expedição de Vendas (Retirada & Entrega com Romaneio)', category: 'Expedição', defaultGroups: ['admin', 'qa', 'gerente', 'expedicao', 'vendedor', 'atendente'] },
+  { id: 'carriers', key: 'accessCarriers', name: 'Transportadoras & Logística de Fretes', category: 'Expedição', defaultGroups: ['admin', 'qa', 'gerente', 'expedicao'] },
+  { id: 'units_of_measure', key: 'accessUnitsOfMeasure', name: 'Unidades de Medida & Conversão Dimensional', category: 'Expedição', defaultGroups: ['admin', 'qa', 'gerente', 'expedicao', 'producao'] },
+
+  // 4. Cadastros Gerais & CRM
+  { id: 'clients', key: 'accessClients', name: 'Cadastro de Clientes & CRM', category: 'Cadastros', defaultGroups: ['admin', 'qa', 'gerente', 'atendente', 'vendedor', 'financeiro'] },
+  { id: 'vehicles', key: 'accessVehicles', name: 'Cadastro de Veículos & Frotas (Pátio)', category: 'Oficina', defaultGroups: ['admin', 'qa', 'gerente', 'atendente', 'mecanico'] },
+  { id: 'services', key: 'accessServices', name: 'Tabela de Serviços & Mão de Obra Mecânica', category: 'Oficina', defaultGroups: ['admin', 'qa', 'gerente', 'mecanico'] },
+  { id: 'serviceOrders', key: 'accessServiceOrders', name: 'Ordens de Serviço (O.S. de Oficina)', category: 'Oficina', defaultGroups: ['admin', 'qa', 'gerente', 'atendente', 'mecanico'] },
+
+  // 5. Estoque & Almoxarifado
+  { id: 'parts', key: 'accessParts', name: 'Estoque de Peças, Insumos & Produtos', category: 'Estoque', defaultGroups: ['admin', 'qa', 'gerente', 'atendente', 'mecanico', 'expedicao', 'producao'] },
+
+  // 6. Financeiro & Custos
+  { id: 'financial', key: 'accessFinancial', name: 'Financeiro (Caixa, DRE & Conciliação)', category: 'Financeiro', defaultGroups: ['admin', 'qa', 'gerente', 'financeiro'] },
+  { id: 'accounts_receivable', key: 'accessAccountsReceivable', name: 'Contas a Receber, Boletos & PIX', category: 'Financeiro', defaultGroups: ['admin', 'qa', 'gerente', 'financeiro'] },
+  { id: 'accounts_payable', key: 'accessAccountsPayable', name: 'Contas a Pagar & Despesas Operacionais', category: 'Financeiro', defaultGroups: ['admin', 'qa', 'gerente', 'financeiro'] },
+  { id: 'price_calculation', key: 'accessPriceCalculation', name: 'Formação de Preço, Margem & Markup', category: 'Financeiro', defaultGroups: ['admin', 'qa', 'gerente', 'financeiro'] },
+
+  // 7. Fiscal & Tributário
+  { id: 'fiscal', key: 'accessFiscal', name: 'Fiscal, NF-e, NFC-e & SEFAZ', category: 'Fiscal', defaultGroups: ['admin', 'qa', 'gerente', 'financeiro'] },
+  { id: 'fiscal_conference', key: 'accessFiscalConference', name: 'Fila de Conferência Fiscal & Auditoria', category: 'Fiscal', defaultGroups: ['admin', 'qa', 'gerente', 'financeiro'] },
+  { id: 'fiscal_xml_extraction', key: 'accessFiscalXml', name: 'Extração de XMLs & SPED Fiscal', category: 'Fiscal', defaultGroups: ['admin', 'qa', 'gerente', 'financeiro'] },
+  { id: 'fiscal_invoicing_grid', key: 'accessFiscalInvoicingGrid', name: 'Grade Geral de Faturamento Fiscal', category: 'Fiscal', defaultGroups: ['admin', 'qa', 'gerente', 'financeiro'] },
+  { id: 'tax_obligations', key: 'accessTaxObligations', name: 'Obrigações Tributárias & Guia DAS', category: 'Fiscal', defaultGroups: ['admin', 'qa', 'gerente', 'financeiro'] },
+
+  // 8. Indústria & Manufatura (MES / PCP / CQ)
+  { id: 'industry', key: 'accessProduction', name: 'Indústria: Visão Geral Fabril & Painel Geral', category: 'Indústria', defaultGroups: ['admin', 'qa', 'gerente', 'producao'] },
+  { id: 'ind_engenharia', key: 'accessProductionEng', name: 'Indústria: Engenharia de Produto, BOM & Estruturas', category: 'Indústria', defaultGroups: ['admin', 'qa', 'gerente', 'producao'] },
+  { id: 'ind_pcp', key: 'accessProductionPCP', name: 'Indústria: PCP, MRP & Planejamento da Produção', category: 'Indústria', defaultGroups: ['admin', 'qa', 'gerente', 'producao'] },
+  { id: 'ind_rh', key: 'accessProductionRH', name: 'Indústria: RH Fabril, Operadores, Turnos & Postos', category: 'Indústria', defaultGroups: ['admin', 'qa', 'gerente', 'producao'] },
+  { id: 'ind_almoxarifado', key: 'accessProductionWarehouse', name: 'Indústria: Almoxarifado Fabril, WMS & Lotes', category: 'Indústria', defaultGroups: ['admin', 'qa', 'gerente', 'producao', 'expedicao'] },
+  { id: 'ind_producao', key: 'accessManufacturing', name: 'Indústria: Fabricação, OPs & Chão de Fábrica (MES)', category: 'Indústria', defaultGroups: ['admin', 'qa', 'gerente', 'producao'] },
+  { id: 'ind_rastrear_processo', key: 'accessProcessTracking', name: 'Indústria: Rastreamento de Processo & Lote Ponta a Ponta', category: 'Indústria', defaultGroups: ['admin', 'qa', 'gerente', 'producao'] },
+  { id: 'ind_qualidade', key: 'accessProductionQuality', name: 'Indústria: Controle de Qualidade (CQ), RNC & Laudos', category: 'Indústria', defaultGroups: ['admin', 'qa', 'gerente', 'producao'] },
+  { id: 'ind_manutencao', key: 'accessMaintenance', name: 'Indústria: Manutenção Industrial & Gestão de Máquinas', category: 'Indústria', defaultGroups: ['admin', 'qa', 'gerente', 'producao'] },
+  { id: 'ind_log_expedicao', key: 'accessExpedition', name: 'Indústria: Expedição Fabril & Romaneios de Carga', category: 'Indústria', defaultGroups: ['admin', 'qa', 'gerente', 'producao', 'expedicao'] },
+  { id: 'ind_comercial', key: 'accessCommercialOrders', name: 'Indústria: Comercial Fabril B2B, Pedidos & Orçamentos', category: 'Indústria', defaultGroups: ['admin', 'qa', 'gerente', 'vendedor'] },
+  { id: 'industrial_reports', key: 'accessIndustrialReports', name: 'Indústria: Relatórios Industriais Gerenciais & OEE', category: 'Indústria', defaultGroups: ['admin', 'qa', 'gerente', 'producao'] },
+
+  // 9. Segurança, Auditoria & Administração
   { id: 'history', key: 'accessHistory', name: 'Trilha de Auditoria & Histórico de Operações', category: 'Segurança', defaultGroups: ['admin', 'qa', 'gerente'] },
-  { id: 'reports', key: 'accessReports', name: 'Central de Relatórios', category: 'Gestão', defaultGroups: ['admin', 'qa', 'gerente', 'financeiro'] },
-  { id: 'backup', key: 'accessBackup', name: 'Backup & Restauração da Base', category: 'Segurança', defaultGroups: ['admin', 'qa'] },
-  { id: 'users', key: 'accessUserManagement', name: 'Gestão de Usuários & Acessos', category: 'Segurança', defaultGroups: ['admin', 'qa'] }
+  { id: 'users', key: 'accessUserManagement', name: 'Gestão de Usuários, Colaboradores & Acessos', category: 'Segurança', defaultGroups: ['admin', 'qa'] },
+  { id: 'backup', key: 'accessBackup', name: 'Backup & Restauração da Base de Dados', category: 'Segurança', defaultGroups: ['admin', 'qa'] },
+  { id: 'qa_panel', key: 'accessQAPanel', name: 'Painel de Testes QA & Validação', category: 'Segurança', defaultGroups: ['admin', 'qa'] }
 ];
 
 export const ACCESS_GROUPS_CATALOG = [
@@ -92,7 +119,8 @@ export const ACCESS_GROUPS_CATALOG = [
   { id: 'vendedor', name: 'Vendedores & Representantes', description: 'Vendas balcão, cotações e pedidos de representantes' },
   { id: 'mecanico', name: 'Mecânicos & Técnicos', description: 'Ordens de serviço, apontamentos e baixa de peças' },
   { id: 'financeiro', name: 'Financeiro & Contábil', description: 'Contas a pagar/receber, conciliação, fiscal e relatórios' },
-  { id: 'expedicao', name: 'Estoque & Expedição', description: 'Controle de almoxarifado, peças e separação de mercadorias' },
+  { id: 'expedicao', name: 'Estoque & Expedição', description: 'Controle de almoxarifado, peças, romaneios e separação de mercadorias' },
+  { id: 'producao', name: 'Operadores Fabris, PCP & Manufatura', description: 'Chão de fábrica, PCP, engenharia, apontamento de produção e estoque industrial' },
   { id: 'qa', name: 'Validação & Qualidade', description: 'Acesso de teste, validação e auditoria completa' }
 ];
 
@@ -271,28 +299,10 @@ export function DeviceConnectionsAndPermissionsModal({
     const isComercio = !isOficinaComercio && !isOficina && (rawType.includes('COMERCIO') || rawType.includes('AUTOPECAS') || rawType.includes('DISTRIBUIDORA') || rawType.includes('LOJA') || true);
 
     return SYSTEM_MODULES.map(mod => {
-      // 0. Segmento de negócio aplicável?
-      const isOficinaModule = mod.category === 'Oficina' || ['vehicles', 'services', 'serviceOrders', 'budgets'].includes(mod.id);
-      const isIndustriaModule = mod.category === 'Indústria' || mod.id.startsWith('ind_') || mod.id === 'industry' || mod.id === 'industrial_reports';
-      const isComercioExclusiveModule = ['representative_orders', 'representative_commerce', 'withdrawals', 'carriers', 'units_of_measure'].includes(mod.id);
-
-      let isSegmentAllowed = true;
-      let segmentDeniedReason = '';
-
-      if (isComercio && (isOficinaModule || isIndustriaModule)) {
-        isSegmentAllowed = false;
-        segmentDeniedReason = isOficinaModule 
-          ? 'Módulo exclusivo de Oficina Mecânica (não aplicável ao segmento Comércio)'
-          : 'Módulo exclusivo de Indústria / Manufatura (não aplicável ao segmento Comércio)';
-      } else if (isOficina && (isIndustriaModule || isComercioExclusiveModule)) {
-        isSegmentAllowed = false;
-        segmentDeniedReason = isIndustriaModule
-          ? 'Módulo exclusivo de Indústria (não aplicável ao segmento Oficina)'
-          : 'Módulo exclusivo de Comércio Atacadista / Representadas';
-      } else if (isIndustria && isOficinaModule) {
-        isSegmentAllowed = false;
-        segmentDeniedReason = 'Módulo exclusivo de Oficina Mecânica (não aplicável ao segmento Indústria)';
-      }
+      // 0. Segmento de negócio aplicável:
+      // Todo módulo do sistema pode ser contratado e liberado caso a empresa opte por contratá-lo.
+      const isSegmentAllowed = true;
+      const segmentDeniedReason = '';
 
       // 1. Empresa contratou?
       const compModules = activeCompany.modules || {};
@@ -326,14 +336,11 @@ export function DeviceConnectionsAndPermissionsModal({
 
       const isUserAllowed = userExplicit !== undefined ? userExplicit : isGroupAllowed;
 
-      // Status Efetivo Final (Regra Absoluta: Segmento Permitido + Empresa Contratou + Usuário/Grupo Autorizado)
+      // Status Efetivo Final (Regra Absoluta: Empresa Contratou + Usuário/Grupo Autorizado)
       let finalStatus: 'ALLOWED' | 'DENIED_COMPANY' | 'DENIED_GROUP' | 'DENIED_USER' = 'ALLOWED';
       let reason = 'Liberado para operação (Empresa Contratou + Usuário Autorizado)';
 
-      if (!isSegmentAllowed) {
-        finalStatus = 'DENIED_COMPANY';
-        reason = segmentDeniedReason;
-      } else if (!isContractedByCompany) {
+      if (!isContractedByCompany) {
         finalStatus = 'DENIED_COMPANY';
         reason = `Módulo não contratado pela empresa "${activeCompany.name || 'Empresa'}" no plano atual`;
       } else if (!isUserAllowed) {
@@ -422,19 +429,52 @@ export function DeviceConnectionsAndPermissionsModal({
     const currentVal = explicitVal !== undefined ? explicitVal : defaultGroupAllowed;
     const newVal = !currentVal;
 
+    let updatedTargetUser: any = null;
+
     const updatedUsers = (db.users || []).map((u: User) => {
       if (u.id === selectedUser.id) {
-        return {
-          ...u,
-          permissions: {
-            ...(u.permissions || {}),
-            [modKey]: newVal,
-            [modId]: newVal
-          }
+        const newPerms = {
+          ...(u.permissions || {}),
+          [modKey]: newVal,
+          [modId]: newVal,
+          ...(mod?.category === 'Indústria' && newVal === true ? { accessProduction: true } : {})
         };
+        const newExceptions = {
+          ...((u as any).individualExceptions || {}),
+          [modKey]: newVal,
+          [modId]: newVal,
+          ...(mod?.category === 'Indústria' && newVal === true ? { accessProduction: true } : {})
+        };
+        const newCustom = {
+          ...((u as any).customPermissions || {}),
+          [modKey]: newVal,
+          [modId]: newVal,
+          ...(mod?.category === 'Indústria' && newVal === true ? { accessProduction: true } : {})
+        };
+
+        updatedTargetUser = {
+          ...u,
+          permissions: newPerms,
+          individualExceptions: newExceptions,
+          customPermissions: newCustom
+        };
+        return updatedTargetUser;
       }
       return u;
     });
+
+    // Se for o próprio operador logado, reflete instantaneamente na sessão atual
+    if (selectedUser.id === currentUser.id && updatedTargetUser) {
+      currentUser.permissions = { ...updatedTargetUser.permissions };
+      try {
+        localStorage.setItem('motordesk_auth_user', JSON.stringify(updatedTargetUser));
+        localStorage.setItem('motordesk_active_user', JSON.stringify(updatedTargetUser));
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('motordesk_permissions_changed', { detail: updatedTargetUser }));
+          (window as any).__currentUser = updatedTargetUser;
+        }
+      } catch {}
+    }
 
     const updatedDb = {
       ...db,
@@ -848,15 +888,17 @@ export function DeviceConnectionsAndPermissionsModal({
                     onChange={e => setCategoryFilter(e.target.value)}
                     className="w-full p-2 rounded-lg bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-xs font-bold text-slate-800 dark:text-slate-100 cursor-pointer shadow-3xs"
                   >
-                    <option value="ALL">Todas as Categorias</option>
-                    <option value="Financeiro">Financeiro</option>
-                    <option value="Fiscal">Fiscal</option>
-                    <option value="Comercial">Comercial</option>
-                    <option value="Oficina">Oficina</option>
-                    <option value="Estoque">Estoque</option>
-                    <option value="Indústria">Indústria</option>
-                    <option value="Gestão">Gestão</option>
-                    <option value="Segurança">Segurança</option>
+                    <option value="ALL">Todas as Categorias (38 Menus)</option>
+                    <option value="Indústria">Indústria & Manufatura (MES / PCP / CQ)</option>
+                    <option value="Comercial">Comercial & Vendas</option>
+                    <option value="Expedição">Expedição & Logística</option>
+                    <option value="Oficina">Oficina & Serviços</option>
+                    <option value="Estoque">Estoque & Almoxarifado</option>
+                    <option value="Financeiro">Financeiro & Custos</option>
+                    <option value="Fiscal">Fiscal & SEFAZ</option>
+                    <option value="Cadastros">Cadastros Gerais & CRM</option>
+                    <option value="Gestão">Gestão & Relatórios</option>
+                    <option value="Segurança">Segurança & Auditoria</option>
                   </select>
                 </div>
 

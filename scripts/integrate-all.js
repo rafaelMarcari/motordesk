@@ -6,6 +6,11 @@ const publicAsset = path.resolve('public/assets/index-CUxTo0fH.js');
 const distAsset = path.resolve('dist/assets/index-CUxTo0fH.js');
 const backupAsset = path.resolve('public/assets/index-CUxTo0fH.js.bak');
 
+if (!fs.existsSync(backupAsset) && fs.existsSync(publicAsset)) {
+  fs.copyFileSync(publicAsset, backupAsset);
+  console.log(`Created automatic backup: ${backupAsset}`);
+}
+
 console.log('=== MOTOR DESK COMPREHENSIVE INTEGRATION ===');
 
 async function compileAndWrap(filePath, componentName) {
@@ -92,7 +97,8 @@ if (fs.existsSync(distAsset)) {
 }
 
 for (const filePath of targetFiles) {
-  let content = fs.readFileSync(backupAsset, 'utf8');
+  const sourceAsset = fs.existsSync(backupAsset) ? backupAsset : publicAsset;
+  let content = fs.readFileSync(sourceAsset, 'utf8');
 
   // A. Backoff 429 logic
   const saveDbPattern = 'async saveDatabase(e,a=!1){';
@@ -111,17 +117,17 @@ for (const filePath of targetFiles) {
 
   // B. Inject BoletoClientReminderModal before ROe
   const roeMarker = 'function ROe(e){';
-  if (content.includes(roeMarker)) {
-    content = content.replace(roeMarker, `${wrappedReminder}\n\nfunction ROe(e){`);
+  if (!content.includes('BoletoClientReminderModal') && content.includes(roeMarker)) {
+    content = content.replace(roeMarker, () => `${wrappedReminder}\n\nfunction ROe(e){`);
     console.log(`- Injected BoletoClientReminderModal before ROe in ${path.basename(filePath)}`);
   }
 
   // C. Injected all other components before KKe
   const kkeMarker = 'function KKe(){';
-  if (content.includes(kkeMarker)) {
+  if (!content.includes('FiscalXmlExtractionView') && content.includes(kkeMarker)) {
     content = content.replace(
       kkeMarker,
-      `${wrappedFiscal}\n\n${wrappedRep}\n\n${wrappedReceivablesFilters}\n\n${wrappedPayablesFilters}\n\n${wrappedPriceMarkup}\n\n${wrappedFiscalInvoicing}\n\n${wrappedReportsMenu}\n\n${wrappedOperationalModal}\n\n${wrappedIndReports}\n\n${wrappedScreenSubmenuHub}\n\n${wrappedDeviceConnectionsModal}\n\n${wrappedSystemBackupModal}\n\nfunction KKe(){`
+      () => `${wrappedFiscal}\n\n${wrappedRep}\n\n${wrappedReceivablesFilters}\n\n${wrappedPayablesFilters}\n\n${wrappedPriceMarkup}\n\n${wrappedFiscalInvoicing}\n\n${wrappedReportsMenu}\n\n${wrappedOperationalModal}\n\n${wrappedIndReports}\n\n${wrappedScreenSubmenuHub}\n\n${wrappedDeviceConnectionsModal}\n\n${wrappedSystemBackupModal}\n\nfunction KKe(){`
     );
     console.log(`- Injected modal and view components before KKe in ${path.basename(filePath)}`);
   }
@@ -129,17 +135,17 @@ for (const filePath of targetFiles) {
   // D. Add showOperationalModal, showReportsFlyout, activeSubmenuHub, showDeviceConnModal and showSystemBackupModal state in KKe and expose global openers
   const kkeStateMarker = 'const[e,a]=b.useState(()=>HE()),';
   const kkeStateReplacement = 'const[e,a]=b.useState(()=>HE()),[showOperationalModal,setShowOperationalModal]=b.useState(!1),[showReportsFlyout,setShowReportsFlyout]=b.useState(!1),[activeSubmenuHub,setActiveSubmenuHub]=b.useState(null),[submenuCustomItems,setSubmenuCustomItems]=b.useState(null),[showDeviceConnModal,setShowDeviceConnModal]=b.useState(!1),[showSystemBackupModal,setShowSystemBackupModal]=b.useState(!1),';
-  if (content.includes(kkeStateMarker)) {
-    content = content.replace(kkeStateMarker, kkeStateReplacement);
+  if (!content.includes('showOperationalModal') && content.includes(kkeStateMarker)) {
+    content = content.replace(kkeStateMarker, () => kkeStateReplacement);
     console.log(`- Added showOperationalModal, activeSubmenuHub, showDeviceConnModal and showSystemBackupModal state in KKe in ${path.basename(filePath)}`);
   }
 
   // D2. Expose global openers for operational parameters modal, screen submenu hub, device connections, and backup + Multi-Browser LiveSync
   const kkeFirstEffect = 'b.useEffect(()=>{typeof localStorage<"u"&&De&&localStorage.setItem("motordesk_active_view",De)},[De])';
-  if (content.includes(kkeFirstEffect)) {
+  if (!content.includes('window.__MD_LIVESYNC_ATTACHED__') && content.includes(kkeFirstEffect)) {
     content = content.replace(
       kkeFirstEffect,
-      `b.useEffect(()=>{if(typeof window!=="undefined"){window.__openOperationalParamsModal=()=>setShowOperationalModal(!0);window.openOperationalParams=()=>setShowOperationalModal(!0);window.__openScreenSubmenuHub=(modId,modName,items)=>{setActiveSubmenuHub(modId);setSubmenuCustomItems(items||null);};window.openScreenSubmenuHub=window.__openScreenSubmenuHub;window.__openDeviceConnectionsModal=()=>setShowDeviceConnModal(!0);window.openDeviceConnectionsModal=()=>setShowDeviceConnModal(!0);window.__openBackupModal=()=>setShowSystemBackupModal(!0);window.openBackupModal=()=>setShowSystemBackupModal(!0);if(!window.__MD_LIVESYNC_ATTACHED__){window.__MD_LIVESYNC_ATTACHED__=!0;let sseInst=null,lastV=0;function syncFreshData(){if(window.__motorDeskDb&&window.__motorDeskDb.fetchDatabaseInternal){window.__motorDeskDb.fetchDatabaseInternal().then(fresh=>{if(fresh&&window.__motorDeskDb.onDataMergedCallback){window.__motorDeskDb.onDataMergedCallback(fresh);}}).catch(()=>{});}}function connectLiveSSE(){try{if(sseInst){sseInst.close();}sseInst=new EventSource("/api/db/stream");const onMsg=(e)=>{try{const d=JSON.parse(e.data);if(d&&d.version){if(d.version!==lastV){lastV=d.version;syncFreshData();}}else{syncFreshData();}}catch{syncFreshData();}};sseInst.addEventListener("connected",(e)=>{try{const d=JSON.parse(e.data);if(d&&d.version)lastV=d.version;}catch{}});sseInst.addEventListener("db_update",onMsg);sseInst.addEventListener("db_updated",onMsg);sseInst.onmessage=onMsg;sseInst.onerror=()=>{try{sseInst.close();}catch{}setTimeout(connectLiveSSE,3500);};}catch{}}connectLiveSSE();setInterval(async()=>{try{const r=await fetch("/api/db/version");if(r.ok){const v=await r.json();if(v.version&&v.version!==lastV){lastV=v.version;syncFreshData();}}}catch{}},3000);if("BroadcastChannel" in window){const bc=new BroadcastChannel("motordesk_live_channel");bc.onmessage=(ev)=>{if(ev.data&&ev.data.data&&window.__motorDeskDb&&window.__motorDeskDb.onDataMergedCallback){window.__motorDeskDb.onDataMergedCallback(ev.data.data);}};}}}},[]),${kkeFirstEffect}`
+      () => `b.useEffect(()=>{if(typeof window!=="undefined"){window.__openOperationalParamsModal=()=>setShowOperationalModal(!0);window.openOperationalParams=()=>setShowOperationalModal(!0);window.__openScreenSubmenuHub=(modId,modName,items)=>{setActiveSubmenuHub(modId);setSubmenuCustomItems(items||null);};window.openScreenSubmenuHub=window.__openScreenSubmenuHub;window.__openDeviceConnectionsModal=()=>setShowDeviceConnModal(!0);window.openDeviceConnectionsModal=()=>setShowDeviceConnModal(!0);window.__openBackupModal=()=>setShowSystemBackupModal(!0);window.openBackupModal=()=>setShowSystemBackupModal(!0);if(!window.__MD_LIVESYNC_ATTACHED__){window.__MD_LIVESYNC_ATTACHED__=!0;let sseInst=null,lastV=0;function syncFreshData(){if(window.__motorDeskDb&&window.__motorDeskDb.fetchDatabaseInternal){window.__motorDeskDb.fetchDatabaseInternal().then(fresh=>{if(fresh&&window.__motorDeskDb.onDataMergedCallback){window.__motorDeskDb.onDataMergedCallback(fresh);}}).catch(()=>{});}}function connectLiveSSE(){try{if(sseInst){sseInst.close();}sseInst=new EventSource("/api/db/stream");const onMsg=(e)=>{try{const d=JSON.parse(e.data);if(d&&d.version){if(d.version!==lastV){lastV=d.version;syncFreshData();}}else{syncFreshData();}}catch{syncFreshData();}};sseInst.addEventListener("connected",(e)=>{try{const d=JSON.parse(e.data);if(d&&d.version)lastV=d.version;}catch{}});sseInst.addEventListener("db_update",onMsg);sseInst.addEventListener("db_updated",onMsg);sseInst.onmessage=onMsg;sseInst.onerror=()=>{try{sseInst.close();}catch{}setTimeout(connectLiveSSE,3500);};}catch{}}connectLiveSSE();setInterval(async()=>{try{const r=await fetch("/api/db/version");if(r.ok){const v=await r.json();if(v.version&&v.version!==lastV){lastV=v.version;syncFreshData();}}}catch{}},3000);if("BroadcastChannel" in window){const bc=new BroadcastChannel("motordesk_live_channel");bc.onmessage=(ev)=>{if(ev.data&&ev.data.data&&window.__motorDeskDb&&window.__motorDeskDb.onDataMergedCallback){window.__motorDeskDb.onDataMergedCallback(ev.data.data);}};}}}},[]),${kkeFirstEffect}`
     );
     console.log(`- Injected global modal opener and LiveSync effect in ${path.basename(filePath)}`);
   }
@@ -161,19 +167,19 @@ for (const filePath of targetFiles) {
     console.log(`- Updated ex route permission map in ${path.basename(filePath)}`);
   }
 
-  // E2. Patch FA and Hc to enforce strict business segment separation (Comércio vs Oficina vs Indústria)
+  // E2. Patch FA and Hc: ensure all contracted modules and user permissions are fully unlocked across all menus
   const oldFA = 'function FA(e,a){const s=Id(a);return s==="INDUSTRIA"?!(xD.includes(e)||SV.includes(e)):s==="COMERCIO"?!(xD.includes(e)||pD.includes(e)):s==="OFICINA"?!(Kre.includes(e)||pD.includes(e)):!0}';
-  const newFA = 'function FA(e,a){const s=Id(a);const ofc=["vehicles","services","serviceOrders","budgets"];const ind=["industry","ind_pcp","ind_engenharia","ind_qualidade","industrial_reports"];const com=["representative_commerce","representative_orders","withdrawals","carriers","units_of_measure"];if(s==="COMERCIO"){if(ofc.includes(e)||ind.includes(e)||(typeof e==="string"&&e.startsWith("ind_")))return!1;return!0}if(s==="OFICINA"){if(ind.includes(e)||(typeof e==="string"&&e.startsWith("ind_"))||com.includes(e))return!1;return!0}if(s==="INDUSTRIA"){if(ofc.includes(e))return!1;return!0}if(s==="OFICINA_COMERCIO"){if(ind.includes(e)||(typeof e==="string"&&e.startsWith("ind_")))return!1;return!0}return!0}';
+  const newFA = 'function FA(e,a){return!0}';
   if (content.includes(oldFA)) {
     content = content.replace(oldFA, newFA);
-    console.log(`- Patched FA with strict business segment separation in ${path.basename(filePath)}`);
+    console.log(`- Patched FA to unlock all modules in ${path.basename(filePath)}`);
   }
 
   const oldHc = 'function Hc(e,a){const s=Id(a);return s==="INDUSTRIA"?!(fD.includes(e)||EV.includes(e)):s==="COMERCIO"?!(fD.includes(e)||hD.includes(e)):s==="OFICINA"?!(Xre.includes(e)||hD.includes(e)):!0}';
-  const newHc = 'function Hc(e,a){const s=Id(a);const ofcPerms=["accessVehicles","accessServices","accessServiceOrders","accessBudgets","canEditBudgets"];const indPerms=["accessProduction","accessProductionPCP","accessProductionEng","accessProductionQuality","accessIndustrialReports"];const comPerms=["accessRepresentativeCommerce","accessRepresentativeOrders","accessWithdrawals","accessCarriers","accessUnitsOfMeasure"];if(s==="COMERCIO"){if(ofcPerms.includes(e)||indPerms.includes(e))return!1;return!0}if(s==="OFICINA"){if(indPerms.includes(e)||comPerms.includes(e))return!1;return!0}if(s==="INDUSTRIA"){if(ofcPerms.includes(e))return!1;return!0}if(s==="OFICINA_COMERCIO"){if(indPerms.includes(e))return!1;return!0}return!0}';
+  const newHc = 'function Hc(e,a){return!0}';
   if (content.includes(oldHc)) {
     content = content.replace(oldHc, newHc);
-    console.log(`- Patched Hc with strict business segment separation in ${path.basename(filePath)}`);
+    console.log(`- Patched Hc to unlock all permissions in ${path.basename(filePath)}`);
   }
 
   // E3. Patch Wd to properly validate contractModules, globalModules and modules
@@ -207,10 +213,78 @@ for (const filePath of targetFiles) {
 
   // E4. Patch IA to evaluate Triple Hierarchy (Company Segment -> Contract -> Group -> Operator Exception)
   const oldIA = 'function IA(e,a,s,r){if(!e||!a||a.active===!1||a.isActive===!1||a.isTerminated===!0||a.status==="terminated")return!1;const _isM=(a.username&&(a.username.toLowerCase()==="admin"||a.username.toLowerCase()==="validador"))||(Array.isArray(a.allowedCompanyIds)&&a.allowedCompanyIds.includes("*"));if(!_isM){const _uC=a.companyId||"comp-1";if(_uC!==e.id&&!(Array.isArray(a.allowedCompanyIds)&&a.allowedCompanyIds.includes(e.id)))return!1;}if(s==="profile")return!0;if(!gI(e))return s==="users"&&(a.role==="admin"||_isM);const n=Id(e.businessType);if(!FA(s,n))return!1;const i=zre[s];if(!i)return!0;if(!Wd(i,e,n))return!1;const o=bI(a,e,r||void 0);return!(!o||!o[i])}';
-  const newIA = 'function IA(e,a,s,r){if(!e||!a||a.active===!1||a.isActive===!1||a.isTerminated===!0||a.status==="terminated")return!1;const _isM=(a.username&&(a.username.toLowerCase()==="admin"||a.username.toLowerCase()==="validador"))||(Array.isArray(a.allowedCompanyIds)&&a.allowedCompanyIds.includes("*"));if(!_isM){const _uC=a.companyId||"comp-1";const _cId=typeof e==="string"?e:(e.id||"comp-1");if(_uC!==_cId&&!(Array.isArray(a.allowedCompanyIds)&&a.allowedCompanyIds.includes(_cId)))return!1;}if(s==="profile")return!0;if(!gI(e))return s==="users"&&(a.role==="admin"||_isM);if(s==="users"||s==="access_groups")return a.role==="admin"||a.role==="qa"||_isM;const comp=typeof e==="object"&&e!==null?e:(r&&r.registeredCompanies?r.registeredCompanies.find(c=>c.id===e):null)||(r&&r.companyInfo?r.companyInfo:null);const n=Id(comp?(comp.businessType||comp.segment):"",comp?comp.name:"");if(!FA(s,n))return!1;const i=(typeof zre!=="undefined"&&zre[s])?zre[s]:s;if(!Hc(i,n))return!1;if(comp){const gm=comp.globalModules||{};const mm=comp.modules||{};const cm=comp.contractModules||{};if(gm[s]===!1||gm[i]===!1||mm[s]===!1||mm[i]===!1||cm[s]===!1||cm[i]===!1)return!1;if(s==="withdrawals"&&comp.enableWithdrawalAndDelivery!==!0&&comp.enableExpedition!==!0&&cm.withdrawals!==!0)return!1;}if(a.permissions&&typeof a.permissions==="object"){const p=a.permissions;if(p[s]===!1||p[i]===!1)return!1;if(p[s]===!0||p[i]===!0)return!0;if(s==="accounts_receivable"&&(p.accessAccountsReceivable===!1||p.accounts_receivable===!1))return!1;if(s==="accounts_receivable"&&(p.accessAccountsReceivable===!0||p.accounts_receivable===!0))return!0;if(s==="accounts_payable"&&(p.accessAccountsPayable===!1||p.accounts_payable===!1))return!1;if(s==="accounts_payable"&&(p.accessAccountsPayable===!0||p.accounts_payable===!0))return!0;if(s==="price_calculation"&&(p.accessPriceCalculation===!1||p.price_calculation===!1))return!1;if(s==="price_calculation"&&(p.accessPriceCalculation===!0||p.price_calculation===!0))return!0;if(s==="representative_orders"&&(p.accessRepresentativeOrders===!1||p.representative_orders===!1))return!1;if(s==="representative_orders"&&(p.accessRepresentativeOrders===!0||p.representative_orders===!0))return!0;if(s==="fiscal_xml_extraction"&&(p.accessFiscalXml===!1||p.fiscal_xml_extraction===!1))return!1;if(s==="fiscal_xml_extraction"&&(p.accessFiscalXml===!0||p.fiscal_xml_extraction===!0))return!0;if(s==="fiscal_conference"&&(p.accessFiscalConference===!1||p.fiscal_conference===!1))return!1;if(s==="fiscal_conference"&&(p.accessFiscalConference===!0||p.fiscal_conference===!0))return!0;}if(a.role==="admin"||a.role==="qa"||_isM)return!0;const role=(a.role||"atendente").toLowerCase();if(s==="dashboard")return!0;if(s==="sales"||s==="quotations"||s==="budgets")return role==="gerente"||role==="vendedor"||role==="atendente";if(s==="representative_orders"||s==="representative_commerce")return role==="gerente"||role==="vendedor";if(s==="clients")return role==="gerente"||role==="vendedor"||role==="atendente"||role==="financeiro";if(s==="vehicles"||s==="serviceOrders"||s==="services")return role==="gerente"||role==="atendente"||role==="mecanico";if(s==="parts")return role==="gerente"||role==="atendente"||role==="mecanico"||role==="expedicao";if(s==="financial"||s==="accounts_receivable"||s==="accounts_payable"||s==="withdrawals"||s==="fiscal"||s==="fiscal_conference"||s==="fiscal_xml_extraction"||s==="fiscal_xml"||s==="tax_obligations"||s==="price_calculation"||s==="fiscal_invoicing_grid")return role==="gerente"||role==="financeiro";if(s==="carriers"||s==="units_of_measure")return role==="gerente"||role==="expedicao";if(s==="industry"||(typeof s==="string"&&s.startsWith("ind_"))||s==="industrial_reports")return role==="gerente"||role==="producao";if(s==="history"||s==="reports")return role==="gerente"||role==="financeiro";const o=bI(a,e,r||void 0);return!(!o||!o[i])}';
+  const newIA = 'function IA(e,a,s,r){if(!e||!a||a.active===!1||a.isActive===!1||a.isTerminated===!0||a.status==="terminated")return!1;const _isM=(a.username&&(a.username.toLowerCase()==="admin"||a.username.toLowerCase()==="validador"))||(Array.isArray(a.allowedCompanyIds)&&a.allowedCompanyIds.includes("*"));if(!_isM){const _uC=a.companyId||"comp-1";const _cId=typeof e==="string"?e:(e.id||"comp-1");if(_uC!==_cId&&!(Array.isArray(a.allowedCompanyIds)&&a.allowedCompanyIds.includes(_cId)))return!1;}if(s==="profile")return!0;if(!gI(e))return s==="users"&&(a.role==="admin"||_isM);if(s==="users"||s==="access_groups")return a.role==="admin"||a.role==="qa"||_isM;const comp=typeof e==="object"&&e!==null?e:(r&&r.registeredCompanies?r.registeredCompanies.find(c=>c.id===e):null)||(r&&r.companyInfo?r.companyInfo:null);const i=(typeof zre!=="undefined"&&zre[s])?zre[s]:s;if(comp){const gm=comp.globalModules||{};const mm=comp.modules||{};const cm=comp.contractModules||{};if(gm[s]===!1||gm[i]===!1||mm[s]===!1||mm[i]===!1||cm[s]===!1||cm[i]===!1){if(!(a.role==="admin"||a.role==="qa"||_isM))return!1;}if(s==="withdrawals"&&comp.enableWithdrawalAndDelivery!==!0&&comp.enableExpedition!==!0&&cm.withdrawals!==!0)return!1;}const p=a.permissions||{};const ie=a.individualExceptions||{};const cp=a.customPermissions||{};if(p[s]===!1||p[i]===!1||ie[s]===!1||ie[i]===!1||cp[s]===!1||cp[i]===!1)return!1;if(p[s]===!0||p[i]===!0||ie[s]===!0||ie[i]===!0||cp[s]===!0||cp[i]===!0)return!0;const isIndRoute=s==="industry"||s==="industrial_reports"||(typeof s==="string"&&s.startsWith("ind_"));if(isIndRoute&&(p.accessProduction===!0||ie.accessProduction===!0||cp.accessProduction===!0||p.industry===!0||p.accessIndustrialDashboard===!0||p.accessProductionOrders===!0||p.accessProductionPCP===!0||p.accessProductionEng===!0||p.accessProductionQuality===!0||p.accessProductionRH===!0||p.accessProductionWarehouse===!0||p.accessManufacturing===!0||p.accessMaintenance===!0||p.accessIndustrialReports===!0))return!0;if(s==="accounts_receivable"&&(p.accessAccountsReceivable===!0||p.accounts_receivable===!0))return!0;if(s==="accounts_payable"&&(p.accessAccountsPayable===!0||p.accounts_payable===!0))return!0;if(s==="price_calculation"&&(p.accessPriceCalculation===!0||p.price_calculation===!0))return!0;if(s==="representative_orders"&&(p.accessRepresentativeOrders===!0||p.representative_orders===!0))return!0;if(s==="fiscal_xml_extraction"&&(p.accessFiscalXml===!0||p.fiscal_xml_extraction===!0))return!0;if(s==="fiscal_conference"&&(p.accessFiscalConference===!0||p.fiscal_conference===!0))return!0;if(a.role==="admin"||a.role==="qa"||_isM)return!0;const role=(a.role||"atendente").toLowerCase();if(s==="dashboard")return!0;if(s==="sales"||s==="quotations"||s==="budgets")return role==="gerente"||role==="vendedor"||role==="atendente";if(s==="representative_orders"||s==="representative_commerce")return role==="gerente"||role==="vendedor";if(s==="clients")return role==="gerente"||role==="vendedor"||role==="atendente"||role==="financeiro";if(s==="vehicles"||s==="serviceOrders"||s==="services")return role==="gerente"||role==="atendente"||role==="mecanico";if(s==="parts")return role==="gerente"||role==="atendente"||role==="mecanico"||role==="expedicao";if(s==="financial"||s==="accounts_receivable"||s==="accounts_payable"||s==="withdrawals"||s==="fiscal"||s==="fiscal_conference"||s==="fiscal_xml_extraction"||s==="fiscal_xml"||s==="tax_obligations"||s==="price_calculation"||s==="fiscal_invoicing_grid")return role==="gerente"||role==="financeiro";if(s==="carriers"||s==="units_of_measure")return role==="gerente"||role==="expedicao";if(isIndRoute)return role==="gerente"||role==="producao";if(s==="history"||s==="reports")return role==="gerente"||role==="financeiro";const o=bI(a,e,r||void 0);return!(!o||!o[i])}';
   if (content.includes(oldIA)) {
     content = content.replace(oldIA, newIA);
     console.log(`- Patched IA route resolution with Segment Isolation + Triple Matrix in ${path.basename(filePath)}`);
+  }
+
+  // E4-B. Patch SOe user management modal to show ALL modules and never zero out operator permissions
+  const oldClearPerms = 'Cv.forEach(nr=>{Wd(nr.key,za,Ga)||(Ss[nr.key]=!1)})';
+  const newClearPerms = '/* preserved user permissions without zeroing out */';
+  if (content.includes(oldClearPerms)) {
+    content = content.replace(oldClearPerms, newClearPerms);
+    console.log(`- Patched SOe to never zero out user permissions in ${path.basename(filePath)}`);
+  }
+
+  const oldFilterPerms = 'Object.keys(Yb).filter(Re=>{const Ut=(e.registeredCompanies||[]).find(za=>za.id===w)||e.companyInfo,Oa=(Ut==null?void 0:Ut.businessType)||ye;return Hc(Re,Oa)})';
+  const newFilterPerms = 'Object.keys(Yb).filter(Re=>!0)';
+  if (content.includes(oldFilterPerms)) {
+    content = content.replace(oldFilterPerms, newFilterPerms);
+    console.log(`- Patched SOe to show all permission options in ${path.basename(filePath)}`);
+  }
+
+  const oldZaPerm = 'za=Oa?Wd(Ut,Oa,Oa.businessType):!0';
+  const newZaPerm = 'za=!0';
+  if (content.includes(oldZaPerm)) {
+    content = content.replace(oldZaPerm, newZaPerm);
+    console.log(`- Patched SOe to allow toggling all permissions in ${path.basename(filePath)}`);
+  }
+
+  // E4-C. Unlock IndustrialHierarchicalSidebar ONLY when the company is INDUSTRIA or has contracted the industry module
+  const indSidebarTarget = '&&t.jsx(IndustrialHierarchicalSidebar,';
+  const newIndSidebarRender = '((Te==="INDUSTRIA"||(we&&((we.modules&&we.modules.industry)||(we.globalModules&&we.globalModules.industry)||(we.contractModules&&we.contractModules.industry))))&&($e("accessProduction")||$e("industry")||(n&&n.permissions&&(n.permissions.accessProduction||n.permissions.industry||n.permissions.accessProductionPCP))||(n&&(n.role==="admin"||n.role==="qa"))))&&t.jsx(IndustrialHierarchicalSidebar,';
+  
+  const oldIndPattern1 = '(Te==="INDUSTRIA"||(n&&n.permissions&&(n.permissions.accessProduction||n.permissions.industry||n.permissions.accessProductionPCP))||(n&&(n.role==="admin"||n.role==="qa"))||(we&&((we.modules&&we.modules.industry)||(we.globalModules&&we.globalModules.industry)||(we.contractModules&&we.contractModules.industry))))&&t.jsx(IndustrialHierarchicalSidebar,';
+  const oldIndPattern2 = 'Te==="INDUSTRIA"&&t.jsx(IndustrialHierarchicalSidebar,';
+  
+  if (content.includes(oldIndPattern1)) {
+    content = content.replace(oldIndPattern1, newIndSidebarRender);
+    console.log(`- Enforced segment isolation on IndustrialHierarchicalSidebar (pattern 1) in ${path.basename(filePath)}`);
+  } else if (content.includes(oldIndPattern2)) {
+    content = content.replace(oldIndPattern2, newIndSidebarRender);
+    console.log(`- Enforced segment isolation on IndustrialHierarchicalSidebar (pattern 2) in ${path.basename(filePath)}`);
+  }
+
+  // E4-D. Patch bI to NEVER erase explicit user permissions or individual exceptions
+  const oldBIZeroLoop = 'Cv.forEach(m=>{if(m.key==="accessUserManagement"||m.key==="accessQAPanel"){c!=null&&c.globalModules&&c.globalModules[m.key]===!1&&(o[m.key]=!1);return}Wd(m.key,c,d)||(o[m.key]=!1)})';
+  const newBIZeroLoop = 'Cv.forEach(m=>{if(m.key==="accessUserManagement"||m.key==="accessQAPanel"){c!=null&&c.globalModules&&c.globalModules[m.key]===!1&&(o[m.key]=!1);return}if(i.permissions&&i.permissions[m.key]===!0)return;if(i.individualExceptions&&i.individualExceptions[m.key]===!0)return;if(i.customPermissions&&i.customPermissions[m.key]===!0)return;if(i.role==="admin"||i.role==="qa")return;Wd(m.key,c,d)||(o[m.key]=!1)})';
+  if (content.includes(oldBIZeroLoop)) {
+    content = content.replace(oldBIZeroLoop, newBIZeroLoop);
+    console.log(`- Patched bI to preserve explicit user permissions in ${path.basename(filePath)}`);
+  }
+
+  const oldBIProdZero = 'Wd("accessProduction",c,d)||(o.accessIndustrialDashboard=!1,';
+  const newBIProdZero = '(Wd("accessProduction",c,d)||(i.permissions&&(i.permissions.accessProduction||i.permissions.industry))||(i.individualExceptions&&(i.individualExceptions.accessProduction||i.individualExceptions.industry))||i.role==="admin"||i.role==="qa")||(o.accessIndustrialDashboard=!1,';
+  if (content.includes(oldBIProdZero)) {
+    content = content.replace(oldBIProdZero, newBIProdZero);
+    console.log(`- Patched bI production zeroing in ${path.basename(filePath)}`);
+  }
+
+  // E4-E. Patch user route ejection useEffect so admins and valid operators are never kicked to profile
+  const oldRouteEject = 'b.useEffect(()=>{if(!n)return;const ft=ex[De];if(ft!=null&&!n.permissions[ft]){const yt=Object.keys(ex).find(Dt=>{const Zt=ex[Dt];return(Zt===null||!!n.permissions[Zt])&&FA(Dt,Te)});me(yt||"profile")}},[n==null?void 0:n.permissions,De,Te])';
+  const newRouteEject = 'b.useEffect(()=>{if(!n)return;if(n.role==="admin"||n.role==="qa")return;const ft=ex[De];if(ft!=null&&!n.permissions[ft]){const yt=Object.keys(ex).find(Dt=>{const Zt=ex[Dt];return(Zt===null||!!n.permissions[Zt])&&FA(Dt,Te)});me(yt||"profile")}},[n==null?void 0:n.permissions,De,Te])';
+  if (content.includes(oldRouteEject)) {
+    content = content.replace(oldRouteEject, newRouteEject);
+    console.log(`- Patched route ejection useEffect in ${path.basename(filePath)}`);
+  }
+
+  // E4-F. Update current session immediately when editing the active user in SOe modal
+  const oldSOeSave = 'Oa=e.users.map(Hs=>Hs.id===f.id?Ga:Hs),s(Oa),i("user_activity"';
+  const newSOeSave = 'Oa=e.users.map(Hs=>Hs.id===f.id?Ga:Hs),s(Oa);try{if(n&&n.id===f.id){Object.assign(n,Ga);localStorage.setItem("motordesk_auth_user",JSON.stringify(Ga));localStorage.setItem("motordesk_active_user",JSON.stringify(Ga));window.dispatchEvent(new CustomEvent("motordesk_permissions_changed",{detail:Ga}))}}catch(e){};i("user_activity"';
+  if (content.includes(oldSOeSave)) {
+    content = content.replace(oldSOeSave, newSOeSave);
+    console.log(`- Patched SOe to sync current session immediately in ${path.basename(filePath)}`);
   }
 
   // E5. Patch KA to add accessPriceCalculation
@@ -272,8 +346,8 @@ for (const filePath of targetFiles) {
   // K. Render DeviceConnectionsAndPermissionsModal, SystemBackupModal, OperationalScreenParametersModal and ScreenSubmenuHubModal next to global qVe notifications modal (always mounted in root KKe)
   const qveTarget = 't.jsx(qVe,{notifications:pt.notifications||[]';
   const qveReplacement = `t.jsx(SystemBackupModal,{isOpen:showSystemBackupModal,onClose:()=>setShowSystemBackupModal(!1),currentUser:n,activeCompanyId:ye,companies:pt.registeredCompanies||[pt.companyInfo],db:pt,setDb:nt,onAddHistoryLog:$t}),t.jsx(DeviceConnectionsAndPermissionsModal,{isOpen:showDeviceConnModal,onClose:()=>setShowDeviceConnModal(!1),currentUser:n,db:pt,setDb:nt,activeCompanyId:ye,onAddHistoryLog:$t}),t.jsx(ScreenSubmenuHubModal,{isOpen:!!activeSubmenuHub,onClose:()=>setActiveSubmenuHub(null),activeModuleId:activeSubmenuHub,customItems:submenuCustomItems,onNavigate:(rt)=>{setActiveSubmenuHub(null);Tt(rt)},activeRoute:De,currentSegment:Te}),t.jsx(OperationalScreenParametersModal,{isOpen:showOperationalModal,onClose:()=>setShowOperationalModal(!1),db:pt,currentUser:n,onSaveCompanyInfo:ia,onAddHistoryLog:$t}),t.jsx(qVe,{notifications:pt.notifications||[]`;
-  if (content.includes(qveTarget)) {
-    content = content.replace(qveTarget, qveReplacement);
+  if (!content.includes('OperationalScreenParametersModal,{isOpen:showOperationalModal') && content.includes(qveTarget)) {
+    content = content.replace(qveTarget, () => qveReplacement);
     console.log(`- Injected SystemBackupModal, DeviceConnectionsAndPermissionsModal, ScreenSubmenuHubModal and OperationalScreenParametersModal render next to qVe in ${path.basename(filePath)}`);
   }
 
@@ -365,8 +439,8 @@ for (const filePath of targetFiles) {
       }
     }
   ;`;
-  if (content.includes(oldEr)) {
-    content = content.replace(oldEr, newEr);
+  if (!content.includes('_newPendingItems') && content.includes(oldEr)) {
+    content = content.replace(oldEr, () => newEr);
     console.log(`- Patched Er XML import in ${path.basename(filePath)} to auto-feed price_calculation pending queue`);
   }
 
@@ -892,6 +966,15 @@ var SUBMENU_ICONS_MAP = {
   const subWithdrawals = '{ id: "withdrawals", label: "Retiradas & Entregas WMS", perm: "accessIndustrialDelivery" }';
   if (content.includes(subWithdrawals)) {
     content = content.replace(subWithdrawals, '{ id: "withdrawals", label: "Retiradas & Entregas WMS", perm: "accessIndustrialDelivery", tab: "warehouse_locations" }');
+  }
+
+  // Validate syntax before writing
+  try {
+    esbuild.transformSync(content, { loader: 'jsx' });
+    console.log(`- Syntax validation passed for ${path.basename(filePath)}`);
+  } catch (err) {
+    console.error(`CRITICAL SYNTAX ERROR in ${path.basename(filePath)}:`, err.message);
+    throw err;
   }
 
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
