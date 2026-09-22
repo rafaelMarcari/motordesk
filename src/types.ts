@@ -130,6 +130,13 @@ export interface UserPermissions {
   accountsPayableSettle?: boolean;
   accountsPayableCancel?: boolean;
   accountsPayableImportXml?: boolean;
+  accessPriceCalculation?: boolean;
+  accessRepresentativeOrders?: boolean;
+  accessRepresentativeCommerce?: boolean;
+  accessFiscalXml?: boolean;
+  accessFiscalConference?: boolean;
+  accessTaxObligations?: boolean;
+  accessBackup?: boolean;
   accessFinancial?: boolean;
   financialExport?: boolean;
   accessBoletos?: boolean;
@@ -290,6 +297,65 @@ export interface FiscalDocument {
   [key: string]: any;
 }
 
+export interface PendingPriceRevisionItem {
+  id: string;
+  partId?: string;
+  code: string;
+  name: string;
+  ncm?: string;
+  cest?: string;
+  unit: string;
+  quantity: number;
+  nfeNumber: string;
+  series?: string;
+  accessKey?: string;
+  supplierName: string;
+  supplierCnpj?: string;
+  importedAt: string;
+  oldCostPrice: number;
+  newCostPrice: number;
+  oldSalePrice: number;
+  suggestedSalePrice: number;
+  status: 'pending' | 'resolved' | 'dismissed';
+  resolvedAt?: string;
+  resolvedByUserId?: string;
+  resolvedByUserName?: string;
+  appliedMarkupPct?: number;
+  newSalePrice?: number;
+  newWholesalePrice?: number;
+  notes?: string;
+  companyId?: string;
+  [key: string]: any;
+}
+
+export interface PriceChangeHistoryRecord {
+  id: string;
+  revisionId?: string;
+  partId?: string;
+  code: string;
+  name: string;
+  nfeNumber: string;
+  series?: string;
+  accessKey?: string;
+  supplierName: string;
+  supplierCnpj?: string;
+  changedAt: string;
+  userId: string;
+  userName: string;
+  userRole?: string;
+  oldCostPrice: number;
+  newCostPrice: number;
+  oldSalePrice: number;
+  newSalePrice: number;
+  oldWholesalePrice?: number;
+  newWholesalePrice?: number;
+  appliedMarkupPct: number;
+  reason: string; // Ex: "Devido à entrada da Nota Fiscal nº 1042 do fornecedor Auto Peças Brasil Ltda"
+  notes?: string;
+  companyId?: string;
+  [key: string]: any;
+}
+
 export interface AppDatabase {
   users?: User[];
   registeredCompanies?: CompanyInfo[];
@@ -305,6 +371,8 @@ export interface AppDatabase {
   clients?: any[];
   vehicles?: any[];
   fiscalDocuments?: FiscalDocument[];
+  pendingPriceRevisions?: PendingPriceRevisionItem[];
+  priceChangeHistory?: PriceChangeHistoryRecord[];
   representativeOrders?: any[];
   representedCompanies?: any[];
   representativeReconciliations?: any[];

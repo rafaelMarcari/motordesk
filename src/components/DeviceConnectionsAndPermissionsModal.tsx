@@ -66,10 +66,20 @@ export const SYSTEM_MODULES = [
   { id: 'representative_orders', key: 'accessRepresentativeOrders', name: 'Pedidos Realizados (Fábricas)', category: 'Comercial', defaultGroups: ['admin', 'qa', 'gerente', 'vendedor'] },
   { id: 'price_calculation', key: 'accessPriceCalculation', name: 'Formação de Preço & Markup', category: 'Financeiro', defaultGroups: ['admin', 'qa', 'gerente', 'financeiro'] },
   { id: 'fiscal', key: 'accessFiscal', name: 'Fiscal, Boletos & SEFAZ', category: 'Fiscal', defaultGroups: ['admin', 'qa', 'gerente', 'financeiro'] },
+  { id: 'fiscal_conference', key: 'accessFiscalConference', name: 'Fila de Conferência Fiscal', category: 'Fiscal', defaultGroups: ['admin', 'qa', 'gerente', 'financeiro'] },
   { id: 'fiscal_xml_extraction', key: 'accessFiscalXml', name: 'Extração XML & SPED', category: 'Fiscal', defaultGroups: ['admin', 'qa', 'gerente', 'financeiro'] },
   { id: 'tax_obligations', key: 'accessTaxObligations', name: 'Obrigações Fiscais & DAS', category: 'Fiscal', defaultGroups: ['admin', 'qa', 'gerente', 'financeiro'] },
+  { id: 'withdrawals', key: 'accessWithdrawals', name: 'Sangrias & Retiradas de Caixa', category: 'Financeiro', defaultGroups: ['admin', 'qa', 'gerente', 'financeiro'] },
+  { id: 'carriers', key: 'accessCarriers', name: 'Cadastro de Transportadoras & Fretes', category: 'Cadastros', defaultGroups: ['admin', 'qa', 'gerente', 'expedicao'] },
+  { id: 'units_of_measure', key: 'accessUnitsOfMeasure', name: 'Unidades de Medida & Conversão', category: 'Cadastros', defaultGroups: ['admin', 'qa', 'gerente', 'expedicao'] },
+  { id: 'services', key: 'accessServices', name: 'Tabela de Mão de Obra & Serviços', category: 'Oficina', defaultGroups: ['admin', 'qa', 'gerente', 'mecanico'] },
+  { id: 'budgets', key: 'accessBudgets', name: 'Orçamentos & Pré-Vendas', category: 'Comercial', defaultGroups: ['admin', 'qa', 'gerente', 'atendente', 'vendedor'] },
   { id: 'industry', key: 'accessProduction', name: 'Módulos Industriais (PCP, MES, CQ)', category: 'Indústria', defaultGroups: ['admin', 'qa', 'gerente'] },
+  { id: 'ind_pcp', key: 'accessProductionPCP', name: 'Indústria: Planejamento & MRP (PCP)', category: 'Indústria', defaultGroups: ['admin', 'qa', 'gerente'] },
+  { id: 'ind_engenharia', key: 'accessProductionEng', name: 'Indústria: Engenharia de Produto & BOM', category: 'Indústria', defaultGroups: ['admin', 'qa', 'gerente'] },
+  { id: 'ind_qualidade', key: 'accessProductionQuality', name: 'Indústria: Controle de Qualidade (CQ)', category: 'Indústria', defaultGroups: ['admin', 'qa', 'gerente'] },
   { id: 'industrial_reports', key: 'accessIndustrialReports', name: 'Relatórios Industriais Avançados', category: 'Indústria', defaultGroups: ['admin', 'qa', 'gerente'] },
+  { id: 'history', key: 'accessHistory', name: 'Trilha de Auditoria & Histórico de Operações', category: 'Segurança', defaultGroups: ['admin', 'qa', 'gerente'] },
   { id: 'reports', key: 'accessReports', name: 'Central de Relatórios', category: 'Gestão', defaultGroups: ['admin', 'qa', 'gerente', 'financeiro'] },
   { id: 'backup', key: 'accessBackup', name: 'Backup & Restauração da Base', category: 'Segurança', defaultGroups: ['admin', 'qa'] },
   { id: 'users', key: 'accessUserManagement', name: 'Gestão de Usuários & Acessos', category: 'Segurança', defaultGroups: ['admin', 'qa'] }
@@ -248,46 +258,97 @@ export function DeviceConnectionsAndPermissionsModal({
   const selectedUser = users.find(u => u.id === selectedUserId) || currentUser;
 
   // Resolução da Matriz Tríplice de Permissões:
+  // Nível 0: Segmento de Negócio da Empresa (Comércio, Oficina, Indústria)
   // Nível 1: Empresa Contratou?
   // Nível 2: Grupo de Acesso Liberou?
   // Nível 3: Usuário Possui Permissão Direta / Exceção?
   const modulesResolution = useMemo(() => {
+    const rawType = String(activeCompany.businessType || (activeCompany as any).segment || '').trim().toUpperCase();
+    const compName = String(activeCompany.name || '').toUpperCase();
+    const isIndustria = rawType.includes('INDUSTRIA') || rawType.includes('FABRICA') || rawType.includes('MANUFATURA') || compName.includes('INDUSTRIA');
+    const isOficinaComercio = rawType.includes('OFICINA_COMERCIO') || rawType.includes('HIBRIDO') || (rawType.includes('OFICINA') && rawType.includes('COMERCIO'));
+    const isOficina = !isOficinaComercio && (rawType.includes('OFICINA') || rawType.includes('MECANICA') || rawType.includes('AUTO CENTER'));
+    const isComercio = !isOficinaComercio && !isOficina && (rawType.includes('COMERCIO') || rawType.includes('AUTOPECAS') || rawType.includes('DISTRIBUIDORA') || rawType.includes('LOJA') || true);
+
     return SYSTEM_MODULES.map(mod => {
+      // 0. Segmento de negócio aplicável?
+      const isOficinaModule = mod.category === 'Oficina' || ['vehicles', 'services', 'serviceOrders', 'budgets'].includes(mod.id);
+      const isIndustriaModule = mod.category === 'Indústria' || mod.id.startsWith('ind_') || mod.id === 'industry' || mod.id === 'industrial_reports';
+      const isComercioExclusiveModule = ['representative_orders', 'representative_commerce', 'withdrawals', 'carriers', 'units_of_measure'].includes(mod.id);
+
+      let isSegmentAllowed = true;
+      let segmentDeniedReason = '';
+
+      if (isComercio && (isOficinaModule || isIndustriaModule)) {
+        isSegmentAllowed = false;
+        segmentDeniedReason = isOficinaModule 
+          ? 'Módulo exclusivo de Oficina Mecânica (não aplicável ao segmento Comércio)'
+          : 'Módulo exclusivo de Indústria / Manufatura (não aplicável ao segmento Comércio)';
+      } else if (isOficina && (isIndustriaModule || isComercioExclusiveModule)) {
+        isSegmentAllowed = false;
+        segmentDeniedReason = isIndustriaModule
+          ? 'Módulo exclusivo de Indústria (não aplicável ao segmento Oficina)'
+          : 'Módulo exclusivo de Comércio Atacadista / Representadas';
+      } else if (isIndustria && isOficinaModule) {
+        isSegmentAllowed = false;
+        segmentDeniedReason = 'Módulo exclusivo de Oficina Mecânica (não aplicável ao segmento Indústria)';
+      }
+
       // 1. Empresa contratou?
       const compModules = activeCompany.modules || {};
       const compGlobal = activeCompany.globalModules || {};
-      const isContractedByCompany = 
+      const compContract = (activeCompany as any).contractModules || {};
+      const isWithdrawalToggled = mod.id === 'withdrawals'
+        ? (activeCompany.enableWithdrawalAndDelivery !== false && compContract.withdrawals !== false && compModules.withdrawals !== false && compGlobal.withdrawals !== false && (activeCompany.enableWithdrawalAndDelivery === true || (activeCompany as any).enableExpedition === true || compContract.withdrawals === true))
+        : true;
+      const isContractedByCompany = isSegmentAllowed && 
+        isWithdrawalToggled &&
         compGlobal[mod.key] !== false && 
-        compModules[mod.id] !== false;
+        compGlobal[mod.id] !== false &&
+        compModules[mod.id] !== false &&
+        compModules[mod.key] !== false &&
+        compContract[mod.id] !== false &&
+        compContract[mod.key] !== false;
 
-      // 2. Grupo de acesso liberou?
-      const userRole = (selectedUser.role || 'mecanico').toLowerCase();
+      // 2. Grupo de acesso liberou por padrão?
+      const userRole = (selectedUser.role || 'atendente').toLowerCase();
       const isGroupAllowed = 
         userRole === 'admin' || 
         userRole === 'qa' || 
         mod.defaultGroups.includes(userRole);
 
-      // 3. Usuário individual possui permissão direta / exceção?
-      const isUserAllowed = 
-        selectedUser.permissions ? selectedUser.permissions[mod.key] !== false : true;
+      // 3. Usuário individual possui permissão direta / exceção configurada?
+      const userExplicit = selectedUser.permissions ? (
+        selectedUser.permissions[mod.key] !== undefined ? selectedUser.permissions[mod.key] :
+        selectedUser.permissions[mod.id] !== undefined ? selectedUser.permissions[mod.id] :
+        undefined
+      ) : undefined;
 
-      // Status Efetivo Final (Regra Absoluta: Os 3 níveis devem permitir simultaneamente)
+      const isUserAllowed = userExplicit !== undefined ? userExplicit : isGroupAllowed;
+
+      // Status Efetivo Final (Regra Absoluta: Segmento Permitido + Empresa Contratou + Usuário/Grupo Autorizado)
       let finalStatus: 'ALLOWED' | 'DENIED_COMPANY' | 'DENIED_GROUP' | 'DENIED_USER' = 'ALLOWED';
-      let reason = 'Liberado para operação (Empresa Contratou + Grupo Liberou + Usuário Autorizado)';
+      let reason = 'Liberado para operação (Empresa Contratou + Usuário Autorizado)';
 
-      if (!isContractedByCompany) {
+      if (!isSegmentAllowed) {
+        finalStatus = 'DENIED_COMPANY';
+        reason = segmentDeniedReason;
+      } else if (!isContractedByCompany) {
         finalStatus = 'DENIED_COMPANY';
         reason = `Módulo não contratado pela empresa "${activeCompany.name || 'Empresa'}" no plano atual`;
-      } else if (!isGroupAllowed) {
-        finalStatus = 'DENIED_GROUP';
-        reason = `Bloqueado pelas políticas do perfil "${userRole.toUpperCase()}"`;
       } else if (!isUserAllowed) {
-        finalStatus = 'DENIED_USER';
-        reason = 'Permissão revogada individualmente no cadastro do usuário';
+        if (userExplicit === false) {
+          finalStatus = 'DENIED_USER';
+          reason = 'Acesso revogado individualmente para este operador';
+        } else {
+          finalStatus = 'DENIED_GROUP';
+          reason = `Bloqueado para o perfil "${userRole.toUpperCase()}"`;
+        }
       }
 
       return {
         ...mod,
+        isSegmentAllowed,
         isContractedByCompany,
         isGroupAllowed,
         isUserAllowed,
@@ -345,7 +406,20 @@ export function DeviceConnectionsAndPermissionsModal({
 
   // Alternar permissão individual do usuário (Nível 3)
   const handleToggleUserPermission = async (permKey: string) => {
-    const currentVal = selectedUser.permissions ? selectedUser.permissions[permKey] !== false : true;
+    const mod = SYSTEM_MODULES.find(m => m.key === permKey || m.id === permKey);
+    const modId = mod?.id || permKey;
+    const modKey = mod?.key || permKey;
+
+    // Se estiver explicitamente definido, inverte; se não, pega o valor atual do grupo e inverte
+    const explicitVal = selectedUser.permissions ? (
+      selectedUser.permissions[modKey] !== undefined ? selectedUser.permissions[modKey] :
+      selectedUser.permissions[modId] !== undefined ? selectedUser.permissions[modId] :
+      undefined
+    ) : undefined;
+
+    const userRole = (selectedUser.role || 'atendente').toLowerCase();
+    const defaultGroupAllowed = userRole === 'admin' || userRole === 'qa' || (mod ? mod.defaultGroups.includes(userRole) : true);
+    const currentVal = explicitVal !== undefined ? explicitVal : defaultGroupAllowed;
     const newVal = !currentVal;
 
     const updatedUsers = (db.users || []).map((u: User) => {
@@ -354,7 +428,8 @@ export function DeviceConnectionsAndPermissionsModal({
           ...u,
           permissions: {
             ...(u.permissions || {}),
-            [permKey]: newVal
+            [modKey]: newVal,
+            [modId]: newVal
           }
         };
       }
@@ -369,7 +444,7 @@ export function DeviceConnectionsAndPermissionsModal({
     await broadcastAndPersistUpdate(
       updatedDb,
       'Permissões',
-      `Permissão "${permKey}" do operador "${selectedUser.name}" alterada para ${newVal ? 'AUTORIZADO' : 'REVOGADO'}`
+      `Permissão do módulo "${mod?.name || modId}" para o colaborador "${selectedUser.name}" alterada para ${newVal ? 'AUTORIZADO' : 'REVOGADO'}`
     );
   };
 
@@ -380,20 +455,33 @@ export function DeviceConnectionsAndPermissionsModal({
       return;
     }
 
-    const currentVal = activeCompany.globalModules ? activeCompany.globalModules[permKey] !== false : true;
+    const currentVal = activeCompany.globalModules ? (
+      activeCompany.globalModules[permKey] !== false &&
+      activeCompany.globalModules[modId] !== false
+    ) : true;
     const newVal = !currentVal;
 
     const updatedCompanies = (db.registeredCompanies || []).map((c: CompanyInfo) => {
       if (c.id === activeCompany.id) {
         return {
           ...c,
+          enableWithdrawalAndDelivery: modId === 'withdrawals' ? newVal : c.enableWithdrawalAndDelivery,
+          enableExpedition: modId === 'withdrawals' ? newVal : (c as any).enableExpedition,
           globalModules: {
             ...(c.globalModules || {}),
-            [permKey]: newVal
+            [permKey]: newVal,
+            [modId]: newVal
+          },
+          contractModules: {
+            ...((c as any).contractModules || {}),
+            [permKey]: newVal,
+            [modId]: newVal,
+            ...(modId === 'withdrawals' ? { withdrawals: newVal } : {})
           },
           modules: {
             ...(c.modules || {}),
-            [modId]: newVal
+            [modId]: newVal,
+            [permKey]: newVal
           }
         };
       }
@@ -402,8 +490,11 @@ export function DeviceConnectionsAndPermissionsModal({
 
     const updatedCompanyInfo = db.companyInfo?.id === activeCompany.id ? {
       ...db.companyInfo,
-      globalModules: { ...(db.companyInfo.globalModules || {}), [permKey]: newVal },
-      modules: { ...(db.companyInfo.modules || {}), [modId]: newVal }
+      enableWithdrawalAndDelivery: modId === 'withdrawals' ? newVal : db.companyInfo.enableWithdrawalAndDelivery,
+      enableExpedition: modId === 'withdrawals' ? newVal : (db.companyInfo as any).enableExpedition,
+      globalModules: { ...(db.companyInfo.globalModules || {}), [permKey]: newVal, [modId]: newVal },
+      contractModules: { ...((db.companyInfo as any).contractModules || {}), [permKey]: newVal, [modId]: newVal, ...(modId === 'withdrawals' ? { withdrawals: newVal } : {}) },
+      modules: { ...(db.companyInfo.modules || {}), [modId]: newVal, [permKey]: newVal }
     } : db.companyInfo;
 
     const updatedDb = {

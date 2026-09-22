@@ -773,6 +773,7 @@ export function mergeAppDatabase(existing: any, incoming: any): any {
         usersMap.set(u.id, {
           ...prev,
           ...u,
+          permissions: u.permissions ? { ...(prev?.permissions || {}), ...u.permissions } : prev?.permissions,
           passwordHash: safePassword,
           passwordUpdatedAt: safePasswordUpdatedAt,
           firstAccess: safeFirstAccess,
@@ -1039,6 +1040,11 @@ export function mergeAppDatabase(existing: any, incoming: any): any {
     nonConformityReports: mergeEntityCollection(existing.nonConformityReports, incoming.nonConformityReports, 'id'),
     bankStatements: mergeEntityCollection(existing.bankStatements, incoming.bankStatements, 'id'),
     loginHistory: mergeEntityCollection(existing.loginHistory, incoming.loginHistory, 'lastAccess', 'username'),
+    accessGroups: mergeEntityCollection(existing.accessGroups, incoming.accessGroups, 'id'),
+    pendingPriceRevisions: mergeEntityCollection(existing.pendingPriceRevisions, incoming.pendingPriceRevisions, 'id'),
+    priceChangeHistory: mergeEntityCollection(existing.priceChangeHistory, incoming.priceChangeHistory, 'id'),
+    priceCalculationHistory: mergeEntityCollection(existing.priceCalculationHistory, incoming.priceCalculationHistory, 'id'),
+    contractModules: { ...(existing.contractModules || {}), ...(incoming.contractModules || {}) },
     globalModules: { ...(existing.globalModules || {}), ...(incoming.globalModules || {}) },
     alertSettings: { ...(existing.alertSettings || {}), ...(incoming.alertSettings || {}) },
     sefazConfig: { ...(existing.sefazConfig || {}), ...(incoming.sefazConfig || {}) },
@@ -1102,6 +1108,11 @@ export function isolateDatabaseForContext(
     'shopFloorEntries',
     'nonConformityReports',
     'bankStatements',
+    'unitsOfMeasure',
+    'accessGroups',
+    'pendingPriceRevisions',
+    'priceChangeHistory',
+    'priceCalculationHistory',
   ];
 
   const allRegistered = Array.isArray(db.registeredCompanies) && db.registeredCompanies.length > 0
@@ -1244,7 +1255,7 @@ export function broadcastDbUpdate(payload: { updatedAt: string; version: number;
     serverTime: Date.now(),
     subscribersCount: sseSubscribers.size,
   });
-  const sseMsg = `event: db_update\ndata: ${dataString}\n\n`;
+  const sseMsg = `event: db_update\ndata: ${dataString}\n\nevent: db_updated\ndata: ${dataString}\n\ndata: ${dataString}\n\n`;
   let successCount = 0;
   for (const client of sseSubscribers) {
     try {

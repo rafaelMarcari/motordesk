@@ -1,0 +1,30 @@
+services:
+  api:
+    build: .
+    env_file: .env
+    environment: { DB_PATH: /data/notas.db }
+    volumes: [ "notas_data:/data" ]
+    restart: unless-stopped
+    expose: [ "8000" ]
+
+  worker:
+    build: .
+    command: ["python", "-m", "app.worker"]
+    env_file: .env
+    environment: { DB_PATH: /data/notas.db }
+    volumes: [ "notas_data:/data" ]
+    restart: unless-stopped
+
+  caddy:            # TLS automatico (Let's Encrypt) no seu dominio
+    image: caddy:2
+    ports: [ "80:80", "443:443" ]
+    environment: [ API_DOMAIN, ADMIN_IP ]
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+    depends_on: [ api ]
+    restart: unless-stopped
+
+volumes:
+  notas_data:
+  caddy_data:

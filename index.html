@@ -113,11 +113,29 @@
       }
 
       /* Barra Superior: Tipografia Nítida e Confortável */
+      #top-workspace-bar {
+        background-color: #ffffff !important;
+        border-bottom: 1px solid #e2e8f0 !important;
+        box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.03) !important;
+        max-width: 100% !important;
+        width: 100% !important;
+        box-sizing: border-box !important;
+        overflow: hidden !important;
+      }
+
       #top-workspace-bar button,
       #top-workspace-bar [id^="btn-top-"] {
-        font-size: 13.5px !important;
+        font-size: 12.5px !important;
         font-weight: 700 !important;
-        letter-spacing: 0.025em !important;
+        letter-spacing: 0.02em !important;
+      }
+
+      #btn-top-logout {
+        flex-shrink: 0 !important;
+        white-space: nowrap !important;
+        display: inline-flex !important;
+        align-items: center !important;
+        font-weight: 900 !important;
       }
 
       #top-workspace-bar select {
@@ -131,12 +149,6 @@
         font-weight: 700 !important;
       }
 
-      /* Ambiente Mais Limpo de Informações e Mais Claro */
-      #top-workspace-bar {
-        background-color: #ffffff !important;
-        border-bottom: 1px solid #e2e8f0 !important;
-        box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.03) !important;
-      }
       #workspace-main-content {
         background-color: #f8fafc !important;
       }
@@ -213,41 +225,46 @@
       }
 
       /* =========================================================================
-         Isolamento Total de Rolagem entre Menu Lateral e Área Principal
-         - Menu lateral tem barra de rolagem dedicada e estilizada (visível).
-         - Rolar o menu NÃO rola a tela/página toda.
-         - Rolar a tela NÃO rola o menu lateral.
+         Rolagem Fluida e Confortável - Isolamento entre Menu e Área Principal
+         - Landing page e telas públicas têm rolagem vertical natural e completa
+         - No ERP, o menu lateral tem barra de rolagem dedicada e independente
+         - A área de trabalho principal (workspace) rola livremente sem cortes
          ========================================================================= */
-      html, body, #root {
-        height: 100% !important;
-        max-height: 100vh !important;
-        width: 100% !important;
-        max-width: 100vw !important;
-        margin: 0 !important;
-        padding: 0 !important;
-        overflow: hidden !important;
-        overscroll-behavior: none !important;
-        overscroll-behavior-y: none !important;
+      html, body {
+        height: 100%;
+        width: 100%;
+        margin: 0;
+        padding: 0;
+        overflow-x: hidden;
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
       }
 
+      #root {
+        min-height: 100%;
+        width: 100%;
+        display: flex;
+        flex-direction: column;
+      }
+
+      /* Quando estiver no Workspace do ERP */
       #app-workspace-shell {
-        height: 100vh !important;
-        max-height: 100vh !important;
-        min-height: 100vh !important;
-        width: 100vw !important;
-        max-width: 100vw !important;
-        overflow: hidden !important;
-        display: flex !important;
-        flex-direction: row !important;
+        height: 100vh;
+        max-height: 100vh;
+        width: 100%;
+        max-width: 100vw;
+        overflow: hidden;
+        display: flex;
+        flex-direction: row;
       }
 
       #sidebar-container {
-        height: 100vh !important;
-        max-height: 100vh !important;
-        display: flex !important;
-        flex-direction: column !important;
-        overflow: hidden !important;
-        flex-shrink: 0 !important;
+        height: 100vh;
+        max-height: 100vh;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        flex-shrink: 0;
       }
 
       /* Barra de rolagem dedicada e de fácil visualização para o Menu Lateral */
@@ -255,19 +272,16 @@
       .custom-sidebar-nav-scroll {
         flex: 1 1 0% !important;
         min-height: 0 !important;
-        overflow-y: scroll !important; /* Sempre exibe calha/barra de rolagem */
+        overflow-y: auto !important;
         overflow-x: hidden !important;
         overscroll-behavior: contain !important;
-        overscroll-behavior-y: contain !important;
         scrollbar-width: thin !important;
         scrollbar-color: #6366f1 #090d16 !important;
-        scrollbar-gutter: stable !important;
       }
 
       #sidebar-container nav::-webkit-scrollbar,
       .custom-sidebar-nav-scroll::-webkit-scrollbar {
         width: 8px !important;
-        display: block !important;
       }
 
       #sidebar-container nav::-webkit-scrollbar-track,
@@ -288,19 +302,17 @@
         background: #818cf8 !important;
       }
 
-      /* Barra de rolagem dedicada para o Espaço de Trabalho (Workspace) */
+      /* Barra de rolagem dedicada e suave para o Espaço de Trabalho (Workspace) */
       #workspace-main-content,
       .custom-workspace-scroll {
         flex: 1 1 0% !important;
         min-height: 0 !important;
-        height: 100% !important;
         overflow-y: auto !important;
         overflow-x: hidden !important;
         overscroll-behavior: contain !important;
-        overscroll-behavior-y: contain !important;
         scrollbar-width: thin !important;
         scrollbar-color: #94a3b8 #f1f5f9 !important;
-        scrollbar-gutter: stable !important;
+        -webkit-overflow-scrolling: touch !important;
       }
 
       #workspace-main-content::-webkit-scrollbar,
@@ -333,38 +345,6 @@
           if (zoom === 'large') document.documentElement.classList.add('font-zoom-large');
           if (zoom === 'xlarge') document.documentElement.classList.add('font-zoom-xlarge');
         } catch(e) {}
-
-        // Isolamento de rolagem nativo estanque: impede encadeamento (scroll-chaining) de eventos wheel
-        function bindScrollBoundaryIsolation(el) {
-          if (!el || el.__scrollIsolationBound) return;
-          el.__scrollIsolationBound = true;
-          el.addEventListener('wheel', function(e) {
-            var atTop = el.scrollTop <= 0 && e.deltaY < 0;
-            var atBottom = (el.scrollTop + el.clientHeight >= el.scrollHeight - 1) && e.deltaY > 0;
-            if (atTop || atBottom) {
-              e.preventDefault();
-            }
-            e.stopPropagation();
-          }, { passive: false });
-        }
-
-        function setupScrollIsolation() {
-          var sidebarNav = document.querySelector('#sidebar-container nav');
-          var workspaceMain = document.querySelector('#workspace-main-content');
-          if (sidebarNav) bindScrollBoundaryIsolation(sidebarNav);
-          if (workspaceMain) bindScrollBoundaryIsolation(workspaceMain);
-        }
-
-        if (document.readyState === 'loading') {
-          document.addEventListener('DOMContentLoaded', setupScrollIsolation);
-        } else {
-          setupScrollIsolation();
-        }
-
-        var mutObs = new MutationObserver(function() {
-          setupScrollIsolation();
-        });
-        mutObs.observe(document.documentElement, { childList: true, subtree: true });
       })();
     </script>
   </head>

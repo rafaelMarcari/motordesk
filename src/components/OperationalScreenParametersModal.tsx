@@ -15,7 +15,9 @@ import {
   Palette,
   Eye,
   ShieldCheck,
-  Cpu
+  Cpu,
+  Truck,
+  AlertTriangle
 } from 'lucide-react';
 import { AppDatabase, User, CompanyInfo } from '../types';
 
@@ -44,6 +46,11 @@ export function OperationalScreenParametersModal({
   // 1. "Parâmetros de Operacional"
   // 2. "Parâmetros de Tela"
   const [activeTab, setActiveTab] = useState<'operacional' | 'tela'>('operacional');
+
+  // Parâmetro do Módulo de Expedição (Comércio / Geral)
+  const [enableWithdrawalAndDelivery, setEnableWithdrawalAndDelivery] = useState<boolean>(() => {
+    return !!(companyInfo?.enableWithdrawalAndDelivery ?? db?.companyInfo?.enableWithdrawalAndDelivery);
+  });
 
   // Parâmetros Operacionais (com persistência em localStorage)
   const [defaultInterestPct, setDefaultInterestPct] = useState<number>(() => {
@@ -143,6 +150,12 @@ export function OperationalScreenParametersModal({
     if (saveCb && currentCompany) {
       saveCb({
         ...currentCompany,
+        enableWithdrawalAndDelivery,
+        enableExpedition: enableWithdrawalAndDelivery,
+        contractModules: {
+          ...(currentCompany.contractModules || {}),
+          withdrawals: enableWithdrawalAndDelivery
+        },
         operationalSettings: operationalParams as any,
         screenSettings: screenParams as any
       });
@@ -151,7 +164,7 @@ export function OperationalScreenParametersModal({
     if (onAddHistoryLog) {
       onAddHistoryLog({
         action: 'UPDATE_SYSTEM_PARAMETERS',
-        description: `Parâmetros do sistema atualizados por ${currentUserName}: Divisão Operacional e Tela persistida.`,
+        description: `Parâmetros atualizados por ${currentUserName}: Expedição ${enableWithdrawalAndDelivery ? 'ATIVADA (Com Retira e Entrega com Romaneio)' : 'DESATIVADA (Sem Expedição - Baixa Direta no Caixa)'}.`,
         user: currentUserName,
         date: new Date().toISOString()
       });
@@ -284,6 +297,70 @@ export function OperationalScreenParametersModal({
                     className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded font-mono font-bold text-emerald-700"
                   />
                   <span className="text-[10px] text-slate-500">Piso para pedidos frotistas e corporativos.</span>
+                </div>
+              </div>
+
+              {/* CONTROLE EXPLÍCITO DE EXPEDIÇÃO (COMÉRCIO / BALCÃO / ENTREGA COM ROMANEIO) */}
+              <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div>
+                    <h4 className="text-xs font-bold text-slate-800 flex items-center gap-2">
+                      <Truck className="w-4 h-4 text-indigo-600" />
+                      Módulo de Expedição (Separação, Retirada e Entrega com Romaneio)
+                    </h4>
+                    <p className="text-[11px] text-slate-500 mt-0.5">
+                      Define se as vendas utilizam esteira de expedição com romaneio e escolha por item, ou se finalizam diretamente no caixa.
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => setEnableWithdrawalAndDelivery(false)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
+                        !enableWithdrawalAndDelivery
+                          ? 'bg-amber-600 text-white shadow-xs'
+                          : 'bg-white border border-slate-300 text-slate-600 hover:bg-slate-100'
+                      }`}
+                    >
+                      Sem Expedição (Direto no Balcão)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setEnableWithdrawalAndDelivery(true)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
+                        enableWithdrawalAndDelivery
+                          ? 'bg-indigo-600 text-white shadow-xs'
+                          : 'bg-white border border-slate-300 text-slate-600 hover:bg-slate-100'
+                      }`}
+                    >
+                      Com Expedição (Retira & Entrega)
+                    </button>
+                  </div>
+                </div>
+
+                <div className="text-[11px] p-3 rounded-lg border bg-white leading-relaxed">
+                  {enableWithdrawalAndDelivery ? (
+                    <div className="text-indigo-950 flex items-start gap-2.5">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                      <div>
+                        <span className="font-extrabold text-indigo-900 block">Modo "Com Expedição" Ativo:</span>
+                        Na tela de vendas, cada produto permite escolher individualmente entre:
+                        <ul className="list-disc pl-4 mt-1 space-y-0.5 text-slate-700">
+                          <li><strong>🏪 Retira Balcão:</strong> O cliente retira imediatamente na loja e já leva embora, realizando a baixa física imediata do estoque.</li>
+                          <li><strong>🚚 Entrega:</strong> A loja vai entregar na casa do cliente com Romaneio de Entrega impresso, canhoto para assinatura do recebedor e baixa posterior ao retornar à loja.</li>
+                        </ul>
+                        <span className="text-indigo-700 font-semibold mt-1 block">As telas e menus de Expedição ficam 100% visíveis na barra lateral e hub de módulos.</span>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="text-amber-950 flex items-start gap-2.5">
+                      <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                      <div>
+                        <span className="font-extrabold text-amber-900 block">Modo "Sem Expedição" Ativo:</span>
+                        A venda finaliza diretamente na tela de vendas com baixa de estoque imediata no balcão da loja. As telas e menus de Expedição permanecem ocultos para evitar poluição visual.
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
 

@@ -41,6 +41,10 @@ export function SidebarTreeMenu({
   const isAnySubActive = submenus.some(s => s.id === activeRoute);
   const isExpanded = !isCollapsed || isHovered;
 
+  if (!submenus || submenus.length === 0) {
+    return null;
+  }
+
   const [isHoverOpen, setIsHoverOpen] = useState(false);
   const [flyoutPos, setFlyoutPos] = useState<{
     top: number;

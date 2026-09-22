@@ -1,0 +1,7 @@
+.env
+data/*.db*
+__pycache__/
+*.pfx
+*.p12
+*.pem
+schemas/nfse/*.xsd
