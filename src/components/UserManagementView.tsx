@@ -2509,6 +2509,19 @@ export default function UserManagementView({
               )
             )}
 
+            {/* Botão de Download do Backup Isolado da Empresa Selecionada */}
+            <a
+              href={`/api/backup/download-company/${selectedCompanyId}`}
+              download
+              target="_blank"
+              rel="noopener noreferrer"
+              id="btn-download-selected-company-backup"
+              className="bg-indigo-600 hover:bg-indigo-500 text-white text-[11px] font-bold px-3 py-1 rounded-lg flex items-center gap-1.5 transition cursor-pointer shadow-xs"
+              title="Baixar arquivo de backup isolado desta empresa com todos os dados (Pedidos, Clientes, Fornecedores, Orçamentos, Estoque e Financeiro)"
+            >
+              <Download className="w-3.5 h-3.5" /> Backup desta Empresa
+            </a>
+
             {subStatus === 'blocked' || subPaymentStatus === 'overdue' ? (
               <span className="px-2.5 py-1 rounded-full text-[10px] font-bold uppercase bg-rose-500/20 text-rose-300 border border-rose-500/40 flex items-center gap-1">
                 <Lock className="w-3 h-3 text-rose-400" /> Bloqueado (Inadimplente)

@@ -950,7 +950,7 @@
           <button id="btn-trigger-backup-now" type="button"
             class="flex-1 px-4 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl shadow-xs transition flex items-center justify-center gap-2 cursor-pointer">
             <span>⚡</span>
-            <span>Gerar Backup Imediato de Todas as Empresas</span>
+            <span>Gerar Backup Geral de Todas as Empresas</span>
           </button>
           
           <button id="btn-download-active-company" type="button"
@@ -958,6 +958,28 @@
             <span>📦</span>
             <span>Baixar Backup Apenas da Empresa Nº ${activeComp.companyNumberFormatted}</span>
           </button>
+        </div>
+
+        <!-- Seletor de Download Isolado por Empresa -->
+        <div class="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-2.5">
+          <div class="flex items-center justify-between">
+            <h4 class="text-xs font-bold uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
+              <span>🏢</span> Baixar Arquivo de Backup Isolado de Qualquer Empresa
+            </h4>
+            <span class="text-[10px] text-slate-500 font-mono">100% dos dados da empresa</span>
+          </div>
+          <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+            <select id="select-company-to-download" class="flex-1 text-xs p-2.5 bg-white border border-slate-300 rounded-xl font-medium text-slate-800 shadow-2xs">
+              ${activeComp.allCompanies.map(c => `
+                <option value="${c.id}" ${c.id === activeComp.id ? 'selected' : ''}>
+                  Nº ${c.companyNumberFormatted} — ${c.name} (${c.cnpj || 'Sem CNPJ'}) [${c.companyType.toUpperCase()}]
+                </option>
+              `).join('')}
+            </select>
+            <button id="btn-download-selected-company" type="button" class="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-xs transition flex items-center justify-center gap-1.5 cursor-pointer shrink-0">
+              <span>⬇️</span> Baixar Dados da Empresa
+            </button>
+          </div>
         </div>
 
         <!-- Lista de Backups -->
@@ -1023,6 +1045,13 @@
       // Event listener: Baixar Backup Isolado da Empresa Ativa
       document.getElementById('btn-download-active-company')?.addEventListener('click', () => {
         window.open(`/api/backup/download-company/${activeComp.id}`, '_blank');
+      });
+
+      // Event listener: Baixar Backup Isolado de Empresa Específica Selecionada
+      document.getElementById('btn-download-selected-company')?.addEventListener('click', () => {
+        const select = document.getElementById('select-company-to-download');
+        const compId = select ? select.value : activeComp.id;
+        window.open(`/api/backup/download-company/${compId}`, '_blank');
       });
 
     } catch (err) {
@@ -1172,7 +1201,7 @@
     }
   }
 
-  // 4.3 RENDERIZADOR DA ABA DE RESTAURAÇÃO ISOLADA
+  // 4.3 RENDERIZADOR DA ABA DE RESTAURAÇÃO ISOLADA POR EMPRESA
   async function renderRestoreCompanyView() {
     const container = document.getElementById('backup-support-modal-body');
     if (!container) return;
@@ -1181,38 +1210,50 @@
 
     container.innerHTML = `
       <div class="space-y-4">
-        <!-- Banner de Segurança e Isolamento -->
-        <div class="bg-gradient-to-r from-amber-50 to-orange-50 p-4.5 rounded-2xl border-2 border-amber-300 text-amber-950 space-y-2 shadow-xs">
-          <div class="flex items-center gap-2.5 font-bold text-xs uppercase tracking-wide text-amber-900">
-            <span class="text-base">🛡️</span> Restauração de Dados com Isolamento Estrito
+        <!-- Banner de Segurança e Isolamento Estrito -->
+        <div class="bg-gradient-to-r from-amber-50 to-orange-50 p-4 rounded-2xl border-2 border-amber-300 text-amber-950 space-y-1.5 shadow-xs">
+          <div class="flex items-center gap-2 font-bold text-xs uppercase tracking-wide text-amber-900">
+            <span class="text-base">🛡️</span> Restauração de Backup Isolada por Empresa
           </div>
           <p class="text-xs text-amber-900 leading-relaxed">
-            A restauração no MotorDesk é <strong>100% isolada por empresa</strong>. Ao restaurar um backup para a 
-            <strong>Empresa Nº ${activeComp.companyNumberFormatted} (${activeComp.name})</strong>, nenhuma outra empresa do sistema será modificada ou afetada.
+            No MotorDesk, a importação é <strong>estritamente individual por empresa</strong>. O arquivo carregado restaurará todos os dados (pedidos, clientes, fornecedores, orçamentos, estoque e financeiro) <strong>exclusivamente para a empresa selecionada</strong>. Todas as outras empresas do sistema permanecem 100% intactas.
           </p>
         </div>
 
-        <!-- Seletor de Arquivo de Backup -->
+        <!-- Seletor de Empresa e Upload do Arquivo -->
         <div class="p-5 bg-white border-2 border-slate-200 rounded-2xl space-y-4 shadow-xs">
-          <div class="space-y-1">
-            <label class="text-xs font-bold text-slate-800 uppercase tracking-wide block">
-              Selecione o Arquivo de Backup (.json) para Restaurar *
+          <div class="space-y-1.5">
+            <label for="select-target-company-restore" class="text-xs font-bold text-slate-800 uppercase tracking-wide flex items-center justify-between">
+              <span>1. Empresa de Destino da Restauração *</span>
+              <span class="text-[10px] text-slate-500 font-normal">Selecione onde aplicar os dados</span>
+            </label>
+            <select id="select-target-company-restore" class="w-full text-xs p-2.5 bg-slate-50 border border-slate-300 rounded-xl font-bold text-slate-900 shadow-2xs focus:ring-2 focus:ring-indigo-500">
+              ${activeComp.allCompanies.map(c => `
+                <option value="${c.id}" ${c.id === activeComp.id ? 'selected' : ''}>
+                  Empresa Nº ${c.companyNumberFormatted} — ${c.name} (${c.cnpj || 'Sem CNPJ'}) [${c.companyType.toUpperCase()}]
+                </option>
+              `).join('')}
+            </select>
+          </div>
+
+          <div class="space-y-1.5">
+            <label for="input-restore-file" class="text-xs font-bold text-slate-800 uppercase tracking-wide block">
+              2. Arquivo de Backup da Empresa (.json) *
             </label>
             <input type="file" id="input-restore-file" accept=".json"
-              class="w-full text-xs p-2.5 bg-slate-50 border border-slate-300 rounded-xl cursor-pointer" />
+              class="w-full text-xs p-2.5 bg-slate-50 border border-slate-300 rounded-xl cursor-pointer file:mr-3 file:py-1 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100" />
+            <p class="text-[11px] text-slate-500">
+              Selecione o arquivo gerado pelo MotorDesk contendo os dados da empresa correspondente.
+            </p>
           </div>
 
-          <div class="p-3 bg-slate-50 rounded-xl border border-slate-200 text-xs space-y-1.5">
-            <div class="font-bold text-slate-800">Alvo da Restauração:</div>
-            <div class="text-slate-600 font-mono">
-              Empresa Nº ${activeComp.companyNumberFormatted} • ID: ${activeComp.id} • Razão: ${activeComp.name}
-            </div>
-          </div>
+          <!-- Card de Inspeção Prévia do Arquivo (Aparece ao selecionar) -->
+          <div id="file-inspection-preview" class="hidden"></div>
 
           <button id="btn-run-company-restore" type="button" disabled
-            class="w-full px-4 py-3 bg-indigo-600 disabled:bg-slate-300 text-white font-bold text-xs rounded-xl shadow-xs transition flex items-center justify-center gap-2 cursor-pointer">
+            class="w-full px-4 py-3.5 bg-indigo-600 disabled:bg-slate-300 text-white font-bold text-xs rounded-xl shadow-xs transition flex items-center justify-center gap-2 cursor-pointer disabled:cursor-not-allowed">
             <span>🔄</span>
-            <span>Executar Restauração Isolada para esta Empresa</span>
+            <span id="btn-run-company-restore-text">Selecione um Arquivo de Backup para Prosseguir</span>
           </button>
         </div>
 
@@ -1221,58 +1262,204 @@
     `;
 
     const fileInput = document.getElementById('input-restore-file');
+    const companySelect = document.getElementById('select-target-company-restore');
     const restoreBtn = document.getElementById('btn-run-company-restore');
+    const restoreBtnText = document.getElementById('btn-run-company-restore-text');
+    const previewBox = document.getElementById('file-inspection-preview');
     const resultBox = document.getElementById('restore-result-box');
 
-    fileInput?.addEventListener('change', () => {
-      restoreBtn.disabled = !fileInput.files || fileInput.files.length === 0;
-    });
+    let parsedBackupJson = null;
 
-    restoreBtn?.addEventListener('click', async () => {
-      const file = fileInput.files[0];
-      if (!file) return;
-
-      restoreBtn.disabled = true;
-      restoreBtn.innerHTML = '<span>⏳</span> Processando arquivo e executando restauração isolada...';
+    fileInput?.addEventListener('change', async () => {
+      const file = fileInput.files?.[0];
+      if (!file) {
+        restoreBtn.disabled = true;
+        restoreBtnText.textContent = 'Selecione um Arquivo de Backup para Prosseguir';
+        previewBox.className = 'hidden';
+        parsedBackupJson = null;
+        return;
+      }
 
       try {
         const text = await file.text();
         const json = JSON.parse(text);
+        parsedBackupJson = json;
 
+        const dataContent = json.data || json;
+        const meta = json.metadata || {};
+        const sourceCompName = meta.companyName || json.companyInfo?.name || dataContent.companyInfo?.name || 'Não identificado no arquivo';
+        const sourceCnpj = meta.cnpj || json.companyInfo?.cnpj || dataContent.companyInfo?.cnpj || 'Não informado';
+        const sourceCompId = meta.companyId || json.companyId || dataContent.companyId || '';
+        const sourceCompNum = meta.companyNumberFormatted || (meta.companyNumber ? String(meta.companyNumber).padStart(2, '0') : '');
+
+        // Tentar selecionar automaticamente a empresa correspondente se o ID ou CNPJ bater
+        if (sourceCompId) {
+          const matchingOption = Array.from(companySelect.options).find(opt => opt.value === sourceCompId);
+          if (matchingOption) {
+            companySelect.value = sourceCompId;
+          }
+        } else if (sourceCnpj && sourceCnpj.replace(/\D/g, '')) {
+          const cleanC = sourceCnpj.replace(/\D/g, '');
+          const matchByCnpj = activeComp.allCompanies.find(c => (c.cnpj || '').replace(/\D/g, '') === cleanC);
+          if (matchByCnpj) {
+            companySelect.value = matchByCnpj.id;
+          }
+        }
+
+        // Contabilizar itens presentes no arquivo
+        const clientsCount = (dataContent.clients || []).length;
+        const suppliersCount = (dataContent.suppliers || []).length;
+        const salesCount = (dataContent.sales || []).length;
+        const serviceOrdersCount = (dataContent.serviceOrders || []).length;
+        const representativeOrdersCount = (dataContent.representativeOrders || []).length;
+        const purchaseHistoryCount = (dataContent.purchaseHistory || []).length;
+        const budgetsCount = (dataContent.budgets || []).length;
+        const partsCount = (dataContent.parts || []).length;
+        const servicesCount = (dataContent.services || []).length;
+        const receivablesCount = (dataContent.accountsReceivable || []).length;
+        const payablesCount = (dataContent.accountsPayable || []).length;
+        const transactionsCount = (dataContent.financialTransactions || []).length;
+        const fiscalCount = (dataContent.fiscalDocuments || []).length + (dataContent.boletos || []).length;
+
+        const totalOrders = salesCount + serviceOrdersCount + representativeOrdersCount + purchaseHistoryCount;
+        const totalFinancial = receivablesCount + payablesCount + transactionsCount;
+
+        previewBox.className = 'p-4 bg-slate-50 border-2 border-indigo-200 rounded-xl text-xs space-y-3 block animate-fade-in';
+        previewBox.innerHTML = `
+          <div class="flex items-center justify-between border-b border-indigo-100 pb-2">
+            <div class="font-bold text-slate-900 flex items-center gap-2">
+              <span>📄</span> ${file.name}
+            </div>
+            <span class="px-2 py-0.5 bg-indigo-100 text-indigo-800 rounded font-mono text-[10px] font-bold">
+              ${(file.size / 1024).toFixed(1)} KB
+            </span>
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
+            <div class="bg-white p-2.5 rounded-lg border border-slate-200">
+              <span class="text-slate-500 block text-[10px] uppercase font-bold">Empresa de Origem no Arquivo</span>
+              <strong class="text-slate-900">${sourceCompNum ? `Nº ${sourceCompNum} - ` : ''}${sourceCompName}</strong>
+              <div class="text-slate-500 font-mono text-[10px]">CNPJ: ${sourceCnpj}</div>
+            </div>
+
+            <div class="bg-white p-2.5 rounded-lg border border-indigo-200 bg-indigo-50/30">
+              <span class="text-indigo-600 block text-[10px] uppercase font-bold">Destino Selecionado no Sistema</span>
+              <strong class="text-indigo-950 font-bold" id="preview-target-comp-label">
+                ${companySelect.options[companySelect.selectedIndex].text}
+              </strong>
+            </div>
+          </div>
+
+          <!-- Grade de Informações a Restaurar -->
+          <div class="space-y-1.5">
+            <span class="text-[10px] text-slate-500 uppercase font-bold block">Conteúdo Identificado no Arquivo:</span>
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center text-xs">
+              <div class="bg-white p-2 rounded-lg border border-slate-200">
+                <div class="text-[10px] text-slate-500">🛒 Pedidos / OS</div>
+                <strong class="text-indigo-600 text-sm">${totalOrders}</strong>
+              </div>
+              <div class="bg-white p-2 rounded-lg border border-slate-200">
+                <div class="text-[10px] text-slate-500">👥 Clientes</div>
+                <strong class="text-emerald-600 text-sm">${clientsCount}</strong>
+              </div>
+              <div class="bg-white p-2 rounded-lg border border-slate-200">
+                <div class="text-[10px] text-slate-500">🏭 Fornecedores</div>
+                <strong class="text-amber-600 text-sm">${suppliersCount}</strong>
+              </div>
+              <div class="bg-white p-2 rounded-lg border border-slate-200">
+                <div class="text-[10px] text-slate-500">📝 Orçamentos</div>
+                <strong class="text-blue-600 text-sm">${budgetsCount}</strong>
+              </div>
+              <div class="bg-white p-2 rounded-lg border border-slate-200">
+                <div class="text-[10px] text-slate-500">📦 Peças / Estoque</div>
+                <strong class="text-slate-800 text-sm">${partsCount}</strong>
+              </div>
+              <div class="bg-white p-2 rounded-lg border border-slate-200">
+                <div class="text-[10px] text-slate-500">🛠️ Serviços</div>
+                <strong class="text-slate-800 text-sm">${servicesCount}</strong>
+              </div>
+              <div class="bg-white p-2 rounded-lg border border-slate-200">
+                <div class="text-[10px] text-slate-500">💰 Financeiro</div>
+                <strong class="text-violet-600 text-sm">${totalFinancial}</strong>
+              </div>
+              <div class="bg-white p-2 rounded-lg border border-slate-200">
+                <div class="text-[10px] text-slate-500">🏛️ Fiscal / Boletos</div>
+                <strong class="text-slate-800 text-sm">${fiscalCount}</strong>
+              </div>
+            </div>
+          </div>
+        `;
+
+        restoreBtn.disabled = false;
+        restoreBtnText.textContent = `Confirmar e Restaurar Dados para a Empresa Selecionada`;
+
+      } catch (err) {
+        parsedBackupJson = null;
+        restoreBtn.disabled = true;
+        restoreBtnText.textContent = 'Arquivo JSON Inválido';
+        previewBox.className = 'p-3 bg-rose-50 border border-rose-200 rounded-xl text-rose-800 text-xs block';
+        previewBox.innerHTML = `<strong>Erro ao ler arquivo:</strong> ${err.message}`;
+      }
+    });
+
+    companySelect?.addEventListener('change', () => {
+      const label = document.getElementById('preview-target-comp-label');
+      if (label && companySelect.selectedIndex >= 0) {
+        label.textContent = companySelect.options[companySelect.selectedIndex].text;
+      }
+    });
+
+    restoreBtn?.addEventListener('click', async () => {
+      if (!parsedBackupJson) return;
+
+      const targetId = companySelect.value;
+      const targetText = companySelect.options[companySelect.selectedIndex].text;
+
+      restoreBtn.disabled = true;
+      restoreBtnText.textContent = 'Processando e gravando no banco...';
+
+      try {
         const res = await fetch('/api/backup/restore-company', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'x-user-id': 'usr-admin-1' },
           body: JSON.stringify({
-            targetCompanyId: activeComp.id,
-            sourceData: json,
-            sourceDescription: file.name
+            targetCompanyId: targetId,
+            backupData: parsedBackupJson,
+            sourceData: parsedBackupJson,
+            filename: fileInput.files?.[0]?.name || 'backup_upload.json',
           })
         }).then(r => r.json());
 
         if (res.success) {
-          resultBox.className = 'p-4 bg-emerald-50 border-2 border-emerald-200 rounded-xl text-emerald-950 text-xs space-y-2 animate-fade-in block';
+          resultBox.className = 'p-4 bg-emerald-50 border-2 border-emerald-200 rounded-xl text-emerald-950 text-xs space-y-2.5 animate-fade-in block';
           resultBox.innerHTML = `
             <div class="flex items-center gap-2 font-bold text-emerald-800 text-sm">
-              <span>✓</span> Restauração Concluída com Sucesso!
+              <span>✓</span> Restauração Isolada Concluída com Sucesso!
             </div>
-            <p class="text-xs text-emerald-900">${res.message}</p>
-            <div class="p-2.5 bg-white/80 rounded-lg border border-emerald-200 font-mono text-[11px] text-emerald-800">
-              Registros restaurados: ${res.result.restoredRecordsCount} • Empresas preservadas: ${res.result.unaffectedCompaniesCount}
+            <p class="text-xs text-emerald-900 leading-relaxed">
+              Todos os dados do arquivo foram importados com sucesso para <strong>${targetText}</strong>.
+            </p>
+            <div class="p-3 bg-white/90 rounded-lg border border-emerald-200 font-mono text-[11px] text-emerald-900 space-y-1">
+              <div>📦 <strong>Total de registros restaurados:</strong> ${res.result.restoredRecordsCount}</div>
+              <div>🛡️ <strong>Empresas intactas e preservadas:</strong> ${res.result.unaffectedCompaniesCount}</div>
+              <div class="text-[10px] text-slate-500 pt-1 border-t border-emerald-100">
+                ${res.result.isolationGuarantee}
+              </div>
             </div>
           `;
-          showNotification('Restauração Concluída', `Empresa Nº ${activeComp.companyNumberFormatted} restaurada com sucesso!`);
+          showNotification('Restauração Concluída', `Empresa restaurada com sucesso! ${res.result.restoredRecordsCount} registros carregados.`);
         } else {
           resultBox.className = 'p-4 bg-rose-50 border-2 border-rose-200 rounded-xl text-rose-950 text-xs space-y-2 animate-fade-in block';
           resultBox.innerHTML = `
             <div class="font-bold text-rose-800">Erro na Restauração</div>
-            <p>${res.error || 'Falha ao restaurar backup.'}</p>
+            <p>${res.error || 'Falha ao restaurar backup da empresa.'}</p>
           `;
         }
       } catch (e) {
-        showNotification('Erro no Arquivo', e.message, 'error');
+        showNotification('Erro na Importação', e.message, 'error');
       } finally {
         restoreBtn.disabled = false;
-        restoreBtn.innerHTML = '<span>🔄</span> Executar Restauração Isolada para esta Empresa';
+        restoreBtnText.textContent = 'Confirmar e Restaurar Dados para a Empresa Selecionada';
       }
     });
   }

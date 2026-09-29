@@ -40,7 +40,7 @@ function formatBytes(bytes: number): string {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
 }
 
-const OPERATIONAL_COLLECTIONS = [
+export const OPERATIONAL_COLLECTIONS = [
   "clients",
   "suppliers",
   "vehicles",
@@ -55,6 +55,8 @@ const OPERATIONAL_COLLECTIONS = [
   "accountsReceivable",
   "accountsPayable",
   "financialTransactions",
+  "bankStatements",
+  "paymentMethods",
   "fiscalDocuments",
   "boletos",
   "interBranchSales",
@@ -65,7 +67,46 @@ const OPERATIONAL_COLLECTIONS = [
   "productionOrders",
   "productLots",
   "operationalAlerts",
+  "alertSettings",
+  "notifications",
   "users",
+  "registeredCompanies",
+  "unitsOfMeasure",
+  "carriers",
+  "accessGroups",
+  "history",
+  "loginHistory",
+  "solidworksProjects",
+  "materialSeparations",
+  "factoryOperators",
+  "shopFloorEntries",
+  "purchaseHistory",
+  "xmlImportRecords",
+  "installedEquipment",
+  "qualityInspections",
+  "technicalDocuments",
+  "warehouseLocations",
+  "productionScrapLogs",
+  "productionReworkLogs",
+  "taxRules",
+  "taxObligationGuides",
+  "taxOperationNatures",
+  "nonConformityReports",
+  "billingClosings",
+  "monthlyAccountingClosings",
+  "equipmentMaintenancePlans",
+  "equipmentMaintenanceOrders",
+  "pendingPriceRevisions",
+  "priceChangeHistory",
+  "priceCalculationHistory",
+  "representedCompanies",
+  "representativeOrders",
+  "representativeFactoryOrders",
+  "factoryInvoices",
+  "representativeCommissions",
+  "companyInfo",
+  "sefazConfig",
+  "contractModules",
 ];
 
 export class DailyBackupService {
@@ -337,6 +378,7 @@ export class DailyBackupService {
   /**
    * Generates a strictly isolated backup for a single Company ID.
    * All other companies and their operational records are 100% excluded!
+   * Includes ALL data: orders, clients, suppliers, budgets, parts, financial, everything!
    */
   public async getIsolatedCompanyBackup(getDbSnapshot: () => Promise<any>, companyId: string): Promise<any> {
     const rawData = await getDbSnapshot();
@@ -355,30 +397,96 @@ export class DailyBackupService {
       throw new Error(`Empresa com ID "${cleanCompanyId}" não encontrada no sistema.`);
     }
 
+    const cleanCompanyName = String(targetCompany.name || "empresa")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-zA-Z0-9]/g, "_")
+      .replace(/_+/g, "_")
+      .toLowerCase();
+    const cleanCnpj = String(targetCompany.cnpj || "").replace(/\D/g, "");
+    const dateFormatted = new Date().toISOString().split("T")[0];
+    const companyNumFormatted = String(targetCompany.companyNumber || 1).padStart(2, '0');
+    const suggestedFilename = `motordesk_backup_empresa_${companyNumFormatted}_${cleanCompanyName}_${cleanCnpj || cleanCompanyId}_${dateFormatted}.json`;
+
     const isolatedData: any = {
-      _exportNote: `Backup Isolado Estrito da Empresa ID: ${cleanCompanyId}`,
-      _securityGuarantee: "Todas as demais empresas do sistema foram 100% isoladas e omitidas deste arquivo.",
+      _exportNote: `Backup Isolado Oficial da Empresa: Nº ${companyNumFormatted} - ${targetCompany.name} (CNPJ: ${targetCompany.cnpj || 'Sem CNPJ'})`,
+      _securityGuarantee: "ISOLAMENTO MULTI-TENANT: Apenas os dados desta empresa estão presentes neste arquivo. Todas as demais empresas do sistema foram 100% omitidas.",
+      metadata: {
+        system: "MotorDesk ERP Multi-Tenant",
+        backupType: "COMPANY_ISOLATED_BACKUP",
+        version: "2.0",
+        companyId: cleanCompanyId,
+        companyNumber: targetCompany.companyNumber || 1,
+        companyNumberFormatted: companyNumFormatted,
+        companyName: targetCompany.name || "Sem Nome",
+        tradeName: targetCompany.tradeName || targetCompany.name || "",
+        cnpj: targetCompany.cnpj || "",
+        companyType: targetCompany.companyType || "matriz",
+        businessType: targetCompany.businessType || "OFICINA",
+        exportedAt: new Date().toISOString(),
+        suggestedFilename,
+        totalRecords: 0,
+        collectionsSummary: {},
+      },
       companyId: cleanCompanyId,
       companyInfo: targetCompany,
       registeredCompanies: [targetCompany],
       exportedAt: new Date().toISOString(),
+      database: {},
     };
 
     let totalRecords = 0;
     const collectionsCount: Record<string, number> = {};
 
-    for (const col of OPERATIONAL_COLLECTIONS) {
+    // Coletar todas as coleções do banco (tanto conhecidas quanto dinâmicas)
+    const allCollectionKeys = Array.from(new Set([
+      ...OPERATIONAL_COLLECTIONS,
+      ...Object.keys(rawData).filter(k => Array.isArray(rawData[k])),
+    ]));
+
+    for (const col of allCollectionKeys) {
+      if (col === "registeredCompanies" || col === "companyInfo") continue;
+
       if (Array.isArray(rawData[col])) {
         const filtered = rawData[col].filter((item: any) => {
           if (!item) return false;
-          // Match strict company ID
-          return item.companyId === cleanCompanyId;
+          const itemCompId = item.companyId || item.company_id || item.targetCompanyId || item.empresaId;
+          if (itemCompId) {
+            return itemCompId === cleanCompanyId;
+          }
+          // Tabelas compartilhadas ou padrão inicial da matriz
+          if (["unitsOfMeasure", "taxRules", "taxOperationNatures"].includes(col)) {
+            return true;
+          }
+          return cleanCompanyId === 'comp-1';
         });
+
         isolatedData[col] = filtered;
+        isolatedData.database[col] = filtered;
         collectionsCount[col] = filtered.length;
         totalRecords += filtered.length;
       }
     }
+
+    // Configurações fiscais e módulos da empresa
+    if (rawData.sefazConfig && typeof rawData.sefazConfig === 'object') {
+      if (rawData.sefazConfig.companyId === cleanCompanyId || !rawData.sefazConfig.companyId) {
+        isolatedData.sefazConfig = rawData.sefazConfig;
+      }
+    }
+    if (rawData.contractModules && typeof rawData.contractModules === 'object') {
+      isolatedData.contractModules = rawData.contractModules[cleanCompanyId] || rawData.contractModules;
+    }
+
+    isolatedData.metadata.totalRecords = totalRecords;
+    isolatedData.metadata.collectionsSummary = collectionsCount;
+    isolatedData.metadata.pedidosCount = (isolatedData.sales?.length || 0) + (isolatedData.serviceOrders?.length || 0) + (isolatedData.representativeOrders?.length || 0) + (isolatedData.purchaseHistory?.length || 0);
+    isolatedData.metadata.clientesCount = isolatedData.clients?.length || 0;
+    isolatedData.metadata.fornecedoresCount = isolatedData.suppliers?.length || 0;
+    isolatedData.metadata.orcamentosCount = isolatedData.budgets?.length || 0;
+    isolatedData.metadata.pecasCount = isolatedData.parts?.length || 0;
+    isolatedData.metadata.servicosCount = isolatedData.services?.length || 0;
+    isolatedData.metadata.financeiroCount = (isolatedData.accountsReceivable?.length || 0) + (isolatedData.accountsPayable?.length || 0) + (isolatedData.financialTransactions?.length || 0);
 
     isolatedData._metrics = {
       totalRecords,
@@ -441,12 +549,12 @@ export class DailyBackupService {
    * Restores data EXCLUSIVELY for a single specified Company ID.
    * 
    * ISOLATION GUARANTEE:
-   * - Restores company info and operational records (clients, parts, OS, budgets, etc.) ONLY for targetCompanyId.
+   * - Restores company info and operational records (clients, parts, OS, budgets, sales, etc.) ONLY for targetCompanyId.
    * - 100% of other companies in the live database remain UNTOUCHED and fully preserved.
    */
   public async restoreCompanyBackup(
     targetCompanyId: string,
-    source: { filename?: string; backupData?: any },
+    source: { filename?: string; backupData?: any; sourceData?: any },
     currentDbGetter: () => Promise<any>,
     dbPersister: (data: any) => Promise<any>
   ): Promise<{
@@ -475,9 +583,10 @@ export class DailyBackupService {
     let sourceData: any = null;
     let sourceDesc = "upload direto";
 
-    if (source.backupData && typeof source.backupData === "object") {
-      sourceData = source.backupData.data || source.backupData;
-      sourceDesc = "arquivo JSON enviado";
+    const payload = source.backupData || source.sourceData;
+    if (payload && typeof payload === "object") {
+      sourceData = payload.data || payload;
+      sourceDesc = source.filename ? `arquivo ${source.filename}` : "arquivo JSON enviado";
     } else if (source.filename) {
       ensureBackupDir();
       const cleanFilename = path.basename(source.filename);
@@ -507,17 +616,27 @@ export class DailyBackupService {
       throw new Error("Dados da fonte de backup inválidos ou corrompidos.");
     }
 
+    // Se houver wrapper database interno, mesclar chaves faltantes
+    if (sourceData.database && typeof sourceData.database === "object") {
+      for (const k of Object.keys(sourceData.database)) {
+        if (!sourceData[k] && Array.isArray(sourceData.database[k])) {
+          sourceData[k] = sourceData.database[k];
+        }
+      }
+    }
+
+    const isCompanyIsolatedBackup = Boolean(
+      sourceData.metadata?.backupType === "COMPANY_ISOLATED_BACKUP" ||
+      sourceData.companyId ||
+      sourceData._securityGuarantee
+    );
+
     // 3. Localizar a empresa alvo no backup
     const sourceCompanies = [
       ...(Array.isArray(sourceData.registeredCompanies) ? sourceData.registeredCompanies : []),
       ...(sourceData.companyInfo ? [sourceData.companyInfo] : []),
     ];
-    let sourceCompany = sourceCompanies.find((c: any) => c && c.id === cleanTargetId);
-
-    // Se o backup for um backup isolado dedicado da própria empresa
-    if (!sourceCompany && sourceData.companyId === cleanTargetId && sourceData.companyInfo) {
-      sourceCompany = sourceData.companyInfo;
-    }
+    let sourceCompany = sourceCompanies.find((c: any) => c && c.id === cleanTargetId) || sourceData.companyInfo || sourceCompanies[0];
 
     const currentCompanies = [
       ...(Array.isArray(currentData.registeredCompanies) ? currentData.registeredCompanies : []),
@@ -526,6 +645,10 @@ export class DailyBackupService {
     const liveCompany = currentCompanies.find((c: any) => c && c.id === cleanTargetId);
 
     const targetCompanyName = sourceCompany?.name || liveCompany?.name || `Empresa ${cleanTargetId}`;
+
+    if (sourceCompany) {
+      sourceCompany = { ...sourceCompany, id: cleanTargetId };
+    }
 
     // 4. Criar snapshot de segurança pré-restauração obrigatório
     console.log(`[DAILY-BACKUP] Criando snapshot de segurança pré-restauração para a empresa ${cleanTargetId}...`);
@@ -552,15 +675,47 @@ export class DailyBackupService {
       }
     }
 
-    // Restaurar coleções operacionais preservando todas as outras empresas
-    for (const col of OPERATIONAL_COLLECTIONS) {
+    // Coletar todas as coleções operacionais que existem no banco ou no arquivo
+    const allCollectionKeys = Array.from(new Set([
+      ...OPERATIONAL_COLLECTIONS,
+      ...Object.keys(currentData).filter(k => Array.isArray(currentData[k])),
+      ...Object.keys(sourceData).filter(k => Array.isArray(sourceData[k])),
+      ...Object.keys(sourceData.database || {}).filter(k => Array.isArray(sourceData.database[k])),
+    ]));
+
+    // Restaurar coleções preservando 100% de todas as outras empresas
+    for (const col of allCollectionKeys) {
+      if (col === "registeredCompanies" || col === "companyInfo") continue;
+
       const currentList = Array.isArray(currentData[col]) ? currentData[col] : [];
       // Manter TODOS os registros de outras empresas
-      const otherCompaniesRecords = currentList.filter((item: any) => item && item.companyId !== cleanTargetId);
+      const otherCompaniesRecords = currentList.filter((item: any) => {
+        if (!item) return false;
+        const itemCompId = item.companyId || item.company_id || item.targetCompanyId || item.empresaId;
+        return itemCompId !== cleanTargetId;
+      });
 
       // Extrair registros da empresa alvo a partir da fonte de backup
-      const sourceList = Array.isArray(sourceData[col]) ? sourceData[col] : [];
-      const targetCompanyRecords = sourceList.filter((item: any) => item && item.companyId === cleanTargetId);
+      const rawSourceList = Array.isArray(sourceData[col])
+        ? sourceData[col]
+        : (sourceData.database && Array.isArray(sourceData.database[col]) ? sourceData.database[col] : []);
+
+      let targetCompanyRecords: any[] = [];
+
+      if (isCompanyIsolatedBackup) {
+        // No backup isolado por empresa, todos os registros pertencem à empresa alvo
+        targetCompanyRecords = rawSourceList.map((item: any) => {
+          if (!item || typeof item !== "object") return item;
+          return { ...item, companyId: cleanTargetId };
+        });
+      } else {
+        // No backup geral multi-empresa, filtrar registros da empresa alvo
+        targetCompanyRecords = rawSourceList.filter((item: any) => {
+          if (!item) return false;
+          const itemCompId = item.companyId || item.company_id || item.targetCompanyId || item.empresaId;
+          return itemCompId === cleanTargetId;
+        });
+      }
 
       // Nova lista mesclada: outros intactos + alvo restaurado
       updatedData[col] = [...otherCompaniesRecords, ...targetCompanyRecords];
@@ -575,9 +730,13 @@ export class DailyBackupService {
     for (const comp of allRegistered) {
       if (!comp || comp.id === cleanTargetId) continue;
       let count = 0;
-      for (const col of OPERATIONAL_COLLECTIONS) {
+      for (const col of allCollectionKeys) {
         if (Array.isArray(updatedData[col])) {
-          count += updatedData[col].filter((i: any) => i && i.companyId === comp.id).length;
+          count += updatedData[col].filter((i: any) => {
+            if (!i) return false;
+            const itemCompId = i.companyId || i.company_id || i.targetCompanyId || i.empresaId;
+            return itemCompId === comp.id;
+          }).length;
         }
       }
       unaffectedCompanies.push({

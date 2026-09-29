@@ -1,0 +1,122 @@
+{
+  "entities": {
+    "Client": {
+      "title": "Client",
+      "description": "Customer entity for workshop and commercial transactions",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "cpf": { "type": "string" },
+        "email": { "type": "string" },
+        "phone": { "type": "string" },
+        "companyId": { "type": "string" }
+      },
+      "required": ["id", "name"]
+    },
+    "User": {
+      "title": "User",
+      "description": "System operator / employee",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "username": { "type": "string" },
+        "role": { "type": "string" },
+        "companyId": { "type": "string" }
+      },
+      "required": ["id", "name", "username", "role"]
+    },
+    "Supplier": {
+      "title": "Supplier",
+      "description": "Vendor or parts supplier",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "cnpjCpf": { "type": "string" },
+        "companyId": { "type": "string" }
+      },
+      "required": ["id", "name"]
+    },
+    "Vehicle": {
+      "title": "Vehicle",
+      "description": "Customer vehicle",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "clientId": { "type": "string" },
+        "plate": { "type": "string" },
+        "companyId": { "type": "string" }
+      },
+      "required": ["id", "plate", "clientId"]
+    },
+    "Part": {
+      "title": "Part",
+      "description": "Inventory product or part",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "code": { "type": "string" },
+        "stock": { "type": "number" },
+        "companyId": { "type": "string" }
+      },
+      "required": ["id", "name", "code"]
+    },
+    "ServiceOrder": {
+      "title": "ServiceOrder",
+      "description": "Mechanical workshop service order",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "clientId": { "type": "string" },
+        "vehicleId": { "type": "string" },
+        "status": { "type": "string" },
+        "companyId": { "type": "string" }
+      },
+      "required": ["id", "clientId", "status"]
+    },
+    "AppStore": {
+      "title": "AppStore",
+      "description": "Global persistent state document",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "data": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id"]
+    }
+  },
+  "firestore": {
+    "/clients/{clientId}": {
+      "schema": "Client",
+      "description": "Collection of clients"
+    },
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "Collection of users"
+    },
+    "/suppliers/{supplierId}": {
+      "schema": "Supplier",
+      "description": "Collection of suppliers"
+    },
+    "/vehicles/{vehicleId}": {
+      "schema": "Vehicle",
+      "description": "Collection of vehicles"
+    },
+    "/parts/{partId}": {
+      "schema": "Part",
+      "description": "Collection of parts"
+    },
+    "/serviceOrders/{serviceOrderId}": {
+      "schema": "ServiceOrder",
+      "description": "Collection of service orders"
+    },
+    "/app_store/{storeId}": {
+      "schema": "AppStore",
+      "description": "Global store document"
+    }
+  }
+}

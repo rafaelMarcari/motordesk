@@ -14,8 +14,19 @@ import { fiscalBackendService } from "./server/fiscalProviderService.js";
 import { DailyBackupService } from "./server/dailyBackupService.js";
 import { CompanySupportService } from "./server/companySupportService.js";
 import * as notasApiBackend from "./src/services/notasApiBackend.js";
+import {
+  initFirestore,
+  isFirestoreConnected,
+  getFirestoreDatabaseId,
+  syncDatabaseCollectionsToFirestore,
+  saveSingleDocumentToFirestore,
+  loadDatabaseFromFirestore
+} from "./src/services/firestoreSync.js";
 
 dotenv.config();
+
+// Inicializar conexão com o banco oficial no Google Cloud Firestore
+initFirestore();
 
 const app = express();
 const PORT = 3000;
@@ -93,13 +104,21 @@ app.use(cors(corsOptions));
 // 2. EXPLICITLY HANDLE ALL PREFLIGHT 'OPTIONS' REQUESTS BEFORE ANY OTHER ROUTE
 app.options("*", cors(corsOptions));
 app.use((req, res, next) => {
-  const origin = req.headers.origin;
-  if (origin) {
-    res.setHeader("Access-Control-Allow-Origin", origin);
-    res.setHeader("Access-Control-Allow-Credentials", "true");
-  } else {
-    res.setHeader("Access-Control-Allow-Origin", "*");
+  const reqHost = req.headers.host || "motordesk.app.br";
+  const proto = (req.headers["x-forwarded-proto"] as string) || (req.secure ? "https" : "http");
+  let origin = req.headers.origin;
+  if (!origin && req.headers.referer) {
+    try {
+      const parsedUrl = new URL(req.headers.referer as string);
+      origin = `${parsedUrl.protocol}//${parsedUrl.host}`;
+    } catch {}
   }
+  if (!origin) {
+    origin = `${proto}://${reqHost}`;
+  }
+
+  res.setHeader("Access-Control-Allow-Origin", origin);
+  res.setHeader("Access-Control-Allow-Credentials", "true");
   res.setHeader("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS");
   res.setHeader(
     "Access-Control-Allow-Headers",
@@ -258,18 +277,21 @@ app.get("/api", (req, res) => {
 app.get(["/api/health", "/health"], async (req, res) => {
   const startTime = Date.now();
   const dbHealth = await checkDatabaseHealth();
+  const firestoreActive = isFirestoreConnected();
   const latencyMs = Date.now() - startTime;
-  const status = dbHealth.connected ? "ok" : "degraded";
-  const statusCode = dbHealth.connected ? 200 : 503;
+  const status = (dbHealth.connected || firestoreActive) ? "ok" : "degraded";
+  const statusCode = (dbHealth.connected || firestoreActive) ? 200 : 503;
 
   res.status(statusCode).json({
     status,
-    database: dbHealth.connected ? "connected" : "disconnected",
+    database: (dbHealth.connected || firestoreActive) ? "connected" : "disconnected",
+    databaseProvider: firestoreActive ? "google_cloud_firestore" : "cloud_sql_postgresql",
+    firestoreDatabaseId: getFirestoreDatabaseId() || null,
     databaseName: dbHealth.database || "cloud_sql_production_database",
     databaseUser: dbHealth.databaseUser || "ai_studio_app_user",
     databaseHost: dbHealth.databaseHost || "cloudsql",
-    appStoreTable: Boolean(dbHealth.appStoreTable),
-    appStoreRecord: Boolean(dbHealth.appStoreRecord),
+    appStoreTable: Boolean(dbHealth.appStoreTable || firestoreActive),
+    appStoreRecord: Boolean(dbHealth.appStoreRecord || firestoreActive),
     appStoreDataSize: dbHealth.appStoreDataSize || 0,
     appStoreUpdatedAt: dbHealth.appStoreUpdatedAt || null,
     latencyMs,
@@ -319,6 +341,8 @@ function persistServerCacheToDisk(data: any): void {
     const dir = path.dirname(STORE_PERSISTENCE_PATH);
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(STORE_PERSISTENCE_PATH, JSON.stringify(data), "utf-8");
+    // Sincronização direta e persistente com o banco de dados no Google Cloud (Firestore)
+    syncDatabaseCollectionsToFirestore(data).catch(() => {});
   } catch (e: any) {
     console.warn("[MotorDesk Store] Falha ao persistir em disco:", e.message);
   }
@@ -1570,16 +1594,35 @@ app.get("/api/db", requireAuth, async (req: any, res) => {
 
 // Live SSE Stream for real-time synchronization across multiple browsers, tabs, and computers
 app.get("/api/db/stream", (req, res) => {
-  const origin = req.headers.origin || "*";
+  const reqHost = req.headers.host || "motordesk.app.br";
+  const proto = (req.headers["x-forwarded-proto"] as string) || (req.secure ? "https" : "http");
+  let origin = req.headers.origin;
+  if (!origin && req.headers.referer) {
+    try {
+      const parsedUrl = new URL(req.headers.referer as string);
+      origin = `${parsedUrl.protocol}//${parsedUrl.host}`;
+    } catch {}
+  }
+  if (!origin) {
+    origin = `${proto}://${reqHost}`;
+  }
+
   res.setHeader("Content-Type", "text/event-stream");
-  res.setHeader("Cache-Control", "no-cache, no-transform, no-store");
-  res.setHeader("Connection", "keep-alive");
+  res.setHeader("Cache-Control", "no-cache, no-transform, no-store, must-revalidate");
+  res.setHeader("Pragma", "no-cache");
+  res.setHeader("Expires", "0");
   res.setHeader("X-Accel-Buffering", "no");
-  res.setHeader("Content-Encoding", "identity");
   res.setHeader("Access-Control-Allow-Origin", origin);
   res.setHeader("Access-Control-Allow-Credentials", "true");
   res.setHeader("Access-Control-Allow-Headers", "Cache-Control, Pragma, Authorization, X-Requested-With, Content-Type, Accept, X-Company-Id, X-User-Id, X-User-Role");
+  
+  if (!req.httpVersion.startsWith("2") && !req.httpVersion.startsWith("3")) {
+    res.setHeader("Connection", "keep-alive");
+  }
+
+  res.status(200);
   res.flushHeaders?.();
+  res.write(":\n\n");
 
   const initData = JSON.stringify({
     connected: true,
@@ -1606,7 +1649,7 @@ app.get("/api/db/stream", (req, res) => {
       clearInterval(keepAliveTimer);
       sseSubscribers.delete(res);
     }
-  }, 10000);
+  }, 5000);
 
   const cleanup = () => {
     clearInterval(keepAliveTimer);
@@ -3305,11 +3348,25 @@ app.delete("/v1/nfse/:ref", (req, res) => {
 // 5. ROTAS DE BACKUP DIÁRIO DA BASE DE DADOS
 // ==========================================
 async function getDbSnapshotForBackup(): Promise<any> {
-  if (serverAppStoreCache) return serverAppStoreCache;
+  if (serverAppStoreCache && typeof serverAppStoreCache === 'object' && Object.keys(serverAppStoreCache).length > 5) {
+    return serverAppStoreCache;
+  }
   const initial = loadInitialServerCache();
   if (initial) {
     serverAppStoreCache = initial;
     return serverAppStoreCache;
+  }
+  if (isFirestoreConnected()) {
+    try {
+      const firestoreData = await loadDatabaseFromFirestore();
+      if (firestoreData && typeof firestoreData === 'object') {
+        serverAppStoreCache = mergeAppDatabase(serverAppStoreCache, firestoreData);
+        persistServerCacheToDisk(serverAppStoreCache);
+        return serverAppStoreCache;
+      }
+    } catch (e) {
+      console.warn('[BACKUP] Falha ao carregar do Firestore para backup:', e);
+    }
   }
   const cfg = resolveDatabaseConfig();
   if (isDatabaseSocketAvailable(cfg.database)) {
@@ -3388,7 +3445,7 @@ app.get("/api/backup/download-company/:companyId", requireAuth, async (req, res)
     const isolatedData = await service.getIsolatedCompanyBackup(getDbSnapshotForBackup, companyId);
     
     const nowStr = new Date().toISOString().split("T")[0];
-    const filename = `motordesk_backup_empresa_${companyId}_${nowStr}.json`;
+    const filename = isolatedData.metadata?.suggestedFilename || `motordesk_backup_empresa_${companyId}_${nowStr}.json`;
     
     res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
     res.setHeader("Content-Type", "application/json");
@@ -3412,14 +3469,21 @@ app.post("/api/backup/restore", requireAuth, async (req, res) => {
       async (dataToPersist) => {
         const cfg = resolveDatabaseConfig();
         serverAppStoreCache = dataToPersist;
-        await enqueueDbWrite(async () => {
-          await executeSqlWithRetry(
-            `INSERT INTO app_store (id, data, updated_at) VALUES ($1, $2, NOW())
-             ON CONFLICT (id) DO UPDATE SET data = $2, updated_at = NOW()`,
-            ['motordesk_main', dataToPersist],
-            cfg.database
-          );
-        });
+        persistServerCacheToDisk(dataToPersist);
+        if (isDatabaseSocketAvailable(cfg.database)) {
+          await enqueueDbWrite(async () => {
+            try {
+              await executeSqlWithRetry(
+                `INSERT INTO app_store (id, data, updated_at) VALUES ($1, $2, NOW())
+                 ON CONFLICT (id) DO UPDATE SET data = $2, updated_at = NOW()`,
+                ['motordesk_main', dataToPersist],
+                cfg.database
+              );
+            } catch (sqlErr: any) {
+              console.warn("[RESTORE] Falha na gravação SQL:", sqlErr.message);
+            }
+          });
+        }
         currentDbVersion++;
         currentDbUpdatedAt = new Date().toISOString();
         broadcastDbUpdate({
@@ -3443,7 +3507,7 @@ app.post("/api/backup/restore", requireAuth, async (req, res) => {
 // Restaura dados EXCLUSIVAMENTE de uma única empresa (100% isolada, sem alterar nenhuma outra)
 app.post("/api/backup/restore-company", requireAuth, async (req, res) => {
   try {
-    const { targetCompanyId, filename, backupData } = req.body;
+    const { targetCompanyId, filename, backupData, sourceData } = req.body;
     if (!targetCompanyId) {
       return res.status(400).json({ error: "Identificador da empresa (targetCompanyId) é obrigatório." });
     }
@@ -3451,19 +3515,26 @@ app.post("/api/backup/restore-company", requireAuth, async (req, res) => {
     const service = DailyBackupService.getInstance();
     const result = await service.restoreCompanyBackup(
       targetCompanyId,
-      { filename, backupData },
+      { filename, backupData: backupData || sourceData },
       getDbSnapshotForBackup,
       async (dataToPersist) => {
         const cfg = resolveDatabaseConfig();
         serverAppStoreCache = dataToPersist;
-        await enqueueDbWrite(async () => {
-          await executeSqlWithRetry(
-            `INSERT INTO app_store (id, data, updated_at) VALUES ($1, $2, NOW())
-             ON CONFLICT (id) DO UPDATE SET data = $2, updated_at = NOW()`,
-            ['motordesk_main', dataToPersist],
-            cfg.database
-          );
-        });
+        persistServerCacheToDisk(dataToPersist);
+        if (isDatabaseSocketAvailable(cfg.database)) {
+          await enqueueDbWrite(async () => {
+            try {
+              await executeSqlWithRetry(
+                `INSERT INTO app_store (id, data, updated_at) VALUES ($1, $2, NOW())
+                 ON CONFLICT (id) DO UPDATE SET data = $2, updated_at = NOW()`,
+                ['motordesk_main', dataToPersist],
+                cfg.database
+              );
+            } catch (sqlErr: any) {
+              console.warn("[RESTORE-COMPANY] Falha na gravação SQL:", sqlErr.message);
+            }
+          });
+        }
         currentDbVersion++;
         currentDbUpdatedAt = new Date().toISOString();
         broadcastDbUpdate({
