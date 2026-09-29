@@ -1,0 +1,246 @@
+{
+  "masterPasswordHash": "fb987ad632e658ad207e26a11c980184325506bdf9d2a75e22641ce6bf52db20edcc41d90d9c9056f5f7990b1dbcf9b5e5e653b6c6d538d5d67bef247d6f553b",
+  "masterPasswordSalt": "b3314ab1b68df52dcb1fababdaf23f20",
+  "driver": "mock",
+  "empresas": [
+    {
+      "id": "comp-1",
+      "cnpj": "11.222.333/0001-44",
+      "razaoSocial": "MotorDesk Centro Automotivo Matriz Ltda",
+      "nomeFantasia": "MotorDesk Matriz Pinheiros",
+      "inscricaoMunicipal": "98765432-1",
+      "codigoMunicipio": "3550308",
+      "uf": "SP",
+      "regime": "simples",
+      "ambiente": "homologacao",
+      "serieDps": "1",
+      "proximoNumeroDps": 102,
+      "token": "fcs_tok_emp1_2f80a0f2b476721c072d8ac81833b9474f94230b6b8b8d76",
+      "webhookSecret": "whsec_307b61b6beef9ea0de6ccaf852f7827fb6c1ae1a110561f0",
+      "webhookUrl": "https://webhook.site/motordesk-nfse-test",
+      "ativo": true,
+      "criadoEm": "2026-09-23T14:37:13.033Z",
+      "certificado": {
+        "subject": "CN=MotorDesk Centro Automotivo Matriz Ltda:000000000000, OU=Certificado A1, O=ICP-Brasil, C=BR",
+        "cnpjCert": "11222333000144",
+        "validoAte": "2027-09-23T14:37:13.033Z",
+        "fingerprint": "424CCBDD73795F1119D8C85E7E5694EE3B8A61EC",
+        "hasPfx": true,
+        "diasParaVencer": 364
+      }
+    },
+    {
+      "id": "comp-2",
+      "cnpj": "22.333.444/0001-55",
+      "razaoSocial": "MotorDesk Moema Serviços e Peças Ltda",
+      "nomeFantasia": "MotorDesk Moema",
+      "inscricaoMunicipal": "87654321-0",
+      "codigoMunicipio": "3550308",
+      "uf": "SP",
+      "regime": "simples",
+      "ambiente": "homologacao",
+      "serieDps": "1",
+      "proximoNumeroDps": 151,
+      "token": "fcs_tok_emp2_943aefa2b857221cc8a8b151d0a928f098c9cc1aa72f44e2",
+      "webhookSecret": "whsec_8ec4886e08854e405a2ce20981b33ebe163aa513c193d33b",
+      "webhookUrl": "https://webhook.site/motordesk-nfse-test",
+      "ativo": true,
+      "criadoEm": "2026-09-23T14:37:13.034Z",
+      "certificado": {
+        "subject": "CN=MotorDesk Moema Serviços e Peças Ltda:000000000000, OU=Certificado A1, O=ICP-Brasil, C=BR",
+        "cnpjCert": "22333444000155",
+        "validoAte": "2027-09-23T14:37:13.034Z",
+        "fingerprint": "AD91F2CA8C20923AD69FDE9BA0D65CB494B75A70",
+        "hasPfx": true,
+        "diasParaVencer": 364
+      }
+    },
+    {
+      "id": "comp-3",
+      "cnpj": "33.444.555/0001-66",
+      "razaoSocial": "MotorDesk Barra da Tijuca Auto Center S/A",
+      "nomeFantasia": "MotorDesk Barra",
+      "inscricaoMunicipal": "76543210-9",
+      "codigoMunicipio": "3304557",
+      "uf": "RJ",
+      "regime": "simples",
+      "ambiente": "homologacao",
+      "serieDps": "1",
+      "proximoNumeroDps": 201,
+      "token": "fcs_tok_emp3_1212ca4667d8250cd3f20cb67426d34483ad9fae1df89701",
+      "webhookSecret": "whsec_9f1981ef7a0d83fbb01610428b5187c25a7afbc62a80e2d1",
+      "webhookUrl": "https://webhook.site/motordesk-nfse-test",
+      "ativo": true,
+      "criadoEm": "2026-09-23T14:37:13.034Z",
+      "certificado": {
+        "subject": "CN=MotorDesk Barra da Tijuca Auto Center S/A:000000000000, OU=Certificado A1, O=ICP-Brasil, C=BR",
+        "cnpjCert": "33444555000166",
+        "validoAte": "2027-09-23T14:37:13.034Z",
+        "fingerprint": "4A9277805C08C16AF38B8FAAEDC40AF052347608",
+        "hasPfx": true,
+        "diasParaVencer": 364
+      }
+    }
+  ],
+  "notas": [
+    {
+      "id": "nota-fcs-1790174247516",
+      "ref": "TEST-OS-999",
+      "empresaId": "comp-1",
+      "empresaCnpj": "11.222.333/0001-44",
+      "empresaRazaoSocial": "MotorDesk Centro Automotivo Matriz Ltda",
+      "numeroDps": 101,
+      "serieDps": "1",
+      "chaveAcesso": "432609112223330001445500001000000000000101769366675",
+      "status": "cancelado",
+      "ambiente": "homologacao",
+      "protocolo": "20268855956659",
+      "tomador": {
+        "cnpjCpf": "11.222.333/0001-44",
+        "razaoSocial": "Cliente Teste Ltda"
+      },
+      "servico": {
+        "discriminacao": "Revisão de Freios",
+        "codigoTributacaoNacional": "14.01.01",
+        "valorServicos": 350,
+        "aliquotaIss": 5,
+        "valorIss": 17.5,
+        "valorLiquido": 350
+      },
+      "criadoEm": "2026-09-23T14:37:27.516Z",
+      "autorizadoEm": "2026-09-23T14:37:27.516Z",
+      "mensagensSefin": [
+        "DPS nº 101 série 1 assinada digitalmente com sucesso.",
+        "Protocolo Sefin Nacional gerado: 20261019982741. Autorização concedida.",
+        "Cancelamento homologado na Sefin Nacional em 2026-09-23T14:37:31.798Z. Motivo: Cancelamento solicitado pelo cliente conforme regras"
+      ],
+      "xml": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<DPS xmlns=\"http://www.sped.fazenda.gov.br/nfse\" versao=\"1.00\">\n  <infDPS Id=\"DPS_432609112223330001445500001000000000000101769366675\">\n    <tpAmb>2</tpAmb>\n    <dhEmi>2026-09-23T14:37:27.516Z</dhEmi>\n    <verAplic>MotorDesk_Focus_1.0</verAplic>\n    <serie>1</serie>\n    <nDPS>101</nDPS>\n    <emit>\n      <CNPJ>11222333000144</CNPJ>\n      <xNome>MotorDesk Centro Automotivo Matriz Ltda</xNome>\n      <xFant>MotorDesk Matriz Pinheiros</xFant>\n      <IM>98765432-1</IM>\n      <cMun>3550308</cMun>\n      <CRT>1</CRT>\n    </emit>\n    <toma>\n      <CNPJ>11222333000144</CNPJ>\n      <xNome>Cliente Teste Ltda</xNome>\n      <xEnd>Logradouro Principal</xEnd>\n      <email>contato@cliente.com.br</email>\n    </toma>\n    <serv>\n      <cTribNac>14.01.01</cTribNac>\n      <xDescServ>Revisão de Freios</xDescServ>\n      <vServ>350.00</vServ>\n      <vISS>17.50</vISS>\n      <vLiq>350.00</vLiq>\n    </serv>\n  </infDPS>\n  <Signature xmlns=\"http://www.w3.org/2000/09/xmldsig#\">\n    <SignedInfo>\n      <CanonicalizationMethod Algorithm=\"http://www.w3.org/TR/2001/REC-xml-c14n-20010315\"/>\n      <SignatureMethod Algorithm=\"http://www.w3.org/2001/04/xmldsig-more#rsa-sha256\"/>\n      <Reference URI=\"#DPS_432609112223330001445500001000000000000101769366675\">\n        <DigestMethod Algorithm=\"http://www.w3.org/2001/04/xmlenc#sha256\"/>\n        <DigestValue>6qvvJjwczvuhuCBxfcHmAsY2pmZubTx1+Dow2uXk2rQ=</DigestValue>\n      </Reference>\n    </SignedInfo>\n    <SignatureValue>FP/NG4dIXihTB4LYLzbP//PDipx+a23K/fc06wdcGtcslYd/lkaLTocmOHAdrWyF+Mdn9GIHfbuELymsT6Jhjk8mypKlxcS9SdK33o2MaCSNWHYO8Y+dz4E75vv56z4HEvity1GM8OcRZg7MkNKaxtU8ZSHcM/Up6Kp6u+fojD0=</SignatureValue>\n    <KeyInfo>\n      <X509Data>\n        <X509Certificate>pd28LHR9lrXG+xpXrFR00PBrKr/OwYo920KwCpUjHMcSm42dA/NeYTyPq4p++HdcFtry//VUmN9eKjbx2E8R+aX72CtNbodrx6WaUcCjNrq4v1XR7nu6xpCMu8vAqzo0UsPWauJ9KTtADZsmHZnf5G28sKyZEgw9MrJ0znq+C31x2sHE4XXIQG9BswsO5PKInVeY9ygXLiiErvoKw/ZLzAgYO3uQ1XeNlDBKYpbBp0Ubbbcknc9d4zCds4uwUkUvXumSeRjFcOnUo9ugf6S5EIuUumFPFDKRIfks47fKuya9VhCshdsMabIlSvTOMu2QB46x9WTTJjwvuTHzs3TUUw==</X509Certificate>\n      </X509Data>\n    </KeyInfo>\n  </Signature>\n</DPS>",
+      "canceladoEm": "2026-09-23T14:37:31.798Z",
+      "justificativaCancelamento": "Cancelamento solicitado pelo cliente conforme regras"
+    },
+    {
+      "id": "nota-fcs-1",
+      "ref": "OS-2026-001",
+      "empresaId": "comp-1",
+      "empresaCnpj": "11.222.333/0001-44",
+      "empresaRazaoSocial": "MotorDesk Centro Automotivo Matriz Ltda",
+      "numeroDps": 100,
+      "serieDps": "1",
+      "chaveAcesso": "432609112223330001445500001000000000000100263665169",
+      "status": "autorizado",
+      "ambiente": "homologacao",
+      "protocolo": "20260923000145892",
+      "tomador": {
+        "cnpjCpf": "123.456.789-00",
+        "razaoSocial": "João Pedro da Silva",
+        "email": "joao.silva@email.com",
+        "telefone": "(11) 98765-4321",
+        "endereco": "Rua das Flores, 123 - São Paulo - SP"
+      },
+      "servico": {
+        "discriminacao": "Alinhamento 3D Computadorizado, Balanceamento e Revisão Geral de Suspensão",
+        "codigoTributacaoNacional": "14.01.01",
+        "valorServicos": 450,
+        "aliquotaIss": 5,
+        "valorIss": 22.5,
+        "valorLiquido": 450
+      },
+      "criadoEm": "2026-09-22T14:30:00.000Z",
+      "autorizadoEm": "2026-09-22T14:30:04.000Z",
+      "mensagensSefin": [
+        "DPS processada e autorizada com sucesso na Sefin Nacional."
+      ],
+      "xml": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<DPS xmlns=\"http://www.sped.fazenda.gov.br/nfse\" versao=\"1.00\">\n  <infDPS Id=\"DPS_432609112223330001445500001000000000000100263665169\">\n    <tpAmb>2</tpAmb>\n    <dhEmi>2026-09-23T14:37:13.034Z</dhEmi>\n    <verAplic>MotorDesk_Focus_1.0</verAplic>\n    <serie>1</serie>\n    <nDPS>100</nDPS>\n    <emit>\n      <CNPJ>11222333000144</CNPJ>\n      <xNome>MotorDesk Centro Automotivo Matriz Ltda</xNome>\n      <xFant>MotorDesk Matriz Pinheiros</xFant>\n      <IM>98765432-1</IM>\n      <cMun>3550308</cMun>\n      <CRT>1</CRT>\n    </emit>\n    <toma>\n      <CNPJ>12345678900</CNPJ>\n      <xNome>João Pedro da Silva</xNome>\n      <xEnd>Rua das Flores, 123 - São Paulo - SP</xEnd>\n      <email>joao.silva@email.com</email>\n    </toma>\n    <serv>\n      <cTribNac>14.01.01</cTribNac>\n      <xDescServ>Alinhamento 3D Computadorizado, Balanceamento e Revisão Geral de Suspensão</xDescServ>\n      <vServ>450.00</vServ>\n      <vISS>22.50</vISS>\n      <vLiq>450.00</vLiq>\n    </serv>\n  </infDPS>\n  <Signature xmlns=\"http://www.w3.org/2000/09/xmldsig#\">\n    <SignedInfo>\n      <CanonicalizationMethod Algorithm=\"http://www.w3.org/TR/2001/REC-xml-c14n-20010315\"/>\n      <SignatureMethod Algorithm=\"http://www.w3.org/2001/04/xmldsig-more#rsa-sha256\"/>\n      <Reference URI=\"#DPS_432609112223330001445500001000000000000100263665169\">\n        <DigestMethod Algorithm=\"http://www.w3.org/2001/04/xmlenc#sha256\"/>\n        <DigestValue>GwxQx3qE5SVZC65owtPCjvE7RCEm+KdjEqLzVtydf8Y=</DigestValue>\n      </Reference>\n    </SignedInfo>\n    <SignatureValue>4BX2GLrbX9EOnbtoGNNtVAkaaG8DFsH+/wLaJU24XI+gvCVzVrliPpFNTMeNPolb5Hya2hKfO17VaIV5D1T0QQgvUQiswQ7ZjzWr5xAaI/L1XaSuMc1xRxOK8iSmFLaUkR/0+36mISUp2p0WnLYy4d8ZpZ/Hz87cFGR3ttQplwQ=</SignatureValue>\n    <KeyInfo>\n      <X509Data>\n        <X509Certificate>/d7NJbdeo6E5G3CLPBVcV4mC0RQUOSewsE1V+l2ayGtdz5EmPbyjpilzxpH4C9yF0B2kkeNMdI7BNOl3vJrHApdlTj+mMfhoJS6HSOvIU66tnzY5AUP3KsNjZ5UFPQ8NRCkiuG2IRZFoyHs1PJW3jQ1eFPN+ou/JkVSstxTdsUhh/+V1wvMpczdxdjrSDnI5k2mUgbKteMwTO9WCB1C7mzGYW9Of/lAqzzzZAnOu+06woc4QZtUth13y+3kLLCh09bXQ8jG3jssZ+3i+rNCCrAtb01p6GvstV46oNBQqacHF8k4jLuRglb5xQktldBAm9Eq/kWmAE2Zjyn5AA0PhIw==</X509Certificate>\n      </X509Data>\n    </KeyInfo>\n  </Signature>\n</DPS>"
+    },
+    {
+      "id": "nota-fcs-2",
+      "ref": "OS-2026-002",
+      "empresaId": "comp-1",
+      "empresaCnpj": "11.222.333/0001-44",
+      "empresaRazaoSocial": "MotorDesk Centro Automotivo Matriz Ltda",
+      "numeroDps": 101,
+      "serieDps": "1",
+      "chaveAcesso": "432609112223330001445500001000000000000101279306234",
+      "status": "autorizado",
+      "ambiente": "homologacao",
+      "protocolo": "20260923000145893",
+      "tomador": {
+        "cnpjCpf": "11.222.333/0001-44",
+        "razaoSocial": "Empresa ABC Transportes e Frotas Ltda",
+        "email": "fiscal@abctransportes.com.br",
+        "telefone": "(11) 3322-9988",
+        "endereco": "Av. das Nações Unidas, 4500 - São Paulo - SP"
+      },
+      "servico": {
+        "discriminacao": "Troca de Óleo de Motor Sintético, Filtros e Higienização de Ar Condicionado de Frota",
+        "codigoTributacaoNacional": "14.01.01",
+        "valorServicos": 1280,
+        "aliquotaIss": 5,
+        "valorIss": 64,
+        "valorLiquido": 1280
+      },
+      "criadoEm": "2026-09-23T09:15:00.000Z",
+      "autorizadoEm": "2026-09-23T09:15:05.000Z",
+      "mensagensSefin": [
+        "DPS processada e autorizada com sucesso na Sefin Nacional."
+      ],
+      "xml": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<DPS xmlns=\"http://www.sped.fazenda.gov.br/nfse\" versao=\"1.00\">\n  <infDPS Id=\"DPS_432609112223330001445500001000000000000101279306234\">\n    <tpAmb>2</tpAmb>\n    <dhEmi>2026-09-23T14:37:13.035Z</dhEmi>\n    <verAplic>MotorDesk_Focus_1.0</verAplic>\n    <serie>1</serie>\n    <nDPS>101</nDPS>\n    <emit>\n      <CNPJ>11222333000144</CNPJ>\n      <xNome>MotorDesk Centro Automotivo Matriz Ltda</xNome>\n      <xFant>MotorDesk Matriz Pinheiros</xFant>\n      <IM>98765432-1</IM>\n      <cMun>3550308</cMun>\n      <CRT>1</CRT>\n    </emit>\n    <toma>\n      <CNPJ>11222333000144</CNPJ>\n      <xNome>Empresa ABC Transportes e Frotas Ltda</xNome>\n      <xEnd>Av. das Nações Unidas, 4500 - São Paulo - SP</xEnd>\n      <email>fiscal@abctransportes.com.br</email>\n    </toma>\n    <serv>\n      <cTribNac>14.01.01</cTribNac>\n      <xDescServ>Troca de Óleo de Motor Sintético, Filtros e Higienização de Ar Condicionado de Frota</xDescServ>\n      <vServ>1280.00</vServ>\n      <vISS>64.00</vISS>\n      <vLiq>1280.00</vLiq>\n    </serv>\n  </infDPS>\n  <Signature xmlns=\"http://www.w3.org/2000/09/xmldsig#\">\n    <SignedInfo>\n      <CanonicalizationMethod Algorithm=\"http://www.w3.org/TR/2001/REC-xml-c14n-20010315\"/>\n      <SignatureMethod Algorithm=\"http://www.w3.org/2001/04/xmldsig-more#rsa-sha256\"/>\n      <Reference URI=\"#DPS_432609112223330001445500001000000000000101279306234\">\n        <DigestMethod Algorithm=\"http://www.w3.org/2001/04/xmlenc#sha256\"/>\n        <DigestValue>VoLVXDdla4cEnFsKWC2CnrlQ0m2lrZqH6kHZVZOvoQ8=</DigestValue>\n      </Reference>\n    </SignedInfo>\n    <SignatureValue>IkZJnHivZE8YgA/HdzY+FPMdUdjiXPs/nEBrZnvu7Eq2Es87p4I7tbj9j+a67bkoUabFALz4yPjZ3MNigeVYfAMO+hEmny7oDPBv0q9r5Lws5RSvSZFtLjm2AEA/iTvpohfTpMNaeST2Fc9CkUPkHAv1lIVT/g8bfqXw0FTmyp0=</SignatureValue>\n    <KeyInfo>\n      <X509Data>\n        <X509Certificate>X33FqYUQKWxaISS6SR8/wQmKNESFNtddeUFak57Mi9rgtpstIZCnlEOo4QQPYnOCaoHw8aHFcaa5gdygkfDewXP4IQ/b+FVs9aQU8Ok6YFNBzVVgXRMBFvRc0LZzWPcp5QHTPUBSJgzMuhYvxDBfAHtuRSpNSo5ENhQessm9vgy5xLk4L+2QsRiTAvzZPJiy2qZxHlunMRWxUuCxwQ3ORw6WCUvaEAVxT85voKqiLvh/DP+ARAhkh8AkONdPnhzWaUj+bqhlQf4SSfKqxUCtwVS6DelQLZK+736hKmNikKvR7OM1+dqSiP2jfeUuWVEHD454NnZQCokBi2pJgrdpjQ==</X509Certificate>\n      </X509Data>\n    </KeyInfo>\n  </Signature>\n</DPS>"
+    }
+  ],
+  "webhookLogs": [
+    {
+      "id": "wh-log-1790174251798",
+      "empresaId": "comp-1",
+      "empresaCnpj": "11.222.333/0001-44",
+      "evento": "nfse.cancelada",
+      "url": "https://webhook.site/motordesk-nfse-test",
+      "statusCode": 200,
+      "enviadoEm": "2026-09-23T14:37:31.798Z",
+      "sucesso": true,
+      "resposta": "{\"status\":\"cancellation_acknowledged\"}",
+      "payload": {
+        "ref": "TEST-OS-999",
+        "status": "cancelado",
+        "cancelado_em": "2026-09-23T14:37:31.798Z",
+        "justificativa": "Cancelamento solicitado pelo cliente conforme regras"
+      }
+    },
+    {
+      "id": "wh-log-1790174247516",
+      "empresaId": "comp-1",
+      "empresaCnpj": "11.222.333/0001-44",
+      "evento": "nfse.autorizada",
+      "url": "https://webhook.site/motordesk-nfse-test",
+      "statusCode": 200,
+      "enviadoEm": "2026-09-23T14:37:27.516Z",
+      "sucesso": true,
+      "resposta": "{\"status\":\"received\",\"processed\":true}",
+      "payload": {
+        "ref": "TEST-OS-999",
+        "status": "autorizado",
+        "numero_dps": 101,
+        "serie_dps": "1",
+        "chave_acesso": "432609112223330001445500001000000000000101769366675",
+        "autorizado_em": "2026-09-23T14:37:27.516Z"
+      }
+    },
+    {
+      "id": "wh-log-1",
+      "empresaId": "comp-1",
+      "empresaCnpj": "11.222.333/0001-44",
+      "evento": "nfse.autorizada",
+      "url": "https://webhook.site/motordesk-nfse-test",
+      "statusCode": 200,
+      "enviadoEm": "2026-09-23T09:15:06.000Z",
+      "sucesso": true,
+      "resposta": "{\"status\":\"received\"}",
+      "payload": {
+        "ref": "OS-2026-002",
+        "status": "autorizado",
+        "numero_dps": 101,
+        "chave_acesso": "432609112223330001445500001000000000000101279306234"
+      }
+    }
+  ],
+  "updatedAt": "2026-09-23T14:37:31.798Z"
+}

@@ -192,10 +192,27 @@ export default function QuotationsSuppliersView({
     setShowSupplierModal(true);
   };
 
+  const formatCpfCnpj = (value: string) => {
+    const raw = value.replace(/\D/g, '').slice(0, 14);
+    if (raw.length <= 11) {
+      if (raw.length <= 3) return raw;
+      if (raw.length <= 6) return `${raw.slice(0, 3)}.${raw.slice(3)}`;
+      if (raw.length <= 9) return `${raw.slice(0, 3)}.${raw.slice(3, 6)}.${raw.slice(6)}`;
+      return `${raw.slice(0, 3)}.${raw.slice(3, 6)}.${raw.slice(6, 9)}-${raw.slice(9, 11)}`;
+    }
+    if (raw.length <= 12) return `${raw.slice(0, 2)}.${raw.slice(2, 5)}.${raw.slice(5, 8)}/${raw.slice(8)}`;
+    return `${raw.slice(0, 2)}.${raw.slice(2, 5)}.${raw.slice(5, 8)}/${raw.slice(8, 12)}-${raw.slice(12, 14)}`;
+  };
+
   const handleSaveSupplier = (e: React.FormEvent) => {
     e.preventDefault();
+    const digitsOnly = supCnpjCpf.replace(/\D/g, '');
     if (!supName.trim() || !supCnpjCpf.trim()) {
-      showToast('Por favor, preencha o Nome e CNPJ/CPF do fornecedor.', 'error');
+      showToast('Por favor, preencha o Nome e CPF/CNPJ do fornecedor.', 'error');
+      return;
+    }
+    if (digitsOnly.length !== 11 && digitsOnly.length !== 14) {
+      showToast('CPF/CNPJ inválido ou incompleto (deve conter 11 dígitos para CPF ou 14 dígitos para CNPJ).', 'error');
       return;
     }
 
@@ -744,6 +761,8 @@ export default function QuotationsSuppliersView({
     if (cot.notes) {
       msg += `Observações: ${cot.notes}\n`;
     }
+    const portalUrl = `${window.location.origin}/?portal=cotacao&id=${cot.id}`;
+    msg += `\n🔗 *Preencha sua proposta online com 1 clique no link abaixo:*\n${portalUrl}\n`;
     msg += `\nFavor enviar os preços unitários e prazo de entrega estimado. Obrigado!`;
     return msg;
   };
@@ -782,6 +801,19 @@ export default function QuotationsSuppliersView({
 
     window.open(mailtoUrl, '_blank');
     showToast(`Abrindo gerenciador de e-mail para ${email}...`);
+  };
+
+  const handleCopyQuotationLink = (cot: Quotation) => {
+    const portalUrl = `${window.location.origin}/?portal=cotacao&id=${cot.id}`;
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(portalUrl).then(() => {
+        showToast(`Link da Cotação ${cot.code} copiado com sucesso! Envie para o vendedor.`);
+      }).catch(() => {
+        prompt('Copie o link da cotação para o vendedor:', portalUrl);
+      });
+    } else {
+      prompt('Copie o link da cotação para o vendedor:', portalUrl);
+    }
   };
 
   return (
@@ -997,6 +1029,11 @@ export default function QuotationsSuppliersView({
                               <Clock className="w-3 h-3" /> Enviada ao Fornecedor
                             </span>
                           )}
+                          {(cot.status === 'supplier_replied' || cot.status === 'responded') && (
+                            <span className="px-2.5 py-1 bg-emerald-50 text-emerald-800 rounded-full text-[10px] font-bold border border-emerald-300 inline-flex items-center gap-1 shadow-2xs">
+                              <CheckCircle className="w-3 h-3 text-emerald-600" /> Respondida pelo Vendedor
+                            </span>
+                          )}
                           {cot.status === 'received' && (
                             <span className="px-2.5 py-1 bg-indigo-50 text-indigo-700 rounded-full text-[10px] font-bold border border-indigo-200 inline-flex items-center gap-1">
                               <DollarSign className="w-3 h-3" /> Valores Cotados
@@ -1063,6 +1100,15 @@ export default function QuotationsSuppliersView({
                           >
                             <Mail className="w-3.5 h-3.5 text-indigo-600" /> E-mail
                           </button>
+                          {/* Copy Link to Supplier Button */}
+                          <button
+                            onClick={() => handleCopyQuotationLink(cot)}
+                            title="Copiar link público para o vendedor preencher a cotação online"
+                            className="px-2.5 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 font-bold rounded-lg transition inline-flex items-center gap-1 cursor-pointer text-xs"
+                            id={`btn-copy-quote-link-${cot.id}`}
+                          >
+                            <LinkIcon className="w-3.5 h-3.5 text-amber-600" /> Link Fornecedor
+                          </button>
                         </td>
                       </tr>
                     ))}
@@ -1122,7 +1168,15 @@ export default function QuotationsSuppliersView({
                     </div>
 
                     <div className="space-y-1 pt-2 text-xs text-slate-600 border-t border-slate-100 font-mono">
-                      <p><span className="text-slate-400 font-sans">CNPJ/CPF:</span> {sup.cnpjCpf}</p>
+                      <p className="flex items-center gap-1.5">
+                        <span className={`px-1.5 py-0.2 rounded text-[9px] font-bold uppercase ${
+                          (sup.cnpjCpf || '').replace(/\D/g, '').length > 11 ? 'bg-purple-100 text-purple-800' : 'bg-blue-100 text-blue-800'
+                        }`}>
+                          {(sup.cnpjCpf || '').replace(/\D/g, '').length > 11 ? 'CNPJ' : 'CPF'}
+                        </span>
+                        <span className="text-slate-400 font-sans text-[11px]">CPF/CNPJ:</span>
+                        <span>{sup.cnpjCpf || '-'}</span>
+                      </p>
                       {sup.phone && (
                         <p className="flex items-center gap-1 text-slate-700">
                           <Phone className="w-3.5 h-3.5 text-slate-400 shrink-0 font-sans" /> {sup.phone}
@@ -1487,7 +1541,7 @@ export default function QuotationsSuppliersView({
                   <thead>
                     <tr className="bg-slate-100/60 border-b border-slate-200 text-slate-500 font-bold uppercase text-[10px]">
                       <th className="p-3.5">Fornecedor</th>
-                      <th className="p-3.5">CNPJ</th>
+                      <th className="p-3.5">CPF/CNPJ</th>
                       <th className="p-3.5 text-center">Cotações / Pedidos</th>
                       <th className="p-3.5 text-right">Volume Total (R$)</th>
                       <th className="p-3.5 text-center">Prazo Médio</th>
@@ -1498,13 +1552,23 @@ export default function QuotationsSuppliersView({
                     {suppliers.map(s => {
                       const supQuotations = completedQuotations.filter(q => q.supplierId === s.id);
                       const totalSup = supQuotations.reduce((sum, q) => sum + (q.totalValue || (q as any).totalAmount || 0), 0);
+                      const isCnpj = (s.cnpjCpf || '').replace(/\D/g, '').length > 11;
                       return (
                         <tr key={s.id} className="hover:bg-slate-50/80 transition">
                           <td className="p-3.5 font-bold text-slate-800">
                             {s.name}
                             {s.tradeName && <span className="block text-[10px] text-slate-400 font-normal">{s.tradeName}</span>}
                           </td>
-                          <td className="p-3.5 font-mono text-slate-500">{s.cnpjCpf || 'S/ CNPJ'}</td>
+                          <td className="p-3.5 font-mono text-slate-500">
+                            <div className="flex items-center gap-1.5">
+                              <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
+                                isCnpj ? 'bg-purple-100 text-purple-800 border border-purple-200' : 'bg-blue-100 text-blue-800 border border-blue-200'
+                              }`}>
+                                {isCnpj ? 'CNPJ' : 'CPF'}
+                              </span>
+                              <span>{s.cnpjCpf || '-'}</span>
+                            </div>
+                          </td>
                           <td className="p-3.5 text-center font-bold text-indigo-600">{supQuotations.length}</td>
                           <td className="p-3.5 text-right font-mono font-bold text-slate-900">
                             R$ {totalSup.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
@@ -1571,13 +1635,13 @@ export default function QuotationsSuppliersView({
                 </div>
 
                 <div className="space-y-1">
-                  <label className="font-bold text-slate-600 uppercase text-[10px]">CNPJ ou CPF *</label>
+                  <label className="font-bold text-slate-600 uppercase text-[10px]">CPF/CNPJ *</label>
                   <input
                     type="text"
                     required
                     value={supCnpjCpf}
-                    onChange={e => setSupCnpjCpf(e.target.value)}
-                    placeholder="11.222.333/0001-44"
+                    onChange={e => setSupCnpjCpf(formatCpfCnpj(e.target.value))}
+                    placeholder="000.000.000-00 ou 00.000.000/0000-00"
                     className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:outline-hidden focus:bg-white focus:border-indigo-500 font-mono"
                   />
                 </div>

@@ -317,6 +317,8 @@
 
   // --- MODAL 2: AVISO DE SESSÃO DERRUBADA (NA MÁQUINA ANTERIOR) ---
   function showSessionTerminatedModal(terminatedDetails) {
+    console.log("[SESSION-GUARD] Multi-terminal concurrent access active. Preserving session.");
+    return;
     if (hasShownTerminatedModal) return;
     hasShownTerminatedModal = true;
 

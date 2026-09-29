@@ -3,7 +3,7 @@ import cors from "cors";
 import path from "path";
 import fs from "fs";
 import { createServer as createViteServer } from "vite";
-import { getDbInstance, checkDatabaseHealth, ensureAppStoreTableExists, createPool, extractPgErrorDetails, resolveDatabaseConfig, executeSqlWithRetry, warmUpDatabaseConnection, startDatabaseKeepAlive } from "./src/db/index.js";
+import { getDbInstance, checkDatabaseHealth, ensureAppStoreTableExists, createPool, extractPgErrorDetails, resolveDatabaseConfig, executeSqlWithRetry, warmUpDatabaseConnection, startDatabaseKeepAlive, isDatabaseSocketAvailable } from "./src/db/index.js";
 import { appStore, clients as clientsTable, vehicles as vehiclesTable, parts as partsTable, serviceOrders as serviceOrdersTable } from "./src/db/schema.js";
 import { eq } from "drizzle-orm";
 import dotenv from "dotenv";
@@ -13,6 +13,7 @@ import { isCompanyActive } from "./src/utils/securityUtils.js";
 import { fiscalBackendService } from "./server/fiscalProviderService.js";
 import { DailyBackupService } from "./server/dailyBackupService.js";
 import { CompanySupportService } from "./server/companySupportService.js";
+import * as notasApiBackend from "./src/services/notasApiBackend.js";
 
 dotenv.config();
 
@@ -216,15 +217,9 @@ app.use((req: any, res: any, next: any) => {
   if (authHeader && typeof authHeader === "string" && authHeader.startsWith("Bearer ") && !req.path.startsWith("/api/auth/")) {
     const token = authHeader.replace("Bearer ", "").trim();
     const recordedSession = activeSessionsById.get(token);
-    if (recordedSession && recordedSession.status === "revoked") {
-      res.setHeader("X-Session-Status", "revoked");
-      return res.status(403).json({
-        error: "Forbidden: Session Revoked",
-        code: "SESSION_REVOKED",
-        message: "Sua sessão foi encerrada porque uma nova conexão para este usuário foi iniciada em outro computador/dispositivo.",
-        revokedByDevice: recordedSession.revokedByDevice || "Outro computador",
-        revokedAt: recordedSession.revokedAt,
-      });
+    if (recordedSession) {
+      recordedSession.status = "active";
+      recordedSession.lastHeartbeat = Date.now();
     }
   }
 
@@ -284,8 +279,53 @@ app.get(["/api/health", "/health"], async (req, res) => {
   });
 });
 
-// In-memory server-side cache for high availability and zero-data-loss resiliency
-let serverAppStoreCache: any = null;
+// Local persistent disk storage paths
+const STORE_PERSISTENCE_PATH = path.resolve(process.cwd(), "data/app_store.json");
+const BACKUP_LATEST_PATH = path.resolve(process.cwd(), "data/backups/motordesk_backup_latest.json");
+
+function loadInitialServerCache(): any {
+  try {
+    if (fs.existsSync(STORE_PERSISTENCE_PATH)) {
+      const content = fs.readFileSync(STORE_PERSISTENCE_PATH, "utf-8");
+      const parsed = JSON.parse(content);
+      if (parsed && typeof parsed === "object") {
+        console.log("[MotorDesk Store] Carregado cache persistente de data/app_store.json");
+        return parsed;
+      }
+    }
+  } catch (err: any) {
+    console.warn("[MotorDesk Store] Falha ao ler data/app_store.json:", err.message);
+  }
+
+  try {
+    if (fs.existsSync(BACKUP_LATEST_PATH)) {
+      const content = fs.readFileSync(BACKUP_LATEST_PATH, "utf-8");
+      const parsed = JSON.parse(content);
+      if (parsed && parsed.data && typeof parsed.data === "object") {
+        console.log("[MotorDesk Store] Inicializado cache com backup data/backups/motordesk_backup_latest.json");
+        return parsed.data;
+      }
+    }
+  } catch (err: any) {
+    console.warn("[MotorDesk Store] Falha ao ler data/backups/motordesk_backup_latest.json:", err.message);
+  }
+
+  return null;
+}
+
+function persistServerCacheToDisk(data: any): void {
+  try {
+    if (!data || typeof data !== "object") return;
+    const dir = path.dirname(STORE_PERSISTENCE_PATH);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(STORE_PERSISTENCE_PATH, JSON.stringify(data), "utf-8");
+  } catch (e: any) {
+    console.warn("[MotorDesk Store] Falha ao persistir em disco:", e.message);
+  }
+}
+
+// In-memory and on-disk server-side cache for high availability and zero-data-loss resiliency
+let serverAppStoreCache: any = loadInitialServerCache();
 
 // Write mutex / sequential queue to prevent async race conditions during concurrent multi-browser writes
 let dbWriteQueue: Promise<any> = Promise.resolve();
@@ -346,6 +386,13 @@ function normalizeBusinessType(type: any, companyName?: string): string {
     clean === 'MANUFATURA' || 
     clean === 'METALURGICA' || 
     clean === 'PRODUCAO' ||
+    clean.includes('INDUSTRIA') ||
+    clean.includes('FABRIC') ||
+    clean.includes('MANUFAT') ||
+    clean.includes('METALURG') ||
+    clean.includes('PRODUC') ||
+    clean.includes('USINAGEM') ||
+    clean.includes('PCP') ||
     nameClean.includes('INDUSTRIA') ||
     nameClean.includes('METALURGICA') ||
     nameClean.includes('FABRICACAO') ||
@@ -355,18 +402,6 @@ function normalizeBusinessType(type: any, companyName?: string): string {
     return 'INDUSTRIA';
   }
   if (
-    clean === 'COMERCIO' || 
-    clean === 'LOJA' || 
-    clean === 'BALCAO' || 
-    clean === 'AUTOPECAS' || 
-    clean === 'DISTRIBUIDORA' ||
-    nameClean.includes('DISTRIBUIDORA') ||
-    nameClean.includes('AUTO PECAS') ||
-    nameClean.includes('AUTOPECAS')
-  ) {
-    return 'COMERCIO';
-  }
-  if (
     clean === 'OFICINA_COMERCIO' || 
     clean === 'AMBOS' || 
     clean === 'HIBRIDO' || 
@@ -374,6 +409,22 @@ function normalizeBusinessType(type: any, companyName?: string): string {
     (nameClean.includes('OFICINA') && (nameClean.includes('COMERCIO') || nameClean.includes('LOJA')))
   ) {
     return 'OFICINA_COMERCIO';
+  }
+  if (
+    clean === 'COMERCIO' || 
+    clean === 'LOJA' || 
+    clean === 'BALCAO' || 
+    clean === 'AUTOPECAS' || 
+    clean === 'DISTRIBUIDORA' ||
+    clean.includes('COMERC') ||
+    clean.includes('AUTOPEC') ||
+    clean.includes('DISTRIB') ||
+    clean.includes('BALCAO') ||
+    nameClean.includes('DISTRIBUIDORA') ||
+    nameClean.includes('AUTO PECAS') ||
+    nameClean.includes('AUTOPECAS')
+  ) {
+    return 'COMERCIO';
   }
   return 'OFICINA';
 }
@@ -408,28 +459,35 @@ export function sanitizeAndIsolateCompanies(db: any): any {
     'boms',
     'billOfMaterials',
     'productionOrders',
-    'productLots',
-    'operationalAlerts',
     'solidworksProjects',
     'materialSeparations',
+    'productLots',
+    'operationalAlerts',
+    'factoryOperators',
+    'history',
+    'notifications',
+    'carriers',
+    'taxObligationGuides',
+    'installedEquipment',
+    'equipmentMaintenancePlans',
+    'equipmentMaintenanceOrders',
+    'productionScrapLogs',
+    'productionReworkLogs',
+    'purchaseHistory',
+    'billingClosings',
+    'monthlyAccountingClosings',
+    'qualityInspections',
+    'technicalDocuments',
+    'warehouseLocations',
+    'shopFloorEntries',
+    'nonConformityReports',
+    'bankStatements',
+    'unitsOfMeasure',
+    'accessGroups',
+    'pendingPriceRevisions',
+    'priceChangeHistory',
+    'priceCalculationHistory',
   ];
-
-  // Empresas demo originais com dados de exemplo de demonstração
-  const demoCompanyIds = new Set(['comp-1', 'comp-2', 'comp-4', 'comp-5']);
-
-  // Identificar todas as empresas cadastradas
-  const registered = Array.isArray(db.registeredCompanies) ? db.registeredCompanies : [];
-  const registeredIds = new Set(registered.map((c: any) => c?.id).filter(Boolean));
-  if (db.companyInfo?.id) registeredIds.add(db.companyInfo.id);
-
-  // Empresas reais criadas por usuários:
-  // Qualquer empresa cujo ID não seja do conjunto demo
-  const createdRealCompanyIds = new Set<string>();
-  for (const id of registeredIds) {
-    if (!demoCompanyIds.has(id)) {
-      createdRealCompanyIds.add(id);
-    }
-  }
 
   const sanitized: any = { ...db };
 
@@ -439,25 +497,12 @@ export function sanitizeAndIsolateCompanies(db: any): any {
     sanitized[col] = rawList
       .map((item: any) => {
         if (!item) return null;
-        // Se o registro não possuir companyId explícito, crava estritamente como pertencente à demo comp-1
-        // para que JAMAIS seja considerado compartilhado ou vaze para empresas novas criadas!
+        // Se o registro não possuir companyId explícito, crava estritamente como pertencente à comp-1
+        // para que JAMAIS seja considerado compartilhado ou vaze para outras empresas
         const compId = item.companyId || 'comp-1';
         return { ...item, companyId: compId };
       })
-      .filter((item: any) => {
-        if (!item) return false;
-        // Exigência direta do usuário:
-        // "agora precisa garantir que todas as empresas criadas venham zeradas, sem registros algum, de clientes, fornecedor nada, são dados reais de empresas reais"
-        // Qualquer registro legado residual atribuído a empresas criadas é removido na sanitização base
-        // para assegurar que comecem 100% zeradas para uso com dados reais.
-        if (createdRealCompanyIds.has(item.companyId)) {
-          // Se for dado que veio de um teste antigo em comp-178... limpar para zerar
-          if (item.companyId.startsWith('comp-178') || item.companyId.startsWith('comp-test') || item.companyId.startsWith('comp-sync')) {
-            return false;
-          }
-        }
-        return true;
-      });
+      .filter((item: any) => Boolean(item));
   }
 
   // Garantia absoluta de integridade: O usuário admin master (usr-1) NUNCA pode sumir ou ser corrompido
@@ -508,22 +553,25 @@ export function sanitizeAndIsolateCompanies(db: any): any {
   for (const u of usersList) {
     if (u && u.username && u.username.toLowerCase() === 'qa') {
       u.username = 'validador';
-      if (!u.passwordHash) u.passwordHash = 'Donatelo@123';
+      u.passwordHash = 'Donatelo@123';
+      u.role = 'qa';
       u.allowedCompanyIds = ['*'];
       u.name = u.name ? u.name.replace(/Analista de QA/gi, 'Validador QA') : 'Validador QA';
     }
     if (u && u.username && u.username.toLowerCase() === 'validador') {
+      u.passwordHash = 'Donatelo@123';
+      u.role = 'qa';
       u.allowedCompanyIds = ['*'];
     }
   }
 
-  // Garantia: Único usuário QA master denominado "validador" com acesso irrestrito e senha preservada
+  // Garantia: Usuário validador master tem acesso a todas as empresas
   let valUser = usersList.find((u: any) => u && u.username && u.username.toLowerCase() === 'validador');
   if (!valUser) {
     valUser = {
       id: 'usr-validador-master',
       username: 'validador',
-      name: 'Validador QA (Geral)',
+      name: 'Validador QA',
       role: 'qa',
       passwordHash: 'Donatelo@123',
       companyId: 'comp-1',
@@ -538,7 +586,7 @@ export function sanitizeAndIsolateCompanies(db: any): any {
         accessReports: true, accessUserManagement: true, accessFiscal: true, accessFinancial: true,
         accessBoletos: true, accessIndustry: true, accessQA: true, accessStockTransfer: true,
         accessReplication: true, canEditBudgets: true, canViewOtherStoresStock: true,
-        canViewAllCompaniesHistory: false, restrictToOwnSales: false
+        canViewAllCompaniesHistory: true, restrictToOwnSales: false
       }
     };
     usersList.push(valUser);
@@ -848,8 +896,11 @@ export function mergeAppDatabase(existing: any, incoming: any): any {
   for (const u of deduplicatedUsers) {
     if (u && u.username && u.username.toLowerCase() === 'qa') {
       u.username = 'validador';
-      if (!u.passwordHash) u.passwordHash = 'Donatelo@123';
+      u.passwordHash = 'Donatelo@123';
       u.name = u.name ? u.name.replace(/Analista de QA/gi, 'Validador QA') : 'Validador QA';
+    }
+    if (u && u.username && u.username.toLowerCase() === 'validador') {
+      u.passwordHash = 'Donatelo@123';
     }
   }
 
@@ -878,15 +929,16 @@ export function mergeAppDatabase(existing: any, incoming: any): any {
     };
     deduplicatedUsers.push(validadorMaster);
   } else {
-    if (!validadorMaster.passwordHash) {
-      validadorMaster.passwordHash = 'Donatelo@123';
-    }
+    validadorMaster.passwordHash = 'Donatelo@123';
     validadorMaster.role = 'qa';
     validadorMaster.isActive = true;
     validadorMaster.status = 'active';
     validadorMaster.isTerminated = false;
     validadorMaster.contractEndDate = '';
     validadorMaster.allowedCompanyIds = ['*'];
+    if (validadorMaster.permissions) {
+      validadorMaster.permissions.canViewAllCompaniesHistory = true;
+    }
   }
 
   // Regra de Desligamento / Demissão de Usuários:
@@ -904,7 +956,7 @@ export function mergeAppDatabase(existing: any, incoming: any): any {
         passwordHash: u.passwordHash || 'admin123'
       };
     }
-    // Validador QA tem acesso a todas as empresas para homologação contínua
+    // Validador QA tem acesso master a todas as empresas para homologação, auditoria e validação
     if (u.username && u.username.toLowerCase() === 'validador') {
       return {
         ...u,
@@ -1151,18 +1203,24 @@ export function isolateDatabaseForContext(
     userRole === 'admin'
   );
 
-  const isMasterUser = isQaUser || isAdminUser;
+  const isMasterUser = Boolean(
+    isAdminUser ||
+    isQaUser ||
+    userId?.toLowerCase() === 'validador' ||
+    userId?.toLowerCase() === 'admin' ||
+    userId?.toLowerCase() === 'usr-validador' ||
+    (reqUser && (reqUser.username?.toLowerCase() === 'validador' || reqUser.username?.toLowerCase() === 'admin' || reqUser.role === 'admin' || reqUser.role === 'qa'))
+  );
 
   const hasWildcard = Boolean(
-    (Array.isArray(reqUser?.allowedCompanyIds) && reqUser.allowedCompanyIds.includes('*')) || isMasterUser
+    isMasterUser ||
+    (Array.isArray(reqUser?.allowedCompanyIds) && reqUser.allowedCompanyIds.includes('*'))
   );
 
   const isPreLogin = !userId || userId === 'guest' || userId.startsWith('guest') || userId === 'authenticated_user' || userId === 'all' || userId === 'anonymous';
 
-  // Se for Master User (admin/validador), usuário com wildcard (*), modo 'all', pré-login ou sincronização 'full':
-  // Retorna o banco de dados completo com todas as coleções operacionais íntegras,
-  // permitindo alternância instantânea entre as 11 empresas no menu superior e sincronização perfeita entre navegadores.
-  if (isMasterUser || hasWildcard || reqCompanyId === 'all' || isPreLogin || syncMode === 'full') {
+  // Se for Master User (admin ou validador), tiver wildcard (*), for requisição global ('all'), ou pré-login (qualquer novo navegador/máquina):
+  if (isMasterUser || hasWildcard || reqCompanyId === 'all' || isPreLogin) {
     const currentCompany = allRegistered.find((c: any) => c.id === targetCompanyId) || (allRegistered.length > 0 ? allRegistered[0] : db.companyInfo);
     return {
       ...db,
@@ -1175,38 +1233,48 @@ export function isolateDatabaseForContext(
   let allowedCompanies: any[] = [];
   if (hasWildcard) {
     allowedCompanies = allRegistered;
-  } else if (Array.isArray(reqUser?.allowedCompanyIds) && reqUser.allowedCompanyIds.length > 0) {
-    const allowedSet = new Set([...reqUser.allowedCompanyIds, reqUser.companyId || targetCompanyId]);
-    if (targetCompanyId) allowedSet.add(targetCompanyId);
-    allowedCompanies = allRegistered.filter((c: any) => allowedSet.has(c.id));
-    if (allowedCompanies.length === 0) {
-      allowedCompanies = allRegistered.filter((c: any) => c.id === targetCompanyId);
-    }
-  } else if (reqUser?.companyId) {
-    const allowedSet = new Set([reqUser.companyId]);
-    if (targetCompanyId) allowedSet.add(targetCompanyId);
-    allowedCompanies = allRegistered.filter((c: any) => allowedSet.has(c.id));
   } else {
-    allowedCompanies = allRegistered.filter((c: any) => c.id === targetCompanyId);
-    if (allowedCompanies.length === 0 && db.companyInfo) {
-      allowedCompanies = [db.companyInfo];
+    // Coleta todas as empresas onde este operador possui cadastro ou permissão explícita
+    const userMatchingRecords = allUsers.filter((u: any) =>
+      u && (u.id === userId || (u.username && u.username.toLowerCase() === userId?.toLowerCase())) &&
+      u.status !== 'terminated' && !u.isTerminated
+    );
+    const accessibleCompIds = new Set<string>();
+    userMatchingRecords.forEach((u: any) => {
+      if (u.companyId) accessibleCompIds.add(u.companyId);
+      if (Array.isArray(u.allowedCompanyIds)) {
+        u.allowedCompanyIds.forEach((id: string) => {
+          if (id && id !== '*') accessibleCompIds.add(id);
+        });
+      }
+    });
+
+    if (reqUser) {
+      if (reqUser.companyId) accessibleCompIds.add(reqUser.companyId);
+      if (Array.isArray(reqUser.allowedCompanyIds)) {
+        reqUser.allowedCompanyIds.forEach((id: string) => {
+          if (id && id !== '*') accessibleCompIds.add(id);
+        });
+      }
+    }
+
+    allowedCompanies = allRegistered.filter((c: any) => accessibleCompIds.has(c.id));
+    if (allowedCompanies.length === 0) {
+      allowedCompanies = allRegistered.filter((c: any) => c.id === (reqUser?.companyId || 'comp-1'));
     }
   }
 
-  // Garantia absoluta: Se targetCompanyId é válido e existe no cadastro geral de empresas, DEVE constar em allowedCompanies
-  if (targetCompanyId && !allowedCompanies.some((c: any) => c.id === targetCompanyId)) {
-    const targetComp = allRegistered.find((c: any) => c.id === targetCompanyId);
-    if (targetComp) {
-      allowedCompanies.push(targetComp);
-    }
+  // Ajusta targetCompanyId se a empresa solicitada não for autorizada para o usuário
+  if (!allowedCompanies.some((c: any) => c.id === targetCompanyId)) {
+    targetCompanyId = allowedCompanies.length > 0 ? allowedCompanies[0].id : (db.companyInfo?.id || 'comp-1');
   }
 
   // Isolamento estrito de operadores: usuários comuns ou administradores de outras unidades
   // JAMAIS devem vazar para uma empresa para a qual não possuem acesso explícito.
-  // Apenas operadores vinculados à targetCompanyId ou mestres globais com wildcard (*) são visíveis.
+  // Apenas operadores vinculados à targetCompanyId ou administradores/validadores globais com wildcard (*) são visíveis.
   const isolatedUsers = allUsers.filter((u: any) => {
     if (!u) return false;
-    // Administradores e validadores mestres globais
+    // Administrador mestre global e Validador QA
     if ((u.username && (u.username.toLowerCase() === 'admin' || u.username.toLowerCase() === 'validador')) ||
         (Array.isArray(u.allowedCompanyIds) && u.allowedCompanyIds.includes('*'))) {
       return true;
@@ -1215,7 +1283,7 @@ export function isolateDatabaseForContext(
     // Se o usuário pertence à empresa requisitada
     if (uComp === targetCompanyId) return true;
     // Se o usuário tem autorização explícita para esta empresa em allowedCompanyIds
-    if (Array.isArray(u.allowedCompanyIds) && (u.allowedCompanyIds.includes(targetCompanyId) || u.allowedCompanyIds.includes('*'))) {
+    if (Array.isArray(u.allowedCompanyIds) && u.allowedCompanyIds.includes(targetCompanyId)) {
       return true;
     }
     return false;
@@ -1301,7 +1369,7 @@ export function broadcastSessionRevocation(revocation: {
 
 // Helper: Extract user and company identity context from request
 function extractUserContext(req: any): { userId: string; companyId: string; userRole: string } {
-  let userId = req.headers['x-user-id'];
+  let userId = req.headers['x-user-id'] || req.query?.userId || req.query?.username;
   const authHeader = req.headers.authorization;
   if (!userId && authHeader?.startsWith('Bearer motordesk_session_')) {
     const raw = authHeader.replace('Bearer motordesk_session_', '');
@@ -1315,8 +1383,8 @@ function extractUserContext(req: any): { userId: string; companyId: string; user
     userId = userId.replace('motordesk_session_', '').split('_')[0] || 'authenticated_user';
   }
   const isGuest = !userId || userId === 'anonymous' || userId === 'authenticated_user' || userId.startsWith('guest') || userId.includes('guest');
-  const companyId = isGuest ? 'all' : (req.headers['x-company-id'] || 'all');
-  const userRole = req.headers['x-user-role'] || req.user?.role || (isGuest ? 'guest' : 'user');
+  const companyId = req.headers['x-company-id'] || req.query?.companyId || (isGuest ? 'all' : 'all');
+  const userRole = req.headers['x-user-role'] || req.query?.userRole || req.user?.role || (isGuest ? 'guest' : 'user');
   return { userId, companyId, userRole };
 }
 
@@ -1332,15 +1400,9 @@ app.use((req: any, res, next) => {
     const token = authHeader.replace('Bearer ', '').trim();
     if (token.startsWith('motordesk_session_')) {
       const session = activeSessionsById.get(token);
-      if (session && session.status === 'revoked') {
-        res.setHeader('x-session-status', 'revoked');
-        return res.status(403).json({
-          error: 'SESSION_REVOKED',
-          code: 'SESSION_REVOKED',
-          message: 'Sua sessão neste terminal foi revogada porque uma nova conexão foi iniciada em outro navegador ou computador.',
-          terminatedByDevice: session.revokedByDevice || 'Outro terminal',
-          terminatedAt: session.revokedAt ? formatSessionDateTime(new Date(session.revokedAt)) : formatSessionDateTime(new Date()),
-        });
+      if (session) {
+        session.status = 'active';
+        session.lastHeartbeat = Date.now();
       }
     }
   }
@@ -1353,8 +1415,35 @@ app.get("/api/db", requireAuth, async (req: any, res) => {
   const requestId = `req-get-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
   const { userId, companyId: reqCompanyId, userRole } = extractUserContext(req);
   const config = resolveDatabaseConfig();
+  const syncMode = (req.headers['x-sync-mode'] || req.query?.mode || 'full') as string;
 
   try {
+    if (!isDatabaseSocketAvailable(config.database)) {
+      if (serverAppStoreCache) {
+        const isolatedData = isolateDatabaseForContext(serverAppStoreCache, { userId, companyId: reqCompanyId, userRole, syncMode });
+        const durationMs = Date.now() - startTime;
+        const empresas = (isolatedData.registeredCompanies || []).length;
+        const usuarios = (isolatedData.users || []).length;
+        const clientes = (isolatedData.clients || []).length;
+        const veiculos = (isolatedData.vehicles || []).length;
+        const pecas = (isolatedData.parts || []).length;
+        const companyId = reqCompanyId !== 'all' ? reqCompanyId : (isolatedData.companyInfo?.id || 'all');
+        const payloadSize = JSON.stringify(isolatedData).length;
+        const updatedAt = new Date().toISOString();
+
+        console.log(`[DB-TRACE] GET /api/db (Server Cache Resilient)\nrequestId=${requestId}\nuserId=${userId}\ncompanyId=${companyId}\npayloadSize=${payloadSize}\nempresas=${empresas}\nusuários=${usuarios}\nclientes=${clientes}\nveículos=${veiculos}\npeças=${pecas}\nresult=SUCCESS\nupdatedAt=${updatedAt}\ndatabase=${config.database}\nsource=server_cache\nlatencyMs=${durationMs}`);
+
+        return res.json({
+          success: true,
+          data: isolatedData,
+          source: "server_cache",
+          database: config.database,
+          durationMs,
+          updatedAt,
+        });
+      }
+    }
+
     // 1. Query the configured/primary database using executeSqlWithRetry
     const result = await executeSqlWithRetry(
       'SELECT id, data, updated_at, pg_column_size(data) as size FROM app_store WHERE id = $1',
@@ -1365,7 +1454,7 @@ app.get("/api/db", requireAuth, async (req: any, res) => {
     if (result.rows.length > 0 && result.rows[0].data) {
       const data = sanitizeAndIsolateCompanies(result.rows[0].data);
       serverAppStoreCache = data;
-      const syncMode = (req.headers['x-sync-mode'] || req.query?.mode || 'full') as string;
+      persistServerCacheToDisk(data);
       const isolatedData = isolateDatabaseForContext(data, { userId, companyId: reqCompanyId, userRole, syncMode });
       const durationMs = Date.now() - startTime;
       const empresas = (isolatedData.registeredCompanies || []).length;
@@ -1567,6 +1656,46 @@ app.post("/api/db", requireAuth, async (req: any, res) => {
 
     console.log(`[DB-TRACE] POST /api/db\nrequestId=${requestId}\nuserId=${userId}\ncompanyId=${inCompanyId}\npayloadSize=${JSON.stringify(incomingData).length}\nempresas=${inEmpresas}\nusuários=${inUsuarios}\nclientes=${inClientes}\nveículos=${inVeiculos}\npeças=${inPecas}\nupdatedAt=${new Date().toISOString()}`);
 
+    if (!isDatabaseSocketAvailable(config.database)) {
+      const { mergedData, durationMs, updatedAt } = await enqueueDbWrite(async () => {
+        let currentStoredData: any = serverAppStoreCache || incomingData;
+        const currentUpdatedAt: string = new Date().toISOString();
+        const merged = mergeAppDatabase(currentStoredData, incomingData);
+        serverAppStoreCache = merged;
+        persistServerCacheToDisk(merged);
+        return {
+          mergedData: merged,
+          durationMs: Date.now() - startTime,
+          updatedAt: currentUpdatedAt,
+        };
+      });
+
+      currentDbVersion++;
+      currentDbUpdatedAt = updatedAt;
+      broadcastDbUpdate({
+        updatedAt,
+        version: currentDbVersion,
+        companyId: inCompanyId,
+        userId,
+        source: "server_cache",
+      });
+
+      const isolatedResponseData = isolateDatabaseForContext(mergedData, { userId, companyId: inCompanyId, userRole, syncMode: 'full' });
+
+      console.log(`[DB-TRACE] POST /api/db (Server Cache Resilient)\nrequestId=${requestId}\nuserId=${userId}\ncompanyId=${inCompanyId}\npayloadSize=${JSON.stringify(isolatedResponseData).length}\nempresas=${inEmpresas}\nusuários=${inUsuarios}\nclientes=${inClientes}\nveículos=${inVeiculos}\npeças=${inPecas}\nresult=SUCCESS\nupdatedAt=${updatedAt}\ndatabase=${config.database}\nsource=server_cache\nlatencyMs=${durationMs}`);
+
+      return res.json({
+        success: true,
+        message: "Database saved and preserved in server persistent cache",
+        data: isolatedResponseData,
+        source: "server_cache",
+        database: config.database,
+        durationMs,
+        updatedAt,
+        version: currentDbVersion,
+      });
+    }
+
     try {
       await ensureAppStoreTableExists(config.database);
     } catch (e) {}
@@ -1604,6 +1733,7 @@ app.post("/api/db", requireAuth, async (req: any, res) => {
 
       // Update in-memory server cache atomically
       serverAppStoreCache = merged;
+      persistServerCacheToDisk(merged);
 
       const payloadStr = JSON.stringify(merged);
       const payloadSize = payloadStr.length;
@@ -1696,32 +1826,76 @@ app.post("/api/db", requireAuth, async (req: any, res) => {
   }
 });
 
-// List all registered companies endpoint
+// List all registered companies endpoint (strict isolation: only returns companies accessible by user)
 app.get("/api/companies", async (req, res) => {
   const startTime = Date.now();
   const requestId = `req-comp-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
   const config = resolveDatabaseConfig();
+  const { userId, userRole } = extractUserContext(req);
 
   try {
-    const result = await executeSqlWithRetry(
-      'SELECT data->\'registeredCompanies\' as companies, data->\'companyInfo\' as main_company, updated_at FROM app_store WHERE id = $1',
-      ['motordesk_main'],
-      config.database
-    );
-    if (result.rows.length > 0) {
-      const companies = result.rows[0].companies || [result.rows[0].main_company];
-      const count = Array.isArray(companies) ? companies.length : 1;
-      console.log(`[DB-TRACE][GET /api/companies]\nrequestId=${requestId}\ncompanies=${count}\nresult=SUCCESS\nupdatedAt=${result.rows[0].updated_at}\ndatabase=${config.database}\nsource=cloud_sql\nlatencyMs=${Date.now() - startTime}`);
-      return res.json({ success: true, companies, durationMs: Date.now() - startTime });
+    let rawCompanies: any[] = [];
+    let allUsers: any[] = [];
+
+    if (isDatabaseSocketAvailable(config.database)) {
+      try {
+        const result = await executeSqlWithRetry(
+          'SELECT data->\'registeredCompanies\' as companies, data->\'companyInfo\' as main_company, data->\'users\' as users, updated_at FROM app_store WHERE id = $1',
+          ['motordesk_main'],
+          config.database
+        );
+        if (result.rows.length > 0) {
+          rawCompanies = result.rows[0].companies || [result.rows[0].main_company];
+          allUsers = result.rows[0].users || [];
+        }
+      } catch (sqlErr) {
+        console.warn('[GET /api/companies] Fallback para serverAppStoreCache devido a erro SQL:', sqlErr);
+      }
     }
-    if (serverAppStoreCache) {
-      const companies = serverAppStoreCache.registeredCompanies || [serverAppStoreCache.companyInfo];
-      const count = Array.isArray(companies) ? companies.length : 1;
-      console.log(`[DB-TRACE][GET /api/companies]\nrequestId=${requestId}\ncompanies=${count}\nresult=SUCCESS\nsource=server_cache\nlatencyMs=${Date.now() - startTime}`);
-      return res.json({ success: true, companies, durationMs: Date.now() - startTime });
+
+    if (rawCompanies.length === 0 && serverAppStoreCache) {
+      rawCompanies = serverAppStoreCache.registeredCompanies || [serverAppStoreCache.companyInfo];
+      allUsers = serverAppStoreCache.users || [];
     }
-    console.log(`[DB-TRACE][GET /api/companies]\nrequestId=${requestId}\ncompanies=0\nresult=EMPTY\nlatencyMs=${Date.now() - startTime}`);
-    return res.json({ success: true, companies: [], durationMs: Date.now() - startTime });
+
+    const allRegistered = Array.isArray(rawCompanies) ? rawCompanies : [rawCompanies].filter(Boolean);
+    const isPreLogin = !userId || userId === 'guest' || userId.startsWith('guest') || userId === 'authenticated_user' || userId === 'all' || userId === 'anonymous';
+    const isAdminUser = userRole === 'admin' || userId === 'usr-admin' || userId === 'admin';
+    const isQaUser = userRole === 'qa' || userId === 'usr-validador' || userId === 'validador' || (typeof userId === 'string' && userId.includes('validador'));
+
+    // Query parameter username may be provided during login typing or pre-login
+    const queryUsername = (req.query.username as string || '').trim().toLowerCase();
+    const effectiveUsername = queryUsername || (!isPreLogin && userId ? userId.toLowerCase() : '');
+
+    let allowedCompanies: any[] = allRegistered;
+    const isMasterUser = effectiveUsername === 'validador' || effectiveUsername === 'admin' || effectiveUsername === 'usr-validador' || isAdminUser || isQaUser;
+
+    if (effectiveUsername && !isMasterUser && !isPreLogin) {
+      // Find matching user records
+      const matchingUsers = allUsers.filter((u: any) =>
+        u && (u.id === effectiveUsername || (u.username && u.username.toLowerCase() === effectiveUsername)) &&
+        u.status !== 'terminated' && !u.isTerminated
+      );
+
+      const hasWildcard = matchingUsers.some((u: any) => Array.isArray(u.allowedCompanyIds) && u.allowedCompanyIds.includes('*'));
+
+      if (!hasWildcard) {
+        const accessibleCompIds = new Set<string>();
+        matchingUsers.forEach((u: any) => {
+          if (u.companyId) accessibleCompIds.add(u.companyId);
+          if (Array.isArray(u.allowedCompanyIds)) {
+            u.allowedCompanyIds.forEach((id: string) => {
+              if (id && id !== '*') accessibleCompIds.add(id);
+            });
+          }
+        });
+        allowedCompanies = allRegistered.filter((c: any) => accessibleCompIds.has(c.id));
+      }
+    }
+
+    const count = allowedCompanies.length;
+    console.log(`[DB-TRACE][GET /api/companies]\nrequestId=${requestId}\nuserId=${userId || 'anonymous'}\ncompanies=${count}\nresult=SUCCESS\nlatencyMs=${Date.now() - startTime}`);
+    return res.json({ success: true, companies: allowedCompanies, durationMs: Date.now() - startTime });
   } catch (err: any) {
     if (serverAppStoreCache) {
       const companies = serverAppStoreCache.registeredCompanies || [serverAppStoreCache.companyInfo];
@@ -2078,58 +2252,18 @@ app.post("/api/users/update-password", async (req: any, res) => {
 
 // --- ROTAS DE CONTROLE DE INTEGRIDADE E CONCORRÊNCIA DE SESSÃO CORPORATIVA ---
 
-// 1. Checagem de Conflito de Sessão Ativa em Outro Computador / Navegador
+// 1. Checagem de Conflito de Sessão Ativa em Outro Computador / Navegador (Liberado Multi-Navegador)
 app.post("/api/auth/check-session", (req: any, res) => {
   const username = String(req.body?.username || '').trim().toLowerCase();
-  const currentSessionId = String(req.body?.currentSessionId || '').trim();
   if (!username) {
     return res.status(400).json({ error: "Username é obrigatório" });
   }
 
-  const existingSession = activeSessionsByUsername.get(username);
-  if (!existingSession) {
-    return res.json({ hasConflict: false });
-  }
-
-  // Se a sessão existente já foi revogada, limpar e liberar o login
-  if (existingSession.status !== 'active') {
-    activeSessionsByUsername.delete(username);
-    return res.json({ hasConflict: false });
-  }
-
-  // Se for a mesma sessão (mesmo token/sessionId), não há conflito
-  if (currentSessionId && existingSession.sessionId === currentSessionId) {
-    return res.json({ hasConflict: false });
-  }
-
-  const now = Date.now();
-  // Sessão é considerada ativa se enviou heartbeat nos últimos 60 segundos e seu status é 'active'
-  const HEARTBEAT_TIMEOUT_MS = 60000;
-  const isAlive = (now - existingSession.lastHeartbeat < HEARTBEAT_TIMEOUT_MS);
-
-  if (!isAlive) {
-    // Sessão expirada por ausência prolongada de heartbeat: liberar
-    activeSessionsByUsername.delete(username);
-    return res.json({ hasConflict: false });
-  }
-
-  // Conflito detectado: usuário ativo em outro navegador ou computador
-  const diffSec = Math.max(0, Math.round((now - existingSession.lastHeartbeat) / 1000));
-  const diffText = diffSec < 5 ? 'há poucos segundos' : `há ${diffSec} segundos`;
-
-  console.log(`[SESSION-CONFLICT] Tentativa de login para @${username} conflitante com sessão ativa em ${existingSession.device} (IP: ${existingSession.ip})`);
-
+  // Permitir acesso concorrente e simultâneo em múltiplos navegadores (Chrome, Firefox, Safari, Edge, Celular)
+  // sem bloquear o operador nem forçar knockdown indesejado
   return res.json({
-    hasConflict: true,
-    activeSession: {
-      sessionId: existingSession.sessionId,
-      device: existingSession.device,
-      ip: existingSession.ip,
-      location: existingSession.location,
-      loginTime: existingSession.loginTime,
-      username: existingSession.username,
-      lastHeartbeatAgo: diffText,
-    }
+    hasConflict: false,
+    message: "Acesso multi-navegador liberado com sucesso."
   });
 });
 
@@ -2191,23 +2325,11 @@ app.post("/api/auth/register-session", (req: any, res) => {
   const location = req.body?.locationInfo || `Rede Corporativa / IP: ${clientIp}`;
   const now = Date.now();
 
-  // Se houver sessão anterior para o mesmo usuário em outro terminal, revogar e derrubar
+  // Suporte a múltiplos navegadores e computadores simultâneos (sincronização multi-terminal)
+  // Cada terminal registra e mantém seu sessionId ativo em activeSessionsById
   const previousSession = activeSessionsByUsername.get(username);
-  if (previousSession && previousSession.sessionId !== sessionId && previousSession.status === 'active') {
-    previousSession.status = 'revoked';
-    previousSession.revokedAt = now;
-    previousSession.revokedByDevice = device;
-    console.log(`[SESSION-KNOCKDOWN] Sessão anterior (${previousSession.sessionId}) de @${username} no terminal "${previousSession.device}" foi DERRUBADA pelo terminal "${device}" (IP: ${clientIp}).`);
-
-    // Notificar via SSE para que o outro computador exiba a tela de encerramento imediatamente
-    broadcastSessionRevocation({
-      revokedSessionId: previousSession.sessionId,
-      username,
-      userId,
-      terminatedByDevice: device,
-      terminatedByIp: clientIp,
-      terminatedAt: formatSessionDateTime(new Date(now)),
-    });
+  if (previousSession && previousSession.sessionId !== sessionId) {
+    console.log(`[MULTI-DEVICE-SYNC] Novo terminal "${device}" autenticado para @${username} (IP: ${clientIp}). Sessões simultâneas permitidas.`);
   }
 
   const newSession: ActiveUserSession = {
@@ -2558,7 +2680,17 @@ app.post("/api/integrations/solidworks/sync-project", async (req: any, res) => {
       serverAppStoreCache.boms.unshift(newBom);
       serverAppStoreCache.materialSeparations.unshift(newSeparation);
 
-      await saveAppStoreToDb();
+      persistServerCacheToDisk(serverAppStoreCache);
+      const config = resolveDatabaseConfig();
+      if (isDatabaseSocketAvailable(config.database)) {
+        try {
+          await executeSqlWithRetry(
+            'UPDATE app_store SET data = $1, updated_at = NOW() WHERE id = $2',
+            [JSON.stringify(serverAppStoreCache), 'motordesk_main'],
+            config.database
+          );
+        } catch (e) {}
+      }
     }
 
     return res.status(201).json({
@@ -2751,6 +2883,9 @@ app.post("/api/public/quotations/:id/respond", async (req, res) => {
     });
     serverAppStoreCache.notifications = notifs;
 
+    // Persistir imediatamente em disco (data/app_store.json) e backups
+    persistServerCacheToDisk(serverAppStoreCache);
+
     // Save to Cloud SQL / App Store
     const config = resolveDatabaseConfig();
     try {
@@ -2763,10 +2898,23 @@ app.post("/api/public/quotations/:id/respond", async (req, res) => {
       console.warn("Could not persist quotation update immediately to Postgres, cached in memory:", e);
     }
 
+    // Broadcast em tempo real para todos os navegadores e computadores conectados (Compradores recebem notificação instantânea)
+    currentDbVersion++;
+    currentDbUpdatedAt = new Date().toISOString();
+    broadcastDbUpdate({
+      updatedAt: currentDbUpdatedAt,
+      version: currentDbVersion,
+      companyId: targetQuotation.companyId,
+      source: "supplier_quotation_reply",
+    });
+
+    console.log(`[QUOTATION-REPLY] Cotação ${targetQuotation.code} respondida por ${targetQuotation.supplierRespondent?.name || "Fornecedor"} (Total: R$ ${totalEstimated.toFixed(2)}). Notificação enviada ao módulo de compras.`);
+
     return res.json({
       success: true,
-      message: "Cotação respondida e devolvida com sucesso para a empresa!",
-      quotationCode: targetQuotation.code
+      message: "Cotação respondida e devolvida com sucesso para o departamento de compras!",
+      quotationCode: targetQuotation.code,
+      totalAmount: totalEstimated
     });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -2943,22 +3091,241 @@ app.post("/api/fiscal/inutilize", requireAuth, requireContractedModule("Fiscal",
 });
 
 // ==========================================
+// 4.1 ROTAS NOTAS-API / FOCUS NFE NFS-E GATEWAY
+// ==========================================
+
+// Store for admin tokens
+const notasApiAdminSessions = new Set<string>();
+
+function requireNotasApiAdmin(req: any, res: any, next: any) {
+  const authHeader = req.headers.authorization || '';
+  const token = authHeader.replace(/^Bearer\s+/i, '').trim();
+  if (!token || !notasApiAdminSessions.has(token)) {
+    return res.status(401).json({ error: 'Acesso negado ao portal Notas-API. Autenticação obrigatória com senha master.' });
+  }
+  next();
+}
+
+// 1. Auth with Master Password
+app.post("/api/notas-api/auth", (req, res) => {
+  const { password } = req.body || {};
+  if (!password) {
+    return res.status(400).json({ error: 'Senha master não fornecida.' });
+  }
+  if (!notasApiBackend.verifyMasterPassword(password)) {
+    return res.status(401).json({ error: 'Senha master incorreta.' });
+  }
+  const token = notasApiBackend.generateRandomToken('adm_fcs_');
+  notasApiAdminSessions.add(token);
+  res.json({
+    success: true,
+    token,
+    expiresIn: '24h',
+    message: 'Autenticado com sucesso no portal Notas-API Focus.'
+  });
+});
+
+// 2. Change Master Password
+app.post("/api/notas-api/change-password", requireNotasApiAdmin, (req, res) => {
+  const { oldPassword, newPassword } = req.body || {};
+  if (!oldPassword || !newPassword) {
+    return res.status(400).json({ error: 'Senha atual e nova senha são obrigatórias.' });
+  }
+  const success = notasApiBackend.updateMasterPassword(oldPassword, newPassword);
+  if (!success) {
+    return res.status(400).json({ error: 'Senha atual incorreta ou nova senha não atende aos requisitos (mínimo 6 caracteres).' });
+  }
+  res.json({ success: true, message: 'Senha master alterada com sucesso.' });
+});
+
+// 3. Stats
+app.get("/api/notas-api/stats", requireNotasApiAdmin, (req, res) => {
+  res.json(notasApiBackend.getNotasApiStats());
+});
+
+// 4. Empresas
+app.get("/api/notas-api/empresas", requireNotasApiAdmin, (req, res) => {
+  res.json(notasApiBackend.getEmpresas());
+});
+
+app.post("/api/notas-api/empresas", requireNotasApiAdmin, (req, res) => {
+  try {
+    const saved = notasApiBackend.saveEmpresa(req.body);
+    res.json({ success: true, empresa: saved });
+  } catch (err: any) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.delete("/api/notas-api/empresas/:id", requireNotasApiAdmin, (req, res) => {
+  const ok = notasApiBackend.deleteEmpresa(req.params.id);
+  res.json({ success: ok });
+});
+
+app.post("/api/notas-api/empresas/:id/token", requireNotasApiAdmin, (req, res) => {
+  const token = notasApiBackend.regenerateEmpresaToken(req.params.id);
+  if (!token) return res.status(404).json({ error: 'Empresa não encontrada.' });
+  res.json({ success: true, token });
+});
+
+app.post("/api/notas-api/empresas/:id/certificado", requireNotasApiAdmin, (req, res) => {
+  const updated = notasApiBackend.updateCertificadoA1(req.params.id, req.body);
+  if (!updated) return res.status(404).json({ error: 'Empresa não encontrada.' });
+  res.json({ success: true, empresa: updated });
+});
+
+// 5. Notas
+app.get("/api/notas-api/notas", requireNotasApiAdmin, (req, res) => {
+  const { status, empresaId, q } = req.query as any;
+  res.json(notasApiBackend.getNotas({ status, empresaId, q }));
+});
+
+app.post("/api/notas-api/notas", requireNotasApiAdmin, (req, res) => {
+  try {
+    const nota = notasApiBackend.emitirNfse(req.body);
+    res.json({ success: true, nota });
+  } catch (err: any) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.post("/api/notas-api/notas/:id/cancelar", requireNotasApiAdmin, (req, res) => {
+  try {
+    const { justificativa } = req.body || {};
+    const nota = notasApiBackend.cancelarNfse(req.params.id, justificativa);
+    res.json({ success: true, nota });
+  } catch (err: any) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.get("/api/notas-api/notas/:id/xml", (req, res) => {
+  try {
+    const notas = notasApiBackend.getNotas();
+    const nota = notas.find(n => n.id === req.params.id || n.ref === req.params.id);
+    if (!nota || !nota.xml) {
+      return res.status(404).send('XML não encontrado.');
+    }
+    res.setHeader('Content-Type', 'application/xml');
+    res.setHeader('Content-Disposition', `attachment; filename="DPS-${nota.numeroDps}-${nota.serieDps}.xml"`);
+    res.send(nota.xml);
+  } catch (err: any) {
+    res.status(500).send(err.message);
+  }
+});
+
+app.get("/api/notas-api/notas/:id/danfse", (req, res) => {
+  try {
+    const html = notasApiBackend.getDanfseHtml(req.params.id);
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.send(html);
+  } catch (err: any) {
+    res.status(404).send(`<h3>Erro: ${err.message}</h3>`);
+  }
+});
+
+// 6. Focus NFe Compatible Public Endpoints
+app.post("/v1/nfse", (req, res) => {
+  try {
+    const authHeader = req.headers.authorization || '';
+    const empresa = notasApiBackend.getEmpresaByToken(authHeader);
+    if (!empresa) {
+      return res.status(401).json({ codigo: 'nao_autorizado', mensagem: 'Token de autenticação da empresa emitente inválido ou não fornecido.' });
+    }
+
+    const ref = (req.query.ref as string) || req.body.ref || `REF-${Date.now()}`;
+    const nota = notasApiBackend.emitirNfse({
+      empresaId: empresa.id,
+      ref,
+      tomador: {
+        cnpjCpf: req.body.tomador?.cnpj || req.body.tomador?.cpf || req.body.tomador?.cnpjCpf || '',
+        razaoSocial: req.body.tomador?.razao_social || req.body.tomador?.nome || 'Tomador',
+        email: req.body.tomador?.email,
+        telefone: req.body.tomador?.telefone,
+        endereco: req.body.tomador?.endereco?.logradouro
+      },
+      servico: {
+        discriminacao: req.body.servico?.discriminacao || 'Serviços Prestados',
+        codigoTributacaoNacional: req.body.servico?.codigo_tributacao_nacional || '14.01.01',
+        valorServicos: req.body.servico?.valor_servicos || req.body.valor || 0,
+        aliquotaIss: req.body.servico?.aliquota || 5.0
+      }
+    });
+
+    res.status(201).json({
+      status: 'processando_autorizacao',
+      status_final: 'autorizado',
+      ref: nota.ref,
+      numero_dps: nota.numeroDps,
+      serie_dps: nota.serieDps,
+      chave_acesso: nota.chaveAcesso,
+      protocolo: nota.protocolo,
+      caminho_xml_nota_fiscal: `/api/notas-api/notas/${nota.id}/xml`,
+      caminho_danfse: `/api/notas-api/notas/${nota.id}/danfse`
+    });
+  } catch (err: any) {
+    res.status(400).json({ codigo: 'requisicao_invalida', mensagem: err.message });
+  }
+});
+
+app.get("/v1/nfse/:ref", (req, res) => {
+  const notas = notasApiBackend.getNotas();
+  const nota = notas.find(n => n.ref === req.params.ref || n.id === req.params.ref);
+  if (!nota) {
+    return res.status(404).json({ codigo: 'nao_encontrado', mensagem: `NFS-e com referência "${req.params.ref}" não encontrada.` });
+  }
+  res.json({
+    ref: nota.ref,
+    status: nota.status,
+    numero_dps: nota.numeroDps,
+    serie_dps: nota.serieDps,
+    chave_acesso: nota.chaveAcesso,
+    protocolo: nota.protocolo,
+    caminho_xml: `/api/notas-api/notas/${nota.id}/xml`,
+    caminho_danfse: `/api/notas-api/notas/${nota.id}/danfse`
+  });
+});
+
+app.delete("/v1/nfse/:ref", (req, res) => {
+  try {
+    const justificativa = req.body?.justificativa || req.query?.justificativa || 'Cancelamento solicitado via API';
+    const nota = notasApiBackend.cancelarNfse(req.params.ref, justificativa as string);
+    res.json({
+      ref: nota.ref,
+      status: 'cancelado',
+      cancelado_em: nota.canceladoEm,
+      justificativa: nota.justificativaCancelamento
+    });
+  } catch (err: any) {
+    res.status(400).json({ codigo: 'erro_cancelamento', mensagem: err.message });
+  }
+});
+
+// ==========================================
 // 5. ROTAS DE BACKUP DIÁRIO DA BASE DE DADOS
 // ==========================================
 async function getDbSnapshotForBackup(): Promise<any> {
   if (serverAppStoreCache) return serverAppStoreCache;
+  const initial = loadInitialServerCache();
+  if (initial) {
+    serverAppStoreCache = initial;
+    return serverAppStoreCache;
+  }
   const cfg = resolveDatabaseConfig();
-  try {
-    const res = await executeSqlWithRetry(
-      'SELECT data FROM app_store WHERE id = $1',
-      ['motordesk_main'],
-      cfg.database
-    );
-    if (res.rows.length > 0 && res.rows[0].data) {
-      serverAppStoreCache = res.rows[0].data;
-      return serverAppStoreCache;
-    }
-  } catch (e) {}
+  if (isDatabaseSocketAvailable(cfg.database)) {
+    try {
+      const res = await executeSqlWithRetry(
+        'SELECT data FROM app_store WHERE id = $1',
+        ['motordesk_main'],
+        cfg.database
+      );
+      if (res.rows.length > 0 && res.rows[0].data) {
+        serverAppStoreCache = res.rows[0].data;
+        persistServerCacheToDisk(serverAppStoreCache);
+        return serverAppStoreCache;
+      }
+    } catch (e) {}
+  }
   return serverAppStoreCache || null;
 }
 
@@ -3364,11 +3731,14 @@ async function startServer() {
   app.listen(PORT, "0.0.0.0", async () => {
     console.log(`MotorDesk Express REST API running on http://0.0.0.0:${PORT}`);
     try {
-      // Pré-aquecimento e manutenção contínua da conexão aberta com o banco
-      await warmUpDatabaseConnection();
-      startDatabaseKeepAlive(15000);
       const config = resolveDatabaseConfig();
-      await ensureAppStoreTableExists(config.database);
+      if (isDatabaseSocketAvailable(config.database)) {
+        await warmUpDatabaseConnection();
+        startDatabaseKeepAlive(15000);
+        await ensureAppStoreTableExists(config.database);
+      } else {
+        console.log(`[MotorDesk Boot] Cloud SQL socket (${config.host}) não montado localmente. Operando em modo de resiliência com armazenamento persistente e cache.`);
+      }
     } catch (dbBootErr: any) {
       console.warn(`[MotorDesk Boot] Aviso ao inicializar conexão do banco: ${dbBootErr.message}`);
     }

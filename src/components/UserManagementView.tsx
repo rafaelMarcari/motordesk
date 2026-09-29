@@ -540,6 +540,318 @@ const PERMISSION_LABEL_MAP: { [K in keyof UserPermissions]: string } = {
   bomEdit: "Editar Engenharia de Produto (BOM)"
 };
 
+export interface ScreenDef {
+  id: string;
+  name: string;
+  desc: string;
+  associatedPermission?: string;
+}
+
+export interface SystemModuleDef {
+  id: string;
+  name: string;
+  category: 'Geral' | 'Operacional' | 'Comercial' | 'Estoque' | 'Financeiro' | 'Fiscal' | 'Produção' | 'Administrativo';
+  description: string;
+  icon: string;
+  screens: ScreenDef[];
+  permissionKeys: string[];
+}
+
+export const SYSTEM_MODULES_LIST: SystemModuleDef[] = [
+  {
+    id: 'accessDashboard',
+    name: 'Dashboard & Indicadores (KPIs)',
+    category: 'Geral',
+    description: 'Painel executivo com metas diárias, faturamento, ticket médio e fluxo de clientes.',
+    icon: '📊',
+    screens: [
+      { id: 'dashboard_overview', name: 'Visão Geral & Métricas Executivas', desc: 'KPIs de faturamento, ticket médio e comparativos mensais', associatedPermission: 'accessDashboard' },
+      { id: 'dashboard_patio', name: 'Status do Pátio & Boxes de Atendimento', desc: 'Ocupação em tempo real do pátio e produtividade', associatedPermission: 'accessDashboard' },
+      { id: 'dashboard_alerts', name: 'Alertas Operacionais & Metas', desc: 'Avisos de revisões, metas e gargalos operacionais', associatedPermission: 'accessDashboard' }
+    ],
+    permissionKeys: ['accessDashboard']
+  },
+  {
+    id: 'accessSales',
+    name: 'Vendas Balcão / Ponto de Venda Express (PDV)',
+    category: 'Comercial',
+    description: 'PDV rápido para venda direta de peças e insumos sem necessidade de OS veicular.',
+    icon: '⚡',
+    screens: [
+      { id: 'sales_pos', name: 'Balcão PDV / Nova Venda Rápida', desc: 'Emissão ágil de pedidos e cupons de venda balcão', associatedPermission: 'salesCreate' },
+      { id: 'sales_history', name: 'Histórico de Vendas Balcão', desc: 'Consulta, cancelamentos e reimpressão de comprovantes', associatedPermission: 'salesCancel' },
+      { id: 'sales_withdrawals', name: 'Fila de Expedição, Retirada & Entrega', desc: 'Separação e despacho de mercadorias vendidas', associatedPermission: 'accessWithdrawals' }
+    ],
+    permissionKeys: ['accessSales', 'accessWithdrawals', 'salesCreate', 'salesCancel']
+  },
+  {
+    id: 'accessBudgets',
+    name: 'Orçamentos Comerciais & Portal do Cliente',
+    category: 'Comercial',
+    description: 'Elaborador de propostas técnicas, cálculo de margem e envio para aprovação no WhatsApp.',
+    icon: '📝',
+    screens: [
+      { id: 'budgets_builder', name: 'Elaborador Técnico de Orçamentos', desc: 'Composição de peças, mão de obra e cálculos tributários', associatedPermission: 'budgetsCreate' },
+      { id: 'budgets_approval', name: 'Aprovação Digital WhatsApp & Assinatura', desc: 'Link dinâmico para aceite e assinatura digital do cliente', associatedPermission: 'budgetsApprove' },
+      { id: 'budgets_discount', name: 'Política de Descontos & Margem Comercial', desc: 'Controle de alçadas de desconto com trava gerencial', associatedPermission: 'budgetsApplyDiscount' }
+    ],
+    permissionKeys: ['accessBudgets', 'canEditBudgets', 'budgetsCreate', 'budgetsApprove', 'budgetsApplyDiscount']
+  },
+  {
+    id: 'accessServiceOrders',
+    name: 'Ordens de Serviço Inteligentes (OS)',
+    category: 'Operacional',
+    description: 'Gestão completa do ciclo de vida da OS, checklists fotográficos e alocação de mecânicos.',
+    icon: '🔧',
+    screens: [
+      { id: 'os_kanban', name: 'Pátio Kanban & Tramitação de OS', desc: 'Visão em colunas: Aberta, Em Execução, Peças, Concluída', associatedPermission: 'accessServiceOrders' },
+      { id: 'os_create', name: 'Abertura & Checklist Fotográfico Entrada', desc: 'Registro de avarias, nível de combustível e pertences', associatedPermission: 'serviceOrdersCreate' },
+      { id: 'os_diagnostics', name: 'Diagnóstico Técnico & Alocação de Mecânico', desc: 'Apontamento de horas trabalhadas e peças aplicadas', associatedPermission: 'serviceOrdersEdit' },
+      { id: 'os_delivery', name: 'Conclusão, Entrega & Garantia 90 Dias', desc: 'Checklist de saída, termo de garantia e pós-venda', associatedPermission: 'serviceOrdersComplete' }
+    ],
+    permissionKeys: ['accessServiceOrders', 'serviceOrdersCreate', 'serviceOrdersEdit', 'serviceOrdersComplete', 'serviceOrdersCancel']
+  },
+  {
+    id: 'accessClients',
+    name: 'Cadastro de Clientes & CRM',
+    category: 'Comercial',
+    description: 'Base unificada de clientes PF e PJ com validação rigorosa de CPF/CNPJ único (RN001).',
+    icon: '👥',
+    screens: [
+      { id: 'clients_list', name: 'Cadastro Unificado PF / PJ', desc: 'Dados cadastrais, endereços e contatos WhatsApp', associatedPermission: 'clientsCreate' },
+      { id: 'clients_credit', name: 'Limite de Crédito & Bloqueio Financeiro', desc: 'Gestão de limites para faturamento a prazo', associatedPermission: 'clientsEdit' },
+      { id: 'clients_history', name: 'Histórico de Passagens & Veículos', desc: 'Linha do tempo de atendimentos e compras do cliente', associatedPermission: 'accessClients' }
+    ],
+    permissionKeys: ['accessClients', 'clientsCreate', 'clientsEdit', 'clientsDelete']
+  },
+  {
+    id: 'accessVehicles',
+    name: 'Gestão de Veículos & Frota',
+    category: 'Operacional',
+    description: 'Controle de placas Mercosul e tradicional (RN002), chassis, histórico e garantias.',
+    icon: '🚗',
+    screens: [
+      { id: 'vehicles_list', name: 'Cadastro de Frota & Validação de Placas', desc: 'Dados técnicos: chassi, motor, ano, modelo e cor', associatedPermission: 'vehiclesCreate' },
+      { id: 'vehicles_maintenance', name: 'Plano Preventivo & Quilometragem', desc: 'Controle de revisões periódicas por km e tempo', associatedPermission: 'vehiclesEdit' },
+      { id: 'vehicles_warranty', name: 'Controle de Garantias de Peças e Serviços', desc: 'Rastreabilidade de prazos e coberturas ativas', associatedPermission: 'accessVehicles' }
+    ],
+    permissionKeys: ['accessVehicles', 'vehiclesCreate', 'vehiclesEdit', 'vehiclesDelete']
+  },
+  {
+    id: 'accessParts',
+    name: 'Peças & Controle de Estoque',
+    category: 'Estoque',
+    description: 'Inventário com leitor XML de NF-e de compra, localização física e ponto de pedido.',
+    icon: '📦',
+    screens: [
+      { id: 'parts_catalog', name: 'Catálogo de Autopeças & Localização', desc: 'Prateleiras, gavetas, códigos originais e similares', associatedPermission: 'partsCreate' },
+      { id: 'parts_xml_import', name: 'Importador Automático de XML de NF-e', desc: 'Entrada de notas fiscais de fornecedores em segundos', associatedPermission: 'partsImportXml' },
+      { id: 'parts_inventory', name: 'Ponto de Pedido & Estoque Mínimo', desc: 'Alertas automáticos para reposição de peças em falta', associatedPermission: 'partsEdit' }
+    ],
+    permissionKeys: ['accessParts', 'partsCreate', 'partsEdit', 'partsDelete', 'partsImportXml', 'canViewOtherStoresStock', 'canSellOtherStoresStock']
+  },
+  {
+    id: 'accessUnitsOfMeasure',
+    name: 'Unidades de Medida & Dimensional',
+    category: 'Estoque',
+    description: 'Configuração métrica e regras de cálculo dimensional (linear, m², m³ e fracionados).',
+    icon: '📐',
+    screens: [
+      { id: 'units_list', name: 'Tabela de Unidades de Medida', desc: 'Cadastro de UN, KG, L, M, M², M³, CX, PAR, HR', associatedPermission: 'unitsOfMeasureCreate' },
+      { id: 'units_dimensions', name: 'Fórmulas de Cálculo Metro / M² / M³', desc: 'Cálculo para mangueiras, chapas e óleos fracionados', associatedPermission: 'unitsOfMeasureEdit' }
+    ],
+    permissionKeys: ['accessUnitsOfMeasure', 'unitsOfMeasureCreate', 'unitsOfMeasureEdit', 'unitsOfMeasureToggleActive']
+  },
+  {
+    id: 'accessServices',
+    name: 'Serviços & Mão de Obra Mecânica',
+    category: 'Operacional',
+    description: 'Tabela padrão de serviços automotivos, tempos de execução e alíquotas municipais.',
+    icon: '🛠️',
+    screens: [
+      { id: 'services_catalog', name: 'Tabela Padrão de Serviços & Horas', desc: 'Preços hora, tempo de execução e categorias', associatedPermission: 'servicesCreate' },
+      { id: 'services_fiscal', name: 'Enquadramento Fiscal LC 116 / ISSQN', desc: 'Códigos de tributação municipal e alíquotas de ISS', associatedPermission: 'servicesEdit' }
+    ],
+    permissionKeys: ['accessServices', 'servicesCreate', 'servicesEdit', 'servicesDelete']
+  },
+  {
+    id: 'accessQuotations',
+    name: 'Cotações & Gestão de Fornecedores',
+    category: 'Estoque',
+    description: 'Tomada de preços multi-fornecedor, destaque do menor valor e catálogo de parceiros.',
+    icon: '🏷️',
+    screens: [
+      { id: 'quotations_board', name: 'Tomada de Preços Multi-Fornecedor', desc: 'Comparativo automático de menor preço entre distribuidores', associatedPermission: 'quotationsCreate' },
+      { id: 'suppliers_catalog', name: 'Cadastro & Avaliação de Fornecedores', desc: 'Prazos de entrega, limites e histórico de compras', associatedPermission: 'quotationsApprove' }
+    ],
+    permissionKeys: ['accessQuotations', 'quotationsCreate', 'quotationsApprove']
+  },
+  {
+    id: 'accessAccountsReceivable',
+    name: 'Contas a Receber & Cobrança',
+    category: 'Financeiro',
+    description: 'Controle de recebíveis de OS e vendas balcão, boletos, PIX e cálculo de maquininhas.',
+    icon: '💰',
+    screens: [
+      { id: 'receivable_titles', name: 'Painel de Títulos a Receber', desc: 'Títulos a vencer, vencidos e liquidação de parcelas', associatedPermission: 'accountsReceivableCreate' },
+      { id: 'receivable_settlement', name: 'Baixas & Conciliação de Maquininha', desc: 'Desconto de taxas operacionais de cartão e TED', associatedPermission: 'accountsReceivableSettle' },
+      { id: 'receivable_boletos', name: 'Emissão de Boletos Bancários & PIX', desc: 'Boletos com QR Code PIX dinâmico e registro online', associatedPermission: 'accessBoletos' }
+    ],
+    permissionKeys: ['accessAccountsReceivable', 'accountsReceivableCreate', 'accountsReceivableSettle', 'accountsReceivableCancel', 'accessBoletos', 'boletoView', 'boletoGenerate', 'boletoReprint', 'boletoConfig', 'pixView', 'pixGenerate', 'pixConfig']
+  },
+  {
+    id: 'accessAccountsPayable',
+    name: 'Contas a Pagar & Despesas',
+    category: 'Financeiro',
+    description: 'Controle de obrigações com fornecedores de peças, salários, aluguel e despesas gerais.',
+    icon: '🧾',
+    screens: [
+      { id: 'payable_titles', name: 'Painel de Títulos a Pagar', desc: 'Cronograma de pagamentos, boletos de peças e contas fixas', associatedPermission: 'accountsPayableCreate' },
+      { id: 'payable_settlement', name: 'Baixas de Pagamentos & Comprovantes', desc: 'Liquidação bancária e anexo de comprovantes de TED/PIX', associatedPermission: 'accountsPayableSettle' },
+      { id: 'payable_expenses', name: 'Classificação por Centro de Custos', desc: 'Categorização de custos fixos, variáveis e tributários', associatedPermission: 'accessAccountsPayable' }
+    ],
+    permissionKeys: ['accessAccountsPayable', 'accountsPayableCreate', 'accountsPayableSettle', 'accountsPayableCancel']
+  },
+  {
+    id: 'accessFinancial',
+    name: 'Gestão Financeira, Caixa & DRE',
+    category: 'Financeiro',
+    description: 'Centralização de entradas e saídas, extrato por contas e DRE simplificado em tempo real.',
+    icon: '📈',
+    screens: [
+      { id: 'financial_cashflow', name: 'Fluxo de Caixa Diário & Conciliação', desc: 'Saldo real, saldo projetado e conciliação de contas', associatedPermission: 'financialView' },
+      { id: 'financial_dre', name: 'Demonstrativo DRE em Tempo Real', desc: 'Receita líquida, CMV, margem de contribuição e lucro', associatedPermission: 'financialEntry' },
+      { id: 'financial_entries', name: 'Lançamentos Avulsos & Contas Bancárias', desc: 'Controle de contas bancárias e transferências internas', associatedPermission: 'financialConfig' }
+    ],
+    permissionKeys: ['accessFinancial', 'financialView', 'financialEntry', 'financialConfig', 'financialExport']
+  },
+  {
+    id: 'accessFiscal',
+    name: 'Módulo Fiscal SEFAZ (NF-e, NFC-e, NFS-e)',
+    category: 'Fiscal',
+    description: 'Emissão, assinatura XML, transmissão e DANFE de notas fiscais eletrônicas municipais e estaduais.',
+    icon: '🏛️',
+    screens: [
+      { id: 'fiscal_nfe', name: 'Emissão de NF-e Mod. 55 e NFC-e Mod. 65', desc: 'Notas de produtos, autopeças e vendas balcão', associatedPermission: 'fiscalEmit' },
+      { id: 'fiscal_nfse', name: 'Emissão de NFS-e Municipal de Serviços', desc: 'Faturamento de mão de obra mecânica com prefeitura', associatedPermission: 'fiscalEmit' },
+      { id: 'fiscal_conference', name: 'Conferência, Inutilização & Cancelamento', desc: 'Auditoria tributária pré-emissão e cancelamentos SEFAZ', associatedPermission: 'fiscalCancel' },
+      { id: 'fiscal_config', name: 'Certificado Digital A1 & Regras Tributárias', desc: 'Upload de PFX, NCMs, CFOPs e alíquotas de ICMS/PIS/COFINS', associatedPermission: 'fiscalConfig' }
+    ],
+    permissionKeys: ['accessFiscal', 'accessSefaz', 'fiscalView', 'fiscalEmit', 'fiscalCancel', 'fiscalConfig', 'fiscalReprint', 'fiscalXml', 'sefazView', 'sefazTest', 'sefazConfig']
+  },
+  {
+    id: 'accessCarriers',
+    name: 'Transportadoras & Logística',
+    category: 'Operacional',
+    description: 'Cadastro de empresas transportadoras, modalidade CIF/FOB e integração ao transporte da NF-e.',
+    icon: '🚚',
+    screens: [
+      { id: 'carriers_list', name: 'Cadastro de Transportadoras', desc: 'RNTRC, placas do veículo, contato e dados de frete', associatedPermission: 'carriersCreate' },
+      { id: 'carriers_freight', name: 'Gestão de Fretes & Despacho', desc: 'Cálculo de peso bruto, líquido e volumes transportados', associatedPermission: 'carriersEdit' }
+    ],
+    permissionKeys: ['accessCarriers', 'carriersCreate', 'carriersEdit', 'carriersDelete']
+  },
+  {
+    id: 'accessReports',
+    name: 'Relatórios Estratégicos & PDF',
+    category: 'Geral',
+    description: 'Emissão de relatórios analíticos, curva ABC de produtos, produtividade de mecânicos e exportação oficial.',
+    icon: '📑',
+    screens: [
+      { id: 'reports_financial', name: 'Relatórios de Faturamento & DRE', desc: 'Faturamento por período, forma de pagamento e unidades', associatedPermission: 'reportsExport' },
+      { id: 'reports_abc', name: 'Curva ABC de Peças e Vendas', desc: 'Classificação dos 20% de itens que geram 80% da receita', associatedPermission: 'reportsExport' },
+      { id: 'reports_productivity', name: 'Produtividade de Mecânicos & Comissões', desc: 'Horas trabalhadas, serviços concluídos e comissões', associatedPermission: 'reportsExport' }
+    ],
+    permissionKeys: ['accessReports', 'reportsExport', 'canCustomizePdf']
+  },
+  {
+    id: 'accessProduction',
+    name: 'Produção Industrial & PCP (Indústria)',
+    category: 'Produção',
+    description: 'Módulo de planejamento e controle de produção para indústrias automotivas e metalúrgicas.',
+    icon: '🏭',
+    screens: [
+      { id: 'production_bom', name: 'Engenharia de Produto & Estrutura (BOM)', desc: 'Listagem multinível de matérias-primas e componentes', associatedPermission: 'accessBillOfMaterials' },
+      { id: 'production_orders', name: 'Ordens de Produção (OP) & Chão de Fábrica', desc: 'Abertura, acompanhamento de etapas e apontamentos', associatedPermission: 'accessProductionOrders' },
+      { id: 'production_lots', name: 'Rastreabilidade por Lotes de Fabricação', desc: 'Validades, certificados de conformidade e refugo (scrap)', associatedPermission: 'accessLots' }
+    ],
+    permissionKeys: ['accessProduction', 'accessIndustrialDashboard', 'accessProductionOrders', 'accessBillOfMaterials', 'accessIndustrialStock', 'accessLots', 'productionOrderCreate', 'productionOrderEdit', 'productionOrderApprove', 'productionOrderCancel', 'productionOrderComplete', 'bomCreate', 'bomEdit']
+  },
+  {
+    id: 'accessHistory',
+    name: 'Trilha de Auditoria & Logs Imutáveis',
+    category: 'Administrativo',
+    description: 'Registro cronológico e inviolável de todas as ações de usuários com IP e timestamp.',
+    icon: '🛡️',
+    screens: [
+      { id: 'history_audit', name: 'Logs Gerais de Auditoria de Ações', desc: 'Criação, edição, exclusão e concessão de descontos', associatedPermission: 'accessHistory' },
+      { id: 'history_passages', name: 'Histórico de Passagens de Veículos (RN007)', desc: 'Registro temporal completo de passagens pela oficina', associatedPermission: 'accessHistory' }
+    ],
+    permissionKeys: ['accessHistory', 'historyExport', 'canViewAllCompaniesHistory']
+  },
+  {
+    id: 'accessQAPanel',
+    name: 'Portfólio de Qualidade & Terminal SQL',
+    category: 'Administrativo',
+    description: 'Suíte de garantia de qualidade (QA), casos de teste, rastreabilidade e terminal SQL.',
+    icon: '🧪',
+    screens: [
+      { id: 'qa_testcases', name: 'Casos de Teste Interativos em Tempo Real', desc: 'Bateria de validações automatizadas e funcionais', associatedPermission: 'accessQAPanel' },
+      { id: 'qa_requirements', name: 'Documento de Requisitos (PRD) & Rastreabilidade', desc: 'Matriz cruzada de requisitos funcionais e regras de negócio', associatedPermission: 'accessQAPanel' },
+      { id: 'qa_sql', name: 'Terminal SQL para Consultas Ad-Hoc', desc: 'Execução de queries SQL de auditoria no banco de dados', associatedPermission: 'accessQAPanel' }
+    ],
+    permissionKeys: ['accessQAPanel']
+  },
+  {
+    id: 'accessUserManagement',
+    name: 'Gestão de Usuários & Níveis RBAC',
+    category: 'Administrativo',
+    description: 'Controle de operadores, concessão de acessos modulares e segurança multi-empresa.',
+    icon: '🔐',
+    screens: [
+      { id: 'users_operators', name: 'Cadastro de Colaboradores & Operadores', desc: 'Vínculo de papéis (mecânico, atendente, vendedor, gerente)', associatedPermission: 'accessUserManagement' },
+      { id: 'users_groups', name: 'Grupos de Acesso & Matriz de Níveis', desc: 'Configuração detalhada de permissões por grupo', associatedPermission: 'accessUserManagement' },
+      { id: 'users_companies', name: 'Multi-Empresas (Tenants SaaS)', desc: 'Gestão da rede de lojas, filiais e parâmetros de contrato', associatedPermission: 'accessUserManagement' }
+    ],
+    permissionKeys: ['accessUserManagement']
+  }
+];
+
+export function getDefaultContractedModulesForBusinessType(bType: BusinessType | string): Record<string, boolean> {
+  const norm = normalizeBusinessType(bType);
+  const res: Record<string, boolean> = {};
+
+  SYSTEM_MODULES_LIST.forEach(mod => {
+    if (norm === 'OFICINA_COMERCIO') {
+      res[mod.id] = mod.id !== 'accessProduction';
+    } else if (norm === 'OFICINA') {
+      const excluded = ['accessSales', 'accessWithdrawals', 'accessUnitsOfMeasure', 'accessProduction'];
+      res[mod.id] = !excluded.includes(mod.id);
+    } else if (norm === 'COMERCIO') {
+      const excluded = ['accessServiceOrders', 'accessVehicles', 'accessServices', 'accessProduction'];
+      res[mod.id] = !excluded.includes(mod.id);
+    } else if (norm === 'INDUSTRIA') {
+      const excluded = ['accessServiceOrders', 'accessVehicles', 'accessServices'];
+      res[mod.id] = !excluded.includes(mod.id);
+    } else {
+      res[mod.id] = true;
+    }
+  });
+
+  return res;
+}
+
+export function getDefaultContractedScreens(): Record<string, Record<string, boolean>> {
+  const res: Record<string, Record<string, boolean>> = {};
+  SYSTEM_MODULES_LIST.forEach(mod => {
+    res[mod.id] = {};
+    mod.screens.forEach(scr => {
+      res[mod.id][scr.id] = true;
+    });
+  });
+  return res;
+}
+
 export default function UserManagementView({ 
   db, 
   currentUser, 
@@ -586,27 +898,127 @@ export default function UserManagementView({
   const [hasAcceptedUserLgpd, setHasAcceptedUserLgpd] = useState<boolean>(true);
   const [hasAcceptedCompanyLgpd, setHasAcceptedCompanyLgpd] = useState<boolean>(true);
 
-  // New Company Creation Modal
+  // Helper de pré-preenchimento automático para criação de novas empresas no MotorDesk
+  const getPreFilledCompanyDefaults = (list: CompanyInfo[] = registeredCompaniesList) => {
+    const total = list?.length || 1;
+    const nextSeq = total + 1;
+    const p1 = String(20 + (nextSeq % 70)).padStart(2, '0');
+    const p2 = String(100 + (nextSeq * 37) % 899).padStart(3, '0');
+    const p3 = String(200 + (nextSeq * 53) % 799).padStart(3, '0');
+    const cnpj = `${p1}.${p2}.${p3}/0001-${String(10 + (nextSeq % 89))}`;
+    const ie = `110.${String(200 + nextSeq * 17).padStart(3, '0')}.490.114`;
+
+    return {
+      name: `Centro Automotivo & Oficina Modelo ${nextSeq} LTDA`,
+      cnpj: cnpj,
+      stateRegistration: ie,
+      type: 'matriz' as 'matriz' | 'filial',
+      businessType: 'OFICINA_COMERCIO' as BusinessType,
+      phone: '(11) 3456-7890',
+      whatsapp: '11987654321',
+      email: `contato@oficinamodelo${nextSeq}.com.br`,
+      address: 'Av. das Nações Unidas, 1500 - Bloco B - São Paulo - SP, CEP 04578-000',
+      fee: 299.90,
+      hasImplementationFee: false,
+      implementationFee: 500.00,
+      legalRepName: 'Carlos Eduardo da Silva',
+      legalRepCpf: '284.915.738-92',
+      legalRepRg: '32.145.876-X SSP/SP',
+      legalRepPhone: '(11) 98765-4321',
+      legalRepEmail: `carlos.silva@oficinamodelo${nextSeq}.com.br`,
+      legalRepAddress: 'Rua das Acácias, 240, Apto 52 - Jardim Paulista, São Paulo - SP',
+      enableWithdrawalAndDelivery: true
+    };
+  };
+
+  const initialCompDefaults = getPreFilledCompanyDefaults();
+
+  // New Company Creation Modal - Inicializado Pré-preenchido
   const [showNewCompanyModal, setShowNewCompanyModal] = useState<boolean>(false);
-  const [newCompName, setNewCompName] = useState('');
-  const [newCompCnpj, setNewCompCnpj] = useState('');
-  const [newCompType, setNewCompType] = useState<'matriz' | 'filial'>('matriz');
-  const [newCompBusinessType, setNewCompBusinessType] = useState<BusinessType>('OFICINA');
+  const [newCompName, setNewCompName] = useState(initialCompDefaults.name);
+  const [newCompCnpj, setNewCompCnpj] = useState(initialCompDefaults.cnpj);
+  const [newCompIe, setNewCompIe] = useState(initialCompDefaults.stateRegistration);
+  const [newCompType, setNewCompType] = useState<'matriz' | 'filial'>(initialCompDefaults.type);
+  const [newCompBusinessType, setNewCompBusinessType] = useState<BusinessType>(initialCompDefaults.businessType);
   const [newCompParentMatrizId, setNewCompParentMatrizId] = useState<string>('');
-  const [newCompPhone, setNewCompPhone] = useState('');
-  const [newCompWhatsapp, setNewCompWhatsapp] = useState('');
-  const [newCompEmail, setNewCompEmail] = useState('');
-  const [newCompAddress, setNewCompAddress] = useState('');
-  const [newCompFee, setNewCompFee] = useState(299.90);
-  const [newCompHasImplementationFee, setNewCompHasImplementationFee] = useState(false);
-  const [newCompImplementationFee, setNewCompImplementationFee] = useState(500.00);
-  const [newCompLegalRepName, setNewCompLegalRepName] = useState('');
-  const [newCompLegalRepCpf, setNewCompLegalRepCpf] = useState('');
-  const [newCompLegalRepRg, setNewCompLegalRepRg] = useState('');
-  const [newCompLegalRepPhone, setNewCompLegalRepPhone] = useState('');
-  const [newCompLegalRepEmail, setNewCompLegalRepEmail] = useState('');
-  const [newCompLegalRepAddress, setNewCompLegalRepAddress] = useState('');
-  const [newCompEnableWithdrawalAndDelivery, setNewCompEnableWithdrawalAndDelivery] = useState(false);
+  const [newCompPhone, setNewCompPhone] = useState(initialCompDefaults.phone);
+  const [newCompWhatsapp, setNewCompWhatsapp] = useState(initialCompDefaults.whatsapp);
+  const [newCompEmail, setNewCompEmail] = useState(initialCompDefaults.email);
+  const [newCompAddress, setNewCompAddress] = useState(initialCompDefaults.address);
+  const [newCompFee, setNewCompFee] = useState(initialCompDefaults.fee);
+  const [newCompHasImplementationFee, setNewCompHasImplementationFee] = useState(initialCompDefaults.hasImplementationFee);
+  const [newCompImplementationFee, setNewCompImplementationFee] = useState(initialCompDefaults.implementationFee);
+  const [newCompLegalRepName, setNewCompLegalRepName] = useState(initialCompDefaults.legalRepName);
+  const [newCompLegalRepCpf, setNewCompLegalRepCpf] = useState(initialCompDefaults.legalRepCpf);
+  const [newCompLegalRepRg, setNewCompLegalRepRg] = useState(initialCompDefaults.legalRepRg);
+  const [newCompLegalRepPhone, setNewCompLegalRepPhone] = useState(initialCompDefaults.legalRepPhone);
+  const [newCompLegalRepEmail, setNewCompLegalRepEmail] = useState(initialCompDefaults.legalRepEmail);
+  const [newCompLegalRepAddress, setNewCompLegalRepAddress] = useState(initialCompDefaults.legalRepAddress);
+  const [newCompEnableWithdrawalAndDelivery, setNewCompEnableWithdrawalAndDelivery] = useState(initialCompDefaults.enableWithdrawalAndDelivery);
+
+  // Módulos e Telas Contratadas pela Nova Empresa
+  const [newCompContractedModules, setNewCompContractedModules] = useState<Record<string, boolean>>(() => {
+    return getDefaultContractedModulesForBusinessType(initialCompDefaults.businessType);
+  });
+  const [newCompContractedScreens, setNewCompContractedScreens] = useState<Record<string, Record<string, boolean>>>(() => {
+    const scrs = getDefaultContractedScreens();
+    const mods = getDefaultContractedModulesForBusinessType(initialCompDefaults.businessType);
+    SYSTEM_MODULES_LIST.forEach(m => {
+      const isModContracted = Boolean(mods[m.id]);
+      m.screens.forEach(s => { scrs[m.id][s.id] = isModContracted; });
+    });
+    return scrs;
+  });
+  const [expandedModuleId, setExpandedModuleId] = useState<string | null>(null);
+
+  const handleBusinessTypeChange = (bType: BusinessType) => {
+    setNewCompBusinessType(bType);
+    const defMods = getDefaultContractedModulesForBusinessType(bType);
+    setNewCompContractedModules(defMods);
+    setNewCompContractedScreens(prev => {
+      const next = { ...prev };
+      SYSTEM_MODULES_LIST.forEach(m => {
+        const isModContracted = Boolean(defMods[m.id]);
+        if (!next[m.id]) next[m.id] = {};
+        m.screens.forEach(s => { next[m.id][s.id] = isModContracted; });
+      });
+      return next;
+    });
+  };
+
+  const handleOpenNewCompanyModal = () => {
+    const defaults = getPreFilledCompanyDefaults(registeredCompaniesList);
+    setNewCompName(defaults.name);
+    setNewCompCnpj(defaults.cnpj);
+    setNewCompIe(defaults.stateRegistration);
+    setNewCompType(defaults.type);
+    setNewCompBusinessType(defaults.businessType);
+    setNewCompPhone(defaults.phone);
+    setNewCompWhatsapp(defaults.whatsapp);
+    setNewCompEmail(defaults.email);
+    setNewCompAddress(defaults.address);
+    setNewCompFee(defaults.fee);
+    setNewCompHasImplementationFee(defaults.hasImplementationFee);
+    setNewCompImplementationFee(defaults.implementationFee);
+    setNewCompLegalRepName(defaults.legalRepName);
+    setNewCompLegalRepCpf(defaults.legalRepCpf);
+    setNewCompLegalRepRg(defaults.legalRepRg);
+    setNewCompLegalRepPhone(defaults.legalRepPhone);
+    setNewCompLegalRepEmail(defaults.legalRepEmail);
+    setNewCompLegalRepAddress(defaults.legalRepAddress);
+    setNewCompEnableWithdrawalAndDelivery(defaults.enableWithdrawalAndDelivery);
+
+    const defMods = getDefaultContractedModulesForBusinessType(defaults.businessType);
+    setNewCompContractedModules(defMods);
+    const scrs = getDefaultContractedScreens();
+    SYSTEM_MODULES_LIST.forEach(m => {
+      const isModContracted = Boolean(defMods[m.id]);
+      m.screens.forEach(s => { scrs[m.id][s.id] = isModContracted; });
+    });
+    setNewCompContractedScreens(scrs);
+    setExpandedModuleId(null);
+    setShowNewCompanyModal(true);
+  };
 
   // Local Form State for the selected company
   const [compName, setCompName] = useState(currentCompany?.name || 'MotorDesk Auto Center');
@@ -1427,12 +1839,9 @@ export default function UserManagementView({
   // Register New Company Action
   const handleCreateNewCompany = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!hasAcceptedCompanyLgpd) {
-      alert('É necessário aceitar os Termos de Privacidade e LGPD para cadastrar uma nova empresa.');
-      return;
-    }
     if (!newCompName.trim() || !newCompCnpj.trim()) {
-      alert('Nome e CNPJ da nova empresa são obrigatórios.');
+      setSuccessMsg('Nome e CNPJ da nova empresa são obrigatórios.');
+      setTimeout(() => setSuccessMsg(''), 4000);
       return;
     }
 
@@ -1442,17 +1851,42 @@ export default function UserManagementView({
     expDate.setFullYear(expDate.getFullYear() + 1);
     const expStr = expDate.toISOString().split('T')[0];
 
+    // 1. Build globalModules and contractModules from the administrator selections
+    const newCompanyGlobalModules: Record<string, boolean> = {};
+    SYSTEM_MODULES_LIST.forEach(mod => {
+      newCompanyGlobalModules[mod.id] = Boolean(newCompContractedModules[mod.id]);
+    });
+    newCompanyGlobalModules.accessBoletos = Boolean(newCompContractedModules.accessAccountsReceivable && newCompContractedScreens.accessAccountsReceivable?.receivable_boletos);
+    newCompanyGlobalModules.accessSefaz = Boolean(newCompContractedModules.accessFiscal);
+    newCompanyGlobalModules.accessWithdrawals = Boolean(newCompContractedModules.accessSales && newCompContractedScreens.accessSales?.sales_withdrawals);
+
+    // 2. Build QA Validador permissions strictly from contracted modules & screens
+    const validadorPermissions: UserPermissions = { ...DEFAULT_LEVEL_PERMISSIONS.qa };
+    SYSTEM_MODULES_LIST.forEach(mod => {
+      const isModContracted = Boolean(newCompContractedModules[mod.id]);
+      mod.permissionKeys.forEach(pk => {
+        validadorPermissions[pk] = isModContracted;
+      });
+      mod.screens.forEach(scr => {
+        const isScrContracted = isModContracted && Boolean(newCompContractedScreens[mod.id]?.[scr.id]);
+        if (scr.associatedPermission) {
+          validadorPermissions[scr.associatedPermission] = isScrContracted;
+        }
+      });
+    });
+
     const newCompanyObj: CompanyInfo = {
       id: newCompId,
       name: newCompName.trim(),
       cnpj: newCompCnpj.trim(),
+      stateRegistration: newCompIe.trim() || '110.042.490.114',
       companyType: newCompType,
       businessType: normalizeBusinessType(newCompBusinessType),
       parentMatrizId: newCompType === 'filial' ? newCompParentMatrizId : undefined,
-      phone: newCompPhone.trim() || '(11) 3000-0000',
-      whatsapp: newCompWhatsapp.trim() || '11900000000',
+      phone: newCompPhone.trim() || '(11) 3456-7890',
+      whatsapp: newCompWhatsapp.trim() || '11987654321',
       email: newCompEmail.trim() || 'contato@novaempresa.com.br',
-      address: newCompAddress.trim() || 'Endereço Comercial',
+      address: newCompAddress.trim() || 'Av. das Nações Unidas, 1500 - São Paulo - SP',
       welcomeMessage: 'Agradecemos a preferência!',
       registeredAt: new Date().toISOString(),
       subscriptionStatus: 'active',
@@ -1472,22 +1906,32 @@ export default function UserManagementView({
       contractStatus: 'pending',
       enableWithdrawalAndDelivery: newCompEnableWithdrawalAndDelivery,
       levelPermissions: DEFAULT_LEVEL_PERMISSIONS,
-      globalModules: getDefaultGlobalModulesForBusinessType(newCompBusinessType)
+      globalModules: newCompanyGlobalModules,
+      contractModules: {
+        modules: newCompContractedModules,
+        screens: newCompContractedScreens
+      }
     };
 
     const updatedList = [...registeredCompaniesList, newCompanyObj];
 
-    const initialCompanyPerms = normalizeUserPermissions(getDefaultGlobalModulesForBusinessType(newCompBusinessType), 'admin');
-
-    // Automatically create default QA and Admin users with proper permissions for the new company
-    const newQAUser: User = {
-      id: `usr-qa-${Date.now()}`,
-      username: 'qa',
-      name: `Analista de QA (${newCompanyObj.name})`,
+    // Automatically create default Validador (QA) and Admin users with proper permissions for the new company
+    // O usuário validador é do tipo QA, com senha Donatelo@123, e tem acesso master a todas as empresas
+    const newValidatorUser: User = {
+      id: `usr-val-${newCompId}`,
+      username: 'validador',
+      name: `Validador QA (${newCompanyObj.name})`,
       role: 'qa',
-      passwordHash: 'qa123',
+      passwordHash: 'Donatelo@123',
       companyId: newCompId,
-      permissions: initialCompanyPerms
+      allowedCompanyIds: ['*'], // Acesso amplo a todas as empresas
+      groupId: 'grp-qa',
+      groupName: 'Engenharia de Qualidade (QA)',
+      active: true,
+      status: 'active',
+      isActive: true,
+      isTerminated: false,
+      permissions: validadorPermissions
     };
 
     const newAdminUser: User = {
@@ -1497,10 +1941,11 @@ export default function UserManagementView({
       role: 'admin',
       passwordHash: 'admin123',
       companyId: newCompId,
-      permissions: initialCompanyPerms
+      allowedCompanyIds: [newCompId],
+      permissions: validadorPermissions
     };
 
-    const initialCompanyUsers = [newQAUser, newAdminUser];
+    const initialCompanyUsers = [newValidatorUser, newAdminUser];
 
     console.log(`[TRACE-PERSISTENCE] COMPANY CREATE: id=${newCompanyObj.id}, name=${newCompanyObj.name}, cnpj=${newCompanyObj.cnpj}, type=${newCompanyObj.companyType}`);
 
@@ -1514,24 +1959,51 @@ export default function UserManagementView({
     onAddHistoryLog(
       'system',
       `Nova Empresa Cadastrada: ${newCompanyObj.name}`,
-      `Nova empresa contratante "${newCompanyObj.name}" (CNPJ ${newCompanyObj.cnpj}) foi cadastrada. Usuários @admin (senha 'admin123') e @qa (senha 'qa123') criados com acesso master liberado.`,
+      `Nova empresa contratante "${newCompanyObj.name}" (CNPJ ${newCompanyObj.cnpj}) foi cadastrada. Usuário QA @validador (senha 'Donatelo@123') e @admin configurados com acesso exclusivo aos módulos e telas contratados.`,
       '',
       ''
     );
 
-    // Reset Form & Switch Combobox to New Company
-    setNewCompName('');
-    setNewCompCnpj('');
-    setNewCompBusinessType('OFICINA');
-    setNewCompPhone('');
-    setNewCompWhatsapp('');
-    setNewCompEmail('');
-    setNewCompAddress('');
+    // Reset Form com o próximo modelo pré-preenchido e seleciona a nova empresa
+    const nextDefaults = getPreFilledCompanyDefaults(updatedList);
+    setNewCompName(nextDefaults.name);
+    setNewCompCnpj(nextDefaults.cnpj);
+    setNewCompIe(nextDefaults.stateRegistration);
+    setNewCompType(nextDefaults.type);
+    setNewCompBusinessType(nextDefaults.businessType);
+    const nextMods = getDefaultContractedModulesForBusinessType(nextDefaults.businessType);
+    setNewCompContractedModules(nextMods);
+    const nextScrs = getDefaultContractedScreens();
+    SYSTEM_MODULES_LIST.forEach(m => {
+      const isModContracted = Boolean(nextMods[m.id]);
+      m.screens.forEach(s => { nextScrs[m.id][s.id] = isModContracted; });
+    });
+    setNewCompContractedScreens(nextScrs);
+    setExpandedModuleId(null);
+    setNewCompPhone(nextDefaults.phone);
+    setNewCompWhatsapp(nextDefaults.whatsapp);
+    setNewCompEmail(nextDefaults.email);
+    setNewCompAddress(nextDefaults.address);
+    setNewCompFee(nextDefaults.fee);
+    setNewCompHasImplementationFee(nextDefaults.hasImplementationFee);
+    setNewCompImplementationFee(nextDefaults.implementationFee);
+    setNewCompLegalRepName(nextDefaults.legalRepName);
+    setNewCompLegalRepCpf(nextDefaults.legalRepCpf);
+    setNewCompLegalRepRg(nextDefaults.legalRepRg);
+    setNewCompLegalRepPhone(nextDefaults.legalRepPhone);
+    setNewCompLegalRepEmail(nextDefaults.legalRepEmail);
+    setNewCompLegalRepAddress(nextDefaults.legalRepAddress);
+    setNewCompEnableWithdrawalAndDelivery(nextDefaults.enableWithdrawalAndDelivery);
     setShowNewCompanyModal(false);
     setSelectedCompanyId(newCompId);
     if (onSwitchActiveCompany) {
       onSwitchActiveCompany(newCompId, newCompanyObj);
     }
+    setSaveModalData({
+      title: '🏢 Empresa Cadastrada com Sucesso!',
+      message: `A nova empresa "${newCompanyObj.name}" (CNPJ: ${newCompanyObj.cnpj}) foi registrada no MotorDesk com perfil ativo. Os acessos para o usuário validador (@validador / 'Donatelo@123') e administrador (@admin) foram configurados automaticamente.`
+    });
+    setShowSaveConfirmationModal(true);
     setSuccessMsg(`Empresa "${newCompanyObj.name}" cadastrada e ativada no workspace com sucesso!`);
     setTimeout(() => setSuccessMsg(''), 5000);
   };
@@ -1978,7 +2450,7 @@ export default function UserManagementView({
               <button
                 type="button"
                 id="btn-open-new-company-modal"
-                onClick={() => setShowNewCompanyModal(true)}
+                onClick={handleOpenNewCompanyModal}
                 className="bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs px-4 py-2.5 rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer shadow-xs shrink-0"
               >
                 <Plus className="w-4 h-4" /> Nova Empresa
@@ -4573,8 +5045,48 @@ export default function UserManagementView({
               </button>
             </div>
 
-            <form onSubmit={handleCreateNewCompany} className="flex-1 flex flex-col min-h-0 overflow-hidden pt-4">
-              <div className="flex-1 overflow-y-auto min-h-0 space-y-4 pr-1">
+            {/* Banner Informativo de Cadastro Pré-preenchido */}
+            <div className="mt-3 p-3 bg-emerald-50 border border-emerald-200/90 rounded-xl flex items-start justify-between gap-3 shrink-0 animate-fade-in text-emerald-950" id="banner-prefilled-company">
+              <div className="flex items-start gap-2.5">
+                <span className="text-lg leading-none mt-0.5">📋</span>
+                <div className="text-xs">
+                  <span className="font-bold block text-emerald-950">Cadastro Pré-preenchido do MotorDesk</span>
+                  <span className="text-[11px] text-emerald-800">
+                    Os dados foram automaticamente carregados como modelo. Basta conferir ou ajustar e clicar em <strong>Cadastrar Empresa</strong> para finalizar.
+                  </span>
+                </div>
+              </div>
+              <button
+                type="button"
+                id="btn-reload-company-template"
+                onClick={() => {
+                  const def = getPreFilledCompanyDefaults(registeredCompaniesList);
+                  setNewCompName(def.name);
+                  setNewCompCnpj(def.cnpj);
+                  setNewCompIe(def.stateRegistration);
+                  setNewCompType(def.type);
+                  setNewCompBusinessType(def.businessType);
+                  setNewCompPhone(def.phone);
+                  setNewCompWhatsapp(def.whatsapp);
+                  setNewCompEmail(def.email);
+                  setNewCompAddress(def.address);
+                  setNewCompFee(def.fee);
+                  setNewCompLegalRepName(def.legalRepName);
+                  setNewCompLegalRepCpf(def.legalRepCpf);
+                  setNewCompLegalRepRg(def.legalRepRg);
+                  setNewCompLegalRepPhone(def.legalRepPhone);
+                  setNewCompLegalRepEmail(def.legalRepEmail);
+                  setNewCompLegalRepAddress(def.legalRepAddress);
+                }}
+                className="text-[10px] font-bold bg-white text-emerald-800 border border-emerald-300 hover:bg-emerald-100 px-2.5 py-1 rounded-lg transition shrink-0 cursor-pointer shadow-3xs"
+                title="Recarregar dados modelo"
+              >
+                Recarregar Modelo
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateNewCompany} className="flex-1 flex flex-col min-h-0 overflow-hidden pt-3">
+              <div className="flex-1 overflow-y-auto min-h-0 space-y-3.5 pr-1">
               <div className="space-y-1">
                 <label className="text-xs font-bold text-slate-700 uppercase" htmlFor="new-comp-name">
                   Razão Social / Nome Fantasia *
@@ -4607,6 +5119,22 @@ export default function UserManagementView({
                 </div>
 
                 <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-700 uppercase" htmlFor="new-comp-ie">
+                    Inscrição Estadual (IE)
+                  </label>
+                  <input
+                    id="new-comp-ie"
+                    type="text"
+                    value={newCompIe}
+                    onChange={e => setNewCompIe(e.target.value)}
+                    placeholder="110.042.490.114 ou ISENTO"
+                    className="w-full text-xs p-2.5 border border-slate-200 rounded-lg bg-white font-mono"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
                   <label className="text-xs font-bold text-slate-700 uppercase" htmlFor="new-comp-fee">
                     Mensalidade (R$) *
                   </label>
@@ -4620,6 +5148,35 @@ export default function UserManagementView({
                     className="w-full text-xs p-2.5 border border-slate-200 rounded-lg bg-white font-mono font-bold"
                   />
                 </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-700 uppercase" htmlFor="new-comp-phone">
+                    Telefone Comercial
+                  </label>
+                  <input
+                    id="new-comp-phone"
+                    type="text"
+                    value={newCompPhone}
+                    onChange={e => setNewCompPhone(e.target.value)}
+                    placeholder="(11) 3456-7890"
+                    className="w-full text-xs p-2.5 border border-slate-200 rounded-lg bg-white font-mono"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-slate-700 uppercase" htmlFor="new-comp-address">
+                  Endereço Comercial da Empresa *
+                </label>
+                <input
+                  id="new-comp-address"
+                  type="text"
+                  required
+                  value={newCompAddress}
+                  onChange={e => setNewCompAddress(e.target.value)}
+                  placeholder="Av. das Nações Unidas, 1500 - São Paulo - SP"
+                  className="w-full text-xs p-2.5 border border-slate-200 rounded-lg bg-white"
+                />
               </div>
 
               {/* Matriz ou Filial */}
@@ -4686,19 +5243,33 @@ export default function UserManagementView({
                   </label>
                   <span className="text-[10px] text-slate-500 font-medium">Define os módulos e fluxos do sistema</span>
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                  <label className={`p-2.5 rounded-lg border flex flex-col gap-1 cursor-pointer text-xs transition ${newCompBusinessType === 'OFICINA' ? 'bg-indigo-50 border-indigo-600 text-indigo-950 font-bold shadow-xs' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <label className={`p-2.5 rounded-lg border flex flex-col gap-1 cursor-pointer text-xs transition ${newCompBusinessType === 'OFICINA_COMERCIO' ? 'bg-indigo-50 border-indigo-600 text-indigo-950 font-bold shadow-xs' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}>
+                    <div className="flex items-center gap-2">
+                      <input 
+                        type="radio" 
+                        name="newCompBusinessTypeRadio" 
+                        value="OFICINA_COMERCIO"
+                        checked={newCompBusinessType === 'OFICINA_COMERCIO'} 
+                        onChange={() => handleBusinessTypeChange('OFICINA_COMERCIO')} 
+                      />
+                      <span>⚡ Centro Automotivo Híbrido (Oficina + Peças)</span>
+                    </div>
+                    <span className="text-[10px] text-slate-500 font-normal pl-5">Fluxo completo: Ordens de Serviço + Venda Balcão PDV</span>
+                  </label>
+
+                  <label className={`p-2.5 rounded-lg border flex flex-col gap-1 cursor-pointer text-xs transition ${newCompBusinessType === 'OFICINA' ? 'bg-blue-50 border-blue-600 text-blue-950 font-bold shadow-xs' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}>
                     <div className="flex items-center gap-2">
                       <input 
                         type="radio" 
                         name="newCompBusinessTypeRadio" 
                         value="OFICINA"
                         checked={newCompBusinessType === 'OFICINA'} 
-                        onChange={() => setNewCompBusinessType('OFICINA')} 
+                        onChange={() => handleBusinessTypeChange('OFICINA')} 
                       />
                       <span>🔧 Oficina Mecânica</span>
                     </div>
-                    <span className="text-[10px] text-slate-500 font-normal pl-5">OS, Mecânicos, Veículos e Checklists</span>
+                    <span className="text-[10px] text-slate-500 font-normal pl-5">Pátio, OS, Mecânicos, Veículos e Checklists</span>
                   </label>
 
                   <label className={`p-2.5 rounded-lg border flex flex-col gap-1 cursor-pointer text-xs transition ${newCompBusinessType === 'COMERCIO' ? 'bg-emerald-50 border-emerald-600 text-emerald-950 font-bold shadow-xs' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}>
@@ -4708,21 +5279,21 @@ export default function UserManagementView({
                         name="newCompBusinessTypeRadio" 
                         value="COMERCIO"
                         checked={newCompBusinessType === 'COMERCIO'} 
-                        onChange={() => setNewCompBusinessType('COMERCIO')} 
+                        onChange={() => handleBusinessTypeChange('COMERCIO')} 
                       />
                       <span>🛍️ Comércio / Autopeças</span>
                     </div>
-                    <span className="text-[10px] text-slate-500 font-normal pl-5">Vendas Balcão, PDV e Estoque de Peças</span>
+                    <span className="text-[10px] text-slate-500 font-normal pl-5">Vendas Balcão, PDV e Estoque de Peças Fracionadas</span>
                   </label>
 
-                  <label className={`p-2.5 rounded-lg border flex flex-col gap-1 cursor-pointer text-xs transition ${newCompBusinessType === 'INDUSTRIA' || newCompBusinessType === 'OFICINA_COMERCIO' ? 'bg-amber-50 border-amber-600 text-amber-950 font-bold shadow-xs' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}>
+                  <label className={`p-2.5 rounded-lg border flex flex-col gap-1 cursor-pointer text-xs transition ${newCompBusinessType === 'INDUSTRIA' ? 'bg-amber-50 border-amber-600 text-amber-950 font-bold shadow-xs' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}>
                     <div className="flex items-center gap-2">
                       <input 
                         type="radio" 
                         name="newCompBusinessTypeRadio" 
                         value="INDUSTRIA"
-                        checked={newCompBusinessType === 'INDUSTRIA' || newCompBusinessType === 'OFICINA_COMERCIO'} 
-                        onChange={() => setNewCompBusinessType('INDUSTRIA')} 
+                        checked={newCompBusinessType === 'INDUSTRIA'} 
+                        onChange={() => handleBusinessTypeChange('INDUSTRIA')} 
                       />
                       <span>🏭 Indústria & Produção (PCP)</span>
                     </div>
@@ -4758,6 +5329,242 @@ export default function UserManagementView({
                     </label>
                   </div>
                 )}
+              </div>
+
+              {/* =========================================================================
+                  SELEÇÃO DE MÓDULOS CONTRATADOS & TELAS LIBERADAS
+                  Permite ao administrador escolher se a empresa contratou cada módulo e suas telas
+                  ========================================================================= */}
+              <div className="space-y-3 bg-white p-3.5 rounded-xl border border-indigo-200 shadow-3xs" id="container-new-comp-contract-modules">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 border-b border-slate-100 pb-2.5">
+                  <div>
+                    <label className="text-xs font-black text-indigo-950 uppercase tracking-wider flex items-center gap-1.5">
+                      <Layers className="w-4 h-4 text-indigo-600" />
+                      Módulos Contratados & Telas Liberadas *
+                    </label>
+                    <p className="text-[11px] text-slate-500 font-medium">
+                      Defina se a empresa contratou cada módulo e personalize as telas liberadas. O usuário <strong>@validador</strong> (senha <code>Donatelo@123</code>) terá todas as permissões liberadas para os módulos contratados.
+                    </p>
+                  </div>
+
+                  {/* Botões Rápidos */}
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <button
+                      type="button"
+                      id="btn-select-all-contract-modules"
+                      onClick={() => {
+                        const allMods: Record<string, boolean> = {};
+                        const allScrs: Record<string, Record<string, boolean>> = {};
+                        SYSTEM_MODULES_LIST.forEach(m => {
+                          allMods[m.id] = true;
+                          allScrs[m.id] = {};
+                          m.screens.forEach(s => { allScrs[m.id][s.id] = true; });
+                        });
+                        setNewCompContractedModules(allMods);
+                        setNewCompContractedScreens(allScrs);
+                      }}
+                      className="text-[10px] font-bold px-2 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-md transition cursor-pointer"
+                      title="Contratar todos os módulos"
+                    >
+                      ✓ Todos
+                    </button>
+                    <button
+                      type="button"
+                      id="btn-deselect-all-contract-modules"
+                      onClick={() => {
+                        const allMods: Record<string, boolean> = {};
+                        const allScrs: Record<string, Record<string, boolean>> = {};
+                        SYSTEM_MODULES_LIST.forEach(m => {
+                          allMods[m.id] = false;
+                          allScrs[m.id] = {};
+                          m.screens.forEach(s => { allScrs[m.id][s.id] = false; });
+                        });
+                        setNewCompContractedModules(allMods);
+                        setNewCompContractedScreens(allScrs);
+                      }}
+                      className="text-[10px] font-bold px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-600 border border-slate-200 rounded-md transition cursor-pointer"
+                      title="Desmarcar todos os módulos"
+                    >
+                      ✕ Nenhum
+                    </button>
+                    <button
+                      type="button"
+                      id="btn-reset-contract-modules-default"
+                      onClick={() => {
+                        const defs = getDefaultContractedModulesForBusinessType(newCompBusinessType);
+                        setNewCompContractedModules(defs);
+                        const scrs = getDefaultContractedScreens();
+                        SYSTEM_MODULES_LIST.forEach(m => {
+                          const isContracted = Boolean(defs[m.id]);
+                          m.screens.forEach(s => { scrs[m.id][s.id] = isContracted; });
+                        });
+                        setNewCompContractedScreens(scrs);
+                      }}
+                      className="text-[10px] font-bold px-2 py-1 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 rounded-md transition cursor-pointer"
+                      title="Restaurar padrão sugerido para o segmento"
+                    >
+                      ↺ Padrão
+                    </button>
+                  </div>
+                </div>
+
+                {/* Resumo visual do contrato */}
+                <div className="flex items-center justify-between text-[11px] bg-indigo-50/50 px-3 py-1.5 rounded-lg border border-indigo-100 text-indigo-900">
+                  <span>
+                    Módulos Contratados: <strong className="text-indigo-950 font-bold">{Object.values(newCompContractedModules).filter(Boolean).length}</strong> de {SYSTEM_MODULES_LIST.length}
+                  </span>
+                  <span className="text-[10px] text-slate-500">
+                    Clique na seta para escolher telas específicas
+                  </span>
+                </div>
+
+                {/* Lista / Grid de Módulos e Telas */}
+                <div className="space-y-1.5 max-h-72 overflow-y-auto pr-1">
+                  {SYSTEM_MODULES_LIST.map(mod => {
+                    const isContracted = Boolean(newCompContractedModules[mod.id]);
+                    const isExpanded = expandedModuleId === mod.id;
+                    const totalScreens = mod.screens.length;
+                    const activeScreensCount = mod.screens.filter(s => Boolean(newCompContractedScreens[mod.id]?.[s.id])).length;
+
+                    return (
+                      <div 
+                        key={mod.id} 
+                        className={`rounded-xl border transition ${isContracted ? 'bg-indigo-50/30 border-indigo-200' : 'bg-slate-50/60 border-slate-200 opacity-70'}`}
+                      >
+                        {/* Linha do Módulo */}
+                        <div className="p-2 flex items-center justify-between gap-2">
+                          <label className="flex items-center gap-2 cursor-pointer flex-1 min-w-0">
+                            <input
+                              type="checkbox"
+                              checked={isContracted}
+                              onChange={e => {
+                                const checked = e.target.checked;
+                                setNewCompContractedModules(prev => ({ ...prev, [mod.id]: checked }));
+                                setNewCompContractedScreens(prev => {
+                                  const nextMod: Record<string, boolean> = {};
+                                  mod.screens.forEach(s => { nextMod[s.id] = checked; });
+                                  return { ...prev, [mod.id]: nextMod };
+                                });
+                              }}
+                              className="h-4 w-4 text-indigo-600 border-slate-300 rounded focus:ring-indigo-500 cursor-pointer"
+                            />
+                            <span className="text-base select-none">{mod.icon}</span>
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span className={`text-xs font-bold ${isContracted ? 'text-indigo-950' : 'text-slate-600'}`}>
+                                  {mod.name}
+                                </span>
+                                <span className="text-[9px] px-1.5 py-0.2 rounded font-mono font-semibold uppercase bg-slate-200/80 text-slate-700">
+                                  {mod.category}
+                                </span>
+                                {isContracted ? (
+                                  <span className="text-[9px] px-1.5 py-0.2 rounded-full font-bold bg-emerald-100 text-emerald-800">
+                                    Contratado ({activeScreensCount}/{totalScreens} telas)
+                                  </span>
+                                ) : (
+                                  <span className="text-[9px] px-1.5 py-0.2 rounded-full font-bold bg-slate-200 text-slate-600">
+                                    Não Contratado
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-[10px] text-slate-500 truncate mt-0.5">
+                                {mod.description}
+                              </p>
+                            </div>
+                          </label>
+
+                          <button
+                            type="button"
+                            onClick={() => setExpandedModuleId(isExpanded ? null : mod.id)}
+                            className="p-1 text-slate-400 hover:text-indigo-600 rounded-lg hover:bg-white transition cursor-pointer"
+                            title={isExpanded ? "Ocultar telas" : "Ver e selecionar telas"}
+                          >
+                            <ChevronDown className={`w-4 h-4 transition-transform duration-200 ${isExpanded ? 'rotate-180 text-indigo-600' : ''}`} />
+                          </button>
+                        </div>
+
+                        {/* Telas Expansíveis */}
+                        {isExpanded && (
+                          <div className="px-3 pb-2.5 pt-1 border-t border-indigo-150/60 bg-white/80 rounded-b-xl space-y-1.5 animate-fade-in">
+                            <div className="flex items-center justify-between text-[10px] text-slate-500 font-semibold border-b border-slate-100 pb-1">
+                              <span>Telas do Módulo:</span>
+                              <div className="flex items-center gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setNewCompContractedModules(prev => ({ ...prev, [mod.id]: true }));
+                                    setNewCompContractedScreens(prev => {
+                                      const nextMod: Record<string, boolean> = {};
+                                      mod.screens.forEach(s => { nextMod[s.id] = true; });
+                                      return { ...prev, [mod.id]: nextMod };
+                                    });
+                                  }}
+                                  className="text-indigo-600 hover:underline cursor-pointer"
+                                >
+                                  Todas
+                                </button>
+                                <span>|</span>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setNewCompContractedScreens(prev => {
+                                      const nextMod: Record<string, boolean> = {};
+                                      mod.screens.forEach(s => { nextMod[s.id] = false; });
+                                      return { ...prev, [mod.id]: nextMod };
+                                    });
+                                  }}
+                                  className="text-slate-500 hover:underline cursor-pointer"
+                                >
+                                  Nenhuma
+                                </button>
+                              </div>
+                            </div>
+
+                            <div className="space-y-1 pl-2">
+                              {mod.screens.map(scr => {
+                                const isScreenChecked = Boolean(newCompContractedScreens[mod.id]?.[scr.id]);
+
+                                return (
+                                  <label 
+                                    key={scr.id}
+                                    className="flex items-start gap-2 cursor-pointer p-1 rounded-md hover:bg-slate-50 text-xs transition"
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      checked={isScreenChecked}
+                                      onChange={e => {
+                                        const checked = e.target.checked;
+                                        setNewCompContractedScreens(prev => ({
+                                          ...prev,
+                                          [mod.id]: {
+                                            ...(prev[mod.id] || {}),
+                                            [scr.id]: checked
+                                          }
+                                        }));
+                                        if (checked) {
+                                          setNewCompContractedModules(prev => ({ ...prev, [mod.id]: true }));
+                                        }
+                                      }}
+                                      className="mt-0.5 h-3.5 w-3.5 text-indigo-600 border-slate-300 rounded focus:ring-indigo-500 cursor-pointer"
+                                    />
+                                    <div className="min-w-0 flex-1">
+                                      <span className={`font-semibold block ${isScreenChecked ? 'text-slate-800' : 'text-slate-400'}`}>
+                                        {scr.name}
+                                      </span>
+                                      <span className="text-[10px] text-slate-400 block">
+                                        {scr.desc}
+                                      </span>
+                                    </div>
+                                  </label>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
 
               <div className="grid grid-cols-2 gap-3">

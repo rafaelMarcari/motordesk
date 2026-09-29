@@ -10,17 +10,20 @@ const publicDir = path.join(__dirname, 'public');
 // 1. Ensure dist directory exists
 fs.mkdirSync(distDir, { recursive: true });
 
-// 1.5. Compile report exporter bundle to public
-console.log('Compiling report exporter bundle...');
-await esbuild.build({
-  entryPoints: [path.join(__dirname, 'src', 'utils', 'reportExporter.ts')],
-  bundle: true,
-  format: 'iife',
-  globalName: 'ReportExporterBundle',
-  platform: 'browser',
-  outfile: path.join(publicDir, 'report-exporter-bundle.js'),
-  minify: true
-});
+// 1.5. Compile report exporter bundle to public if source exists
+const reportExporterSource = path.join(__dirname, 'src', 'utils', 'reportExporter.ts');
+if (fs.existsSync(reportExporterSource)) {
+  console.log('Compiling report exporter bundle...');
+  await esbuild.build({
+    entryPoints: [reportExporterSource],
+    bundle: true,
+    format: 'iife',
+    globalName: 'ReportExporterBundle',
+    platform: 'browser',
+    outfile: path.join(publicDir, 'report-exporter-bundle.js'),
+    minify: true
+  });
+}
 
 // 1.9. Integrate All Features (Fiscal XML, Representative Orders, Expedition, Boleto Notifications)
 await import('./scripts/integrate-all.js');

@@ -262,7 +262,7 @@ export default function VehiclesView({ db, onSaveVehicles, onAddHistoryLog, setU
               >
                 {db.clients.map(client => (
                   <option key={client.id} value={client.id}>
-                    {client.name} (CPF: {client.cpf})
+                    {client.name} (CPF/CNPJ: {client.cpfCnpj || client.cpf})
                   </option>
                 ))}
               </select>

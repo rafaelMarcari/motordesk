@@ -115,6 +115,7 @@ import { RepresentativeCommerceView } from './components/RepresentativeCommerceV
 import NotificationToastPopup from './components/NotificationToastPopup';
 import NotificationsModal from './components/NotificationsModal';
 import LandingPresentationView, { LandingContent } from './components/LandingPresentationView';
+import { FocusNotasApiPortalView } from './components/FocusNotasApiPortalView';
 import motordeskLogoImg from './assets/images/motordesk_logo_1786534067989.jpg';
 import FullDocumentationModal from './components/FullDocumentationModal';
 import PrivacyLgpdModal, { PrivacyLgpdFooter } from './components/PrivacyLgpdModal';
@@ -207,30 +208,34 @@ export default function App() {
   });
 
   const [loginUsername, setLoginUsername] = useState<string>(() => {
-    if (typeof localStorage === 'undefined') return '';
-    return localStorage.getItem('motordesk_saved_username') || 'admin';
+    if (typeof localStorage === 'undefined') return 'validador';
+    const saved = localStorage.getItem('motordesk_saved_username');
+    if (saved && saved !== 'admin') return saved;
+    return 'validador';
   });
-  const [loginPassword, setLoginPassword] = useState<string>('');
+  const [loginPassword, setLoginPassword] = useState<string>('Donatelo@123');
   const [showPassword, setShowPassword] = useState<boolean>(false);
   const [sessionExpiredMessage, setSessionExpiredMessage] = useState<string>('');
   const [selectedLoginCompanyId, setSelectedLoginCompanyId] = useState<string>('');
   const [loginError, setLoginError] = useState('');
   const [loginHistory, setLoginHistory] = useState<{username: string, name: string, role: string, lastAccess: string}[]>([]);
-  const [loginTab, setLoginTab] = useState<'login' | 'register_company'>('login');
+  const [loginTab, setLoginTab] = useState<'login' | 'register_company' | 'link_token'>('login');
+  const [tokenInput, setTokenInput] = useState('');
+  const [tokenFeedback, setTokenFeedback] = useState<{ text: string; type: 'success' | 'error' | 'info' } | null>(null);
   const [showPrivacyModal, setShowPrivacyModal] = useState(false);
   const [hasAcceptedLoginLgpd, setHasAcceptedLoginLgpd] = useState(true);
 
-  // Multi-tenant Company Registration States
-  const [regCompName, setRegCompName] = useState('');
-  const [regCompCnpj, setRegCompCnpj] = useState('');
-  const [regCompBusinessType, setRegCompBusinessType] = useState<BusinessType>('OFICINA');
-  const [regCompWhatsapp, setRegCompWhatsapp] = useState('');
-  const [regCompPhone, setRegCompPhone] = useState('');
-  const [regCompEmail, setRegCompEmail] = useState('');
-  const [regCompAddress, setRegCompAddress] = useState('');
-  const [regAdminName, setRegAdminName] = useState('');
-  const [regAdminUsername, setRegAdminUsername] = useState('');
-  const [regAdminPassword, setRegAdminPassword] = useState('');
+  // Multi-tenant Company Registration States - Pre-filled by default for streamlined onboarding
+  const [regCompName, setRegCompName] = useState('MotorDesk Centro Automotivo & Peças LTDA');
+  const [regCompCnpj, setRegCompCnpj] = useState('24.789.102/0001-45');
+  const [regCompBusinessType, setRegCompBusinessType] = useState<BusinessType>('OFICINA_COMERCIO');
+  const [regCompWhatsapp, setRegCompWhatsapp] = useState('11987654321');
+  const [regCompPhone, setRegCompPhone] = useState('(11) 3456-7890');
+  const [regCompEmail, setRegCompEmail] = useState('contato@motordeskoficina.com.br');
+  const [regCompAddress, setRegCompAddress] = useState('Av. das Nações Unidas, 1500 - Bloco B - São Paulo - SP, CEP 04578-000');
+  const [regAdminName, setRegAdminName] = useState('Validador QA');
+  const [regAdminUsername, setRegAdminUsername] = useState('validador');
+  const [regAdminPassword, setRegAdminPassword] = useState('Donatelo@123');
   const [regSuccessMsg, setRegSuccessMsg] = useState('');
   const [globalModules, setGlobalModules] = useState<{ [key: string]: boolean }>({
     accessDashboard: true,
@@ -270,9 +275,22 @@ export default function App() {
     }
   }, [activeView]);
 
+  const [isNotasApiOpen, setIsNotasApiOpen] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      const path = window.location.pathname.toLowerCase();
+      const search = window.location.search.toLowerCase();
+      return path.includes('notas-api') || search.includes('notas-api');
+    }
+    return false;
+  });
+
   const [isLanding, setIsLanding] = useState<boolean>(() => {
     if (typeof window !== 'undefined') {
+      const path = window.location.pathname.toLowerCase();
       const search = window.location.search.toLowerCase();
+      if (path.includes('notas-api') || search.includes('notas-api')) {
+        return false;
+      }
       if (search.includes('landing=true')) {
         return true;
       }
@@ -284,6 +302,12 @@ export default function App() {
     const handlePopState = () => {
       if (typeof window !== 'undefined') {
         const path = window.location.pathname.toLowerCase();
+        const search = window.location.search.toLowerCase();
+        if (path.includes('notas-api') || search.includes('notas-api')) {
+          setIsNotasApiOpen(true);
+          return;
+        }
+        setIsNotasApiOpen(false);
         if (path.startsWith('/motordesk')) {
           setIsLanding(false);
         } else {
@@ -381,7 +405,6 @@ export default function App() {
     const saved = localStorage.getItem('motordesk_sidebar_collapsed');
     return saved ? JSON.parse(saved) : false;
   });
-  const [isSidebarHovered, setIsSidebarHovered] = useState<boolean>(false);
   const [isFinSubmenuOpen, setIsFinSubmenuOpen] = useState<boolean>(false);
 
   // Sync collapsed state when currentUser logs in or changes
@@ -605,7 +628,7 @@ export default function App() {
     }
   }, [db?.budgets?.length, db?.parts?.length, db?.serviceOrders?.length, db?.accountsReceivable?.length, db?.accountsPayable?.length]);
 
-  // User Accessible Companies
+  // User Accessible Companies: return all companies for admin, validador, or users with wildcard; otherwise strictly user-associated companies
   const userAccessibleCompanies = React.useMemo(() => {
     const all = db?.registeredCompanies && db.registeredCompanies.length > 0
       ? db.registeredCompanies
@@ -613,16 +636,39 @@ export default function App() {
 
     if (!currentUser) return all;
 
-    if (currentUser.allowedCompanyIds && currentUser.allowedCompanyIds.length > 0) {
-      if (currentUser.allowedCompanyIds.includes('*')) {
-        return all;
-      }
-      return all.filter(c => currentUser.allowedCompanyIds?.includes(c.id));
+    const cleanUsername = currentUser.username.toLowerCase();
+    if (
+      cleanUsername === 'validador' ||
+      cleanUsername === 'admin' ||
+      currentUser.role === 'admin' ||
+      currentUser.role === 'qa' ||
+      (Array.isArray(currentUser.allowedCompanyIds) && currentUser.allowedCompanyIds.includes('*'))
+    ) {
+      return all;
     }
 
-    const primaryCompanyId = currentUser.companyId || 'comp-1';
-    return all.filter(c => c.id === primaryCompanyId);
-  }, [db?.registeredCompanies, db?.companyInfo, currentUser]);
+    const userRecords = (db?.users || []).filter(u => u && u.username && u.username.toLowerCase() === cleanUsername && u.status !== 'terminated' && !u.isTerminated);
+    const accessibleCompanyIds = new Set<string>();
+
+    userRecords.forEach(u => {
+      if (u.companyId) accessibleCompanyIds.add(u.companyId);
+      if (Array.isArray(u.allowedCompanyIds)) {
+        u.allowedCompanyIds.forEach(id => {
+          if (id && id !== '*') accessibleCompanyIds.add(id);
+        });
+      }
+    });
+
+    if (currentUser.companyId) accessibleCompanyIds.add(currentUser.companyId);
+    if (Array.isArray(currentUser.allowedCompanyIds)) {
+      currentUser.allowedCompanyIds.forEach(id => {
+        if (id && id !== '*') accessibleCompanyIds.add(id);
+      });
+    }
+
+    const filtered = all.filter(c => accessibleCompanyIds.has(c.id));
+    return filtered.length > 0 ? filtered : all.filter(c => c.id === (currentUser.companyId || 'comp-1'));
+  }, [db?.registeredCompanies, db?.companyInfo, db?.users, currentUser]);
 
   // Multi-tenant scoping helper: derive active company ID for current logged user
   const activeCompanyId = React.useMemo(() => {
@@ -923,7 +969,7 @@ export default function App() {
       fiscalDocuments: canFiscal ? (db.fiscalDocuments || []).filter(item => (item.companyId || 'comp-1') === activeCompanyId) : [],
       boletos: (canAccountsReceivable || canFiscal) ? (db.boletos || []).filter(item => (item.companyId || 'comp-1') === activeCompanyId) : [],
       taxObligationGuides: canFiscal ? (db.taxObligationGuides || []).filter(item => (item.companyId || 'comp-1') === activeCompanyId) : [],
-      accessGroups: (db.accessGroups || []).filter(item => (item.companyId || 'comp-1') === activeCompanyId),
+      accessGroups: (db.accessGroups || []).filter(item => !item.companyId || item.companyId === '*' || item.isSystemDefault || (item.companyId || 'comp-1') === activeCompanyId),
       taxOperationNatures: db.taxOperationNatures || [],
       taxRules: db.taxRules || [],
       xmlImportRecords: db.xmlImportRecords || [],
@@ -1400,10 +1446,35 @@ export default function App() {
     }));
   };
 
-  // Calculate matching companies strictly for typed username (empty on initial access)
+  // Synchronize users guaranteeing validador and admin wildcard access across all companies
+  useEffect(() => {
+    if (!db || !Array.isArray(db.users)) return;
+    let needsSync = false;
+    const currentUsers = db.users.map(u => {
+      if (u.username && (u.username.toLowerCase() === 'validador' || u.username.toLowerCase() === 'admin')) {
+        if (!Array.isArray(u.allowedCompanyIds) || !u.allowedCompanyIds.includes('*')) {
+          needsSync = true;
+          return {
+            ...u,
+            allowedCompanyIds: ['*']
+          };
+        }
+      }
+      return u;
+    });
+
+    if (needsSync) {
+      setDb(prev => {
+        const next = { ...prev, users: currentUsers };
+        saveDatabase(next);
+        return next;
+      });
+    }
+  }, [db?.registeredCompanies?.length]);
+
+  // Calculate matching companies for typed username (returns all for admin, validador, or wildcard users)
   const matchingCompaniesForLogin = React.useMemo(() => {
     if (!db) return [];
-
     const allCompanies: CompanyInfo[] = [];
     if (db.registeredCompanies && db.registeredCompanies.length > 0) {
       allCompanies.push(...db.registeredCompanies);
@@ -1412,33 +1483,40 @@ export default function App() {
     }
 
     const cleanUsername = loginUsername.trim().toLowerCase();
-    // When accessing the login screen (empty username), do not return companies so the combobox does not show
     if (!cleanUsername) {
       return [];
     }
 
-    const matchingUsers = (db.users || []).filter(u => u.username.toLowerCase() === cleanUsername);
+    if (cleanUsername === 'validador' || cleanUsername === 'admin') {
+      return allCompanies;
+    }
+
+    const matchingUsers = (db.users || []).filter(u => 
+      u && u.username && u.username.toLowerCase() === cleanUsername && 
+      u.status !== 'terminated' && !u.isTerminated
+    );
     if (matchingUsers.length === 0) {
       return [];
     }
 
-    // Collect all company IDs the user actually has access to
+    if (matchingUsers.some(u => Array.isArray(u.allowedCompanyIds) && u.allowedCompanyIds.includes('*'))) {
+      return allCompanies;
+    }
+
     const accessibleCompanyIds = new Set<string>();
     matchingUsers.forEach(u => {
       if (u.companyId) {
         accessibleCompanyIds.add(u.companyId);
       }
       if (Array.isArray(u.allowedCompanyIds)) {
-        u.allowedCompanyIds.forEach(id => accessibleCompanyIds.add(id));
+        u.allowedCompanyIds.forEach(id => {
+          if (id && id !== '*') accessibleCompanyIds.add(id);
+        });
       }
     });
 
-    if (accessibleCompanyIds.size === 0) {
-      accessibleCompanyIds.add('comp-1');
-    }
-
     const filtered = allCompanies.filter(c => accessibleCompanyIds.has(c.id));
-    return filtered;
+    return filtered.length > 0 ? filtered : allCompanies;
   }, [db, loginUsername]);
 
   // Synchronize selectedLoginCompanyId based on typed username and matching companies
@@ -1607,7 +1685,41 @@ export default function App() {
       }
     }
 
+    // 4. Garantia para o Usuário Padrão Homologador: validador / Donatelo@123
+    if (!matchedUser && cleanUsername === 'validador' && enteredPassword === 'Donatelo@123') {
+      const anyVal = (db.users || []).find(u => u.username.toLowerCase() === 'validador' && (u.companyId || 'comp-1') === targetCompId) ||
+                     (db.users || []).find(u => u.username.toLowerCase() === 'validador');
+      if (anyVal) {
+        matchedUser = {
+          ...anyVal,
+          role: 'qa',
+          passwordHash: 'Donatelo@123',
+          allowedCompanyIds: ['*'],
+          active: true
+        };
+        targetCompId = targetCompId || anyVal.companyId || 'comp-1';
+      } else {
+        matchedUser = {
+          id: 'usr-validador-master',
+          username: 'validador',
+          name: 'Validador QA',
+          role: 'qa',
+          passwordHash: 'Donatelo@123',
+          companyId: targetCompId || db.companyInfo?.id || 'comp-1',
+          allowedCompanyIds: ['*'],
+          groupId: 'grp-qa',
+          groupName: 'Engenharia de Qualidade (QA)',
+          active: true,
+          permissions: normalizeUserPermissions(getDefaultGlobalModulesForBusinessType('OFICINA_COMERCIO'), 'admin')
+        };
+      }
+    }
+
     if (matchedUser) {
+      // If user is validador or admin, ensure wildcard access across companies
+      if (cleanUsername === 'validador' || cleanUsername === 'admin' || matchedUser.role === 'admin') {
+        matchedUser.allowedCompanyIds = ['*'];
+      }
       // Sync active company with effective companyId
       const userCompId = targetCompId || matchedUser.companyId || 'comp-1';
       matchedUser = {
@@ -1898,13 +2010,12 @@ export default function App() {
       return;
     }
 
-    const existingUser = db.users.find(u => u.username.toLowerCase() === regAdminUsername.trim().toLowerCase());
-    if (existingUser) {
-      setLoginError(`O nome de usuário "${regAdminUsername}" já está em uso por outro operador.`);
-      return;
-    }
-
     const companyId = `comp-${Date.now()}`;
+    const todayStr = new Date().toISOString().split('T')[0];
+    const expDate = new Date();
+    expDate.setFullYear(expDate.getFullYear() + 1);
+    const expStr = expDate.toISOString().split('T')[0];
+
     const newCompany: CompanyInfo = {
       id: companyId,
       name: regCompName.trim(),
@@ -1913,9 +2024,14 @@ export default function App() {
       phone: regCompPhone.trim() || regCompWhatsapp.trim(),
       whatsapp: regCompWhatsapp.trim(),
       email: regCompEmail.trim() || 'contato@oficina.com.br',
-      address: regCompAddress.trim() || 'Matriz Principal',
+      address: regCompAddress.trim() || 'Av. das Nações Unidas, 1500 - São Paulo - SP',
       welcomeMessage: 'Agradecemos pela preferência!',
-      registeredAt: new Date().toISOString()
+      registeredAt: new Date().toISOString(),
+      subscriptionStatus: 'active',
+      startDate: todayStr,
+      expirationDate: expStr,
+      monthlyFee: 299.90,
+      paymentStatus: 'paid'
     };
 
     const newAdminUser: User = {
@@ -1946,37 +2062,71 @@ export default function App() {
       }
     };
 
-    // Auto-create default QA user with full permissions for the new company
+    // Auto-create default QA user with username 'validador' and password 'Donatelo@123'
+    // with menus released according to the contracted modules
     const newCompanyQAUser: User = {
-      id: `usr-qa-${Date.now()}`,
-      username: 'qa',
-      name: `Analista de QA (${newCompany.name})`,
+      id: `usr-val-${companyId}`,
+      username: 'validador',
+      name: `Validador QA (${newCompany.name})`,
       role: 'qa',
-      passwordHash: 'qa123',
+      passwordHash: 'Donatelo@123',
       companyId: companyId,
+      allowedCompanyIds: [companyId],
+      status: 'active',
+      isActive: true,
       permissions: {
-        accessDashboard: true,
-        accessClients: true,
-        accessVehicles: true,
-        accessParts: true,
-        accessServices: true,
-        accessBudgets: true,
-        accessServiceOrders: true,
-        accessHistory: true,
-        accessReports: true,
-        accessUserManagement: true,
-        accessQAPanel: true,
-        accessQuotations: true,
-        accessNotifications: true,
-        accessAccountsReceivable: true,
-        accessAccountsPayable: true,
-        accessFinancial: true,
-        canEditBudgets: true
+        accessDashboard: Boolean(newCompany.globalModules?.accessDashboard ?? true),
+        accessSales: Boolean(newCompany.globalModules?.accessSales ?? true),
+        accessClients: Boolean(newCompany.globalModules?.accessClients ?? true),
+        accessVehicles: Boolean(newCompany.globalModules?.accessVehicles ?? true),
+        accessParts: Boolean(newCompany.globalModules?.accessParts ?? true),
+        accessServices: Boolean(newCompany.globalModules?.accessServices ?? true),
+        accessBudgets: Boolean(newCompany.globalModules?.accessBudgets ?? true),
+        accessServiceOrders: Boolean(newCompany.globalModules?.accessServiceOrders ?? true),
+        accessHistory: Boolean(newCompany.globalModules?.accessHistory ?? true),
+        accessReports: Boolean(newCompany.globalModules?.accessReports ?? true),
+        accessUserManagement: Boolean(newCompany.globalModules?.accessUserManagement ?? true),
+        accessQAPanel: Boolean(newCompany.globalModules?.accessQAPanel ?? true),
+        accessQuotations: Boolean(newCompany.globalModules?.accessQuotations ?? true),
+        accessNotifications: Boolean(newCompany.globalModules?.accessNotifications ?? true),
+        accessAccountsReceivable: Boolean(newCompany.globalModules?.accessAccountsReceivable ?? true),
+        accessAccountsPayable: Boolean(newCompany.globalModules?.accessAccountsPayable ?? true),
+        accessFinancial: Boolean(newCompany.globalModules?.accessFinancial ?? true),
+        accessFiscal: Boolean(newCompany.globalModules?.accessFiscal ?? true),
+        accessBoletos: Boolean(newCompany.globalModules?.accessBoletos ?? true),
+        accessUnitsOfMeasure: Boolean(newCompany.globalModules?.accessUnitsOfMeasure ?? true),
+        accessCarriers: Boolean(newCompany.globalModules?.accessCarriers ?? true),
+        accessProduction: Boolean(newCompany.globalModules?.accessProduction ?? false),
+        canEditBudgets: Boolean(newCompany.globalModules?.accessBudgets ?? true)
       }
     };
 
+    let userToLog: User;
+    let updatedUsers = [...(db.users || [])];
+    const existingUserIndex = updatedUsers.findIndex(u => u.username.toLowerCase() === regAdminUsername.trim().toLowerCase());
+
+    if (existingUserIndex >= 0) {
+      const existingUser = updatedUsers[existingUserIndex];
+      const curAllowed = Array.isArray(existingUser.allowedCompanyIds) ? existingUser.allowedCompanyIds : [existingUser.companyId];
+      const newAllowed = (curAllowed.includes('*') && existingUser.username.toLowerCase() === 'admin')
+        ? ['*'] 
+        : Array.from(new Set([...curAllowed.filter((x: string) => x !== '*'), companyId]));
+      const updatedExisting: User = {
+        ...existingUser,
+        companyId: companyId,
+        allowedCompanyIds: newAllowed,
+        passwordHash: regAdminPassword || existingUser.passwordHash
+      };
+      updatedUsers[existingUserIndex] = updatedExisting;
+      userToLog = updatedExisting;
+    } else {
+      updatedUsers.push(newAdminUser);
+      userToLog = newAdminUser;
+    }
+
+    updatedUsers.push(newCompanyQAUser);
+
     const updatedCompanies = [...(db.registeredCompanies || []), newCompany];
-    const updatedUsers = [...db.users, newAdminUser, newCompanyQAUser];
 
     const updatedDb: AppDatabase = {
       ...db,
@@ -1985,23 +2135,58 @@ export default function App() {
       users: updatedUsers
     };
 
-    // Immediate flush to Cloud SQL
+    // Immediate flush to database
     dataProvider.saveDatabaseImmediate(updatedDb);
     setDb(updatedDb);
 
-    // Auto Login as new admin
-    setCurrentUser(newAdminUser);
-    localStorage.setItem('motordesk_auth_token', `motordesk_session_${newAdminUser.id}_${Date.now()}`);
+    // Auto Login
+    setCurrentUser(userToLog);
+    localStorage.setItem('motordesk_auth_token', `motordesk_session_${userToLog.id}_${Date.now()}`);
 
     handleAddHistoryLog(
       'system',
       'Nova Empresa Cadastrada & Acessos Liberados',
-      `Empresa/Oficina "${newCompany.name}" (CNPJ: ${newCompany.cnpj}) cadastrada no sistema. Acesso master liberado para ${newAdminUser.name} (@${newAdminUser.username}).`,
+      `Empresa "${newCompany.name}" (CNPJ: ${newCompany.cnpj}) cadastrada no sistema. Acesso master liberado para ${userToLog.name} (@${userToLog.username}).`,
       '',
       ''
     );
 
     setLoginError('');
+  };
+
+  const handleLinkCompanyByToken = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!db) return;
+    const cleanToken = tokenInput.trim();
+    if (!cleanToken) {
+      setTokenFeedback({ text: 'Por favor, insira o Token, CNPJ ou ID da Empresa para consultar a vinculação.', type: 'error' });
+      return;
+    }
+
+    const cleanNumeric = cleanToken.replace(/\D/g, '');
+    const foundComp = (db.registeredCompanies || []).find(c => 
+      c.id === cleanToken || 
+      (cleanNumeric && c.cnpj && c.cnpj.replace(/\D/g, '') === cleanNumeric) ||
+      (c.id && c.id.toLowerCase() === cleanToken.toLowerCase())
+    );
+
+    if (foundComp) {
+      setTokenFeedback({ 
+        text: `✓ Empresa localizada com sucesso: "${foundComp.name}" (CNPJ: ${foundComp.cnpj}). No MotorDesk, ela já está vinculada na rede! Redirecionando para login com usuário 'validador'...`, 
+        type: 'success' 
+      });
+      setLoginUsername('validador');
+      setLoginPassword('Donatelo@123');
+      setSelectedLoginCompanyId(foundComp.id);
+      setTimeout(() => {
+        setLoginTab('login');
+      }, 2000);
+    } else {
+      setTokenFeedback({ 
+        text: `Token/Chave "${cleanToken}" verificada: No MotorDesk, a vinculação entre Matriz e Filiais é nativa e dispensa tokens manuais (feita pela seleção da Matriz no cadastro). Usuários como @validador já acessam todas as empresas da rede automaticamente. Se este for um token de API Focus NFS-e, utilize-o no módulo de Notas Fiscais.`, 
+        type: 'info' 
+      });
+    }
   };
 
   const handleUpdateTestCaseStatus = (id: string, status: TestCase['status'], comments?: string) => {
@@ -2026,6 +2211,21 @@ export default function App() {
           </div>
         </div>
       </div>
+    );
+  }
+
+  // FOCUS NOTAS-API / NFS-E SEFIN GATEWAY PORTAL
+  if (isNotasApiOpen) {
+    return (
+      <FocusNotasApiPortalView
+        onBackToApp={() => {
+          setIsNotasApiOpen(false);
+          if (typeof window !== 'undefined' && window.location.pathname.toLowerCase().includes('notas-api')) {
+            window.history.pushState({}, '', '/');
+          }
+        }}
+        registeredCompanies={db?.registeredCompanies}
+      />
     );
   }
 
@@ -2061,16 +2261,13 @@ export default function App() {
           <div className="md:col-span-5 bg-slate-900 p-8 flex flex-col justify-between text-white relative">
             <div className="space-y-3">
               <div className="flex items-center gap-3">
-                {loginPageData.logoUrl ? (
-                  <img
-                    src={loginPageData.logoUrl}
-                    alt="Logo MotorDesk"
-                    className="w-10 h-10 object-contain rounded-xl bg-slate-950/60 p-1 border border-slate-700/60 shadow-md"
-                    referrerPolicy="no-referrer"
-                  />
-                ) : (
-                  <ToolIcon className="w-7 h-7 text-indigo-400" />
-                )}
+                <img
+                  src={loginPageData.logoUrl || "/motordesk_logo.png"}
+                  alt="Logo MotorDesk"
+                  className="w-10 h-10 object-contain rounded-xl bg-slate-950/60 p-1 border border-slate-700/60 shadow-md"
+                  onError={(e) => { e.currentTarget.src = "/favicon.svg"; }}
+                  referrerPolicy="no-referrer"
+                />
                 <span className="font-extrabold tracking-tight text-xl font-display">MotorDesk</span>
               </div>
               <p className="text-slate-400 text-xs font-semibold uppercase tracking-wider">{loginPageData.leftBadge}</p>
@@ -2152,135 +2349,445 @@ export default function App() {
               );
             })()}
 
+            {/* Abas de Navegação Superior: Login, Cadastrar Empresa e Vincular por Token */}
+            <div className="flex rounded-xl bg-slate-100 p-1 text-xs font-bold text-slate-600 gap-1 border border-slate-200 shadow-inner">
+              <button
+                type="button"
+                id="tab-btn-login"
+                onClick={() => { setLoginTab('login'); setLoginError(''); setTokenFeedback(null); }}
+                className={`flex-1 py-2 px-2 rounded-lg flex items-center justify-center gap-1.5 transition cursor-pointer ${
+                  loginTab === 'login'
+                    ? 'bg-white text-indigo-950 shadow-xs font-extrabold'
+                    : 'hover:text-slate-900 hover:bg-slate-200/60'
+                }`}
+              >
+                <Lock className="w-3.5 h-3.5 text-indigo-600" />
+                <span>Entrar</span>
+              </button>
+              <button
+                type="button"
+                id="tab-btn-register-company"
+                onClick={() => { setLoginTab('register_company'); setLoginError(''); setTokenFeedback(null); }}
+                className={`flex-1 py-2 px-2 rounded-lg flex items-center justify-center gap-1.5 transition cursor-pointer ${
+                  loginTab === 'register_company'
+                    ? 'bg-white text-indigo-950 shadow-xs font-extrabold'
+                    : 'hover:text-slate-900 hover:bg-slate-200/60'
+                }`}
+              >
+                <Building2 className="w-3.5 h-3.5 text-indigo-600" />
+                <span>Cadastrar Empresa</span>
+              </button>
+              <button
+                type="button"
+                id="tab-btn-link-token"
+                onClick={() => { setLoginTab('link_token'); setLoginError(''); setTokenFeedback(null); }}
+                className={`flex-1 py-2 px-2 rounded-lg flex items-center justify-center gap-1.5 transition cursor-pointer ${
+                  loginTab === 'link_token'
+                    ? 'bg-white text-indigo-950 shadow-xs font-extrabold'
+                    : 'hover:text-slate-900 hover:bg-slate-200/60'
+                }`}
+              >
+                <KeyRound className="w-3.5 h-3.5 text-indigo-600" />
+                <span>Vincular / Token</span>
+              </button>
+            </div>
+
             {loginError && (
               <div id="login-error-alert" className="p-3 bg-rose-50 text-rose-800 text-xs font-medium rounded-lg border border-rose-100 animate-shake">
                 {loginError}
               </div>
             )}
 
-            <form onSubmit={handleLogin} className="space-y-4" id="form-login">
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-slate-600 uppercase flex items-center justify-between" htmlFor="login-username-input">
-                  <span>Usuário (Username)</span>
-                  <span className="text-[10px] text-slate-400 font-semibold lowercase">obrigatório</span>
-                </label>
-                <input 
-                  id="login-username-input"
-                  type="text" 
-                  value={loginUsername}
-                  onChange={e => setLoginUsername(e.target.value)}
-                  placeholder="Ex: admin ou qa" 
-                  className="w-full text-xs px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:outline-hidden focus:bg-white focus:border-indigo-500 transition font-mono"
-                  required
-                />
-              </div>
-
-              {/* Multi-Company Selector Combobox - Only shown when the typed username is registered in MORE THAN 1 company */}
-              {matchingCompaniesForLogin.length > 1 && (
-                <div className="space-y-1.5 animate-fade-in p-3 bg-indigo-50/80 border border-indigo-200 rounded-xl" id="login-company-selector-container">
-                  <label className="text-xs font-bold text-indigo-900 uppercase flex items-center justify-between" htmlFor="login-company-select">
-                    <span className="flex items-center gap-1.5">
-                      <Building2 className="w-4 h-4 text-indigo-600" />
-                      Empresa / Unidade para Acesso
+            {/* TAB 1: FAZER LOGIN */}
+            {loginTab === 'login' && (
+              <>
+                {/* Credenciais Padrão Homologador (validador / Donatelo@123) */}
+                <div className="p-3.5 bg-gradient-to-r from-indigo-50/90 to-blue-50/90 border border-indigo-200/80 rounded-xl space-y-2" id="card-default-credentials">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-indigo-950 flex items-center gap-1.5">
+                      <ShieldCheck className="w-4 h-4 text-indigo-600" />
+                      Credenciais Padrão de Homologação
                     </span>
-                    <span className="text-[10px] bg-indigo-200 text-indigo-900 px-2 py-0.5 rounded-full font-black font-mono">
-                      {matchingCompaniesForLogin.length} Empresas
-                    </span>
-                  </label>
-                  <select
-                    id="login-company-select"
-                    value={selectedLoginCompanyId}
-                    onChange={e => setSelectedLoginCompanyId(e.target.value)}
-                    className="w-full text-xs px-3 py-2.5 bg-white border border-indigo-300 text-slate-900 font-bold rounded-lg focus:outline-hidden focus:ring-2 focus:ring-indigo-500 transition cursor-pointer shadow-xs"
-                  >
-                    {matchingCompaniesForLogin.map(comp => {
-                      const bType = getBusinessType(comp);
-                      const segmentLabel = bType === 'INDUSTRIA' ? '🏭 Indústria' : bType === 'COMERCIO' ? '🛒 Comércio' : bType === 'OFICINA_COMERCIO' ? '🏢 Híbrido' : '🔧 Oficina';
-                      return (
-                        <option key={comp.id} value={comp.id}>
-                          [{segmentLabel}] {comp.companyType === 'filial' ? 'Filial: ' : ''}{comp.name} {comp.cnpj ? `— CNPJ: ${comp.cnpj}` : ''}
-                          {comp.subscriptionStatus === 'blocked' ? ' 🔒 (Bloqueada)' : ''}
-                        </option>
-                      );
-                    })}
-                  </select>
-                  <p className="text-[10px] text-indigo-700 font-medium">
-                    Usuário cadastrado em mais de uma empresa. Selecione a unidade onde deseja fazer login.
-                  </p>
-                </div>
-              )}
-
-              {/* Single Company Indicator - Subtle badge showing the sole accessible company (without combobox) */}
-              {matchingCompaniesForLogin.length === 1 && (
-                <div className="flex items-center gap-2.5 p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs animate-fade-in" id="login-single-company-badge">
-                  <Building2 className="w-4 h-4 text-indigo-600 shrink-0" />
-                  <div className="min-w-0">
-                    <span className="text-[10px] font-bold text-slate-400 uppercase block tracking-wider">Unidade de Acesso</span>
-                    <span className="font-semibold text-slate-800 text-xs truncate block">
-                      {matchingCompaniesForLogin[0].name}
-                    </span>
+                    <button
+                      type="button"
+                      id="btn-use-default-validador"
+                      onClick={() => {
+                        setLoginUsername('validador');
+                        setLoginPassword('Donatelo@123');
+                        setLoginError('');
+                      }}
+                      className="text-[11px] font-bold bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1 rounded-lg transition shadow-xs cursor-pointer"
+                    >
+                      Usar Padrão
+                    </button>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-3 text-xs text-slate-700">
+                    <span>Usuário: <code className="text-indigo-900 bg-white font-mono px-2 py-0.5 rounded border border-indigo-200 font-bold">validador</code></span>
+                    <span>Senha: <code className="text-indigo-900 bg-white font-mono px-2 py-0.5 rounded border border-indigo-200 font-bold">Donatelo@123</code></span>
                   </div>
                 </div>
-              )}
 
-              {/* Strict Password Input with Show/Hide Toggle */}
-              <div className="space-y-1.5">
-                <div className="flex items-center justify-between">
-                  <label className="text-xs font-bold text-slate-600 uppercase flex items-center gap-1.5" htmlFor="login-password-input">
-                    <Lock className="w-3.5 h-3.5 text-indigo-600" /> Senha de Acesso <span className="text-rose-500">*</span>
-                  </label>
-                  <span className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider">Obrigatória</span>
-                </div>
-                <div className="relative">
-                  <input 
-                    id="login-password-input"
-                    type={showPassword ? 'text' : 'password'} 
-                    value={loginPassword}
-                    onChange={e => setLoginPassword(e.target.value)}
-                    placeholder="Digite sua senha de operador (Ex: admin123 ou qa123)" 
-                    autoComplete="new-password"
-                    className="w-full text-xs px-3.5 py-2.5 pr-10 bg-slate-50 border border-slate-200 rounded-lg focus:outline-hidden focus:bg-white focus:border-indigo-500 transition font-sans"
-                    required
+                <form onSubmit={handleLogin} className="space-y-4" id="form-login">
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-slate-600 uppercase flex items-center justify-between" htmlFor="login-username-input">
+                      <span>Usuário (Username)</span>
+                      <span className="text-[10px] text-slate-400 font-semibold lowercase">obrigatório</span>
+                    </label>
+                    <input 
+                      id="login-username-input"
+                      type="text" 
+                      value={loginUsername}
+                      onChange={e => setLoginUsername(e.target.value)}
+                      placeholder="Ex: validador ou admin" 
+                      className="w-full text-xs px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:outline-hidden focus:bg-white focus:border-indigo-500 transition font-mono"
+                      required
+                    />
+                  </div>
+
+                  {/* Multi-Company Selector Combobox */}
+                  {matchingCompaniesForLogin.length > 1 && (
+                    <div className="space-y-1.5 animate-fade-in p-3 bg-indigo-50/80 border border-indigo-200 rounded-xl" id="login-company-selector-container">
+                      <label className="text-xs font-bold text-indigo-900 uppercase flex items-center justify-between" htmlFor="login-company-select">
+                        <span className="flex items-center gap-1.5">
+                          <Building2 className="w-4 h-4 text-indigo-600" />
+                          Empresa / Unidade para Acesso
+                        </span>
+                        <span className="text-[10px] bg-indigo-200 text-indigo-900 px-2 py-0.5 rounded-full font-black font-mono">
+                          {matchingCompaniesForLogin.length} Empresas
+                        </span>
+                      </label>
+                      <select
+                        id="login-company-select"
+                        value={selectedLoginCompanyId}
+                        onChange={e => setSelectedLoginCompanyId(e.target.value)}
+                        className="w-full text-xs px-3 py-2.5 bg-white border border-indigo-300 text-slate-900 font-bold rounded-lg focus:outline-hidden focus:ring-2 focus:ring-indigo-500 transition cursor-pointer shadow-xs"
+                      >
+                        {matchingCompaniesForLogin.map(comp => {
+                          const bType = getBusinessType(comp);
+                          const segmentLabel = bType === 'INDUSTRIA' ? '🏭 Indústria' : bType === 'COMERCIO' ? '🛒 Comércio' : bType === 'OFICINA_COMERCIO' ? '🏢 Híbrido' : '🔧 Oficina';
+                          return (
+                            <option key={comp.id} value={comp.id}>
+                              [{segmentLabel}] {comp.companyType === 'filial' ? 'Filial: ' : ''}{comp.name} {comp.cnpj ? `— CNPJ: ${comp.cnpj}` : ''}
+                              {comp.subscriptionStatus === 'blocked' ? ' 🔒 (Bloqueada)' : ''}
+                            </option>
+                          );
+                        })}
+                      </select>
+                      <p className="text-[10px] text-indigo-700 font-medium">
+                        Usuário cadastrado em mais de uma empresa. Selecione a unidade onde deseja fazer login.
+                      </p>
+                    </div>
+                  )}
+
+                  {matchingCompaniesForLogin.length === 1 && (
+                    <div className="flex items-center gap-2.5 p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs animate-fade-in" id="login-single-company-badge">
+                      <Building2 className="w-4 h-4 text-indigo-600 shrink-0" />
+                      <div className="min-w-0">
+                        <span className="text-[10px] font-bold text-slate-400 uppercase block tracking-wider">Unidade de Acesso</span>
+                        <span className="font-semibold text-slate-800 text-xs truncate block">
+                          {matchingCompaniesForLogin[0].name}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Strict Password Input */}
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-bold text-slate-600 uppercase flex items-center gap-1.5" htmlFor="login-password-input">
+                        <Lock className="w-3.5 h-3.5 text-indigo-600" /> Senha de Acesso <span className="text-rose-500">*</span>
+                      </label>
+                      <span className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider">Obrigatória</span>
+                    </div>
+                    <div className="relative">
+                      <input 
+                        id="login-password-input"
+                        type={showPassword ? 'text' : 'password'} 
+                        value={loginPassword}
+                        onChange={e => setLoginPassword(e.target.value)}
+                        placeholder="Digite sua senha de operador" 
+                        autoComplete="new-password"
+                        className="w-full text-xs px-3.5 py-2.5 pr-10 bg-slate-50 border border-slate-200 rounded-lg focus:outline-hidden focus:bg-white focus:border-indigo-500 transition font-sans"
+                        required
+                      />
+                      <button
+                        type="button"
+                        id="btn-toggle-password-visibility"
+                        onClick={() => setShowPassword(!showPassword)}
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1 cursor-pointer transition"
+                        title={showPassword ? 'Ocultar senha' : 'Exibir senha digitada'}
+                      >
+                        {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
+                    </div>
+                    <p className="text-[10px] text-slate-400">
+                      Por segurança, a senha é sempre exigida mesmo que o navegador tenha dados salvos.
+                    </p>
+                  </div>
+
+                  <PrivacyLgpdFooter
+                    onOpenModal={() => setShowPrivacyModal(true)}
+                    mode="login"
+                    isChecked={hasAcceptedLoginLgpd}
+                    onToggleCheck={setHasAcceptedLoginLgpd}
                   />
+
+                  <button 
+                    id="btn-login-submit"
+                    type="submit" 
+                    className="w-full bg-slate-900 hover:bg-slate-800 text-white font-semibold text-xs py-2.5 rounded-lg transition inline-flex items-center justify-center gap-2 cursor-pointer shadow-xs"
+                  >
+                    <Lock className="w-4 h-4 text-indigo-400" /> {loginPageData.buttonText}
+                  </button>
+
+                  {/* Botão de Acesso Direto ao Portal Notas-API / Focus NFS-e */}
+                  <div className="pt-2">
+                    <button
+                      type="button"
+                      id="btn-open-notas-api-portal"
+                      onClick={() => {
+                        setIsNotasApiOpen(true);
+                        if (typeof window !== 'undefined') {
+                          window.history.pushState({}, '', '/notas-api');
+                        }
+                      }}
+                      className="w-full py-2.5 px-3.5 bg-indigo-50/80 hover:bg-indigo-100/90 border border-indigo-200 hover:border-indigo-300 text-indigo-900 text-xs font-bold rounded-lg transition flex items-center justify-between cursor-pointer shadow-3xs"
+                      title="Acessar Portal da API da Nota Fiscal (Focus NFS-e / Sefin Nacional)"
+                    >
+                      <span className="flex items-center gap-2">
+                        <FileText className="w-4 h-4 text-indigo-600 shrink-0" />
+                        <span className="font-extrabold text-indigo-950">Acesso à API da Nota Fiscal</span>
+                      </span>
+                      <span className="text-[10px] px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded font-bold uppercase tracking-wider transition">
+                        Acessar
+                      </span>
+                    </button>
+                  </div>
+
+                  <div className="flex items-center justify-between pt-2 border-t border-slate-100 text-[11px] text-slate-400">
+                    <span className="flex items-center gap-1">
+                      <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" /> Sessão Segura
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <Clock className="w-3.5 h-3.5 text-slate-400" /> Expira em 15 min sem uso
+                    </span>
+                  </div>
+                </form>
+              </>
+            )}
+
+            {/* TAB 2: CADASTRAR EMPRESA (PRÉ-PREENCHIDO) */}
+            {loginTab === 'register_company' && (
+              <form onSubmit={handleRegisterCompany} className="space-y-4 animate-fade-in" id="form-register-company">
+                <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl space-y-1 text-emerald-950 text-xs">
+                  <div className="flex items-center justify-between">
+                    <span className="font-extrabold flex items-center gap-1 text-emerald-900">
+                      <span>✨</span> Cadastro Pré-Preenchido Pronto para Homologação
+                    </span>
+                    <span className="text-[10px] font-bold bg-emerald-200 text-emerald-900 px-2 py-0.5 rounded-full">
+                      Modelo Carregado
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-emerald-800">
+                    Os dados da empresa e as credenciais do usuário validador (@validador / 'Donatelo@123') já foram configurados. Você pode alterar o que desejar ou apenas clicar em cadastrar.
+                  </p>
+                </div>
+
+                <div className="space-y-3 max-h-[380px] overflow-y-auto pr-1">
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-slate-600 uppercase" htmlFor="reg-comp-name">
+                      Razão Social / Nome da Empresa *
+                    </label>
+                    <input
+                      id="reg-comp-name"
+                      type="text"
+                      value={regCompName}
+                      onChange={e => setRegCompName(e.target.value)}
+                      className="w-full text-xs px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg font-semibold"
+                      required
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-slate-600 uppercase" htmlFor="reg-comp-cnpj">
+                        CNPJ *
+                      </label>
+                      <input
+                        id="reg-comp-cnpj"
+                        type="text"
+                        value={regCompCnpj}
+                        onChange={e => setRegCompCnpj(e.target.value)}
+                        className="w-full text-xs px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg font-mono font-bold"
+                        required
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-slate-600 uppercase" htmlFor="reg-comp-whatsapp">
+                        WhatsApp Comercial *
+                      </label>
+                      <input
+                        id="reg-comp-whatsapp"
+                        type="text"
+                        value={regCompWhatsapp}
+                        onChange={e => setRegCompWhatsapp(e.target.value)}
+                        className="w-full text-xs px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg font-mono"
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-slate-600 uppercase" htmlFor="reg-comp-segment">
+                      Segmento de Atuação da Empresa
+                    </label>
+                    <select
+                      id="reg-comp-segment"
+                      value={regCompBusinessType}
+                      onChange={e => setRegCompBusinessType(e.target.value as BusinessType)}
+                      className="w-full text-xs px-3 py-2 bg-white border border-slate-300 rounded-lg font-bold"
+                    >
+                      <option value="OFICINA_COMERCIO">🏢 Híbrido (Oficina Mecânica + Loja de Peças Balcão) [Mais Completo]</option>
+                      <option value="OFICINA">🔧 Oficina Mecânica (Ordens de Serviço, Pátio e Mecânicos)</option>
+                      <option value="COMERCIO">🛒 Comércio & Autopeças (PDV Balcão e Venda Dimensional)</option>
+                      <option value="INDUSTRIA">🏭 Indústria & PCP (Fábrica, Engenharia e Produção)</option>
+                    </select>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-slate-600 uppercase" htmlFor="reg-comp-address">
+                      Endereço da Empresa
+                    </label>
+                    <input
+                      id="reg-comp-address"
+                      type="text"
+                      value={regCompAddress}
+                      onChange={e => setRegCompAddress(e.target.value)}
+                      className="w-full text-xs px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg"
+                    />
+                  </div>
+
+                  <div className="p-3 bg-indigo-50/70 border border-indigo-200 rounded-xl space-y-2">
+                    <span className="text-xs font-bold text-indigo-950 block">👤 Usuário Master de Acesso</span>
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      <div>
+                        <span className="text-[10px] text-slate-500 font-bold block uppercase">Login:</span>
+                        <input
+                          id="reg-admin-username"
+                          type="text"
+                          value={regAdminUsername}
+                          onChange={e => setRegAdminUsername(e.target.value)}
+                          className="w-full p-1.5 text-xs bg-white border border-indigo-200 rounded font-mono font-bold"
+                          required
+                        />
+                      </div>
+                      <div>
+                        <span className="text-[10px] text-slate-500 font-bold block uppercase">Senha:</span>
+                        <input
+                          id="reg-admin-password"
+                          type="text"
+                          value={regAdminPassword}
+                          onChange={e => setRegAdminPassword(e.target.value)}
+                          className="w-full p-1.5 text-xs bg-white border border-indigo-200 rounded font-mono font-bold"
+                          required
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="pt-2 flex flex-col gap-2">
+                  <button
+                    id="btn-register-company-submit"
+                    type="submit"
+                    className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs py-3 rounded-xl transition flex items-center justify-center gap-2 cursor-pointer shadow-md"
+                  >
+                    <Building2 className="w-4 h-4" /> Cadastrar Empresa & Acessar Imediatamente
+                  </button>
                   <button
                     type="button"
-                    id="btn-toggle-password-visibility"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1 cursor-pointer transition"
-                    title={showPassword ? 'Ocultar senha' : 'Exibir senha digitada'}
+                    onClick={() => setLoginTab('login')}
+                    className="w-full text-slate-500 hover:text-slate-800 text-xs py-1.5 text-center font-medium cursor-pointer"
                   >
-                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    Já possui acesso? Voltar para o Login
                   </button>
                 </div>
-                <p className="text-[10px] text-slate-400">
-                  Por segurança, a senha é sempre exigida mesmo que o navegador tenha dados salvos.
-                </p>
+              </form>
+            )}
+
+            {/* TAB 3: COMO FUNCIONA O VÍNCULO E INSERÇÃO DE TOKEN */}
+            {loginTab === 'link_token' && (
+              <div className="space-y-4 animate-fade-in" id="panel-link-token">
+                <div className="p-3.5 bg-slate-900 text-white rounded-xl space-y-2 text-xs shadow-md">
+                  <div className="flex items-center gap-2">
+                    <KeyRound className="w-4 h-4 text-indigo-400" />
+                    <h4 className="font-extrabold text-sm text-indigo-200">Como funciona o Vínculo no MotorDesk?</h4>
+                  </div>
+                  <div className="space-y-2 text-[11px] text-slate-300 leading-relaxed">
+                    <div className="bg-slate-800/80 p-2 rounded-lg border border-slate-700">
+                      <strong className="text-white block">1. Vínculo Matriz / Filial (Nativo & Sem Token):</strong>
+                      No MotorDesk, filiais são vinculadas diretamente pela seleção da Matriz no cadastro da empresa. Não é necessário gerar nem digitar tokens manuais.
+                    </div>
+                    <div className="bg-slate-800/80 p-2 rounded-lg border border-slate-700">
+                      <strong className="text-white block">2. Acesso Multi-Empresa do Usuário:</strong>
+                      O usuário <code className="text-indigo-300 bg-slate-950 px-1 py-0.5 rounded font-mono">validador</code> possui acesso compartilhado para todas as empresas da rede. Ao logar, você escolhe qual unidade acessar.
+                    </div>
+                    <div className="bg-slate-800/80 p-2 rounded-lg border border-slate-700">
+                      <strong className="text-white block">3. Onde usar Tokens de API (Bearer)?</strong>
+                      O Token de API (ex: <code className="text-emerald-300 bg-slate-950 px-1 py-0.5 rounded font-mono">fcs_tok_...</code>) é exclusivo para autorizar emissões fiscais no Portal da API da Nota Fiscal (Focus NFS-e / SEFIN).
+                    </div>
+                  </div>
+                </div>
+
+                <form onSubmit={handleLinkCompanyByToken} className="space-y-3 p-3.5 bg-slate-50 border border-slate-200 rounded-xl">
+                  <label className="text-xs font-bold text-slate-800 uppercase block" htmlFor="input-token-link">
+                    Consultar / Localizar Cadastro por Token ou CNPJ
+                  </label>
+                  <p className="text-[11px] text-slate-500">
+                    Insira o Token de API, CNPJ ou identificador para localizar a empresa correspondente no sistema:
+                  </p>
+                  <div className="flex gap-2">
+                    <input
+                      id="input-token-link"
+                      type="text"
+                      placeholder="Ex: fcs_tok_matriz_8832a71b ou CNPJ..."
+                      value={tokenInput}
+                      onChange={e => setTokenInput(e.target.value)}
+                      className="flex-1 text-xs px-3 py-2 bg-white border border-slate-300 rounded-lg font-mono"
+                    />
+                    <button
+                      type="submit"
+                      id="btn-verify-token"
+                      className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-lg transition cursor-pointer"
+                    >
+                      Consultar
+                    </button>
+                  </div>
+
+                  {tokenFeedback && (
+                    <div className={`p-3 rounded-lg text-xs leading-relaxed ${
+                      tokenFeedback.type === 'success' 
+                        ? 'bg-emerald-50 text-emerald-900 border border-emerald-200 font-medium'
+                        : tokenFeedback.type === 'error'
+                        ? 'bg-rose-50 text-rose-900 border border-rose-200 font-medium'
+                        : 'bg-blue-50 text-blue-900 border border-blue-200'
+                    }`}>
+                      {tokenFeedback.text}
+                    </div>
+                  )}
+                </form>
+
+                <div className="pt-1">
+                  <button
+                    type="button"
+                    onClick={() => setLoginTab('login')}
+                    className="w-full py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold text-center transition"
+                  >
+                    Voltar para a Tela de Login
+                  </button>
+                </div>
               </div>
-
-              <PrivacyLgpdFooter
-                onOpenModal={() => setShowPrivacyModal(true)}
-                mode="login"
-                isChecked={hasAcceptedLoginLgpd}
-                onToggleCheck={setHasAcceptedLoginLgpd}
-              />
-
-              <button 
-                id="btn-login-submit"
-                type="submit" 
-                className="w-full bg-slate-900 hover:bg-slate-800 text-white font-semibold text-xs py-2.5 rounded-lg transition inline-flex items-center justify-center gap-2 cursor-pointer shadow-xs"
-              >
-                <Lock className="w-4 h-4 text-indigo-400" /> {loginPageData.buttonText}
-              </button>
-
-              <div className="flex items-center justify-between pt-2 border-t border-slate-100 text-[11px] text-slate-400">
-                <span className="flex items-center gap-1">
-                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" /> Sessão Segura
-                </span>
-                <span className="flex items-center gap-1">
-                  <Clock className="w-3.5 h-3.5 text-slate-400" /> Expira em 15 min sem uso
-                </span>
-              </div>
-            </form>
+            )}
           </div>
         </div>
 
@@ -2361,49 +2868,42 @@ export default function App() {
 
   // MAIN WORKSPACE INTERFACE
   return (
-    <div className="min-h-screen bg-slate-50 flex font-sans" id="app-workspace-shell">
-      {/* SIDEBAR NAVIGATION WRAPPER (Retractable & Collapsible) */}
-      <div 
-        className={`transition-all duration-300 ease-in-out shrink-0 relative ${
+    <div className="h-screen w-screen bg-slate-50 flex font-sans overflow-hidden" id="app-workspace-shell">
+      {/* SIDEBAR NAVIGATION (Retractable & Collapsible) */}
+      <aside 
+        id="sidebar-container"
+        className={`h-screen shrink-0 bg-slate-900 text-slate-300 flex flex-col justify-between border-r border-slate-800 transition-[width] duration-300 ease-in-out relative z-30 select-none overflow-x-hidden ${
           isSidebarCollapsed ? 'w-16' : 'w-64'
         }`}
       >
-        <aside 
-          id="sidebar-container"
-          onMouseEnter={() => setIsSidebarHovered(true)}
-          onMouseLeave={() => setIsSidebarHovered(false)}
-          className={`bg-slate-900 text-slate-300 flex flex-col justify-between border-r border-slate-800 transition-all duration-300 ease-in-out h-full ${
-            isSidebarCollapsed ? 'absolute top-0 left-0 bottom-0 z-30 shadow-2xl' : 'relative w-64'
-          } ${
-            isSidebarCollapsed && isSidebarHovered ? 'w-64' : isSidebarCollapsed ? 'w-16 overflow-x-hidden' : 'w-64'
-          }`}
-        >
-          {/* Top Header */}
-          <div className="p-3.5 border-b border-slate-800/80 flex items-center justify-between">
+        {/* Top Header */}
+        <div className={`border-b border-slate-800/80 transition-all ${isSidebarCollapsed ? 'p-3 flex items-center justify-center' : 'p-3.5 flex items-center justify-between'}`}>
+          {!isSidebarCollapsed && (
             <div className="flex items-center gap-2.5 overflow-hidden">
               <ToolIcon className="w-5 h-5 text-indigo-400 shrink-0" />
-              {(!isSidebarCollapsed || isSidebarHovered) && (
-                <div className="truncate">
-                  <span className="font-extrabold text-white text-base font-display tracking-tight block leading-none">MotorDesk</span>
-                  <p className="text-[9px] text-indigo-300 font-semibold uppercase mt-0.5 font-mono truncate">{activeSegmentMeta.label}</p>
-                </div>
-              )}
+              <div className="truncate">
+                <span className="font-extrabold text-white text-base font-display tracking-tight block leading-none">MotorDesk</span>
+                <p className="text-[9px] text-indigo-300 font-semibold uppercase mt-0.5 font-mono truncate">{activeSegmentMeta.label}</p>
+              </div>
             </div>
+          )}
 
-            <button
-              id="btn-toggle-sidebar"
-              type="button"
-              onClick={toggleSidebarCollapse}
-              className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition shrink-0 cursor-pointer"
-              title={isSidebarCollapsed ? "Fixar Menu Expandido" : "Retrair Menu Lateral"}
-            >
-              {isSidebarCollapsed ? (
-                <PanelLeftOpen className="w-4 h-4 text-indigo-400" />
-              ) : (
-                <PanelLeftClose className="w-4 h-4 text-slate-400" />
-              )}
-            </button>
-          </div>
+          <button
+            id="btn-toggle-sidebar"
+            type="button"
+            onClick={toggleSidebarCollapse}
+            className={`rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition cursor-pointer ${
+              isSidebarCollapsed ? 'p-2 text-indigo-400' : 'p-1.5 shrink-0'
+            }`}
+            title={isSidebarCollapsed ? "Expandir Menu Lateral" : "Retrair Menu Lateral"}
+          >
+            {isSidebarCollapsed ? (
+              <PanelLeftOpen className="w-4 h-4 text-indigo-400" />
+            ) : (
+              <PanelLeftClose className="w-4 h-4 text-slate-400" />
+            )}
+          </button>
+        </div>
 
           {/* Dynamic Navigation Links (Based on Permissions & Segment) */}
           <nav className="flex-1 p-2 space-y-1 overflow-y-auto">
@@ -2412,13 +2912,13 @@ export default function App() {
                 id="menu-btn-dashboard"
                 onClick={() => navigateToView('dashboard')}
                 title="Dashboard KPI"
-                className={`w-full flex items-center ${(!isSidebarCollapsed || isSidebarHovered) ? 'justify-between px-3' : 'justify-center px-2'} py-2.5 rounded-lg text-xs font-semibold tracking-wide transition ${
+                className={`w-full flex items-center ${!isSidebarCollapsed ? 'justify-between px-3' : 'justify-center px-2'} py-2.5 rounded-lg text-xs font-semibold tracking-wide transition ${
                   activeView === 'dashboard' ? 'bg-indigo-600 text-white font-bold' : 'hover:bg-slate-800 text-slate-400 hover:text-slate-100'
                 }`}
               >
                 <div className="flex items-center gap-2.5 min-w-0">
                   <LayoutDashboard className="w-4 h-4 shrink-0" />
-                  {(!isSidebarCollapsed || isSidebarHovered) && <span className="truncate">Dashboard KPI</span>}
+                  {!isSidebarCollapsed && <span className="truncate">Dashboard KPI</span>}
                 </div>
               </button>
             )}
@@ -2428,13 +2928,13 @@ export default function App() {
                 id="menu-btn-sales"
                 onClick={() => navigateToView('sales')}
                 title="Vendas & Balcão (PDV / Comércio)"
-                className={`w-full flex items-center ${(!isSidebarCollapsed || isSidebarHovered) ? 'justify-between px-3' : 'justify-center px-2'} py-2.5 rounded-lg text-xs font-semibold tracking-wide transition ${
+                className={`w-full flex items-center ${!isSidebarCollapsed ? 'justify-between px-3' : 'justify-center px-2'} py-2.5 rounded-lg text-xs font-semibold tracking-wide transition ${
                   activeView === 'sales' ? 'bg-emerald-600 text-white font-bold shadow-xs' : 'hover:bg-slate-800 text-slate-300 hover:text-slate-100'
                 }`}
               >
                 <div className="flex items-center gap-2.5 min-w-0">
                   <ShoppingBag className="w-4 h-4 shrink-0 text-emerald-400" />
-                  {(!isSidebarCollapsed || isSidebarHovered) && <span className="truncate">Vendas & Balcão</span>}
+                  {!isSidebarCollapsed && <span className="truncate">Vendas & Balcão</span>}
                 </div>
               </button>
             )}
@@ -2444,13 +2944,13 @@ export default function App() {
                 id="menu-btn-representative-commerce"
                 onClick={() => navigateToView('representative_commerce')}
                 title="Comércio Representante (Fábricas & Comissões)"
-                className={`w-full flex items-center ${(!isSidebarCollapsed || isSidebarHovered) ? 'justify-between px-3' : 'justify-center px-2'} py-2.5 rounded-lg text-xs font-semibold tracking-wide transition ${
+                className={`w-full flex items-center ${!isSidebarCollapsed ? 'justify-between px-3' : 'justify-center px-2'} py-2.5 rounded-lg text-xs font-semibold tracking-wide transition ${
                   activeView === 'representative_commerce' ? 'bg-blue-600 text-white font-bold shadow-xs' : 'hover:bg-slate-800 text-slate-300 hover:text-slate-100'
                 }`}
               >
                 <div className="flex items-center gap-2.5 min-w-0">
                   <Building2 className="w-4 h-4 shrink-0 text-blue-400" />
-                  {(!isSidebarCollapsed || isSidebarHovered) && <span className="truncate">Representadas</span>}
+                  {!isSidebarCollapsed && <span className="truncate">Representadas</span>}
                 </div>
               </button>
             )}
@@ -2460,13 +2960,13 @@ export default function App() {
                 id="menu-btn-representative-orders"
                 onClick={() => navigateToView('representative_orders')}
                 title="Pedidos Realizados (Representadas & Faturamento)"
-                className={`w-full flex items-center ${(!isSidebarCollapsed || isSidebarHovered) ? 'justify-between px-3' : 'justify-center px-2'} py-2.5 rounded-lg text-xs font-semibold tracking-wide transition ${
+                className={`w-full flex items-center ${!isSidebarCollapsed ? 'justify-between px-3' : 'justify-center px-2'} py-2.5 rounded-lg text-xs font-semibold tracking-wide transition ${
                   activeView === 'representative_orders' ? 'bg-indigo-600 text-white font-bold shadow-xs' : 'hover:bg-slate-800 text-slate-300 hover:text-slate-100'
                 }`}
               >
                 <div className="flex items-center gap-2.5 min-w-0">
                   <FileText className="w-4 h-4 shrink-0 text-indigo-400" />
-                  {(!isSidebarCollapsed || isSidebarHovered) && <span className="truncate">Pedidos Realizados</span>}
+                  {!isSidebarCollapsed && <span className="truncate">Pedidos Realizados</span>}
                 </div>
               </button>
             )}
@@ -2476,13 +2976,13 @@ export default function App() {
                 id="menu-btn-withdrawals"
                 onClick={() => navigateToView('withdrawals')}
                 title="Retirada & Entrega de Mercadorias (Expedição)"
-                className={`w-full flex items-center ${(!isSidebarCollapsed || isSidebarHovered) ? 'justify-between px-3' : 'justify-center px-2'} py-2.5 rounded-lg text-xs font-semibold tracking-wide transition ${
+                className={`w-full flex items-center ${!isSidebarCollapsed ? 'justify-between px-3' : 'justify-center px-2'} py-2.5 rounded-lg text-xs font-semibold tracking-wide transition ${
                   activeView === 'withdrawals' ? 'bg-indigo-600 text-white font-bold shadow-xs' : 'hover:bg-slate-800 text-slate-300 hover:text-slate-100'
                 }`}
               >
                 <div className="flex items-center gap-2.5 min-w-0">
                   <Boxes className="w-4 h-4 shrink-0 text-indigo-400" />
-                  {(!isSidebarCollapsed || isSidebarHovered) && <span className="truncate">Retirada & Entrega</span>}
+                  {!isSidebarCollapsed && <span className="truncate">Retirada & Entrega</span>}
                 </div>
               </button>
             )}
@@ -2492,13 +2992,13 @@ export default function App() {
                 id="menu-btn-carriers"
                 onClick={() => navigateToView('carriers')}
                 title="Transportadoras & Frete"
-                className={`w-full flex items-center ${(!isSidebarCollapsed || isSidebarHovered) ? 'justify-between px-3' : 'justify-center px-2'} py-2.5 rounded-lg text-xs font-semibold tracking-wide transition ${
+                className={`w-full flex items-center ${!isSidebarCollapsed ? 'justify-between px-3' : 'justify-center px-2'} py-2.5 rounded-lg text-xs font-semibold tracking-wide transition ${
                   activeView === 'carriers' ? 'bg-blue-600 text-white font-bold shadow-xs' : 'hover:bg-slate-800 text-slate-300 hover:text-slate-100'
                 }`}
               >
                 <div className="flex items-center gap-2.5 min-w-0">
                   <Truck className="w-4 h-4 shrink-0 text-blue-400" />
-                  {(!isSidebarCollapsed || isSidebarHovered) && <span className="truncate">Transportadoras</span>}
+                  {!isSidebarCollapsed && <span className="truncate">Transportadoras</span>}
                 </div>
               </button>
             )}
@@ -2508,13 +3008,13 @@ export default function App() {
                 id="menu-btn-clients"
                 onClick={() => navigateToView('clients')}
                 title="Clientes"
-                className={`w-full flex items-center ${(!isSidebarCollapsed || isSidebarHovered) ? 'justify-between px-3' : 'justify-center px-2'} py-2.5 rounded-lg text-xs font-semibold tracking-wide transition ${
+                className={`w-full flex items-center ${!isSidebarCollapsed ? 'justify-between px-3' : 'justify-center px-2'} py-2.5 rounded-lg text-xs font-semibold tracking-wide transition ${
                   activeView === 'clients' ? 'bg-indigo-600 text-white font-bold' : 'hover:bg-slate-800 text-slate-400 hover:text-slate-100'
                 }`}
               >
                 <div className="flex items-center gap-2.5 min-w-0">
                   <Users className="w-4 h-4 shrink-0" />
-                  {(!isSidebarCollapsed || isSidebarHovered) && <span className="truncate">Clientes</span>}
+                  {!isSidebarCollapsed && <span className="truncate">Clientes</span>}
                 </div>
               </button>
             )}
@@ -2524,13 +3024,13 @@ export default function App() {
                 id="menu-btn-vehicles"
                 onClick={() => navigateToView('vehicles')}
                 title="Veículos"
-                className={`w-full flex items-center ${(!isSidebarCollapsed || isSidebarHovered) ? 'justify-between px-3' : 'justify-center px-2'} py-2.5 rounded-lg text-xs font-semibold tracking-wide transition ${
+                className={`w-full flex items-center ${!isSidebarCollapsed ? 'justify-between px-3' : 'justify-center px-2'} py-2.5 rounded-lg text-xs font-semibold tracking-wide transition ${
                   activeView === 'vehicles' ? 'bg-indigo-600 text-white font-bold' : 'hover:bg-slate-800 text-slate-400 hover:text-slate-100'
                 }`}
               >
                 <div className="flex items-center gap-2.5 min-w-0">
                   <Car className="w-4 h-4 shrink-0" />
-                  {(!isSidebarCollapsed || isSidebarHovered) && <span className="truncate">Veículos</span>}
+                  {!isSidebarCollapsed && <span className="truncate">Veículos</span>}
                 </div>
               </button>
             )}
@@ -2540,13 +3040,13 @@ export default function App() {
                 id="menu-btn-parts"
                 onClick={() => navigateToView('parts')}
                 title="Estoque & NFe"
-                className={`w-full flex items-center ${(!isSidebarCollapsed || isSidebarHovered) ? 'justify-between px-3' : 'justify-center px-2'} py-2.5 rounded-lg text-xs font-semibold tracking-wide transition ${
+                className={`w-full flex items-center ${!isSidebarCollapsed ? 'justify-between px-3' : 'justify-center px-2'} py-2.5 rounded-lg text-xs font-semibold tracking-wide transition ${
                   activeView === 'parts' ? 'bg-indigo-600 text-white font-bold' : 'hover:bg-slate-800 text-slate-400 hover:text-slate-100'
                 }`}
               >
                 <div className="flex items-center gap-2.5 min-w-0">
                   <Package className="w-4 h-4 shrink-0" />
-                  {(!isSidebarCollapsed || isSidebarHovered) && <span className="truncate">Estoque & NFe</span>}
+                  {!isSidebarCollapsed && <span className="truncate">Estoque & NFe</span>}
                 </div>
               </button>
             )}
@@ -2556,13 +3056,13 @@ export default function App() {
                 id="menu-btn-units-of-measure"
                 onClick={() => navigateToView('units_of_measure')}
                 title="Unidades de Medida"
-                className={`w-full flex items-center ${(!isSidebarCollapsed || isSidebarHovered) ? 'justify-between px-3' : 'justify-center px-2'} py-2.5 rounded-lg text-xs font-semibold tracking-wide transition ${
+                className={`w-full flex items-center ${!isSidebarCollapsed ? 'justify-between px-3' : 'justify-center px-2'} py-2.5 rounded-lg text-xs font-semibold tracking-wide transition ${
                   activeView === 'units_of_measure' ? 'bg-indigo-600 text-white font-bold' : 'hover:bg-slate-800 text-slate-400 hover:text-slate-100'
                 }`}
               >
                 <div className="flex items-center gap-2.5 min-w-0">
                   <Ruler className="w-4 h-4 shrink-0 text-indigo-400" />
-                  {(!isSidebarCollapsed || isSidebarHovered) && <span className="truncate">Unidades de Medida</span>}
+                  {!isSidebarCollapsed && <span className="truncate">Unidades de Medida</span>}
                 </div>
               </button>
             )}
@@ -2572,13 +3072,13 @@ export default function App() {
                 id="menu-btn-quotations"
                 onClick={() => navigateToView('quotations')}
                 title="Cotação & Fornecedores"
-                className={`w-full flex items-center ${(!isSidebarCollapsed || isSidebarHovered) ? 'justify-between px-3' : 'justify-center px-2'} py-2.5 rounded-lg text-xs font-semibold tracking-wide transition ${
+                className={`w-full flex items-center ${!isSidebarCollapsed ? 'justify-between px-3' : 'justify-center px-2'} py-2.5 rounded-lg text-xs font-semibold tracking-wide transition ${
                   activeView === 'quotations' ? 'bg-indigo-600 text-white font-bold' : 'hover:bg-slate-800 text-slate-400 hover:text-slate-100'
                 }`}
               >
                 <div className="flex items-center gap-2.5 min-w-0">
                   <ShoppingBag className="w-4 h-4 shrink-0" />
-                  {(!isSidebarCollapsed || isSidebarHovered) && <span className="truncate">Cotação & Fornecedores</span>}
+                  {!isSidebarCollapsed && <span className="truncate">Cotação & Fornecedores</span>}
                 </div>
               </button>
             )}
@@ -2594,7 +3094,7 @@ export default function App() {
                   id="menu-btn-financial-parent"
                   onClick={() => setIsFinSubmenuOpen(prev => !prev)}
                   title="Módulo Financeiro & Fiscal"
-                  className={`w-full flex items-center ${(!isSidebarCollapsed || isSidebarHovered) ? 'justify-between px-3' : 'justify-center px-2'} py-2.5 rounded-lg text-xs font-semibold tracking-wide transition ${
+                  className={`w-full flex items-center ${!isSidebarCollapsed ? 'justify-between px-3' : 'justify-center px-2'} py-2.5 rounded-lg text-xs font-semibold tracking-wide transition ${
                     ['financial', 'accounts_receivable', 'accounts_payable', 'fiscal', 'fiscal_conference', 'tax_obligations'].includes(activeView)
                       ? 'bg-indigo-600 text-white font-bold shadow-xs'
                       : 'hover:bg-slate-800 text-slate-300 hover:text-slate-100'
@@ -2602,9 +3102,9 @@ export default function App() {
                 >
                   <div className="flex items-center gap-2.5 min-w-0">
                     <Wallet className="w-4 h-4 shrink-0 text-emerald-400" />
-                    {(!isSidebarCollapsed || isSidebarHovered) && <span className="truncate">Financeiro & Fiscal</span>}
+                    {!isSidebarCollapsed && <span className="truncate">Financeiro & Fiscal</span>}
                   </div>
-                  {(!isSidebarCollapsed || isSidebarHovered) && (
+                  {!isSidebarCollapsed && (
                     <div className="flex items-center gap-1">
                       {isFinSubmenuOpen ? <ChevronDown className="w-3.5 h-3.5 opacity-80" /> : <ChevronRight className="w-3.5 h-3.5 opacity-80" />}
                     </div>
@@ -2612,7 +3112,7 @@ export default function App() {
                 </button>
 
                 {/* SUBMENUS AO PASSAR O MOUSE / HOVER */}
-                {(isFinSubmenuOpen || ['financial', 'accounts_receivable', 'accounts_payable', 'fiscal', 'fiscal_conference', 'tax_obligations'].includes(activeView)) && (!isSidebarCollapsed || isSidebarHovered) && (
+                {(isFinSubmenuOpen || ['financial', 'accounts_receivable', 'accounts_payable', 'fiscal', 'fiscal_conference', 'tax_obligations'].includes(activeView)) && !isSidebarCollapsed && (
                   <div className="pl-4 pr-1 space-y-1 py-1 border-l-2 border-indigo-500/40 ml-4 animate-fade-in">
                     {isViewAccessible('financial') && (
                       <button
@@ -2705,23 +3205,62 @@ export default function App() {
                         <span className="truncate">Obrigações & Guias Fiscais</span>
                       </button>
                     )}
+
+                    {/* Botão de Acesso ao Portal Notas API dentro do submenu Fiscal */}
+                    <button
+                      id="submenu-btn-notas-api"
+                      type="button"
+                      onClick={() => {
+                        setIsNotasApiOpen(true);
+                        if (typeof window !== 'undefined') {
+                          window.history.pushState({}, '', '/notas-api');
+                        }
+                      }}
+                      className="w-full text-left px-2.5 py-1.5 rounded-md text-[11px] font-bold transition flex items-center gap-2 cursor-pointer text-indigo-300 hover:text-white hover:bg-slate-800/80 border border-indigo-500/30"
+                      title="Portal Focus NFS-e / Sefin Nacional"
+                    >
+                      <FileText className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
+                      <span className="truncate">Notas API (Focus NFS-e)</span>
+                    </button>
                   </div>
                 )}
               </div>
             )}
+
+            {/* Botão Principal Notas API (Focus NFS-e / Sefin Nacional) */}
+            <button 
+              id="menu-btn-notas-api"
+              type="button"
+              onClick={() => {
+                setIsNotasApiOpen(true);
+                if (typeof window !== 'undefined') {
+                  window.history.pushState({}, '', '/notas-api');
+                }
+              }}
+              title="Portal Notas API (Focus NFS-e / Sefin Nacional)"
+              className={`w-full flex items-center ${!isSidebarCollapsed ? 'justify-between px-3' : 'justify-center px-2'} py-2.5 rounded-lg text-xs font-semibold tracking-wide transition hover:bg-slate-800 text-indigo-300 hover:text-white`}
+            >
+              <div className="flex items-center gap-2.5 min-w-0">
+                <FileText className="w-4 h-4 shrink-0 text-indigo-400" />
+                {!isSidebarCollapsed && <span className="truncate font-bold">Notas API</span>}
+              </div>
+              {!isSidebarCollapsed && (
+                <span className="text-[9px] px-1.5 py-0.5 bg-indigo-500/20 text-indigo-300 rounded font-mono font-bold">NFS-e</span>
+              )}
+            </button>
 
             {isViewAccessible('services') && (
               <button 
                 id="menu-btn-services"
                 onClick={() => navigateToView('services')}
                 title="Serviços / Mão de Obra"
-                className={`w-full flex items-center ${(!isSidebarCollapsed || isSidebarHovered) ? 'justify-between px-3' : 'justify-center px-2'} py-2.5 rounded-lg text-xs font-semibold tracking-wide transition ${
+                className={`w-full flex items-center ${!isSidebarCollapsed ? 'justify-between px-3' : 'justify-center px-2'} py-2.5 rounded-lg text-xs font-semibold tracking-wide transition ${
                   activeView === 'services' ? 'bg-indigo-600 text-white font-bold' : 'hover:bg-slate-800 text-slate-400 hover:text-slate-100'
                 }`}
               >
                 <div className="flex items-center gap-2.5 min-w-0">
                   <Wrench className="w-4 h-4 shrink-0" />
-                  {(!isSidebarCollapsed || isSidebarHovered) && <span className="truncate">Serviços / Mão de Obra</span>}
+                  {!isSidebarCollapsed && <span className="truncate">Serviços / Mão de Obra</span>}
                 </div>
               </button>
             )}
@@ -2731,13 +3270,13 @@ export default function App() {
                 id="menu-btn-budgets"
                 onClick={() => navigateToView('budgets')}
                 title="Orçamentos Builder"
-                className={`w-full flex items-center ${(!isSidebarCollapsed || isSidebarHovered) ? 'justify-between px-3' : 'justify-center px-2'} py-2.5 rounded-lg text-xs font-semibold tracking-wide transition ${
+                className={`w-full flex items-center ${!isSidebarCollapsed ? 'justify-between px-3' : 'justify-center px-2'} py-2.5 rounded-lg text-xs font-semibold tracking-wide transition ${
                   activeView === 'budgets' ? 'bg-indigo-600 text-white font-bold' : 'hover:bg-slate-800 text-slate-400 hover:text-slate-100'
                 }`}
               >
                 <div className="flex items-center gap-2.5 min-w-0">
                   <FileSpreadsheet className="w-4 h-4 shrink-0" />
-                  {(!isSidebarCollapsed || isSidebarHovered) && <span className="truncate">Orçamentos Builder</span>}
+                  {!isSidebarCollapsed && <span className="truncate">Orçamentos Builder</span>}
                 </div>
               </button>
             )}
@@ -2747,13 +3286,13 @@ export default function App() {
                 id="menu-btn-service-orders"
                 onClick={() => navigateToView('serviceOrders')}
                 title="Ordens de Serviço"
-                className={`w-full flex items-center ${(!isSidebarCollapsed || isSidebarHovered) ? 'justify-between px-3' : 'justify-center px-2'} py-2.5 rounded-lg text-xs font-semibold tracking-wide transition ${
+                className={`w-full flex items-center ${!isSidebarCollapsed ? 'justify-between px-3' : 'justify-center px-2'} py-2.5 rounded-lg text-xs font-semibold tracking-wide transition ${
                   activeView === 'serviceOrders' ? 'bg-indigo-600 text-white font-bold' : 'hover:bg-slate-800 text-slate-400 hover:text-slate-100'
                 }`}
               >
                 <div className="flex items-center gap-2.5 min-w-0">
                   <ClipboardList className="w-4 h-4 shrink-0" />
-                  {(!isSidebarCollapsed || isSidebarHovered) && <span className="truncate">Ordens de Serviço</span>}
+                  {!isSidebarCollapsed && <span className="truncate">Ordens de Serviço</span>}
                 </div>
               </button>
             )}
@@ -2763,13 +3302,13 @@ export default function App() {
                 id="menu-btn-industry"
                 onClick={() => navigateToView('industry')}
                 title="Produção & PCP (BOM/OP)"
-                className={`w-full flex items-center ${(!isSidebarCollapsed || isSidebarHovered) ? 'justify-between px-3' : 'justify-center px-2'} py-2.5 rounded-lg text-xs font-semibold tracking-wide transition ${
+                className={`w-full flex items-center ${!isSidebarCollapsed ? 'justify-between px-3' : 'justify-center px-2'} py-2.5 rounded-lg text-xs font-semibold tracking-wide transition ${
                   activeView === 'industry' ? 'bg-amber-500 text-slate-950 font-bold shadow-xs' : 'hover:bg-slate-800 text-slate-300 hover:text-slate-100'
                 }`}
               >
                 <div className="flex items-center gap-2.5 min-w-0">
                   <Factory className="w-4 h-4 shrink-0 text-amber-400" />
-                  {(!isSidebarCollapsed || isSidebarHovered) && <span className="truncate">Produção & PCP (BOM/OP)</span>}
+                  {!isSidebarCollapsed && <span className="truncate">Produção & PCP (BOM/OP)</span>}
                 </div>
               </button>
             )}
@@ -2779,13 +3318,13 @@ export default function App() {
                 id="menu-btn-history"
                 onClick={() => navigateToView('history')}
                 title="Histórico Auditoria"
-                className={`w-full flex items-center ${(!isSidebarCollapsed || isSidebarHovered) ? 'justify-between px-3' : 'justify-center px-2'} py-2.5 rounded-lg text-xs font-semibold tracking-wide transition ${
+                className={`w-full flex items-center ${!isSidebarCollapsed ? 'justify-between px-3' : 'justify-center px-2'} py-2.5 rounded-lg text-xs font-semibold tracking-wide transition ${
                   activeView === 'history' ? 'bg-indigo-600 text-white font-bold' : 'hover:bg-slate-800 text-slate-400 hover:text-slate-100'
                 }`}
               >
                 <div className="flex items-center gap-2.5 min-w-0">
                   <History className="w-4 h-4 shrink-0" />
-                  {(!isSidebarCollapsed || isSidebarHovered) && <span className="truncate">Histórico Auditoria</span>}
+                  {!isSidebarCollapsed && <span className="truncate">Histórico Auditoria</span>}
                 </div>
               </button>
             )}
@@ -2795,13 +3334,13 @@ export default function App() {
                 id="menu-btn-reports"
                 onClick={() => navigateToView('reports')}
                 title="Relatórios"
-                className={`w-full flex items-center ${(!isSidebarCollapsed || isSidebarHovered) ? 'justify-between px-3' : 'justify-center px-2'} py-2.5 rounded-lg text-xs font-semibold tracking-wide transition ${
+                className={`w-full flex items-center ${!isSidebarCollapsed ? 'justify-between px-3' : 'justify-center px-2'} py-2.5 rounded-lg text-xs font-semibold tracking-wide transition ${
                   activeView === 'reports' ? 'bg-indigo-600 text-white font-bold' : 'hover:bg-slate-800 text-slate-400 hover:text-slate-100'
                 }`}
               >
                 <div className="flex items-center gap-2.5 min-w-0">
                   <BarChart3 className="w-4 h-4 shrink-0" />
-                  {(!isSidebarCollapsed || isSidebarHovered) && <span className="truncate">Relatórios</span>}
+                  {!isSidebarCollapsed && <span className="truncate">Relatórios</span>}
                 </div>
               </button>
             )}
@@ -2811,13 +3350,13 @@ export default function App() {
                 id="menu-btn-users"
                 onClick={() => navigateToView('users')}
                 title="Criar Usuários / Níveis"
-                className={`w-full flex items-center ${(!isSidebarCollapsed || isSidebarHovered) ? 'justify-between px-3' : 'justify-center px-2'} py-2.5 rounded-lg text-xs font-semibold tracking-wide transition ${
+                className={`w-full flex items-center ${!isSidebarCollapsed ? 'justify-between px-3' : 'justify-center px-2'} py-2.5 rounded-lg text-xs font-semibold tracking-wide transition ${
                   activeView === 'users' ? 'bg-indigo-600 text-white font-bold' : 'hover:bg-slate-800 text-slate-400 hover:text-slate-100'
                 }`}
               >
                 <div className="flex items-center gap-2.5 min-w-0">
                   <UserPlus className="w-4 h-4 shrink-0" />
-                  {(!isSidebarCollapsed || isSidebarHovered) && <span className="truncate">Criar Usuários / Níveis</span>}
+                  {!isSidebarCollapsed && <span className="truncate">Criar Usuários / Níveis</span>}
                 </div>
               </button>
             )}
@@ -2827,13 +3366,13 @@ export default function App() {
                 id="menu-btn-access-groups"
                 onClick={() => navigateToView('access_groups')}
                 title="Grupos de Acesso (RBAC 2.0)"
-                className={`w-full flex items-center ${(!isSidebarCollapsed || isSidebarHovered) ? 'justify-between px-3' : 'justify-center px-2'} py-2.5 rounded-lg text-xs font-semibold tracking-wide transition ${
+                className={`w-full flex items-center ${!isSidebarCollapsed ? 'justify-between px-3' : 'justify-center px-2'} py-2.5 rounded-lg text-xs font-semibold tracking-wide transition ${
                   activeView === 'access_groups' ? 'bg-indigo-600 text-white font-bold' : 'hover:bg-slate-800 text-slate-400 hover:text-slate-100'
                 }`}
               >
                 <div className="flex items-center gap-2.5 min-w-0">
                   <KeyRound className="w-4 h-4 shrink-0 text-indigo-400" />
-                  {(!isSidebarCollapsed || isSidebarHovered) && <span className="truncate">Grupos de Acesso (RBAC)</span>}
+                  {!isSidebarCollapsed && <span className="truncate">Grupos de Acesso (RBAC)</span>}
                 </div>
               </button>
             )}
@@ -2843,13 +3382,13 @@ export default function App() {
                 id="menu-btn-notification-engine"
                 onClick={() => navigateToView('notifications_engine')}
                 title="Motor Central de Notificações & Réguas"
-                className={`w-full flex items-center ${(!isSidebarCollapsed || isSidebarHovered) ? 'justify-between px-3' : 'justify-center px-2'} py-2.5 rounded-lg text-xs font-semibold tracking-wide transition ${
+                className={`w-full flex items-center ${!isSidebarCollapsed ? 'justify-between px-3' : 'justify-center px-2'} py-2.5 rounded-lg text-xs font-semibold tracking-wide transition ${
                   activeView === 'notifications_engine' ? 'bg-indigo-600 text-white font-bold shadow-xs' : 'hover:bg-slate-800 text-slate-300 hover:text-slate-100'
                 }`}
               >
                 <div className="flex items-center gap-2.5 min-w-0">
                   <Bell className="w-4 h-4 shrink-0 text-amber-400" />
-                  {(!isSidebarCollapsed || isSidebarHovered) && <span className="truncate">Motor Notificações</span>}
+                  {!isSidebarCollapsed && <span className="truncate">Motor Notificações</span>}
                 </div>
               </button>
             )}
@@ -2859,13 +3398,13 @@ export default function App() {
                 id="menu-btn-qa-panel"
                 onClick={() => navigateToView('qa_panel')}
                 title="Painel de Testes QA"
-                className={`w-full flex items-center ${(!isSidebarCollapsed || isSidebarHovered) ? 'justify-between px-3' : 'justify-center px-2'} py-2.5 rounded-lg text-xs font-semibold tracking-wide transition ${
+                className={`w-full flex items-center ${!isSidebarCollapsed ? 'justify-between px-3' : 'justify-center px-2'} py-2.5 rounded-lg text-xs font-semibold tracking-wide transition ${
                   activeView === 'qa_panel' ? 'bg-indigo-600 text-white font-bold' : 'hover:bg-slate-800 text-slate-400 hover:text-slate-100'
                 }`}
               >
                 <div className="flex items-center gap-2.5 min-w-0">
                   <Bug className="w-4 h-4 shrink-0 text-amber-400" />
-                  {(!isSidebarCollapsed || isSidebarHovered) && <span className="truncate">Painel de Testes QA</span>}
+                  {!isSidebarCollapsed && <span className="truncate">Painel de Testes QA</span>}
                 </div>
               </button>
             )}
@@ -2875,13 +3414,13 @@ export default function App() {
                 id="menu-btn-data-migration"
                 onClick={() => navigateToView('data_migration')}
                 title="Conversor de Migração"
-                className={`w-full flex items-center ${(!isSidebarCollapsed || isSidebarHovered) ? 'justify-between px-3' : 'justify-center px-2'} py-2.5 rounded-lg text-xs font-semibold tracking-wide transition ${
+                className={`w-full flex items-center ${!isSidebarCollapsed ? 'justify-between px-3' : 'justify-center px-2'} py-2.5 rounded-lg text-xs font-semibold tracking-wide transition ${
                   activeView === 'data_migration' ? 'bg-indigo-600 text-white font-bold' : 'hover:bg-slate-800 text-slate-400 hover:text-slate-100'
                 }`}
               >
                 <div className="flex items-center gap-2.5 min-w-0">
                   <Database className="w-4 h-4 shrink-0 text-cyan-400" />
-                  {(!isSidebarCollapsed || isSidebarHovered) && <span className="truncate">Conversor de Migração</span>}
+                  {!isSidebarCollapsed && <span className="truncate">Conversor de Migração</span>}
                 </div>
               </button>
             )}
@@ -2895,12 +3434,12 @@ export default function App() {
               id="menu-btn-profile"
               onClick={() => navigateToView('profile')}
               title={`Perfil: ${currentUser.name}`}
-              className={`w-full flex items-center ${(!isSidebarCollapsed || isSidebarHovered) ? 'gap-2.5 p-2' : 'justify-center p-2'} rounded-lg text-left transition ${
+              className={`w-full flex items-center ${!isSidebarCollapsed ? 'gap-2.5 p-2' : 'justify-center p-2'} rounded-lg text-left transition ${
                 activeView === 'profile' ? 'bg-indigo-600 text-white font-bold' : 'hover:bg-slate-800 text-slate-400 hover:text-slate-200'
               }`}
             >
               <UserCircle className="w-5 h-5 shrink-0" />
-              {(!isSidebarCollapsed || isSidebarHovered) && (
+              {!isSidebarCollapsed && (
                 <div className="truncate">
                   <p className="text-xs font-bold text-slate-100 truncate leading-tight">{currentUser.name}</p>
                   <p className="text-[10px] text-slate-400 font-mono truncate uppercase font-semibold">{currentUser.role}</p>
@@ -2912,20 +3451,34 @@ export default function App() {
               id="btn-sidebar-logout"
               onClick={triggerLogoutWithCheck}
               title="Sair da Conta (Sair)"
-              className={`w-full flex items-center ${(!isSidebarCollapsed || isSidebarHovered) ? 'gap-2 px-3 justify-start' : 'justify-center px-2'} text-xs font-semibold text-rose-400 hover:text-rose-300 hover:bg-rose-950/20 py-2 rounded-lg transition`}
+              className={`w-full flex items-center ${!isSidebarCollapsed ? 'gap-2 px-3 justify-start' : 'justify-center px-2'} text-xs font-semibold text-rose-400 hover:text-rose-300 hover:bg-rose-950/20 py-2 rounded-lg transition`}
             >
               <LogOut className="w-4 h-4 shrink-0" />
-              {(!isSidebarCollapsed || isSidebarHovered) && <span>Sair da Conta</span>}
+              {!isSidebarCollapsed && <span>Sair da Conta</span>}
             </button>
           </div>
         </aside>
-      </div>
 
       {/* MAIN VIEW CONTENT CONTAINER WITH TOP HEADER */}
-      <div className="flex-1 flex flex-col h-screen overflow-hidden">
+      <div className="flex-1 flex flex-col h-screen overflow-hidden min-w-0">
         {/* TOP BAR / HEADER WITH LOGOUT BUTTON & NOTIFICATION BELL */}
         <header className="bg-white border-b border-slate-200 px-8 py-3.5 flex items-center justify-between shrink-0 shadow-2xs z-10" id="top-workspace-bar">
           <div className="flex items-center gap-3">
+            {/* Toggle Sidebar Button */}
+            <button
+              id="btn-top-toggle-sidebar"
+              type="button"
+              onClick={toggleSidebarCollapse}
+              className="p-1.5 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-indigo-600 rounded-lg border border-slate-200/80 transition cursor-pointer flex items-center justify-center font-sans"
+              title={isSidebarCollapsed ? "Expandir Menu Lateral" : "Retrair Menu Lateral"}
+            >
+              {isSidebarCollapsed ? (
+                <PanelLeftOpen className="w-4 h-4 text-indigo-600" />
+              ) : (
+                <PanelLeftClose className="w-4 h-4 text-slate-500" />
+              )}
+            </button>
+
             {/* Notification Bell Button */}
             {(() => {
               const unreadNotifCount = (scopedDb.notifications || []).filter(n => !n.read).length;

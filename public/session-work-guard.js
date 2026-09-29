@@ -716,11 +716,15 @@
    * Se a Data de Término estiver preenchida, revoga visualmente todas as permissões
    */
   function setupUserContractManagement() {
-    // Verificar se há modal de usuário aberta
-    const userModal = document.querySelector('#modal-user-permissions, [id*="user-permissions"], [id*="user-error-alert"]')?.closest('.fixed.inset-0') ||
-                      document.querySelector('input[placeholder*="Ex: João da Silva"]')?.closest('.bg-white.rounded-2xl, .bg-white.rounded-xl, [role="dialog"]');
+    // Verificar se há modal de usuário aberta (NUNCA associar ao formulário de cliente)
+    const userModal = document.querySelector('#modal-user-permissions, [id*="user-permissions"], [id*="user-error-alert"]')?.closest('.fixed.inset-0');
     
     if (!userModal) return;
+    if (userModal.querySelector('#form-client, #client-form-panel, #client-cpf-input, #client-name-input') || 
+        userModal.id === 'client-form-panel' || 
+        userModal.closest('#clients-view-container')) {
+      return;
+    }
 
     // Verificar se o container de contrato já foi injetado
     if (userModal.querySelector('#user-contract-fields-container')) {
@@ -778,9 +782,80 @@
     // Criar o container de contrato com os dois campos solicitados pelo usuário
     const contractDiv = document.createElement('div');
     contractDiv.id = 'user-contract-fields-container';
-    contractDiv.className = 'mt-4 pt-4 border-t border-slate-200 space-y-3';
+    contractDiv.className = 'mt-4 pt-4 border-t border-slate-200 space-y-4';
+    
+    // Obter empresas cadastradas e grupos de acesso para os seletores multi-empresa e RBAC
+    const appDb = getAppDatabaseSafe();
+    const registeredCompanies = (appDb && Array.isArray(appDb.registeredCompanies) && appDb.registeredCompanies.length > 0)
+      ? appDb.registeredCompanies
+      : (appDb && appDb.companyInfo ? [appDb.companyInfo] : [{ id: 'comp-1', name: 'Auto Mecânica Modelo', businessType: 'OFICINA' }]);
+    
+    const accessGroups = (appDb && Array.isArray(appDb.accessGroups) && appDb.accessGroups.length > 0)
+      ? appDb.accessGroups
+      : [
+          { id: 'grp-admin', name: 'Administradores do Sistema' },
+          { id: 'grp-manager', name: 'Gerência Operacional & Pátio' },
+          { id: 'grp-sales', name: 'Vendas Balcão & Consultores' },
+          { id: 'grp-fiscal', name: 'Fiscal & Tributário SEFAZ' },
+          { id: 'grp-financial', name: 'Financeiro & Controladoria' },
+          { id: 'grp-purchasing', name: 'Estoque, Almoxarifado & Compras' },
+          { id: 'grp-mechanic', name: 'Mecânicos & Chão de Oficina' }
+        ];
+
     contractDiv.innerHTML = `
-      <div class="flex items-center justify-between">
+      <!-- Seção 1: Grupo de Acesso & Matriz RBAC -->
+      <div class="p-3.5 bg-gradient-to-br from-indigo-50/70 via-slate-50 to-indigo-50/40 rounded-xl border border-indigo-200 space-y-2.5">
+        <div class="flex items-center justify-between">
+          <label class="text-xs font-bold text-indigo-950 uppercase tracking-wider flex items-center gap-1.5">
+            <span>🛡️</span> Grupo de Acesso (Perfil de Funções & Alçadas)
+          </label>
+          <span class="text-[10px] text-indigo-700 bg-indigo-100 font-bold px-2 py-0.5 rounded-full">Controle RBAC</span>
+        </div>
+        <div>
+          <select id="user-access-group-select" class="w-full text-xs p-2.5 bg-white border border-indigo-200 rounded-lg font-semibold text-slate-800 focus:ring-2 focus:ring-indigo-500">
+            <option value="">Padrão do Cargo (Sem Grupo Vinculado)</option>
+            ${accessGroups.map(g => `<option value="${g.id}">${g.name}</option>`).join('')}
+          </select>
+          <p class="text-[10px] text-slate-500 mt-1">O operador herdará automaticamente as permissões e alçadas do grupo em todas as empresas autorizadas.</p>
+        </div>
+      </div>
+
+      <!-- Seção 2: Empresas com Acesso Liberado (Multi-Empresa & Troca sem Re-logon) -->
+      <div class="p-3.5 bg-gradient-to-br from-slate-50 via-indigo-50/30 to-slate-50 rounded-xl border border-indigo-200 space-y-2.5" id="user-multi-company-container">
+        <div class="flex items-center justify-between">
+          <label class="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+            <span>🏢</span> Empresas com Acesso Liberado (Multi-Empresa)
+          </label>
+          <span class="text-[10px] text-emerald-700 bg-emerald-100 font-bold px-2 py-0.5 rounded-full">Troca sem Novo Logon</span>
+        </div>
+        <p class="text-[11px] text-slate-500">Selecione as empresas que este usuário poderá acessar e alternar diretamente na aplicação:</p>
+        
+        <div class="space-y-2">
+          <!-- Todas as Empresas (*) -->
+          <label class="flex items-center gap-2 p-2 bg-indigo-50/80 border border-indigo-200 rounded-lg cursor-pointer text-xs font-bold text-indigo-950 select-none hover:bg-indigo-100 transition">
+            <input type="checkbox" id="user-allowed-all-companies" value="*" class="w-4 h-4 text-indigo-600 rounded focus:ring-indigo-500 cursor-pointer" />
+            <span>🌟 Liberar Acesso a TODAS as Empresas do Sistema (*)</span>
+          </label>
+
+          <!-- Grade de Empresas Individuais -->
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-48 overflow-y-auto pr-1" id="user-company-checkboxes-grid">
+            ${registeredCompanies.map((c, idx) => {
+              const cNum = String(idx + 1).padStart(2, '0');
+              const bType = c.businessType || 'OFICINA';
+              const icon = bType === 'INDUSTRIA' ? '🏭' : bType === 'COMERCIO' ? '🛒' : '🔧';
+              return `
+                <label class="flex items-center gap-2 p-2 bg-white border border-slate-200 rounded-lg cursor-pointer text-xs select-none hover:bg-slate-50 transition" title="ID: ${c.id}">
+                  <input type="checkbox" name="user_allowed_company" value="${c.id}" class="w-3.5 h-3.5 text-indigo-600 rounded focus:ring-indigo-500 cursor-pointer" />
+                  <span class="truncate font-semibold text-slate-700">${icon} Nº ${cNum} - ${c.name}</span>
+                </label>
+              `;
+            }).join('')}
+          </div>
+        </div>
+      </div>
+
+      <!-- Seção 3: Vínculo Contratual & Demissão -->
+      <div class="flex items-center justify-between pt-1">
         <label class="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
           <span>📋</span> Vínculo Contratual & Controle de Demissão
         </label>
@@ -830,7 +905,20 @@
       formContainer.appendChild(contractDiv);
     }
 
-    // Tentar pré-carregar datas caso seja edição de operador
+    // Comportamento do checkbox "Todas as Empresas (*)"
+    const allCompCb = contractDiv.querySelector('#user-allowed-all-companies');
+    const compCheckboxes = contractDiv.querySelectorAll('input[name="user_allowed_company"]');
+    if (allCompCb) {
+      allCompCb.addEventListener('change', () => {
+        const isAll = allCompCb.checked;
+        compCheckboxes.forEach(cb => {
+          cb.checked = isAll;
+          cb.disabled = isAll;
+        });
+      });
+    }
+
+    // Tentar pré-carregar dados caso seja edição de operador
     try {
       const usernameInput = userModal.querySelector('input[placeholder*="usuario"]');
       const currentUName = usernameInput ? usernameInput.value.trim().toLowerCase() : '';
@@ -845,11 +933,108 @@
             if (endInput && (userObj.contractEndDate || userObj.terminationDate)) {
               endInput.value = userObj.contractEndDate || userObj.terminationDate;
             }
+
+            // Pré-carregar Grupo de Acesso
+            const groupSelect = contractDiv.querySelector('#user-access-group-select');
+            if (groupSelect && (userObj.groupId || userObj.accessGroupId)) {
+              groupSelect.value = userObj.groupId || userObj.accessGroupId;
+            }
+
+            // Pré-carregar Empresas Permitidas
+            const allowed = Array.isArray(userObj.allowedCompanyIds) ? userObj.allowedCompanyIds : [userObj.companyId || 'comp-1'];
+            if ((allowed.includes('*') || userObj.role === 'admin') && userObj.username === 'admin') {
+              if (allCompCb) {
+                allCompCb.checked = true;
+                compCheckboxes.forEach(cb => { cb.checked = true; cb.disabled = true; });
+              }
+            } else {
+              compCheckboxes.forEach(cb => {
+                if (allowed.includes(cb.value) || cb.value === userObj.companyId) {
+                  cb.checked = true;
+                }
+              });
+            }
           }
         }
       }
     } catch (e) {
       // silencioso
+    }
+
+    // Interceptar a submissão do formulário do usuário para persistir allowedCompanyIds e groupId
+    const submitBtn = userModal.querySelector('button[type="submit"], #btn-save-user-submit');
+    const userForm = formContainer.closest('form') || userModal.querySelector('form');
+    if (userForm && !userForm._boundMultiCompanySave) {
+      userForm._boundMultiCompanySave = true;
+      const saveHandler = () => {
+        try {
+          const usernameInput = userModal.querySelector('input[placeholder*="usuario"]');
+          const uName = usernameInput ? usernameInput.value.trim().toLowerCase() : '';
+          if (!uName) return;
+
+          const groupSelect = contractDiv.querySelector('#user-access-group-select');
+          const selectedGroup = groupSelect ? groupSelect.value : '';
+
+          let allowedIds = [];
+          if (allCompCb && allCompCb.checked) {
+            allowedIds = ['*'];
+          } else {
+            compCheckboxes.forEach(cb => {
+              if (cb.checked) allowedIds.push(cb.value);
+            });
+            if (allowedIds.length === 0) {
+              const activeCId = localStorage.getItem('motordesk_active_company_id') || 'comp-1';
+              allowedIds.push(activeCId);
+            }
+          }
+
+          // Atualizar o banco de dados local imediatamente
+          const dbKeys = ['motordesk_db_v1', 'motordesk_db', 'motordesk_full_database', 'motordesk_app_database'];
+          dbKeys.forEach(k => {
+            try {
+              const raw = localStorage.getItem(k);
+              if (raw) {
+                const parsed = JSON.parse(raw);
+                if (Array.isArray(parsed.users)) {
+                  let userFound = false;
+                  parsed.users = parsed.users.map(u => {
+                    if (u.username && u.username.toLowerCase() === uName) {
+                      userFound = true;
+                      return {
+                        ...u,
+                        allowedCompanyIds: allowedIds,
+                        groupId: selectedGroup || undefined,
+                        accessGroupId: selectedGroup || undefined
+                      };
+                    }
+                    return u;
+                  });
+                  localStorage.setItem(k, JSON.stringify(parsed));
+                }
+              }
+            } catch (err) {}
+          });
+
+          // Se for o usuário ativo logado, sincronizar
+          try {
+            const activeUserStr = localStorage.getItem('motordesk_active_user');
+            if (activeUserStr) {
+              const activeU = JSON.parse(activeUserStr);
+              if (activeU.username && activeU.username.toLowerCase() === uName) {
+                activeU.allowedCompanyIds = allowedIds;
+                activeU.groupId = selectedGroup || undefined;
+                activeU.accessGroupId = selectedGroup || undefined;
+                localStorage.setItem('motordesk_active_user', JSON.stringify(activeU));
+              }
+            }
+          } catch (err) {}
+        } catch (err) {
+          console.warn('[Session Work Guard] Erro ao sincronizar multi-empresa do usuário:', err);
+        }
+      };
+
+      if (submitBtn) submitBtn.addEventListener('click', saveHandler);
+      userForm.addEventListener('submit', saveHandler);
     }
 
     // Ouvir alterações no input de data de término
@@ -869,18 +1054,57 @@
    * e validar unicidade estrita de CNPJ e IE contra empresas já cadastradas
    */
   function setupCompanyUniquenessGuard() {
-    const newCompModal = document.querySelector('#modal-new-company, [id*="company-modal"]')?.closest('.fixed.inset-0') ||
-                         document.querySelector('input[placeholder*="CNPJ da Nova Empresa"], input[placeholder*="00.000.000/0000-00"]')?.closest('.bg-white.rounded-2xl, .bg-white.rounded-xl, [role="dialog"]');
-    
-    if (!newCompModal) return;
+    // 1. Limpeza estrita e preventiva: remover qualquer campo group-comp-ie ou new-comp-ie fora da modal de nova empresa
+    const rogueIEs = document.querySelectorAll('#group-comp-ie, #new-comp-ie');
+    rogueIEs.forEach(el => {
+      if (!el.closest('#new-company-modal') || el.closest('#client-form-panel, #form-client, #clients-view-container')) {
+        const parentGrp = el.closest('#group-comp-ie');
+        if (parentGrp) parentGrp.remove();
+        else el.remove();
+      }
+    });
 
-    const cnpjInput = newCompModal.querySelector('input[placeholder*="00.000.000/0000-00"], input[placeholder*="CNPJ da Nova Empresa"]');
+    // Se estiver no cadastro ou visualização de clientes, NUNCA executar nada aqui
+    if (document.querySelector('#form-client, #client-form-panel, #client-cpf-input, #clients-view-container, #container-client-ie, #container-client-rg')) {
+      return;
+    }
+
+    // 2. Localizar EXCLUSIVAMENTE a modal de Nova Empresa (Tenant SaaS)
+    const newCompModal = document.getElementById('new-company-modal');
+    if (!newCompModal) return;
+    if (newCompModal.querySelector('#form-client, #client-form-panel, #client-cpf-input')) return;
+
+    const cnpjInput = newCompModal.querySelector('#new-comp-cnpj, input[placeholder*="CNPJ da Nova Empresa"]');
+    const nameInput = newCompModal.querySelector('#new-comp-name, input[placeholder*="Auto Center Speed Motors"], input[placeholder*="Razão Social"]');
+    const addrInput = newCompModal.querySelector('#new-comp-address');
     if (!cnpjInput) return;
 
-    // Se o campo IE ainda não foi adicionado
+    const db = getAppDatabaseSafe();
+    const allCompanies = db ? [...(db.registeredCompanies || []), ...(db.companyInfo ? [db.companyInfo] : [])] : [];
+    const nextSeq = allCompanies.length + 1;
+    const cnpjBase = String(24789000 + nextSeq * 371).padStart(8, '0');
+    const sampleCnpj = `${cnpjBase.slice(0, 2)}.${cnpjBase.slice(2, 5)}.${cnpjBase.slice(5, 8)}/0001-${String(10 + (nextSeq % 89))}`;
+
+    if (nameInput && !nameInput.value.trim()) {
+      nameInput.value = `Centro Automotivo & Oficina Modelo ${nextSeq} LTDA`;
+      nameInput.dispatchEvent(new Event('input', { bubbles: true }));
+      nameInput.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+    if (cnpjInput && !cnpjInput.value.trim()) {
+      cnpjInput.value = sampleCnpj;
+      cnpjInput.dispatchEvent(new Event('input', { bubbles: true }));
+      cnpjInput.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+    if (addrInput && !addrInput.value.trim()) {
+      addrInput.value = 'Av. das Nações Unidas, 1500 - Bloco B - São Paulo - SP, CEP 04578-000';
+      addrInput.dispatchEvent(new Event('input', { bubbles: true }));
+      addrInput.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+
+    // Injetar IE apenas se for explicitamente a modal de nova empresa e ainda não tiver
     if (!newCompModal.querySelector('#new-comp-ie')) {
       const cnpjGroup = cnpjInput.closest('.space-y-1') || cnpjInput.parentElement;
-      if (cnpjGroup && cnpjGroup.parentElement) {
+      if (cnpjGroup && cnpjGroup.parentElement && !newCompModal.querySelector('#group-comp-ie')) {
         const ieGroup = document.createElement('div');
         ieGroup.id = 'group-comp-ie';
         ieGroup.className = 'space-y-1 mt-3';
@@ -892,24 +1116,16 @@
           <input 
             id="new-comp-ie" 
             type="text" 
+            value="110.${String(200 + nextSeq * 17).padStart(3, '0')}.490.114"
             placeholder="Ex: 110.042.490.114 ou ISENTO" 
             class="w-full text-xs p-2.5 border border-slate-200 rounded-lg bg-white font-mono uppercase focus:ring-2 focus:ring-indigo-500 transition" 
           />
           <p id="comp-ie-dup-warning" class="text-[11px] text-rose-600 font-bold hidden"></p>
         `;
         cnpjGroup.parentElement.insertBefore(ieGroup, cnpjGroup.nextSibling);
-
-        // Aviso de CNPJ duplicado
-        if (!cnpjGroup.querySelector('#comp-cnpj-dup-warning')) {
-          const cnpjWarn = document.createElement('p');
-          cnpjWarn.id = 'comp-cnpj-dup-warning';
-          cnpjWarn.className = 'text-[11px] text-rose-600 font-bold hidden mt-1';
-          cnpjGroup.appendChild(cnpjWarn);
-        }
       }
     }
 
-    // Validação em tempo real
     const cnpjWarn = newCompModal.querySelector('#comp-cnpj-dup-warning');
     const ieInput = newCompModal.querySelector('#new-comp-ie');
     const ieWarn = newCompModal.querySelector('#comp-ie-dup-warning');

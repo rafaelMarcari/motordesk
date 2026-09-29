@@ -1408,9 +1408,108 @@
   }
 
   // 5. OBSERVER & EXECUÇÃO CONTÍNUA DO DOM
+
+  // --- INJEÇÃO DA MINI PROPAGANDA MOTORDESK E LINK DA EMPRESA CONTRATANTE ---
+  function injectCompanyAccessPromoAndContractorLink() {
+    const loginForm = document.getElementById("form-login");
+    const loginContainer = document.getElementById("login-view-container");
+    if (loginForm && loginContainer) {
+      const companyCtx = getActiveCompanyContext();
+      const select = document.getElementById("login-company-select");
+      const selectedId = select ? select.value : companyCtx.id;
+      const targetCompany = companyCtx.allCompanies.find(c => c.id === selectedId) || companyCtx;
+      const companySite = targetCompany.website || targetCompany.portalUrl || (targetCompany.cnpj ? ("https://" + (targetCompany.tradeName || targetCompany.name || "empresa").toLowerCase().replace(/[^a-z0-9]/g, "") + ".com.br") : "https://motordesk.com.br");
+
+      let promoContainer = document.getElementById("motordesk-login-promo-container");
+      if (!promoContainer) {
+        promoContainer = document.createElement("div");
+        promoContainer.id = "motordesk-login-promo-container";
+        promoContainer.style.cssText = "margin-top: 16px; margin-bottom: 16px; display: flex; flex-direction: column; gap: 12px;";
+        
+        const selectorContainer = document.getElementById("login-company-selector-container") || document.getElementById("login-single-company-badge");
+        if (selectorContainer && selectorContainer.parentNode) {
+          selectorContainer.parentNode.insertBefore(promoContainer, selectorContainer.nextSibling);
+        } else {
+          loginForm.parentNode.insertBefore(promoContainer, loginForm);
+        }
+      }
+
+      promoContainer.innerHTML = `
+        <!-- Card da Empresa Contratante com Link -->
+        <div id="card-contractor-company-link" style="background: linear-gradient(135deg, rgba(30, 41, 59, 0.9) 0%, rgba(15, 23, 42, 0.95) 100%); border: 1px solid #3b82f6; border-radius: 14px; padding: 14px 16px; box-shadow: 0 4px 12px rgba(59, 130, 246, 0.15);">
+          <div style="display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 6px;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span style="font-size: 16px;">🏢</span>
+              <span style="font-size: 12px; font-weight: 800; color: #ffffff;">Empresa Contratante:</span>
+            </div>
+            <span style="font-size: 10px; background: rgba(59, 130, 246, 0.2); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.3); padding: 2px 8px; border-radius: 6px; font-weight: 800;">Ativa</span>
+          </div>
+          <div style="font-size: 13px; font-weight: 800; color: #facc15; margin-bottom: 2px;">
+            ${targetCompany.name || "MotorDesk Auto Center"}
+          </div>
+          <div style="font-size: 11px; color: #94a3b8; margin-bottom: 10px;">
+            ${targetCompany.cnpj ? "CNPJ: " + targetCompany.cnpj : ""} ${targetCompany.phone ? "• Tel: " + targetCompany.phone : ""}
+          </div>
+          <a href="${companySite}" target="_blank" rel="noopener noreferrer" style="display: inline-flex; align-items: center; justify-content: center; gap: 6px; width: 100%; box-sizing: border-box; padding: 8px 12px; background: #2563eb; color: #ffffff; text-decoration: none; border-radius: 8px; font-size: 11.5px; font-weight: 700; transition: background 0.2s;" onmouseover="this.style.background=#1d4ed8" onmouseout="this.style.background=#2563eb">
+            <span>🌐</span> Acessar Link / Portal da Empresa Contratante ↗
+          </a>
+        </div>
+
+        <!-- Mini Propaganda do MotorDesk -->
+        <div id="card-motordesk-mini-promo" style="background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%); border: 1px solid rgba(99, 102, 241, 0.4); border-radius: 14px; padding: 14px 16px; box-shadow: 0 4px 16px rgba(99, 102, 241, 0.12);">
+          <div style="display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 6px;">
+            <div style="display: flex; align-items: center; gap: 6px;">
+              <span style="font-size: 10px; background: rgba(99, 102, 241, 0.25); color: #a5b4fc; border: 1px solid rgba(99, 102, 241, 0.4); padding: 2px 8px; border-radius: 6px; font-weight: 800; letter-spacing: 0.05em; text-transform: uppercase;">
+                ⚡ MotorDesk Enterprise
+              </span>
+            </div>
+            <span style="font-size: 10px; color: #38bdf8; font-weight: 700;">ERP Automotivo 360°</span>
+          </div>
+          <p style="font-size: 11px; font-weight: 700; color: #f1f5f9; margin: 0 0 4px; line-height: 1.4;">
+            O Sistema Mais Completo do Brasil para Oficinas, Centros Automotivos & Autopeças
+          </p>
+          <p style="font-size: 10px; color: #94a3b8; margin: 0 0 10px; line-height: 1.4;">
+            Ordens de Serviço em tempo real • PDV Balcão Express com cálculo dimensional • Cotações Online com Fornecedores • Emissão Fiscal SEFAZ (NF-e, NFS-e, NFC-e) • Acesso simultâneo em múltiplos computadores.
+          </p>
+          <button type="button" onclick="const b = document.getElementById('btn-login-to-landing'); if (b) b.click(); else window.open('/', '_blank');" style="display: inline-flex; align-items: center; justify-content: center; gap: 6px; width: 100%; box-sizing: border-box; padding: 7px 12px; background: rgba(99, 102, 241, 0.15); border: 1px solid #6366f1; color: #c7d2fe; border-radius: 8px; font-size: 11px; font-weight: 700; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.background='rgba(99, 102, 241, 0.3)'" onmouseout="this.style.background='rgba(99, 102, 241, 0.15)'">
+            <span>🚀</span> Conheça Todos os Recursos do MotorDesk ↗
+          </button>
+        </div>
+      `;
+
+      if (select && !select.dataset.promoBound) {
+        select.dataset.promoBound = "true";
+        select.addEventListener("change", () => {
+          setTimeout(injectCompanyAccessPromoAndContractorLink, 50);
+        });
+      }
+    }
+
+    const topBar = document.getElementById("top-workspace-bar");
+    if (topBar && !document.getElementById("top-contractor-link-badge")) {
+      const companyCtx = getActiveCompanyContext();
+      const companySite = companyCtx.website || companyCtx.portalUrl || (companyCtx.cnpj ? ("https://" + (companyCtx.tradeName || companyCtx.name || "empresa").toLowerCase().replace(/[^a-z0-9]/g, "") + ".com.br") : "https://motordesk.com.br");
+
+      const badge = document.createElement("div");
+      badge.id = "top-contractor-link-badge";
+      badge.style.cssText = "display: inline-flex; align-items: center; gap: 6px; margin-left: 8px;";
+      badge.innerHTML = `
+        <a href="${companySite}" target="_blank" rel="noopener noreferrer" title="Acessar site/portal oficial da empresa contratante" style="display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; background: rgba(59, 130, 246, 0.1); border: 1px solid rgba(59, 130, 246, 0.3); border-radius: 8px; color: #2563eb; text-decoration: none; font-size: 11px; font-weight: 700; white-space: nowrap;">
+          <span>🌐</span> <span class="hidden md:inline">Portal da Empresa</span> ↗
+        </a>
+      `;
+
+      const rightSection = topBar.querySelector(".flex.items-center.gap-2") || topBar.children[1] || topBar;
+      if (rightSection) {
+        rightSection.insertBefore(badge, rightSection.firstChild);
+      }
+    }
+  }
+
   function runDomCheck() {
     injectCompanyIdAndNumberFieldInSettingsForm();
     injectBackupAndSupportNavbarButton();
+    injectCompanyAccessPromoAndContractorLink();
   }
 
   if (document.readyState === 'loading') {

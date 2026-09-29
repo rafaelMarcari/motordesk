@@ -1,5 +1,5 @@
 {
-  "name": "MotorDesk",
+  "name": "MotorDesk ERP",
   "description": "Sistema ERP multi-empresa e multi-segmento integrado para Indústria (PCP, BOM, MES, WMS), Oficina Mecânica, Comércio e Autopeças, com controle modular RBAC, faturamento fiscal SEFAZ, boletos e PIX, gestão de assinaturas SaaS e central universal de exportação de relatórios (PDF, DOCX, XLSX, XLS, CSV, JSON, XML).",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]

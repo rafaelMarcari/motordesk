@@ -131,8 +131,6 @@ export interface UserPermissions {
   accountsPayableCancel?: boolean;
   accountsPayableImportXml?: boolean;
   accessPriceCalculation?: boolean;
-  accessRepresentativeOrders?: boolean;
-  accessRepresentativeCommerce?: boolean;
   accessFiscalXml?: boolean;
   accessFiscalConference?: boolean;
   accessTaxObligations?: boolean;
@@ -208,6 +206,14 @@ export interface User {
   username: string;
   role: UserRole;
   companyId: string;
+  email?: string;
+  emailSecondary?: string;
+  phone?: string;
+  phoneCommercial?: string;
+  phonePersonal?: string;
+  cellphone?: string;
+  cellphoneCommercial?: string;
+  cellphonePersonal?: string;
   active?: boolean;
   permissions: UserPermissions;
   groupId?: string;
@@ -244,6 +250,246 @@ export interface CompanyInfo {
   enableRepresentativeCommerce?: boolean;
   enableWithdrawalAndDelivery?: boolean;
   userLimit?: number;
+  [key: string]: any;
+}
+
+export interface Client {
+  id: string;
+  name: string;
+  cpf: string; // Aceita tanto CPF quanto CNPJ
+  cpfCnpj?: string; // Aceita tanto CPF quanto CNPJ
+  email?: string;
+  emailSecondary?: string;
+  phone?: string;
+  phoneCommercial?: string;
+  phonePersonal?: string;
+  cellphone?: string;
+  cellphoneCommercial?: string;
+  cellphonePersonal?: string;
+  address?: string;
+  companyId?: string;
+  maxCreditLimit?: number;
+  currentDebt?: number;
+  paymentModeOverride?: string;
+  depositPercentageOverride?: number;
+  billingPolicy?: string;
+  stateRegistration?: string;
+  ie?: string;
+  rg?: string;
+  clientType?: 'FISICA' | 'JURIDICA';
+  indicadorIe?: string;
+  isConsumidorFinal?: boolean;
+  ibgeCityCode?: string;
+  uf?: string;
+  createdAt?: string;
+  [key: string]: any;
+}
+
+export interface Supplier {
+  id: string;
+  name: string;
+  tradeName?: string;
+  cnpjCpf: string; // Aceita tanto CPF quanto CNPJ
+  cnpj?: string;
+  cpfCnpj?: string;
+  email?: string;
+  emailSecondary?: string;
+  phone?: string;
+  phoneCommercial?: string;
+  phonePersonal?: string;
+  cellphone?: string;
+  cellphoneCommercial?: string;
+  cellphonePersonal?: string;
+  contactPerson?: string;
+  address?: string;
+  paymentTerms?: string;
+  notes?: string;
+  status: 'active' | 'inactive';
+  createdAt?: string;
+  [key: string]: any;
+}
+
+export interface Vehicle {
+  id: string;
+  clientId: string;
+  plate: string;
+  brand: string;
+  model: string;
+  year: number;
+  color?: string;
+  companyId?: string;
+  currentKm?: number;
+  km?: number;
+  chassis?: string;
+  engineNumber?: string;
+  renavam?: string;
+  notes?: string;
+  createdAt?: string;
+  [key: string]: any;
+}
+
+export interface Part {
+  id: string;
+  code: string;
+  name: string;
+  description?: string;
+  unit?: string;
+  category?: string;
+  costPrice: number;
+  salePrice: number;
+  currentStock: number;
+  minStock: number;
+  location?: string;
+  companyId?: string;
+  ncm?: string;
+  cest?: string;
+  cfop?: string;
+  cst?: string;
+  [key: string]: any;
+}
+
+export interface Service {
+  id: string;
+  code?: string;
+  name: string;
+  description?: string;
+  estimatedHours?: number;
+  hourlyRate?: number;
+  price: number;
+  category?: string;
+  companyId?: string;
+  cnae?: string;
+  serviceCodeLc116?: string;
+  issRate?: number;
+  [key: string]: any;
+}
+
+export interface Budget {
+  id: string;
+  code: string;
+  clientId: string;
+  vehicleId?: string;
+  status: 'draft' | 'pending' | 'approved' | 'rejected' | 'converted' | 'expired';
+  services: any[];
+  parts: any[];
+  totalServices: number;
+  totalParts: number;
+  discountAmount?: number;
+  discountPercentage?: number;
+  totalAmount: number;
+  createdAt: string;
+  validUntil?: string;
+  companyId?: string;
+  notes?: string;
+  [key: string]: any;
+}
+
+export interface ServiceOrder {
+  id: string;
+  code: string;
+  clientId: string;
+  vehicleId: string;
+  status: 'open' | 'in_progress' | 'waiting_parts' | 'completed' | 'canceled' | 'invoiced';
+  services: any[];
+  parts: any[];
+  mechanicId?: string;
+  mechanicName?: string;
+  totalServices: number;
+  totalParts: number;
+  totalAmount: number;
+  createdAt: string;
+  completedAt?: string;
+  companyId?: string;
+  notes?: string;
+  kmEntry?: number;
+  [key: string]: any;
+}
+
+export interface AccountReceivable {
+  id: string;
+  code?: string;
+  clientId?: string;
+  clientName?: string;
+  clientCpf?: string;
+  clientCpfCnpj?: string;
+  description: string;
+  amount: number;
+  paidAmount?: number;
+  remainingAmount?: number;
+  dueDate: string;
+  status: 'pending' | 'paid' | 'overdue' | 'canceled';
+  companyId?: string;
+  origin?: string;
+  paymentMethod?: string;
+  [key: string]: any;
+}
+
+export interface AccountPayable {
+  id: string;
+  code?: string;
+  supplierId?: string;
+  supplierName?: string;
+  description: string;
+  amount: number;
+  totalAmount?: number;
+  paidAmount?: number;
+  remainingAmount?: number;
+  dueDate: string;
+  status: 'pending' | 'paid' | 'overdue' | 'canceled';
+  companyId?: string;
+  category?: string;
+  [key: string]: any;
+}
+
+export interface FinancialTransaction {
+  id: string;
+  type: 'income' | 'expense';
+  description: string;
+  amount: number;
+  date: string;
+  companyId?: string;
+  account?: string;
+  category?: string;
+  paymentMethod?: string;
+  status?: string;
+  [key: string]: any;
+}
+
+export interface Carrier {
+  id: string;
+  name: string;
+  cnpj?: string;
+  cpfCnpj?: string;
+  ie?: string;
+  phone?: string;
+  address?: string;
+  city?: string;
+  uf?: string;
+  active?: boolean;
+  companyId?: string;
+  [key: string]: any;
+}
+
+export interface GoodsWithdrawalOrder {
+  id: string;
+  code?: string;
+  carrierId?: string;
+  companyId?: string;
+  status?: string;
+  [key: string]: any;
+}
+
+export interface UnitOfMeasure {
+  id: string;
+  name: string;
+  acronym: string;
+  category: string;
+  calculationType: string;
+  conversionFactor: number;
+  decimalPlaces: number;
+  active: boolean;
+  isGlobal?: boolean;
+  notes?: string;
   [key: string]: any;
 }
 

@@ -29,6 +29,8 @@ export default function ClientsView({ db, onSaveClients, onAddHistoryLog, setUns
   // Form Fields
   const [name, setName] = useState('');
   const [cpf, setCpf] = useState('');
+  const [rg, setRg] = useState('');
+  const [stateRegistration, setStateRegistration] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [address, setAddress] = useState('');
@@ -41,13 +43,22 @@ export default function ClientsView({ db, onSaveClients, onAddHistoryLog, setUns
   const [hasAcceptedLgpd, setHasAcceptedLgpd] = useState(true);
   const [showPrivacyModal, setShowPrivacyModal] = useState(false);
 
-  // Auto-format CPF (999.999.999-99)
-  const formatCPF = (value: string) => {
-    const raw = value.replace(/\D/g, '').slice(0, 11);
-    if (raw.length <= 3) return raw;
-    if (raw.length <= 6) return `${raw.slice(0, 3)}.${raw.slice(3)}`;
-    if (raw.length <= 9) return `${raw.slice(0, 3)}.${raw.slice(3, 6)}.${raw.slice(6)}`;
-    return `${raw.slice(0, 3)}.${raw.slice(3, 6)}.${raw.slice(6, 9)}-${raw.slice(9, 11)}`;
+  // Auto-detecção inteligente: contagem de dígitos numéricos do documento
+  const cpfDigits = cpf.replace(/\D/g, '');
+  const isJuridica = cpfDigits.length > 11; // 12 a 14 dígitos = Pessoa Jurídica (CNPJ)
+  const isFisica = cpfDigits.length > 0 && cpfDigits.length <= 11; // 1 a 11 dígitos = Pessoa Física (CPF)
+
+  // Auto-format CPF (999.999.999-99) ou CNPJ (99.999.999/9999-99)
+  const formatCpfCnpj = (value: string) => {
+    const raw = value.replace(/\D/g, '').slice(0, 14);
+    if (raw.length <= 11) {
+      if (raw.length <= 3) return raw;
+      if (raw.length <= 6) return `${raw.slice(0, 3)}.${raw.slice(3)}`;
+      if (raw.length <= 9) return `${raw.slice(0, 3)}.${raw.slice(3, 6)}.${raw.slice(6)}`;
+      return `${raw.slice(0, 3)}.${raw.slice(3, 6)}.${raw.slice(6, 9)}-${raw.slice(9, 11)}`;
+    }
+    if (raw.length <= 12) return `${raw.slice(0, 2)}.${raw.slice(2, 5)}.${raw.slice(5, 8)}/${raw.slice(8)}`;
+    return `${raw.slice(0, 2)}.${raw.slice(2, 5)}.${raw.slice(5, 8)}/${raw.slice(8, 12)}-${raw.slice(12, 14)}`;
   };
 
   // Auto-format Phone ((99) 99999-9999)
@@ -59,7 +70,7 @@ export default function ClientsView({ db, onSaveClients, onAddHistoryLog, setUns
   };
 
   const handleCpfChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setCpf(formatCPF(e.target.value));
+    setCpf(formatCpfCnpj(e.target.value));
   };
 
   const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -67,11 +78,13 @@ export default function ClientsView({ db, onSaveClients, onAddHistoryLog, setUns
   };
 
   // Check if form is dirty (unsaved changes)
-  const isFormDirty = name.trim() !== '' || cpf.trim() !== '' || email.trim() !== '' || phone.trim() !== '' || address.trim() !== '';
+  const isFormDirty = name.trim() !== '' || cpf.trim() !== '' || rg.trim() !== '' || stateRegistration.trim() !== '' || email.trim() !== '' || phone.trim() !== '' || address.trim() !== '';
 
   const resetForm = () => {
     setName('');
     setCpf('');
+    setRg('');
+    setStateRegistration('');
     setEmail('');
     setPhone('');
     setAddress('');
@@ -92,10 +105,12 @@ export default function ClientsView({ db, onSaveClients, onAddHistoryLog, setUns
   const openEditForm = (client: Client) => {
     setEditingClient(client);
     setName(client.name);
-    setCpf(client.cpf);
-    setEmail(client.email);
-    setPhone(client.phone);
-    setAddress(client.address);
+    setCpf(client.cpfCnpj || client.cpf || '');
+    setRg(client.rg || '');
+    setStateRegistration(client.stateRegistration || client.ie || '');
+    setEmail(client.email || '');
+    setPhone(client.phone || '');
+    setAddress(client.address || '');
     setMaxCreditLimit(client.maxCreditLimit !== undefined ? String(client.maxCreditLimit) : '3000');
     setPaymentModeOverride(client.paymentModeOverride || 'DEFAULT');
     setDepositPercentageOverride(client.depositPercentageOverride !== undefined ? String(client.depositPercentageOverride) : '30');
@@ -104,9 +119,21 @@ export default function ClientsView({ db, onSaveClients, onAddHistoryLog, setUns
   };
 
   // Core save client action (used both normally and by the conditional logout dialog)
-  const executeSave = (customData?: { name: string; cpf: string; email: string; phone: string; address: string; maxCreditLimit?: string; editingClient: Client | null }) => {
+  const executeSave = (customData?: { 
+    name: string; 
+    cpf: string; 
+    rg?: string;
+    stateRegistration?: string;
+    email: string; 
+    phone: string; 
+    address: string; 
+    maxCreditLimit?: string; 
+    editingClient: Client | null 
+  }) => {
     const activeName = customData ? customData.name : name;
     const activeCpf = customData ? customData.cpf : cpf;
+    const activeRg = customData?.rg !== undefined ? customData.rg : rg;
+    const activeStateRegistration = customData?.stateRegistration !== undefined ? customData.stateRegistration : stateRegistration;
     const activeEmail = customData ? customData.email : email;
     const activePhone = customData ? customData.phone : phone;
     const activeAddress = customData ? customData.address : address;
@@ -114,17 +141,27 @@ export default function ClientsView({ db, onSaveClients, onAddHistoryLog, setUns
     const activeEditingClient = customData ? customData.editingClient : editingClient;
 
     if (!activeName.trim() || !activeCpf.trim()) {
-      return { success: false, message: 'Nome e CPF são campos obrigatórios.' };
+      return { success: false, message: 'Nome e CPF/CNPJ são campos obrigatórios.' };
     }
 
-    if (activeCpf.length < 14) {
-      return { success: false, message: 'CPF inválido ou incompleto.' };
+    const digitsOnly = activeCpf.replace(/\D/g, '');
+    if (digitsOnly.length !== 11 && digitsOnly.length !== 14) {
+      return { success: false, message: 'CPF/CNPJ inválido ou incompleto (deve conter 11 dígitos para CPF ou 14 dígitos para CNPJ).' };
     }
 
-    // RN001: CPF único check
-    const cpfExists = db.clients.some(c => c.cpf === activeCpf && (!activeEditingClient || c.id !== activeEditingClient.id));
-    if (cpfExists) {
-      return { success: false, message: 'Regra de Negócio Violada (RN001): Já existe um cliente cadastrado com este CPF.' };
+    const isJuridicaMode = digitsOnly.length > 11;
+    const cleanRg = isJuridicaMode ? '' : activeRg.trim();
+    const cleanIe = isJuridicaMode ? activeStateRegistration.trim() : '';
+
+    // RN001: CPF/CNPJ único check
+    const docExists = db.clients.some(c => {
+      if (activeEditingClient && c.id === activeEditingClient.id) return false;
+      const cDigits = (c.cpfCnpj || c.cpf || '').replace(/\D/g, '');
+      return cDigits === digitsOnly;
+    });
+
+    if (docExists) {
+      return { success: false, message: 'Regra de Negócio Violada (RN001): Já existe um cliente cadastrado com este CPF/CNPJ.' };
     }
 
     if (!hasAcceptedLgpd) {
@@ -132,17 +169,22 @@ export default function ClientsView({ db, onSaveClients, onAddHistoryLog, setUns
     }
 
     const activeDepositPct = Number(depositPercentageOverride) || 30;
-
     let updatedClientsList: Client[] = [];
+
     if (activeEditingClient) {
       // Edit Client
-      console.log(`[TRACE-PERSISTENCE] CLIENT EDIT: id=${activeEditingClient.id}, name=${activeName}, cpf=${activeCpf}`);
+      console.log(`[TRACE-PERSISTENCE] CLIENT EDIT: id=${activeEditingClient.id}, name=${activeName}, cpfCnpj=${activeCpf}, rg=${cleanRg}, ie=${cleanIe}`);
       updatedClientsList = db.clients.map(c => 
         c.id === activeEditingClient.id 
           ? { 
               ...c, 
               name: activeName, 
               cpf: activeCpf, 
+              cpfCnpj: activeCpf,
+              rg: cleanRg,
+              stateRegistration: cleanIe,
+              ie: cleanIe,
+              clientType: isJuridicaMode ? 'JURIDICA' : 'FISICA',
               email: activeEmail, 
               phone: activePhone, 
               address: activeAddress, 
@@ -153,13 +195,18 @@ export default function ClientsView({ db, onSaveClients, onAddHistoryLog, setUns
           : c
       );
       onSaveClients(updatedClientsList);
-      onAddHistoryLog('user_activity', 'Cliente Editado', `Dados cadastrais e política de pagamento do cliente ${activeName} atualizados no sistema.`, activeEditingClient.id, '');
+      onAddHistoryLog('user_activity', 'Cliente Editado', `Dados cadastrais e política de pagamento do cliente ${activeName} (${isJuridicaMode ? 'Pessoa Jurídica' : 'Pessoa Física'}) atualizados no sistema.`, activeEditingClient.id, '');
     } else {
       // Create Client
       const newClient: Client = {
         id: `cli-${Date.now()}`,
         name: activeName,
         cpf: activeCpf,
+        cpfCnpj: activeCpf,
+        rg: cleanRg,
+        stateRegistration: cleanIe,
+        ie: cleanIe,
+        clientType: isJuridicaMode ? 'JURIDICA' : 'FISICA',
         email: activeEmail,
         phone: activePhone,
         address: activeAddress,
@@ -176,9 +223,9 @@ export default function ClientsView({ db, onSaveClients, onAddHistoryLog, setUns
       const veiculos = (db.vehicles || []).length;
       const pecas = (db.parts || []).length;
       const companyId = db.companyInfo?.id || 'comp-1';
-      console.log(`[TRACE-PERSISTENCE] CLIENT CREATE\nid=${newClient.id}\nname=${newClient.name}\ncpf=${newClient.cpf}\ncompanyId=${companyId}\nempresas=${empresas}\nusuários=${usuarios}\nclientes=${clientes}\nveículos=${veiculos}\npeças=${pecas}\nupdatedAt=${newClient.createdAt}`);
+      console.log(`[TRACE-PERSISTENCE] CLIENT CREATE\nid=${newClient.id}\nname=${newClient.name}\ncpf=${newClient.cpf}\nrg=${cleanRg}\nie=${cleanIe}\ncompanyId=${companyId}\nempresas=${empresas}\nusuários=${usuarios}\nclientes=${clientes}\nveículos=${veiculos}\npeças=${pecas}\nupdatedAt=${newClient.createdAt}`);
       onSaveClients(updatedClientsList);
-      onAddHistoryLog('user_activity', 'Cliente Cadastrado', `Cliente ${activeName} cadastrado com sucesso sob CPF ${activeCpf} e limite de crédito R$ ${activeLimitNum.toFixed(2)}.`, newClient.id, '');
+      onAddHistoryLog('user_activity', 'Cliente Cadastrado', `Cliente ${activeName} (${isJuridicaMode ? `PJ - CNPJ: ${activeCpf}${cleanIe ? ` / IE: ${cleanIe}` : ''}` : `PF - CPF: ${activeCpf}${cleanRg ? ` / RG: ${cleanRg}` : ''}`}) cadastrado com sucesso e limite de crédito R$ ${activeLimitNum.toFixed(2)}.`, newClient.id, '');
     }
 
     return { success: true, list: updatedClientsList };
@@ -211,14 +258,31 @@ export default function ClientsView({ db, onSaveClients, onAddHistoryLog, setUns
     } else {
       setUnsavedTask(null);
     }
-  }, [isFormOpen, name, cpf, email, phone, address]);
+  }, [isFormOpen, isFormDirty, name, cpf, rg, stateRegistration, email, phone, address]);
+
+  // Garantir isolamento estrito contra injeções externas de IE no formulário de clientes
+  useEffect(() => {
+    const rogues = document.querySelectorAll('#client-form-panel #group-comp-ie, #form-client #group-comp-ie, #form-client #new-comp-ie');
+    rogues.forEach(el => {
+      const grp = el.closest('#group-comp-ie');
+      if (grp) grp.remove();
+      else el.remove();
+    });
+  }, [isFormOpen, cpf]);
 
   // Filter clients
-  const filteredClients = db.clients.filter(client => 
-    client.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    client.cpf.includes(searchQuery) ||
-    client.email.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filteredClients = db.clients.filter(client => {
+    const q = searchQuery.toLowerCase();
+    const doc = (client.cpfCnpj || client.cpf || '').toLowerCase();
+    const cleanDoc = doc.replace(/\D/g, '');
+    const cleanQ = searchQuery.replace(/\D/g, '');
+    return (
+      client.name.toLowerCase().includes(q) ||
+      doc.includes(q) ||
+      (cleanQ.length > 0 && cleanDoc.includes(cleanQ)) ||
+      (client.email && client.email.toLowerCase().includes(q))
+    );
+  });
 
   return (
     <div className="space-y-6 animate-fade-in" id="clients-view-container">
@@ -272,30 +336,119 @@ export default function ClientsView({ db, onSaveClients, onAddHistoryLog, setUns
 
           <form onSubmit={handleSave} className="grid grid-cols-1 md:grid-cols-2 gap-4" id="form-client">
             <div className="space-y-1.5 col-span-1 md:col-span-2">
-              <label className="text-xs font-semibold text-slate-600" htmlFor="client-name-input">Nome Completo *</label>
+              <label className="text-xs font-semibold text-slate-600" htmlFor="client-name-input">
+                {isJuridica ? 'Razão Social / Nome da Empresa *' : cpfDigits.length > 0 ? 'Nome Completo *' : 'Nome Completo ou Razão Social *'}
+              </label>
               <input 
                 id="client-name-input"
                 type="text" 
                 value={name}
                 onChange={e => setName(e.target.value)}
-                placeholder="Ex: João da Silva" 
+                placeholder={isJuridica ? "Ex: Transportes Modelo Ltda" : cpfDigits.length > 0 ? "Ex: João da Silva" : "Ex: Nome Completo ou Razão Social"} 
                 className="w-full text-sm px-3 py-2 border border-slate-200 rounded-lg focus:outline-hidden focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition"
                 required
               />
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-slate-600" htmlFor="client-cpf-input">CPF * (RN001 - Único)</label>
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-semibold text-slate-600" htmlFor="client-cpf-input">
+                  CPF/CNPJ * (RN001 - Único)
+                </label>
+                {cpfDigits.length === 0 ? (
+                  <span id="badge-doc-detection-waiting" className="text-[10px] font-semibold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full border border-slate-200">
+                    Digite os números (PF ≤ 11 / PJ &gt; 11)
+                  </span>
+                ) : isJuridica ? (
+                  <span id="badge-doc-detection-pj" className="text-[10px] font-bold text-purple-700 bg-purple-50 px-2 py-0.5 rounded-full border border-purple-200 flex items-center gap-1">
+                    🏢 Pessoa Jurídica ({cpfDigits.length}/14 dígitos)
+                  </span>
+                ) : (
+                  <span id="badge-doc-detection-pf" className="text-[10px] font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded-full border border-blue-200 flex items-center gap-1">
+                    👤 Pessoa Física ({cpfDigits.length}/11 dígitos)
+                  </span>
+                )}
+              </div>
               <input 
                 id="client-cpf-input"
                 type="text" 
                 value={cpf}
                 onChange={handleCpfChange}
-                placeholder="000.000.000-00" 
-                className="w-full text-sm px-3 py-2 border border-slate-200 rounded-lg focus:outline-hidden focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition font-mono"
+                placeholder={isJuridica ? "00.000.000/0000-00 (CNPJ)" : cpfDigits.length > 0 ? "000.000.000-00 (CPF)" : "Digite CPF ou CNPJ"} 
+                className={`w-full text-sm px-3 py-2 border rounded-lg focus:outline-hidden focus:ring-1 transition font-mono ${
+                  isJuridica 
+                    ? 'border-purple-300 focus:border-purple-500 focus:ring-purple-500 bg-purple-50/15' 
+                    : cpfDigits.length > 0 
+                      ? 'border-blue-300 focus:border-blue-500 focus:ring-blue-500 bg-blue-50/15' 
+                      : 'border-slate-200 focus:border-indigo-500 focus:ring-indigo-500'
+                }`}
                 required
               />
+              <p className="text-[10px] text-slate-500">
+                {isJuridica 
+                  ? 'Detectado CNPJ (> 11 dígitos): Campo Inscrição Estadual (IE) liberado.' 
+                  : cpfDigits.length > 0 
+                    ? 'Detectado CPF (≤ 11 dígitos): Campo RG (Registro Geral) liberado.' 
+                    : 'A quantidade de dígitos identifica se é Pessoa Física ou Jurídica e libera o campo correspondente.'}
+              </p>
             </div>
+
+            {/* Campo liberado dinamicamente: Inscrição Estadual (se PJ) ou RG (se PF) */}
+            {isJuridica ? (
+              <div className="space-y-1.5 animate-fade-in" id="container-client-ie">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-semibold text-purple-900 flex items-center gap-1.5" htmlFor="client-ie-input">
+                    <span>Inscrição Estadual (IE)</span>
+                    <span className="px-1.5 py-0.5 text-[9px] font-bold uppercase bg-purple-100 text-purple-800 rounded border border-purple-200">
+                      Liberado para Pessoa Jurídica
+                    </span>
+                  </label>
+                </div>
+                <input 
+                  id="client-ie-input"
+                  type="text" 
+                  value={stateRegistration}
+                  onChange={e => setStateRegistration(e.target.value.toUpperCase())}
+                  placeholder="Ex: 123.456.789.111 ou ISENTO" 
+                  className="w-full text-sm px-3 py-2 border border-purple-300 bg-purple-50/20 rounded-lg focus:outline-hidden focus:border-purple-500 focus:ring-1 focus:ring-purple-500 transition font-mono uppercase"
+                />
+                <p className="text-[10px] text-purple-700">
+                  Inscrição Estadual da empresa perante a SEFAZ para emissão fiscal
+                </p>
+              </div>
+            ) : isFisica ? (
+              <div className="space-y-1.5 animate-fade-in" id="container-client-rg">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-semibold text-blue-900 flex items-center gap-1.5" htmlFor="client-rg-input">
+                    <span>RG (Registro Geral)</span>
+                    <span className="px-1.5 py-0.5 text-[9px] font-bold uppercase bg-blue-100 text-blue-800 rounded border border-blue-200">
+                      Liberado para Pessoa Física
+                    </span>
+                  </label>
+                </div>
+                <input 
+                  id="client-rg-input"
+                  type="text" 
+                  value={rg}
+                  onChange={e => setRg(e.target.value.toUpperCase())}
+                  placeholder="Ex: 12.345.678-9 ou SSP/SP" 
+                  className="w-full text-sm px-3 py-2 border border-blue-300 bg-blue-50/20 rounded-lg focus:outline-hidden focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition font-mono uppercase"
+                />
+                <p className="text-[10px] text-blue-700">
+                  Documento de identificação civil emitido por órgão de segurança pública
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-1.5 flex flex-col justify-center p-3 rounded-xl bg-slate-50 border border-slate-200 text-slate-500 text-xs" id="container-doc-waiting">
+                <span className="font-semibold text-slate-700 flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-slate-400"></span>
+                  Documento de Identificação Civil
+                </span>
+                <p className="text-[11px] text-slate-500">
+                  Inicie a digitação do CPF ou CNPJ ao lado para liberar automaticamente o campo de RG (Pessoa Física) ou Inscrição Estadual (Pessoa Jurídica).
+                </p>
+              </div>
+            )}
 
             <div className="space-y-1.5">
               <label className="text-xs font-semibold text-slate-600" htmlFor="client-phone-input">Telefone / WhatsApp</label>
@@ -444,7 +597,7 @@ export default function ClientsView({ db, onSaveClients, onAddHistoryLog, setUns
               <input 
                 id="client-search-input"
                 type="text" 
-                placeholder="Buscar cliente por nome, CPF ou email..." 
+                placeholder="Buscar cliente por nome, CPF/CNPJ ou email..." 
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
                 className="w-full text-sm pl-10 pr-4 py-2 bg-white border border-slate-200 rounded-lg focus:outline-hidden focus:border-indigo-500 transition"
@@ -463,7 +616,7 @@ export default function ClientsView({ db, onSaveClients, onAddHistoryLog, setUns
                 <thead>
                   <tr className="border-b border-slate-100 text-xs font-semibold uppercase text-slate-400 bg-slate-50/50">
                     <th className="p-4">Nome</th>
-                    <th className="p-4">CPF (Validação RN001)</th>
+                    <th className="p-4">CPF/CNPJ (Validação RN001)</th>
                     <th className="p-4">Contato</th>
                     <th className="p-4">Endereço</th>
                     <th className="p-4">Limite de Crédito</th>
@@ -475,6 +628,9 @@ export default function ClientsView({ db, onSaveClients, onAddHistoryLog, setUns
                     const limit = client.maxCreditLimit !== undefined ? client.maxCreditLimit : 3000;
                     const debt = client.currentDebt || 0;
                     const isExceeded = debt > limit;
+                    const rawDoc = (client.cpfCnpj || client.cpf || '').replace(/\D/g, '');
+                    const isCnpj = rawDoc.length > 11;
+                    const displayDoc = client.cpfCnpj || client.cpf || '-';
 
                     return (
                       <tr key={client.id} className="hover:bg-slate-50/50 transition duration-150" id={`client-row-${client.id}`}>
@@ -500,7 +656,28 @@ export default function ClientsView({ db, onSaveClients, onAddHistoryLog, setUns
                             </div>
                           )}
                         </td>
-                        <td className="p-4 font-mono text-xs text-slate-600">{client.cpf}</td>
+                        <td className="p-4 font-mono text-xs text-slate-600">
+                          <div className="flex items-center gap-1.5">
+                            <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
+                              isCnpj ? 'bg-purple-100 text-purple-800 border border-purple-200' : 'bg-blue-100 text-blue-800 border border-blue-200'
+                            }`}>
+                              {isCnpj ? 'CNPJ' : 'CPF'}
+                            </span>
+                            <span className="font-semibold">{displayDoc}</span>
+                          </div>
+                          {isCnpj && (client.stateRegistration || client.ie) && (
+                            <div className="text-[11px] text-purple-700 font-mono mt-0.5 flex items-center gap-1 font-medium">
+                              <span className="text-[10px] px-1 py-0.2 bg-purple-50 rounded border border-purple-200">IE</span>
+                              <span>{client.stateRegistration || client.ie}</span>
+                            </div>
+                          )}
+                          {!isCnpj && client.rg && (
+                            <div className="text-[11px] text-blue-700 font-mono mt-0.5 flex items-center gap-1 font-medium">
+                              <span className="text-[10px] px-1 py-0.2 bg-blue-50 rounded border border-blue-200">RG</span>
+                              <span>{client.rg}</span>
+                            </div>
+                          )}
+                        </td>
                         <td className="p-4">
                           <div className="space-y-0.5">
                             <p>{client.phone || '(Não informado)'}</p>

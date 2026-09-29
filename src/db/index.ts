@@ -79,6 +79,18 @@ export function resolveDatabaseConfig(overrideDb?: string): DbConfig {
   };
 }
 
+export function isDatabaseSocketAvailable(targetDb?: string): boolean {
+  const config = resolveDatabaseConfig(targetDb);
+  if (config.isUnixSocket) {
+    try {
+      return fs.existsSync(config.host);
+    } catch {
+      return false;
+    }
+  }
+  return Boolean(config.host);
+}
+
 export const createPool = (targetDb?: string): pg.Pool => {
   const pools = global._postgresPoolsMap!;
   const config = resolveDatabaseConfig(targetDb);
@@ -127,17 +139,22 @@ export function startDatabaseKeepAlive(intervalMs = 15000): void {
   keepAliveTimer = setInterval(async () => {
     try {
       const config = resolveDatabaseConfig();
+      if (config.isUnixSocket && !fs.existsSync(config.host)) {
+        return; // Silent when unix socket is not mounted
+      }
       const res = await executeSqlWithRetry('SELECT 1 AS heartbeat, NOW() as current_time;', [], config.database, 2);
       if (process.env.DEBUG_DB_HEARTBEAT === 'true') {
         console.log(`[MotorDesk DB Heartbeat] Conexão ativa mantida aberta com sucesso: ${res.rows[0]?.current_time}`);
       }
     } catch (err: any) {
-      console.warn(`[MotorDesk DB Heartbeat] Alerta de reconexão: ${err.message}. Restaurando pool...`);
+      if (process.env.DEBUG_DB_HEARTBEAT === 'true') {
+        console.warn(`[MotorDesk DB Heartbeat] Alerta de reconexão: ${err.message}. Restaurando pool...`);
+      }
     }
   }, intervalMs);
 
   // Mantém o timer permanentemente ativo para nunca fechar a conexão com o banco de dados
-  console.log(`[MotorDesk DB Heartbeat] Heartbeat ativo a cada ${intervalMs / 1000}s para manter a conexão aberta.`);
+  console.log(`[MotorDesk DB Heartbeat] Heartbeat configurado a cada ${intervalMs / 1000}s.`);
 }
 
 /**
@@ -148,6 +165,10 @@ export function startDatabaseKeepAlive(intervalMs = 15000): void {
 export async function warmUpDatabaseConnection(targetDb?: string): Promise<boolean> {
   try {
     const config = resolveDatabaseConfig(targetDb);
+    if (config.isUnixSocket && !fs.existsSync(config.host)) {
+      console.log(`[MotorDesk DB] Socket Unix (${config.host}) não montado. Operando em modo de alta resiliência com cache persistente.`);
+      return false;
+    }
     console.log(`[MotorDesk DB] Aquecendo conexão persistente com o banco ${config.database}...`);
     const pool = createPool(config.database);
     
@@ -165,8 +186,6 @@ export async function warmUpDatabaseConnection(targetDb?: string): Promise<boole
     return true;
   } catch (err: any) {
     console.warn(`[MotorDesk DB] Aviso ao pré-aquecer conexão: ${err.message}`);
-    // Inicia heartbeat mesmo em caso de erro transitório para tentar recuperar em background
-    startDatabaseKeepAlive(20000);
     return false;
   }
 }
@@ -211,12 +230,19 @@ export function extractPgErrorDetails(err: any) {
 /**
  * Execute SQL with automatic retry and disposal of broken socket clients (EPIPE / ECONNRESET)
  */
-export async function executeSqlWithRetry<T = any>(
+export async function executeSqlWithRetry<T extends pg.QueryResultRow = any>(
   queryText: string,
   params: any[] = [],
   targetDb?: string,
   maxRetries = 5
 ): Promise<pg.QueryResult<T>> {
+  const config = resolveDatabaseConfig(targetDb);
+  if (config.isUnixSocket && !fs.existsSync(config.host)) {
+    const err: any = new Error(`Socket Unix não encontrado em ${config.host}`);
+    err.code = 'ENOENT';
+    throw err;
+  }
+
   let attempt = 0;
   while (attempt <= maxRetries) {
     attempt++;
@@ -306,6 +332,20 @@ export const checkDatabaseHealth = async (targetDb?: string): Promise<{
   error?: any;
 }> => {
   const config = resolveDatabaseConfig(targetDb);
+  if (config.isUnixSocket && !fs.existsSync(config.host)) {
+    return {
+      connected: false,
+      database: config.database,
+      databaseUser: config.user,
+      databaseHost: config.host,
+      appStoreTable: false,
+      appStoreRecord: false,
+      error: {
+        code: 'ENOENT',
+        message: `Socket Unix não montado em ${config.host} (Modo de resiliência ativo)`,
+      },
+    };
+  }
   try {
     const result = await executeSqlWithRetry("SELECT current_database(), current_user, version();", [], config.database);
     const dbName = result.rows[0]?.current_database || config.database;

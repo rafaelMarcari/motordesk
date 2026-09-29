@@ -1197,12 +1197,13 @@ export const INITIAL_USERS: User[] = [
   {
     id: 'usr-validador',
     username: 'validador',
-    name: 'Validador QA & Admin',
-    role: 'admin',
+    name: 'Usuário Validador (QA)',
+    role: 'qa',
     passwordHash: 'Donatelo@123',
     companyId: 'comp-1',
-    groupId: 'grp-admin',
-    groupName: 'Administradores do Sistema',
+    allowedCompanyIds: ['comp-1'],
+    groupId: 'grp-qa',
+    groupName: 'Engenharia de Qualidade (QA)',
     active: true,
     permissions: {
       accessDashboard: true,
@@ -7411,12 +7412,29 @@ export function getDatabase(): AppDatabase {
   }
 
   if (db.users) {
-    const hasValidador = db.users.some(u => u.username.toLowerCase() === 'validador');
-    if (!hasValidador) {
-      db.users.unshift(INITIAL_USERS[0]); // usr-validador
-    } else {
-      db.users = db.users.map(u => u.username.toLowerCase() === 'validador' ? { ...u, passwordHash: 'Donatelo@123', role: 'admin' } : u);
-    }
+    const allCompaniesList = (db.registeredCompanies && db.registeredCompanies.length > 0)
+      ? db.registeredCompanies
+      : (db.companyInfo ? [db.companyInfo] : INITIAL_COMPANIES);
+
+
+
+    db.users = db.users.map(u => {
+      if (u.username.toLowerCase() === 'validador') {
+        const cleanAllowed = Array.isArray(u.allowedCompanyIds)
+          ? u.allowedCompanyIds.filter(id => id !== '*')
+          : [u.companyId || 'comp-1'];
+        return {
+          ...u,
+          passwordHash: 'Donatelo@123',
+          role: 'qa',
+          allowedCompanyIds: cleanAllowed.length > 0 ? cleanAllowed : [u.companyId || 'comp-1'],
+          active: true,
+          status: 'active'
+        };
+      }
+      return u;
+    });
+
     db.users = db.users.map(u => ({
       ...u,
       permissions: {
