@@ -1,10 +1,10 @@
 {
   "_system": "MotorDesk ERP Multi-Tenant",
   "_version": "2026.09.1",
-  "backupId": "bkp-1790759516466",
-  "filename": "motordesk_backup_2026-09-30_09-11-56_pre_restore_safety.json",
+  "backupId": "bkp-1790759452187",
+  "filename": "motordesk_backup_2026-09-30_09-10-52_pre_restore_safety.json",
   "date": "2026-09-30",
-  "createdAt": "2026-09-30T09:11:56.466Z",
+  "createdAt": "2026-09-30T09:10:52.183Z",
   "type": "pre_restore_safety",
   "database": "cloud_sql_production_database",
   "companiesCount": 11,
@@ -115,7 +115,6 @@
     "productionOrders": 4,
     "productLots": 3,
     "operationalAlerts": 3,
-    "alertSettings": 0,
     "notifications": 283,
     "users": 10,
     "registeredCompanies": 11,
@@ -151,9 +150,7 @@
     "representativeOrders": 2,
     "representativeFactoryOrders": 3,
     "factoryInvoices": 3,
-    "representativeCommissions": 1,
-    "sefazConfig": 0,
-    "contractModules": 0
+    "representativeCommissions": 1
   },
   "data": {
     "boms": [
@@ -5734,7 +5731,33 @@
         "qualityInspectionStatus": "aprovado"
       }
     ],
-    "sefazConfig": [],
+    "sefazConfig": {
+      "nfseSeries": "1",
+      "autoTransmit": true,
+      "pfxCertificateFileName": "Certificado_Digital_A1_MotorDesk.pfx",
+      "uf": "SP",
+      "defaultCbsRatePercent": 0.9,
+      "stateRegistration": "388.123.456.110",
+      "defaultIbsRatePercent": 0.1,
+      "clientApiToken": "md_live_tok_982347102983741928374981",
+      "defaultIssRatePercent": 5,
+      "defaultIcmsRatePercent": 18,
+      "certificateName": "Certificado e-CNPJ A1 (MotorDesk Testes)",
+      "cityRegistration": "123456-7",
+      "nextNfseNumber": 46,
+      "taxRegime": "simples_nacional",
+      "pfxCertificatePassword": "••••••••",
+      "environment": "homologation",
+      "nfeSeries": "1",
+      "pfxCertificateSubjectCnpj": "12.345.678/0001-90",
+      "certificateStatus": "A1_ACTIVE",
+      "certificateExpirationDate": "2027-12-31",
+      "cnaeCode": "4520-0/01",
+      "defaultServiceCfop": "5.933",
+      "pfxCertificateUploadDate": "2026-08-01",
+      "defaultProductCfop": "5.102",
+      "nextNfeNumber": 105
+    },
     "accessGroups": [
       {
         "id": "grp-admin",
@@ -6519,7 +6542,7 @@
         "companyId": "comp-1"
       }
     ],
-    "alertSettings": [],
+    "alertSettings": {},
     "globalModules": {
       "pixView": true,
       "accessPix": true,
@@ -19073,7 +19096,7 @@
     "pendingPriceRevisions": [],
     "priceChangeHistory": [],
     "priceCalculationHistory": [],
-    "contractModules": [],
+    "contractModules": {},
     "representedCompanies": [
       {
         "id": "prin-abc-01",

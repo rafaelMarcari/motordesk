@@ -942,15 +942,21 @@
 
             // Pré-carregar Empresas Permitidas
             const allowed = Array.isArray(userObj.allowedCompanyIds) ? userObj.allowedCompanyIds : [userObj.companyId || 'comp-1'];
-            if ((allowed.includes('*') || userObj.role === 'admin') && userObj.username === 'admin') {
+            if (allowed.includes('*')) {
               if (allCompCb) {
                 allCompCb.checked = true;
                 compCheckboxes.forEach(cb => { cb.checked = true; cb.disabled = true; });
               }
             } else {
+              if (allCompCb) {
+                allCompCb.checked = false;
+              }
               compCheckboxes.forEach(cb => {
+                cb.disabled = false;
                 if (allowed.includes(cb.value) || cb.value === userObj.companyId) {
                   cb.checked = true;
+                } else {
+                  cb.checked = false;
                 }
               });
             }
@@ -989,6 +995,7 @@
           }
 
           // Atualizar o banco de dados local imediatamente
+          let latestDbObj = null;
           const dbKeys = ['motordesk_db_v1', 'motordesk_db', 'motordesk_full_database', 'motordesk_app_database'];
           dbKeys.forEach(k => {
             try {
@@ -1010,6 +1017,7 @@
                     return u;
                   });
                   localStorage.setItem(k, JSON.stringify(parsed));
+                  if (!latestDbObj) latestDbObj = parsed;
                 }
               }
             } catch (err) {}
@@ -1028,6 +1036,27 @@
               }
             }
           } catch (err) {}
+
+          // Enviar imediatamente para o servidor backend para sincronizar todos os navegadores e dispositivos
+          if (latestDbObj) {
+            try {
+              let token = localStorage.getItem('motordesk_auth_token') || 'motordesk_session_admin';
+              fetch('/api/db', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Authorization': `Bearer ${token}`,
+                  'X-Requested-With': 'XMLHttpRequest',
+                  'X-Sync-Mode': 'full'
+                },
+                body: JSON.stringify(latestDbObj)
+              }).then(r => r.json()).then(res => {
+                console.log('[Session Work Guard] Usuário e permissões de empresas sincronizados com o servidor:', res);
+              }).catch(err => {
+                console.warn('[Session Work Guard] Falha ao enviar atualização para o servidor:', err);
+              });
+            } catch (netErr) {}
+          }
         } catch (err) {
           console.warn('[Session Work Guard] Erro ao sincronizar multi-empresa do usuário:', err);
         }

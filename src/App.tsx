@@ -637,6 +637,19 @@ export default function App() {
     if (!currentUser) return all;
 
     const cleanUsername = currentUser.username.toLowerCase();
+
+    // Check if user has explicit company restrictions (without wildcard '*')
+    const hasExplicitCompanyRestriction = Array.isArray(currentUser.allowedCompanyIds) && 
+      currentUser.allowedCompanyIds.length > 0 && 
+      !currentUser.allowedCompanyIds.includes('*');
+
+    if (hasExplicitCompanyRestriction) {
+      const allowedSet = new Set<string>(currentUser.allowedCompanyIds);
+      if (currentUser.companyId) allowedSet.add(currentUser.companyId);
+      const filtered = all.filter(c => allowedSet.has(c.id));
+      return filtered.length > 0 ? filtered : all.filter(c => c.id === (currentUser.companyId || 'comp-1'));
+    }
+
     if (
       cleanUsername === 'validador' ||
       cleanUsername === 'admin' ||
@@ -1446,13 +1459,14 @@ export default function App() {
     }));
   };
 
-  // Synchronize users guaranteeing validador and admin wildcard access across all companies
+  // Synchronize users guaranteeing validador and admin wildcard access across all companies if not explicitly restricted
   useEffect(() => {
     if (!db || !Array.isArray(db.users)) return;
     let needsSync = false;
     const currentUsers = db.users.map(u => {
       if (u.username && (u.username.toLowerCase() === 'validador' || u.username.toLowerCase() === 'admin')) {
-        if (!Array.isArray(u.allowedCompanyIds) || !u.allowedCompanyIds.includes('*')) {
+        // Set wildcard only if allowedCompanyIds is completely missing or empty!
+        if (!Array.isArray(u.allowedCompanyIds) || u.allowedCompanyIds.length === 0) {
           needsSync = true;
           return {
             ...u,
@@ -1487,14 +1501,19 @@ export default function App() {
       return [];
     }
 
-    if (cleanUsername === 'validador' || cleanUsername === 'admin') {
-      return allCompanies;
-    }
-
     const matchingUsers = (db.users || []).filter(u => 
       u && u.username && u.username.toLowerCase() === cleanUsername && 
       u.status !== 'terminated' && !u.isTerminated
     );
+
+    const hasRestrictedCompanies = matchingUsers.some(u => 
+      Array.isArray(u.allowedCompanyIds) && u.allowedCompanyIds.length > 0 && !u.allowedCompanyIds.includes('*')
+    );
+
+    if (!hasRestrictedCompanies && (cleanUsername === 'validador' || cleanUsername === 'admin')) {
+      return allCompanies;
+    }
+
     if (matchingUsers.length === 0) {
       return [];
     }
@@ -1716,9 +1735,11 @@ export default function App() {
     }
 
     if (matchedUser) {
-      // If user is validador or admin, ensure wildcard access across companies
-      if (cleanUsername === 'validador' || cleanUsername === 'admin' || matchedUser.role === 'admin') {
-        matchedUser.allowedCompanyIds = ['*'];
+      // If user is validador or admin without explicit restrictions, default to wildcard access
+      if (!Array.isArray(matchedUser.allowedCompanyIds) || matchedUser.allowedCompanyIds.length === 0) {
+        if (cleanUsername === 'validador' || cleanUsername === 'admin' || matchedUser.role === 'admin') {
+          matchedUser.allowedCompanyIds = ['*'];
+        }
       }
       // Sync active company with effective companyId
       const userCompId = targetCompId || matchedUser.companyId || 'comp-1';

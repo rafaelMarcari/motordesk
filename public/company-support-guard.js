@@ -40,12 +40,15 @@
   function getActiveCompanyContext() {
     try {
       const activeId = localStorage.getItem('motordesk_active_company_id') || 'comp-1';
-      const raw = localStorage.getItem('motordesk_db');
-      if (!raw) return { id: activeId, name: 'Empresa Ativa', cnpj: '', companyNumber: 1, companyNumberFormatted: '01', allCompanies: [] };
-      const db = JSON.parse(raw);
+      const raw = localStorage.getItem('motordesk_db') || localStorage.getItem('motordesk_db_v1') || localStorage.getItem('motordesk_full_database');
+      let db = null;
+      if (raw) {
+        try { db = JSON.parse(raw); } catch(e) {}
+      }
       const allCompanies = [
-        ...(Array.isArray(db.registeredCompanies) ? db.registeredCompanies : []),
-        ...(db.companyInfo ? [db.companyInfo] : []),
+        ...(db && Array.isArray(db.registeredCompanies) ? db.registeredCompanies : []),
+        ...(db && db.companyInfo ? [db.companyInfo] : []),
+        ...(Array.isArray(window.__allCompanies) ? window.__allCompanies : [])
       ];
 
       // Deduplicar empresas por ID

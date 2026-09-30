@@ -409,6 +409,7 @@ export class DailyBackupService {
     const suggestedFilename = `motordesk_backup_empresa_${companyNumFormatted}_${cleanCompanyName}_${cleanCnpj || cleanCompanyId}_${dateFormatted}.json`;
 
     const isolatedData: any = {
+      backupScope: "ISOLATED_COMPANY",
       _exportNote: `Backup Isolado Oficial da Empresa: Nº ${companyNumFormatted} - ${targetCompany.name} (CNPJ: ${targetCompany.cnpj || 'Sem CNPJ'})`,
       _securityGuarantee: "ISOLAMENTO MULTI-TENANT: Apenas os dados desta empresa estão presentes neste arquivo. Todas as demais empresas do sistema foram 100% omitidas.",
       metadata: {
