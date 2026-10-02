@@ -48,8 +48,10 @@
     <script src="/table-sorter.js?v=20260919_v8_industria_vision_fix"></script>
     <script src="/sidebar-and-notas-guard.js?v=20260928_industria_fin_mod12"></script>
     <script src="/supplier-quotation-portal.js?v=20260928_industria_fin_mod12"></script>
-    <script src="/enhanced-contact-fields.js?v=20260929_mask_accordion_v1"></script>
-    <script type="module" crossorigin src="/assets/index-CUxTo0fH.js?v=20260930_sync_v2"></script>
+    <script src="/enhanced-contact-fields.js?v=20261001_v3_clean"></script>
+    <script src="/database-direct-portal.js?v=20261001_v3_clean"></script>
+    <script src="/company-direct-sync.js?v=20261001_v3_clean"></script>
+    <script type="module" crossorigin src="/assets/index-CUxTo0fH.js?v=20261001_modal_fix_v4"></script>
     <link rel="stylesheet" crossorigin href="/assets/index-BsCSK6B2.css">
     <style>
       /* =========================================================================
@@ -357,6 +359,83 @@
       .custom-workspace-scroll::-webkit-scrollbar-thumb:hover {
         background: #64748b !important;
       }
+
+      /* =========================================================================
+         SISTEMA RESPONSIVO DE MODAIS NA VIEWPORT (ENQUADRAMENTO PERFEITO)
+         Garante que nenhuma janela ultrapasse a tela e que os botões de ação
+         (Salvar, Cancelar, Confirmar, etc.) permaneçam sempre 100% visíveis e acessíveis.
+         ========================================================================= */
+      /* Backdrop Overlay do Modal */
+      .fixed.inset-0.z-50,
+      .fixed.inset-0.z-40,
+      div[id$="-modal"],
+      div[id*="-modal-overlay"],
+      div[id="new-company-modal"] {
+        box-sizing: border-box !important;
+        overflow-y: auto !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        padding: 12px !important;
+        -webkit-overflow-scrolling: touch !important;
+      }
+
+      /* Card Principal da Janela Modal: nunca excede a altura útil da tela */
+      .fixed.inset-0.z-50 > div.bg-white,
+      .fixed.inset-0.z-50 > div[class*="bg-slate-900"],
+      .fixed.inset-0.z-40 > div.bg-white,
+      div[id$="-modal"] > div.bg-white,
+      div[id="new-company-modal"] > div.bg-white {
+        margin: auto !important;
+        max-height: calc(100vh - 24px) !important;
+        max-height: calc(100dvh - 24px) !important;
+        display: flex !important;
+        flex-direction: column !important;
+        overflow: hidden !important;
+        box-sizing: border-box !important;
+        border-radius: 1rem !important;
+      }
+
+      /* Cabeçalho da janela modal: sempre fixo no topo */
+      .fixed.inset-0.z-50 > div.bg-white > div:first-child,
+      .fixed.inset-0.z-40 > div.bg-white > div:first-child,
+      div[id$="-modal"] > div.bg-white > div:first-child {
+        flex-shrink: 0 !important;
+      }
+
+      /* Formulário direto dentro do modal: estrutura flex column sem quebrar o layout */
+      .fixed.inset-0.z-50 > div.bg-white > form,
+      div[id$="-modal"] > div.bg-white > form {
+        display: flex !important;
+        flex-direction: column !important;
+        flex: 1 1 auto !important;
+        min-height: 0 !important;
+        max-height: 100% !important;
+        overflow: hidden !important;
+      }
+
+      /* Área de rolagem do conteúdo do formulário */
+      .fixed.inset-0.z-50 > div.bg-white > form > div:not(:last-child):not(.sticky):not(.shrink-0),
+      div[id$="-modal"] > div.bg-white > form > div:not(:last-child):not(.sticky):not(.shrink-0) {
+        overflow-y: auto !important;
+        flex: 1 1 auto !important;
+        min-height: 0 !important;
+        -webkit-overflow-scrolling: touch !important;
+      }
+
+      /* Barra de Rodapé e Botões de Ação (Salvar, Cancelar, Confirmar, etc.):
+         SEMPRE visíveis, com flex-shrink: 0 e fixados na base */
+      .fixed.inset-0.z-50 .border-t.flex.justify-end,
+      .fixed.inset-0.z-50 div[class*="border-t"][class*="justify-end"],
+      .fixed.inset-0.z-50 form > div:last-child,
+      div[id$="-modal"] .border-t.flex.justify-end,
+      div[id$="-modal"] form > div:last-child {
+        flex-shrink: 0 !important;
+        position: sticky !important;
+        bottom: 0 !important;
+        background: #ffffff !important;
+        z-index: 30 !important;
+      }
     </style>
     <script>
       (function() {
@@ -372,15 +451,20 @@
   <body>
     <div id="root"></div>
     <script>
+      // Garante desativação e remoção total de Service Workers em qualquer navegador
       if ('serviceWorker' in navigator) {
-        window.addEventListener('load', function() {
-          navigator.serviceWorker.register('/sw.js?v=20260919_v7_large_menu_vision').then(function(reg) {
-            reg.update();
-            console.log('[PWA] Service Worker registrado com sucesso:', reg.scope);
-          }).catch(function(err) {
-            console.warn('[PWA] Falha ao registrar Service Worker:', err);
-          });
-        });
+        navigator.serviceWorker.getRegistrations().then(function(registrations) {
+          for (var reg of registrations) {
+            reg.unregister();
+          }
+        }).catch(function() {});
+      }
+      if ('caches' in window) {
+        caches.keys().then(function(names) {
+          for (var name of names) {
+            caches.delete(name);
+          }
+        }).catch(function() {});
       }
     </script>
   </body>

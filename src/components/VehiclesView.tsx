@@ -35,6 +35,26 @@ export default function VehiclesView({ db, onSaveVehicles, onAddHistoryLog, setU
 
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
+  const [isSearchingDb, setIsSearchingDb] = useState(false);
+  const [dbSearchFeedback, setDbSearchFeedback] = useState<string | null>(null);
+
+  const handleDirectDbQuery = async () => {
+    setIsSearchingDb(true);
+    setDbSearchFeedback('Consultando diretamente o Banco Central...');
+    try {
+      if (typeof window !== 'undefined' && (window as any).__motorDeskDirectQuery) {
+        await (window as any).__motorDeskDirectQuery(searchQuery);
+      } else if (typeof window !== 'undefined' && (window as any).__motorDeskSyncNow) {
+        await (window as any).__motorDeskSyncNow('vehicle_search');
+      }
+      setDbSearchFeedback(`✓ Banco Central consultado! Base atualizada.`);
+    } catch(err) {
+      setDbSearchFeedback('Erro ao consultar banco de dados.');
+    } finally {
+      setIsSearchingDb(false);
+      setTimeout(() => setDbSearchFeedback(null), 4000);
+    }
+  };
 
   // Auto-format Plate to ABC-1234 or Mercosul ABC1D23
   const formatPlate = (value: string) => {
@@ -357,7 +377,7 @@ export default function VehiclesView({ db, onSaveVehicles, onAddHistoryLog, setU
       {!isFormOpen && db.vehicles.length > 0 && (
         <div className="bg-white border border-slate-100 rounded-xl shadow-xs overflow-hidden" id="vehicles-list-panel">
           {/* Table Search Header */}
-          <div className="p-4 border-b border-slate-100 bg-slate-50 flex items-center">
+          <div className="p-4 border-b border-slate-100 bg-slate-50 flex flex-wrap items-center gap-3">
             <div className="relative w-full max-w-md">
               <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
               <input 
@@ -366,9 +386,27 @@ export default function VehiclesView({ db, onSaveVehicles, onAddHistoryLog, setU
                 placeholder="Buscar placa, modelo, marca ou cliente..." 
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
-                className="w-full text-sm pl-10 pr-4 py-2 bg-white border border-slate-200 rounded-lg focus:outline-hidden focus:border-indigo-500 transition"
+                onKeyDown={e => { if (e.key === 'Enter') handleDirectDbQuery(); }}
+                className="w-full text-sm pl-10 pr-4 py-2 bg-white border border-slate-200 rounded-lg focus:outline-hidden focus:border-indigo-500 transition shadow-2xs"
               />
             </div>
+            <button
+              type="button"
+              id="btn-direct-db-query-vehicles"
+              onClick={handleDirectDbQuery}
+              disabled={isSearchingDb}
+              className="px-3.5 py-2 text-xs font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-lg transition flex items-center gap-1.5 shadow-2xs cursor-pointer disabled:opacity-50"
+              title="Realiza consulta direta ao banco de dados central (Cloud SQL / Servidor)"
+            >
+              <Search className={`h-3.5 w-3.5 ${isSearchingDb ? 'animate-spin' : ''}`} />
+              {isSearchingDb ? 'Buscando no Banco...' : 'Consultar no Banco'}
+            </button>
+            {dbSearchFeedback && (
+              <span className="text-xs font-medium text-emerald-700 bg-emerald-50 px-2.5 py-1.5 rounded-lg border border-emerald-200 flex items-center gap-1 animate-fade-in">
+                <CheckCircle className="w-3.5 h-3.5 text-emerald-600" />
+                {dbSearchFeedback}
+              </span>
+            )}
           </div>
 
           <div className="overflow-x-auto">

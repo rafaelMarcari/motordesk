@@ -1,1 +1,53 @@
 @import "tailwindcss";
+
+/* =========================================================================
+   SISTEMA LIMPO DE ENQUADRAMENTO DE JANELAS MODAIS NA VIEWPORT
+   Garante que nenhuma janela ultrapasse a tela e que o conteúdo role suavemente
+   ========================================================================= */
+.fixed.inset-0,
+div[id*="modal"] {
+  box-sizing: border-box !important;
+  overflow-y: auto !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  padding: 16px !important;
+  -webkit-overflow-scrolling: touch !important;
+}
+
+/* Card do Modal: Nunca excede a altura útil da tela e vira flex column */
+.fixed.inset-0 > div[class*="max-w-"],
+.fixed.inset-0 > div.bg-white,
+div[id*="modal"] > div[class*="max-w-"],
+div[id*="modal"] > div.bg-white {
+  margin: auto !important;
+  max-height: calc(100vh - 32px) !important;
+  max-height: calc(100dvh - 32px) !important;
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
+  box-sizing: border-box !important;
+}
+
+/* Cabeçalho do modal: fixo no topo */
+.fixed.inset-0 > div[class*="max-w-"] > div:first-child,
+.fixed.inset-0 > div.bg-white > div:first-child,
+div[id*="modal"] > div[class*="max-w-"] > div:first-child,
+div[id*="modal"] > div.bg-white > div:first-child {
+  flex-shrink: 0 !important;
+}
+
+/* Miolo/corpo do modal: rola verticalmente mantendo os botões acessíveis */
+.fixed.inset-0 > div[class*="max-w-"] > div:nth-child(2),
+.fixed.inset-0 > div.bg-white > div:nth-child(2),
+.fixed.inset-0 > div[class*="max-w-"] > form,
+.fixed.inset-0 > div.bg-white > form,
+div[id*="modal"] > div[class*="max-w-"] > div:nth-child(2),
+div[id*="modal"] > div.bg-white > div:nth-child(2),
+div[id*="modal"] > div[class*="max-w-"] > form,
+div[id*="modal"] > div.bg-white > form {
+  overflow-y: auto !important;
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  -webkit-overflow-scrolling: touch !important;
+}

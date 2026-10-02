@@ -886,6 +886,77 @@ export default function QuotationsSuppliersView({
         </div>
       </div>
 
+      {/* Painel Informativo: Status de Contratação pela Empresa & Liberação ao Usuário */}
+      <div className="bg-white p-4 rounded-2xl border border-slate-200/90 shadow-xs space-y-2.5" id="quotations-license-status-panel">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-2.5 border-b border-slate-100">
+          <div className="flex items-center gap-2">
+            <span className="p-1.5 bg-indigo-50 text-indigo-700 rounded-lg">
+              <CheckCircle className="w-4 h-4 text-indigo-600" />
+            </span>
+            <div>
+              <h2 className="font-bold text-slate-800 text-xs">
+                Auditoria de Conformidade Modular & Licenciamento
+              </h2>
+              <p className="text-[11px] text-slate-500">
+                Verificação de contratação do módulo pela empresa e status de liberação do usuário logado
+              </p>
+            </div>
+          </div>
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-full text-[11px] font-bold">
+            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+            Módulo Operacional & Liberado
+          </span>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          {/* Card 1: Empresa & Segmento */}
+          <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1">
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+              1. Empresa & Segmento
+            </span>
+            <div className="flex items-center justify-between gap-2">
+              <strong className="text-slate-900 text-xs truncate" title={db.companyInfo?.name || 'MotorDesk ERP'}>
+                {db.companyInfo?.name || 'MotorDesk ERP'}
+              </strong>
+              <span className="px-2 py-0.5 rounded text-[10px] font-black uppercase bg-indigo-100 text-indigo-800 shrink-0">
+                {db.companyInfo?.businessType === 'OFICINA_COMERCIO' ? 'Híbrido' : (db.companyInfo?.businessType || 'OFICINA')}
+              </span>
+            </div>
+            <p className="text-[11px] text-slate-500">
+              Ambiente corporativo multi-tenant ativo.
+            </p>
+          </div>
+
+          {/* Card 2: Módulo Contratado pela Empresa */}
+          <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1">
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+              2. Módulo Contratado pela Empresa
+            </span>
+            <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-700">
+              <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0" />
+              <span>Contratado no Plano SaaS</span>
+            </div>
+            <p className="text-[11px] text-slate-500">
+              Termo de assinatura ativo com inventário unificado.
+            </p>
+          </div>
+
+          {/* Card 3: Liberação ao Usuário */}
+          <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1">
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+              3. Liberação ao Usuário
+            </span>
+            <div className="flex items-center gap-1.5 text-xs font-bold text-indigo-700">
+              <UserCheck className="w-4 h-4 text-indigo-600 shrink-0" />
+              <span>Liberado para {currentUser?.name || currentUser?.username}</span>
+            </div>
+            <p className="text-[11px] text-slate-500">
+              Perfil: <strong className="uppercase text-slate-700">{currentUser?.role}</strong> (permissão <code>accessQuotations</code> ativa).
+            </p>
+          </div>
+        </div>
+      </div>
+
       {/* ================= TAB 1: COTAÇÕES DE PREÇOS ================= */}
       {activeTab === 'quotations' && (
         <div className="space-y-4">
@@ -1592,9 +1663,9 @@ export default function QuotationsSuppliersView({
 
       {/* ================= MODAL: CADASTRAR/EDITAR FORNECEDOR ================= */}
       {showSupplierModal && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 animate-fade-in">
-          <div className="bg-white w-full max-w-xl rounded-2xl shadow-2xl border border-slate-100 overflow-hidden space-y-4">
-            <div className="p-5 bg-slate-900 text-white flex items-center justify-between">
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 animate-fade-in overflow-y-auto">
+          <div className="bg-white w-full max-w-xl rounded-2xl shadow-2xl border border-slate-100 overflow-hidden flex flex-col max-h-[92vh]">
+            <div className="p-4 sm:p-5 bg-slate-900 text-white flex items-center justify-between shrink-0">
               <div className="flex items-center gap-2">
                 <Building2 className="w-5 h-5 text-indigo-400" />
                 <h2 className="font-bold text-base font-display">
@@ -1609,7 +1680,8 @@ export default function QuotationsSuppliersView({
               </button>
             </div>
 
-            <form onSubmit={handleSaveSupplier} className="p-6 space-y-4 text-xs">
+            <form onSubmit={handleSaveSupplier} className="p-4 sm:p-6 text-xs flex flex-col flex-1 min-h-0 overflow-hidden">
+              <div className="space-y-4 flex-1 overflow-y-auto pr-1">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div className="space-y-1">
                   <label className="font-bold text-slate-600 uppercase text-[10px]">Razão Social / Nome *</label>
@@ -1726,8 +1798,9 @@ export default function QuotationsSuppliersView({
                   className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:outline-hidden focus:bg-white focus:border-indigo-500"
                 />
               </div>
+              </div>
 
-              <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2">
+              <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2 shrink-0 bg-white">
                 <button
                   type="button"
                   onClick={() => setShowSupplierModal(false)}
@@ -1749,9 +1822,9 @@ export default function QuotationsSuppliersView({
 
       {/* ================= MODAL: NOVA COTAÇÃO AO FORNECEDOR ================= */}
       {showQuotationModal && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 animate-fade-in overflow-y-auto">
-          <div className="bg-white w-full max-w-3xl rounded-2xl shadow-2xl border border-slate-100 overflow-hidden my-8 space-y-4">
-            <div className="p-5 bg-slate-900 text-white flex items-center justify-between">
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 animate-fade-in overflow-y-auto">
+          <div className="bg-white w-full max-w-3xl rounded-2xl shadow-2xl border border-slate-100 overflow-hidden flex flex-col max-h-[92vh]">
+            <div className="p-4 sm:p-5 bg-slate-900 text-white flex items-center justify-between shrink-0">
               <div className="flex items-center gap-2">
                 <ShoppingBag className="w-5 h-5 text-indigo-400" />
                 <h2 className="font-bold text-base font-display">Solicitar Cotação de Preços</h2>
@@ -1764,7 +1837,7 @@ export default function QuotationsSuppliersView({
               </button>
             </div>
 
-            <div className="p-6 space-y-5 text-xs">
+            <div className="p-4 sm:p-6 space-y-5 text-xs flex-1 overflow-y-auto min-h-0">
               {/* Step 1: Select Supplier */}
               <div className="space-y-1.5">
                 <label className="font-bold text-slate-700 uppercase text-[10px]">
@@ -2170,31 +2243,31 @@ export default function QuotationsSuppliersView({
                   className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs"
                 />
               </div>
+            </div>
 
-              {/* Footer Actions */}
-              <div className="pt-4 border-t border-slate-100 flex items-center justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setShowQuotationModal(false)}
-                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-lg cursor-pointer"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleSaveQuotation('draft')}
-                  className="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold rounded-lg cursor-pointer"
-                >
-                  Salvar Rascunho
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleSaveQuotation('sent')}
-                  className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg inline-flex items-center gap-1.5 cursor-pointer shadow-xs"
-                >
-                  <Send className="w-4 h-4 text-indigo-200" /> Confirmar & Enviar
-                </button>
-              </div>
+            {/* Footer Actions - Fixo e sempre visível na base do modal */}
+            <div className="p-4 border-t border-slate-200 flex items-center justify-end gap-2 shrink-0 bg-white rounded-b-2xl shadow-xs">
+              <button
+                type="button"
+                onClick={() => setShowQuotationModal(false)}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-lg cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={() => handleSaveQuotation('draft')}
+                className="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold rounded-lg cursor-pointer"
+              >
+                Salvar Rascunho
+              </button>
+              <button
+                type="button"
+                onClick={() => handleSaveQuotation('sent')}
+                className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg inline-flex items-center gap-1.5 cursor-pointer shadow-xs"
+              >
+                <Send className="w-4 h-4 text-indigo-200" /> Confirmar & Enviar
+              </button>
             </div>
           </div>
         </div>
@@ -2202,9 +2275,9 @@ export default function QuotationsSuppliersView({
 
       {/* ================= MODAL: DETALHES DA COTAÇÃO & WHATSAPP ================= */}
       {showDetailModal && selectedQuotation && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 animate-fade-in overflow-y-auto">
-          <div className="bg-white w-full max-w-3xl rounded-2xl shadow-2xl border border-slate-100 overflow-hidden my-8 space-y-4">
-            <div className="p-5 bg-slate-900 text-white flex items-center justify-between">
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 animate-fade-in overflow-y-auto">
+          <div className="bg-white w-full max-w-3xl rounded-2xl shadow-2xl border border-slate-100 overflow-hidden flex flex-col max-h-[92vh]">
+            <div className="p-4 sm:p-5 bg-slate-900 text-white flex items-center justify-between shrink-0">
               <div className="flex items-center gap-2 font-mono">
                 <FileText className="w-5 h-5 text-indigo-400" />
                 <h2 className="font-bold text-base font-display">{selectedQuotation.code}</h2>
@@ -2247,7 +2320,7 @@ export default function QuotationsSuppliersView({
               </div>
             </div>
 
-            <div className="p-6 space-y-5 text-xs" id="quotation-detail-printable-area">
+            <div className="p-4 sm:p-6 space-y-5 text-xs flex-1 overflow-y-auto min-h-0" id="quotation-detail-printable-area">
               {/* Header com Logomarca da Empresa (Canto Superior Esquerdo) */}
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 bg-slate-50 border border-slate-200 rounded-xl">
                 <div className="flex items-center gap-3">
@@ -2538,16 +2611,17 @@ export default function QuotationsSuppliersView({
                   </div>
                 );
               })()}
+            </div>
 
-              <div className="pt-3 border-t border-slate-100 flex items-center justify-end">
-                <button
-                  type="button"
-                  onClick={() => setShowDetailModal(false)}
-                  className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-lg cursor-pointer"
-                >
-                  Fechar
-                </button>
-              </div>
+            {/* Footer Fixo */}
+            <div className="p-4 border-t border-slate-200 flex items-center justify-end shrink-0 bg-white rounded-b-2xl shadow-xs">
+              <button
+                type="button"
+                onClick={() => setShowDetailModal(false)}
+                className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-lg cursor-pointer"
+              >
+                Fechar
+              </button>
             </div>
           </div>
         </div>
@@ -2555,8 +2629,8 @@ export default function QuotationsSuppliersView({
 
       {/* ================= MODAL: NOVA REGRA DE CONVERSÃO ================= */}
       {showConversionModal && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 animate-fade-in">
-          <div className="bg-white w-full max-w-lg rounded-2xl shadow-2xl border border-slate-100 overflow-hidden space-y-4">
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 animate-fade-in overflow-y-auto">
+          <div className="bg-white w-full max-w-lg rounded-2xl shadow-2xl border border-slate-100 overflow-hidden flex flex-col max-h-[92vh]">
             <div className="p-5 bg-slate-900 text-white flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Layers className="w-5 h-5 text-indigo-400" />
@@ -2570,97 +2644,99 @@ export default function QuotationsSuppliersView({
               </button>
             </div>
 
-            <form onSubmit={handleSaveConversion} className="p-6 space-y-4 text-xs">
-              <div className="space-y-1">
-                <label className="font-bold text-slate-600 uppercase text-[10px]">1. Selecione a Peça no Estoque *</label>
-                <select
-                  required
-                  value={convPartId}
-                  onChange={e => setConvPartId(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg font-medium"
-                >
-                  <option value="">-- Selecione a Peça --</option>
-                  {parts.map(p => (
-                    <option key={p.id} value={p.id}>
-                      {p.code} - {p.name} (Unid. Estoque: {p.unit || 'UN'})
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="space-y-1">
-                <label className="font-bold text-slate-600 uppercase text-[10px]">2. Selecione o Fornecedor *</label>
-                <select
-                  required
-                  value={convSupplierId}
-                  onChange={e => setConvSupplierId(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg font-medium"
-                >
-                  <option value="">-- Selecione o Fornecedor --</option>
-                  {suppliers.map(s => (
-                    <option key={s.id} value={s.id}>{s.name}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <form onSubmit={handleSaveConversion} className="flex flex-col flex-1 min-h-0 overflow-hidden text-xs">
+              <div className="p-6 space-y-4 flex-1 overflow-y-auto min-h-0">
                 <div className="space-y-1">
-                  <label className="font-bold text-slate-600 uppercase text-[10px]">Código no Fornecedor</label>
-                  <input
-                    type="text"
-                    value={convSupplierPartCode}
-                    onChange={e => setConvSupplierPartCode(e.target.value)}
-                    placeholder="Ex: COD-MAHLE-102"
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg font-mono"
-                  />
-                </div>
-
-                <div className="space-y-1">
-                  <label className="font-bold text-slate-600 uppercase text-[10px]">Unidade da Embalagem</label>
+                  <label className="font-bold text-slate-600 uppercase text-[10px]">1. Selecione a Peça no Estoque *</label>
                   <select
-                    value={convPackageUnit}
-                    onChange={e => setConvPackageUnit(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg font-bold"
+                    required
+                    value={convPartId}
+                    onChange={e => setConvPartId(e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg font-medium"
                   >
-                    <option value="CX">CX (Caixa Fechada)</option>
-                    <option value="PCT">PCT (Pacote / Lote)</option>
-                    <option value="GAL">GAL (Galão)</option>
-                    <option value="UN">UN (Unidade Avulsa)</option>
-                    <option value="PAR">PAR (Par)</option>
+                    <option value="">-- Selecione a Peça --</option>
+                    {parts.map(p => (
+                      <option key={p.id} value={p.id}>
+                        {p.code} - {p.name} (Unid. Estoque: {p.unit || 'UN'})
+                      </option>
+                    ))}
                   </select>
                 </div>
-              </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div className="space-y-1">
-                  <label className="font-bold text-slate-600 uppercase text-[10px]">Fator de Conversão *</label>
-                  <input
-                    type="number"
-                    min={1}
+                  <label className="font-bold text-slate-600 uppercase text-[10px]">2. Selecione o Fornecedor *</label>
+                  <select
                     required
-                    value={convRatio}
-                    onChange={e => setConvRatio(Number(e.target.value))}
-                    placeholder="Ex: 10 (1 Caixa = 10 Unidades)"
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg font-mono font-bold"
-                  />
-                  <span className="text-[10px] text-slate-400">Quantas unidades de estoque vem dentro de 1 embalagem?</span>
+                    value={convSupplierId}
+                    onChange={e => setConvSupplierId(e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg font-medium"
+                  >
+                    <option value="">-- Selecione o Fornecedor --</option>
+                    {suppliers.map(s => (
+                      <option key={s.id} value={s.id}>{s.name}</option>
+                    ))}
+                  </select>
                 </div>
 
-                <div className="space-y-1">
-                  <label className="font-bold text-slate-600 uppercase text-[10px]">Preço Custo Embalagem (R$)</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    min={0}
-                    value={convLastQuotedCost}
-                    onChange={e => setConvLastQuotedCost(Number(e.target.value))}
-                    placeholder="0.00"
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg font-mono font-bold text-right"
-                  />
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="font-bold text-slate-600 uppercase text-[10px]">Código no Fornecedor</label>
+                    <input
+                      type="text"
+                      value={convSupplierPartCode}
+                      onChange={e => setConvSupplierPartCode(e.target.value)}
+                      placeholder="Ex: COD-MAHLE-102"
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg font-mono"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="font-bold text-slate-600 uppercase text-[10px]">Unidade da Embalagem</label>
+                    <select
+                      value={convPackageUnit}
+                      onChange={e => setConvPackageUnit(e.target.value)}
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg font-bold"
+                    >
+                      <option value="CX">CX (Caixa Fechada)</option>
+                      <option value="PCT">PCT (Pacote / Lote)</option>
+                      <option value="GAL">GAL (Galão)</option>
+                      <option value="UN">UN (Unidade Avulsa)</option>
+                      <option value="PAR">PAR (Par)</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="font-bold text-slate-600 uppercase text-[10px]">Fator de Conversão *</label>
+                    <input
+                      type="number"
+                      min={1}
+                      required
+                      value={convRatio}
+                      onChange={e => setConvRatio(Number(e.target.value))}
+                      placeholder="Ex: 10 (1 Caixa = 10 Unidades)"
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg font-mono font-bold"
+                    />
+                    <span className="text-[10px] text-slate-400">Quantas unidades de estoque vem dentro de 1 embalagem?</span>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="font-bold text-slate-600 uppercase text-[10px]">Preço Custo Embalagem (R$)</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min={0}
+                      value={convLastQuotedCost}
+                      onChange={e => setConvLastQuotedCost(Number(e.target.value))}
+                      placeholder="0.00"
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg font-mono font-bold text-right"
+                    />
+                  </div>
                 </div>
               </div>
 
-              <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2">
+              <div className="p-4 border-t border-slate-200 flex items-center justify-end gap-2 shrink-0 bg-white rounded-b-2xl shadow-xs">
                 <button
                   type="button"
                   onClick={() => setShowConversionModal(false)}

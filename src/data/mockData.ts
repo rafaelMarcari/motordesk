@@ -2817,7 +2817,7 @@ export const INITIAL_USERS: User[] = [
     role: 'qa',
     passwordHash: 'Donatelo@123',
     companyId: 'comp-1',
-    allowedCompanyIds: ['comp-1'],
+    allowedCompanyIds: ['*'],
     groupId: 'grp-qa',
     groupName: 'Engenharia de Qualidade (QA)',
     active: true,
@@ -8784,8 +8784,11 @@ export const INITIAL_BANK_STATEMENTS: BankStatement[] = [
 export const STORAGE_KEY = 'motordesk_db_v1';
 
 export function getDatabase(): AppDatabase {
+  if (typeof window !== 'undefined' && (window as any).__CURRENT_DB && typeof (window as any).__CURRENT_DB === 'object') {
+    return (window as any).__CURRENT_DB as AppDatabase;
+  }
   let db: AppDatabase;
-  const raw = localStorage.getItem(STORAGE_KEY);
+  const raw = typeof localStorage !== 'undefined' ? localStorage.getItem(STORAGE_KEY) : null;
   if (!raw) {
     db = {
       companyInfo: INITIAL_COMPANY_INFO,
@@ -9087,7 +9090,7 @@ export function getDatabase(): AppDatabase {
 import { dataProvider } from '../services/dataProvider';
 
 export function saveDatabase(db: AppDatabase): void {
-  dataProvider.saveDatabase(db).catch((err) => {
+  dataProvider.saveDatabaseImmediate(db).catch((err) => {
     console.error("Cloud SQL PostgreSQL save failure:", err);
   });
 }

@@ -20,7 +20,10 @@ import {
   getFirestoreDatabaseId,
   syncDatabaseCollectionsToFirestore,
   saveSingleDocumentToFirestore,
-  loadDatabaseFromFirestore
+  loadDatabaseFromFirestore,
+  saveCompanyToFirestore,
+  setActiveCompanyInFirestore,
+  getActiveCompanyFromFirestore
 } from "./src/services/firestoreSync.js";
 
 dotenv.config();
@@ -1945,6 +1948,234 @@ app.get("/api/companies", async (req, res) => {
       return res.json({ success: true, companies, durationMs: Date.now() - startTime });
     }
     return res.json({ success: true, companies: [], error: err.message });
+  }
+});
+
+// Cache e mapa de empresas ativas em memória por operador/sessão
+const userActiveCompanyMap = new Map<string, string>();
+
+// Endpoint: Obter empresa ativa autoritativa diretamente do Banco Central / Firestore
+app.get("/api/companies/active", async (req: any, res) => {
+  res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+  const { userId } = extractUserContext(req);
+  const token = req.headers.authorization?.replace('Bearer ', '') || userId || 'guest';
+  
+  try {
+    // 1. Tentar Firestore
+    let activeId = await getActiveCompanyFromFirestore(token);
+    if (!activeId && userId && userId !== 'guest') {
+      activeId = await getActiveCompanyFromFirestore(userId);
+    }
+    // 2. Tentar memória do servidor
+    if (!activeId) {
+      activeId = userActiveCompanyMap.get(token) || userActiveCompanyMap.get(userId);
+    }
+    // 3. Fallback para primeira empresa registrada
+    const companies = serverAppStoreCache?.registeredCompanies || [];
+    if (!activeId || !companies.some((c: any) => c.id === activeId)) {
+      activeId = companies[0]?.id || 'comp-1';
+    }
+
+    const company = companies.find((c: any) => c.id === activeId) || serverAppStoreCache?.companyInfo || { id: activeId, name: 'Empresa Ativa' };
+
+    return res.json({
+      success: true,
+      activeCompanyId: activeId,
+      company,
+      source: "central_database"
+    });
+  } catch (err: any) {
+    return res.json({
+      success: true,
+      activeCompanyId: 'comp-1',
+      source: "fallback"
+    });
+  }
+});
+
+// Endpoint: Definir empresa ativa diretamente no Banco Central / Firestore
+app.post("/api/companies/active", async (req: any, res) => {
+  const { activeCompanyId } = req.body;
+  const { userId } = extractUserContext(req);
+  const token = req.headers.authorization?.replace('Bearer ', '') || userId || 'guest';
+
+  if (!activeCompanyId) {
+    return res.status(400).json({ success: false, error: "activeCompanyId é obrigatório" });
+  }
+
+  // Atualizar memória do servidor
+  userActiveCompanyMap.set(token, activeCompanyId);
+  if (userId) userActiveCompanyMap.set(userId, activeCompanyId);
+
+  // Persistir no Google Cloud Firestore
+  try {
+    await setActiveCompanyInFirestore(token, activeCompanyId);
+    if (userId && userId !== token) {
+      await setActiveCompanyInFirestore(userId, activeCompanyId);
+    }
+  } catch (e) {}
+
+  // Emitir broadcast SSE para todos os navegadores abertos (Firefox, Chrome, Opera)
+  broadcastDbUpdate({
+    updatedAt: new Date().toISOString(),
+    version: currentDbVersion,
+    companyId: activeCompanyId,
+    userId,
+    source: "company_switched"
+  });
+
+  console.log(`[COMPANY-STATE] Empresa ativa alterada para "${activeCompanyId}" (user: ${userId || token}). Notificado a todos os navegadores.`);
+
+  return res.json({
+    success: true,
+    activeCompanyId,
+    message: "Empresa ativa sincronizada no Banco Central e transmitida aos navegadores"
+  });
+});
+
+// Endpoint: Registrar ou atualizar empresa diretamente no PostgreSQL e Firestore
+app.post("/api/companies/register", async (req: any, res) => {
+  const companyData = req.body;
+  if (!companyData || !companyData.name) {
+    return res.status(400).json({ success: false, error: "Dados da empresa inválidos" });
+  }
+
+  const config = resolveDatabaseConfig();
+  const companyId = companyData.id || `comp-${Date.now()}`;
+  const newCompany = {
+    ...companyData,
+    id: companyId,
+    subscriptionStatus: companyData.subscriptionStatus || 'active',
+    registeredAt: companyData.registeredAt || new Date().toISOString()
+  };
+
+  try {
+    // 1. Salvar no Firestore
+    await saveCompanyToFirestore(newCompany);
+
+    // 2. Salvar no PostgreSQL / App Store
+    await enqueueDbWrite(async () => {
+      let currentData = serverAppStoreCache || { registeredCompanies: [], users: [] };
+      const companies = Array.isArray(currentData.registeredCompanies) ? [...currentData.registeredCompanies] : [];
+      const idx = companies.findIndex((c: any) => c.id === companyId);
+      if (idx !== -1) {
+        companies[idx] = { ...companies[idx], ...newCompany };
+      } else {
+        companies.push(newCompany);
+      }
+      currentData.registeredCompanies = companies;
+      serverAppStoreCache = currentData;
+      persistServerCacheToDisk(currentData);
+
+      if (isDatabaseSocketAvailable(config.database)) {
+        await executeSqlWithRetry(
+          `INSERT INTO app_store (id, data, updated_at) VALUES ($1, $2, NOW())
+           ON CONFLICT (id) DO UPDATE SET data = $2, updated_at = NOW()`,
+          ['motordesk_main', JSON.stringify(currentData)],
+          config.database
+        );
+      }
+      return { success: true };
+    });
+
+    currentDbVersion++;
+    currentDbUpdatedAt = new Date().toISOString();
+    broadcastDbUpdate({
+      updatedAt: currentDbUpdatedAt,
+      version: currentDbVersion,
+      companyId,
+      source: "company_registered"
+    });
+
+    return res.json({
+      success: true,
+      company: newCompany,
+      message: "Empresa registrada e sincronizada com sucesso no PostgreSQL e Firestore"
+    });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Endpoint: Obter conteúdo sincronizado do site (landing page) diretamente do Banco Central / Firestore
+app.get(["/api/landing", "/api/site"], async (req, res) => {
+  res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+  let landing = serverAppStoreCache?.landingContent;
+  const config = resolveDatabaseConfig();
+
+  if (!landing && isDatabaseSocketAvailable(config.database)) {
+    try {
+      const result = await executeSqlWithRetry(
+        'SELECT data->\'landingContent\' as landing FROM app_store WHERE id = $1',
+        ['motordesk_main'],
+        config.database
+      );
+      if (result.rows.length > 0) {
+        landing = result.rows[0].landing;
+      }
+    } catch (e) {}
+  }
+
+  const company = serverAppStoreCache?.companyInfo || null;
+  const companies = serverAppStoreCache?.registeredCompanies || [];
+
+  return res.json({
+    success: true,
+    landingContent: landing || null,
+    companyInfo: company,
+    registeredCompanies: companies,
+    source: "central_database"
+  });
+});
+
+// Endpoint: Atualizar e persistir o conteúdo do site diretamente no Banco Central
+app.post(["/api/landing", "/api/site"], async (req: any, res) => {
+  const { landingContent } = req.body;
+  if (!landingContent || typeof landingContent !== 'object') {
+    return res.status(400).json({ success: false, error: "landingContent inválido ou ausente" });
+  }
+
+  const config = resolveDatabaseConfig();
+  try {
+    await enqueueDbWrite(async () => {
+      let currentData = serverAppStoreCache || {};
+      currentData.landingContent = landingContent;
+      serverAppStoreCache = currentData;
+      persistServerCacheToDisk(currentData);
+
+      if (isDatabaseSocketAvailable(config.database)) {
+        await executeSqlWithRetry(
+          `INSERT INTO app_store (id, data, updated_at) VALUES ($1, $2, NOW())
+           ON CONFLICT (id) DO UPDATE SET data = $2, updated_at = NOW()`,
+          ['motordesk_main', JSON.stringify(currentData)],
+          config.database
+        );
+      }
+      return { success: true };
+    });
+
+    // Salvar metadados no Firestore se conectado
+    try {
+      await saveSingleDocumentToFirestore('system_meta', 'landingContent', landingContent);
+    } catch (e) {}
+
+    currentDbVersion++;
+    currentDbUpdatedAt = new Date().toISOString();
+    broadcastDbUpdate({
+      updatedAt: currentDbUpdatedAt,
+      version: currentDbVersion,
+      source: "landing_content_updated"
+    });
+
+    console.log('[LANDING-SYNC] Conteúdo do site sincronizado com sucesso no Banco Central.');
+
+    return res.json({
+      success: true,
+      message: "Conteúdo do site sincronizado com sucesso no banco de dados central",
+      landingContent
+    });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: err.message });
   }
 });
 

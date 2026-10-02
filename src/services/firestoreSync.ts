@@ -157,6 +157,57 @@ export async function loadDatabaseFromFirestore(): Promise<any | null> {
   }
 }
 
+// Salva os dados de uma empresa diretamente no Firestore
+export async function saveCompanyToFirestore(company: any): Promise<boolean> {
+  const db = initFirestore();
+  if (!db || !company || !company.id) return false;
+  try {
+    const docRef = doc(db, 'registeredCompanies', String(company.id));
+    await setDoc(docRef, { ...company, updatedAt: new Date().toISOString() }, { merge: true });
+    return true;
+  } catch (err: any) {
+    console.warn(`[Firestore] Erro ao salvar empresa ${company.id} no Firestore:`, err.message);
+    return false;
+  }
+}
+
+// Define o estado da empresa ativa para o operador no Firestore
+export async function setActiveCompanyInFirestore(userOrToken: string, companyId: string): Promise<boolean> {
+  const db = initFirestore();
+  if (!db || !userOrToken || !companyId) return false;
+  try {
+    const cleanKey = String(userOrToken).replace(/[^a-zA-Z0-9_-]/g, '_');
+    const docRef = doc(db, 'active_company_states', cleanKey);
+    await setDoc(docRef, {
+      userOrToken,
+      activeCompanyId: companyId,
+      updatedAt: new Date().toISOString()
+    }, { merge: true });
+    return true;
+  } catch (err: any) {
+    console.warn('[Firestore] Erro ao gravar empresa ativa no Firestore:', err.message);
+    return false;
+  }
+}
+
+// Recupera o estado da empresa ativa do operador no Firestore
+export async function getActiveCompanyFromFirestore(userOrToken: string): Promise<string | null> {
+  const db = initFirestore();
+  if (!db || !userOrToken) return null;
+  try {
+    const cleanKey = String(userOrToken).replace(/[^a-zA-Z0-9_-]/g, '_');
+    const docRef = doc(db, 'active_company_states', cleanKey);
+    const snap = await getDoc(docRef);
+    if (snap.exists()) {
+      const data = snap.data();
+      return data?.activeCompanyId || null;
+    }
+  } catch (err: any) {
+    console.warn('[Firestore] Erro ao buscar empresa ativa no Firestore:', err.message);
+  }
+  return null;
+}
+
 // Sincroniza em lote as coleções modificadas para o Google Cloud Firestore
 export async function syncDatabaseCollectionsToFirestore(data: any): Promise<boolean> {
   const db = initFirestore();

@@ -511,7 +511,7 @@
       values: values
     });
 
-    var actionRow = modalForm.querySelector('.flex.justify-end, button:has(svg)')?.closest('.flex');
+    var actionRow = modalForm.querySelector('.flex.justify-end, button[type="submit"]')?.closest('.flex') || modalForm.querySelector('.flex.justify-end');
     if (actionRow) {
       actionRow.parentNode.insertBefore(section, actionRow);
     } else {

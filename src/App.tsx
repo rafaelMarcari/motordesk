@@ -12,6 +12,7 @@ import {
   AppDatabase 
 } from './data/mockData';
 import { dataProvider } from './services/dataProvider';
+import { companyStateService } from './services/companyStateService';
 import { mergeDatabases } from './utils/dbSync';
 import { 
   User, 
@@ -743,8 +744,20 @@ export default function App() {
     }
   }, [db, activeCompanyId, currentUser?.id]);
 
-  // Multi-tab synchronization: keep activeCompanyIdState in sync without overwriting memory DB with stale localStorage
+  // Multi-browser & Multi-tab synchronization: keep activeCompanyIdState in sync directly from server/Firestore
   useEffect(() => {
+    const unsubscribe = companyStateService.subscribe((newCompanyId) => {
+      if (newCompanyId && newCompanyId !== activeCompanyIdState) {
+        setActiveCompanyIdState(newCompanyId);
+      }
+    });
+
+    companyStateService.getActiveCompany().then(res => {
+      if (res.activeCompanyId && res.activeCompanyId !== activeCompanyIdState) {
+        setActiveCompanyIdState(res.activeCompanyId);
+      }
+    });
+
     const handleStorageChange = (e: StorageEvent) => {
       if (e.key === 'motordesk_active_company_id' && e.newValue && e.newValue !== activeCompanyIdState) {
         setActiveCompanyIdState(e.newValue);
@@ -753,6 +766,7 @@ export default function App() {
 
     window.addEventListener('storage', handleStorageChange);
     return () => {
+      unsubscribe();
       window.removeEventListener('storage', handleStorageChange);
     };
   }, [activeCompanyIdState]);
@@ -882,6 +896,7 @@ export default function App() {
     }
 
     setActiveCompanyIdState(targetCompanyId);
+    companyStateService.setActiveCompany(targetCompanyId);
     try {
       localStorage.setItem('motordesk_active_company_id', targetCompanyId);
     } catch (e) {}
@@ -1878,7 +1893,7 @@ export default function App() {
     setLoginError('');
   };
 
-  // Logout routine com preservação de rota pretendida para redirecionamento certinho
+  // Logout routine com redirecionamento direto para tela de login (sem retornar ao site/landing)
   const handleLogout = () => {
     if (activeView) {
       try {
@@ -1886,6 +1901,10 @@ export default function App() {
       } catch (e) {}
     }
     setCurrentUser(null);
+    setIsLanding(false);
+    if (typeof window !== 'undefined') {
+      window.history.pushState({}, '', '/motordesk');
+    }
     localStorage.removeItem('motordesk_auth_token');
     localStorage.removeItem('motordesk_active_user');
     localStorage.removeItem('motordesk_last_activity');
@@ -2822,32 +2841,132 @@ export default function App() {
     );
   }
 
-  const renderLockedScreen = () => (
-    <div className="flex flex-col items-center justify-center p-12 text-center bg-white rounded-2xl border border-slate-200/80 my-12 animate-fade-in shadow-xs" id="locked-module-screen">
-      <div className="w-14 h-14 bg-amber-50 border border-amber-200 text-amber-600 rounded-2xl flex items-center justify-center text-2xl mb-4 shadow-xs font-bold">
-        🔒
-      </div>
-      <h2 className="text-base font-bold text-slate-800 font-display">Módulo Não Disponível para este Segmento / Plano SaaS</h2>
-      <p className="text-xs text-slate-500 max-w-md mt-1 leading-relaxed">
-        Este módulo funcional não está habilitado para o segmento <strong>{activeSegmentMeta.label}</strong> ou não consta na relação de módulos liberados no contrato da empresa <strong className="text-slate-700">{activeCompanyObj?.name || 'sua empresa'}</strong>.
-      </p>
-      <div className="mt-4 p-3.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-600 max-w-md text-left space-y-1">
-        <p className="font-bold text-slate-800">📄 Liberação de Módulos e Segmento no Sistema:</p>
-        <p className="text-[11px] text-slate-500">
-          Para alterar o segmento de negócio ou incluir novos módulos na assinatura, acesse a tela de <strong>"Gestão Multi-Empresa & Módulos SaaS"</strong> para configurar o tipo de empresa ou emitir o <strong>Termo Aditivo</strong>.
+  const renderLockedScreen = () => {
+    const permKey = VIEW_PERMISSION_MAP[activeView] || (activeView === 'quotations' ? 'accessQuotations' : null);
+    const isContracted = permKey ? Boolean(activeCompanyObj?.globalModules?.[permKey] ?? isModuleContractedForCompany(permKey, activeCompanyObj, activeBusinessType)) : false;
+    const isUserAllowed = permKey ? Boolean(currentUser?.permissions?.[permKey as keyof UserPermissions]) : false;
+    const canManage = currentUser?.role === 'admin' || currentUser?.role === 'qa';
+
+    const handleContractModuleNow = () => {
+      if (!permKey) return;
+      const updated = { ...(activeCompanyObj?.globalModules || {}), [permKey]: true };
+      handleUpdateGlobalModules(updated);
+      showFeedback('success', `Módulo contratado com sucesso para ${activeCompanyObj?.name || 'a empresa'}!`);
+    };
+
+    const handleGrantPermissionNow = () => {
+      if (!permKey || !currentUser) return;
+      const updatedUser: User = {
+        ...currentUser,
+        permissions: {
+          ...currentUser.permissions,
+          [permKey]: true,
+        },
+      };
+      setCurrentUser(updatedUser);
+      handleSaveUsers((db.users || []).map(u => u.id === currentUser.id ? updatedUser : u));
+      showFeedback('success', `Permissão ${permKey} liberada para o usuário ${currentUser.name}!`);
+    };
+
+    return (
+      <div className="flex flex-col items-center justify-center p-8 text-center bg-white rounded-2xl border border-slate-200/80 my-8 animate-fade-in shadow-xs max-w-2xl mx-auto" id="locked-module-screen">
+        <div className="w-14 h-14 bg-amber-50 border border-amber-200 text-amber-600 rounded-2xl flex items-center justify-center text-2xl mb-4 shadow-xs font-bold">
+          🔒
+        </div>
+        <h2 className="text-base font-bold text-slate-800 font-display">
+          Módulo Não Disponível / Não Liberado
+        </h2>
+        <p className="text-xs text-slate-500 max-w-md mt-1 leading-relaxed">
+          Verificação de contratação do módulo pela empresa e liberação de permissão para o usuário logado.
         </p>
+
+        {/* Quadro Diagnóstico: Contratado pela Empresa & Liberado ao Usuário */}
+        <div className="mt-5 w-full bg-slate-50 border border-slate-200 rounded-xl p-4 text-left space-y-3">
+          <div className="text-xs font-bold text-slate-800 border-b border-slate-200/80 pb-2 flex items-center justify-between">
+            <span>Diagnóstico de Conformidade Modular (SaaS & RBAC):</span>
+            <span className="text-[10px] px-2 py-0.5 rounded font-black uppercase bg-indigo-100 text-indigo-800">
+              {activeSegmentMeta.label}
+            </span>
+          </div>
+
+          <div className="space-y-2 text-xs">
+            {/* 1. Módulo Contratado pela Empresa */}
+            <div className="flex items-center justify-between p-2.5 bg-white border border-slate-200 rounded-lg">
+              <div>
+                <span className="font-bold text-slate-700 block text-xs">1. Módulo Contratado pela Empresa</span>
+                <span className="text-[11px] text-slate-500">
+                  Empresa: <strong className="text-slate-700">{activeCompanyObj?.name || 'Empresa Atual'}</strong>
+                </span>
+              </div>
+              {isContracted ? (
+                <span className="px-2.5 py-1 bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-full font-bold text-[11px] inline-flex items-center gap-1">
+                  ✓ Contratado no Plano SaaS
+                </span>
+              ) : (
+                <span className="px-2.5 py-1 bg-amber-50 text-amber-800 border border-amber-200 rounded-full font-bold text-[11px] inline-flex items-center gap-1">
+                  🔒 Não Contratado no Plano
+                </span>
+              )}
+            </div>
+
+            {/* 2. Módulo Liberado ao Usuário */}
+            <div className="flex items-center justify-between p-2.5 bg-white border border-slate-200 rounded-lg">
+              <div>
+                <span className="font-bold text-slate-700 block text-xs">2. Módulo Liberado ao Usuário</span>
+                <span className="text-[11px] text-slate-500">
+                  Usuário: <strong className="text-slate-700">{currentUser?.name || currentUser?.username}</strong> ({currentUser?.role})
+                </span>
+              </div>
+              {isUserAllowed ? (
+                <span className="px-2.5 py-1 bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-full font-bold text-[11px] inline-flex items-center gap-1">
+                  ✓ Permissão Liberada
+                </span>
+              ) : (
+                <span className="px-2.5 py-1 bg-rose-50 text-rose-800 border border-rose-200 rounded-full font-bold text-[11px] inline-flex items-center gap-1">
+                  🚫 Sem Permissão de Acesso
+                </span>
+              )}
+            </div>
+          </div>
+
+          <p className="text-[11px] text-slate-500 pt-1">
+            Para que uma tela seja exibida e operada, o módulo deve ser <strong>contratado pela empresa</strong> no plano SaaS e <strong>liberado ao usuário</strong> pelo administrador da organização.
+          </p>
+        </div>
+
+        {/* Ações Administrativas */}
+        {canManage && (
+          <div className="mt-5 flex flex-wrap items-center justify-center gap-2">
+            {!isContracted && permKey && (
+              <button
+                type="button"
+                onClick={handleContractModuleNow}
+                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl transition shadow-xs cursor-pointer inline-flex items-center gap-1.5"
+              >
+                <span>📦</span> Contratar Módulo para esta Empresa Agora
+              </button>
+            )}
+            {!isUserAllowed && permKey && (
+              <button
+                type="button"
+                onClick={handleGrantPermissionNow}
+                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl transition shadow-xs cursor-pointer inline-flex items-center gap-1.5"
+              >
+                <span>👤</span> Liberar Acesso para meu Usuário Agora
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => setActiveView('users')}
+              className="px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs rounded-xl transition shadow-xs cursor-pointer inline-flex items-center gap-1.5"
+            >
+              <span>⚙️</span> Gestão Multi-Empresa & Termos Aditivos
+            </button>
+          </div>
+        )}
       </div>
-      {currentUser?.role === 'admin' && (
-        <button
-          type="button"
-          onClick={() => setActiveView('users')}
-          className="mt-4 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl transition flex items-center gap-1.5 shadow-xs cursor-pointer"
-        >
-          Acessar Gestão de Módulos & Termos Aditivos
-        </button>
-      )}
-    </div>
-  );
+    );
+  };
 
   const renderAccessDeniedScreen = () => (
     <div className="flex flex-col items-center justify-center p-12 text-center bg-white rounded-2xl border border-rose-200/80 my-12 animate-fade-in shadow-xs" id="access-denied-screen">

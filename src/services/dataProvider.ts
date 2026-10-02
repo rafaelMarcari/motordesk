@@ -27,6 +27,12 @@ class DataProviderService {
   }
 
   public triggerDataMerged(db: AppDatabase): void {
+    if (typeof window !== 'undefined') {
+      (window as any).__CURRENT_DB = db;
+      if (Array.isArray(db.registeredCompanies) && db.registeredCompanies.length > 0) {
+        (window as any).__allCompanies = db.registeredCompanies;
+      }
+    }
     if (this.mergedCallback) {
       try {
         this.mergedCallback(db);
@@ -37,7 +43,22 @@ class DataProviderService {
   }
 
   public async getDatabase(): Promise<AppDatabase> {
-    const startTime = Date.now();
+    // 1. Se já existir banco ativo em memória global pelo conector direto assíncrono
+    if (typeof window !== 'undefined') {
+      if ((window as any).__CURRENT_DB && typeof (window as any).__CURRENT_DB === 'object') {
+        return (window as any).__CURRENT_DB as AppDatabase;
+      }
+      if ((window as any).__motorDeskDbPromise) {
+        try {
+          const preDb = await (window as any).__motorDeskDbPromise;
+          if (preDb && typeof preDb === 'object') {
+            (window as any).__CURRENT_DB = preDb;
+            return preDb as AppDatabase;
+          }
+        } catch (e) {}
+      }
+    }
+
     let authToken = typeof localStorage !== 'undefined' ? localStorage.getItem('motordesk_auth_token') : null;
     if (!authToken) {
       authToken = `motordesk_session_guest_${Date.now()}`;
@@ -85,6 +106,12 @@ class DataProviderService {
       const serverDb = payload.data || payload;
 
       if (serverDb && typeof serverDb === 'object') {
+        if (typeof window !== 'undefined') {
+          (window as any).__CURRENT_DB = serverDb;
+          if (Array.isArray(serverDb.registeredCompanies) && serverDb.registeredCompanies.length > 0) {
+            (window as any).__allCompanies = serverDb.registeredCompanies;
+          }
+        }
         if (typeof localStorage !== 'undefined') {
           try {
             localStorage.setItem('motordesk_db_v1', JSON.stringify(serverDb));
@@ -92,17 +119,16 @@ class DataProviderService {
             localStorage.setItem('motordesk_full_database', JSON.stringify(serverDb));
             if (Array.isArray(serverDb.registeredCompanies) && serverDb.registeredCompanies.length > 0) {
               localStorage.setItem('motordesk_all_companies', JSON.stringify(serverDb.registeredCompanies));
-              (window as any).__allCompanies = serverDb.registeredCompanies;
             }
           } catch (e) {}
         }
         return serverDb as AppDatabase;
       }
     } catch (err) {
-      console.warn('[DataProvider] Server fetch error, using local storage fallback:', err);
+      console.warn('[DataProvider] Server fetch notice, evaluating fallback:', err);
     }
 
-    // Local fallback
+    // Local fallback se rede falhar completamente
     if (typeof localStorage !== 'undefined') {
       const raw = localStorage.getItem('motordesk_db_v1') || localStorage.getItem('motordesk_db') || localStorage.getItem('motordesk_full_database');
       if (raw) {
@@ -117,15 +143,8 @@ class DataProviderService {
   }
 
   public async saveDatabase(db: AppDatabase): Promise<void> {
-    // Debounce rapid continuous saves, but guarantee eventual execution
-    if (this.pendingSaveTimeout) {
-      clearTimeout(this.pendingSaveTimeout);
-    }
-    this.pendingSaveTimeout = setTimeout(() => {
-      this.saveDatabaseImmediate(db).catch(err => {
-        console.error('[DataProvider] Debounced saveDatabase error:', err);
-      });
-    }, 150);
+    // Envio direto imediato ao banco de dados oficial do servidor
+    await this.saveDatabaseImmediate(db);
   }
 
   public async saveDatabaseImmediate(db: AppDatabase): Promise<void> {
@@ -134,7 +153,15 @@ class DataProviderService {
       this.pendingSaveTimeout = null;
     }
 
-    // 1. Immediately cache in local browser storage
+    // 1. Manter em memória global
+    if (typeof window !== 'undefined') {
+      (window as any).__CURRENT_DB = db;
+      if (Array.isArray(db.registeredCompanies) && db.registeredCompanies.length > 0) {
+        (window as any).__allCompanies = db.registeredCompanies;
+      }
+    }
+
+    // 2. Cache local resiliente
     if (typeof localStorage !== 'undefined') {
       try {
         localStorage.setItem('motordesk_db_v1', JSON.stringify(db));
@@ -142,12 +169,11 @@ class DataProviderService {
         localStorage.setItem('motordesk_full_database', JSON.stringify(db));
         if (Array.isArray(db.registeredCompanies) && db.registeredCompanies.length > 0) {
           localStorage.setItem('motordesk_all_companies', JSON.stringify(db.registeredCompanies));
-          (window as any).__allCompanies = db.registeredCompanies;
         }
       } catch (e) {}
     }
 
-    // 2. Broadcast via BroadcastChannel locally for other open tabs
+    // 3. Transmissão BroadcastChannel para abas abertas no mesmo navegador
     if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
       try {
         const bc = new BroadcastChannel('motordesk_live_channel');
@@ -155,7 +181,7 @@ class DataProviderService {
       } catch (e) {}
     }
 
-    // 3. Persist to authoritative server backend (Cloud SQL / Firestore / Cache)
+    // 4. Persistir DIRETAMENTE no banco do servidor backend (Cloud SQL / app_store.json)
     let authToken = typeof localStorage !== 'undefined' ? localStorage.getItem('motordesk_auth_token') : null;
     if (!authToken) {
       authToken = `motordesk_session_${Date.now()}`;
@@ -191,7 +217,16 @@ class DataProviderService {
         headers,
         body: JSON.stringify(db)
       });
-      if (!response.ok) {
+      if (response.ok) {
+        const payload = await response.json();
+        const serverData = payload.data || payload;
+        if (serverData && typeof serverData === 'object') {
+          if (typeof window !== 'undefined') {
+            (window as any).__CURRENT_DB = serverData;
+          }
+          this.triggerDataMerged(serverData);
+        }
+      } else {
         console.warn(`[DataProvider] Server returned HTTP ${response.status} on saveDatabase`);
       }
     } catch (err) {

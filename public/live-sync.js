@@ -268,6 +268,10 @@
       }
 
       if (freshDb) {
+        window.__CURRENT_DB = freshDb;
+        if (Array.isArray(freshDb.registeredCompanies) && freshDb.registeredCompanies.length > 0) {
+          window.__allCompanies = freshDb.registeredCompanies;
+        }
         // Atualizar cache de localStorage para persistência local
         try {
           localStorage.setItem('motordesk_db_v1', JSON.stringify(freshDb));
