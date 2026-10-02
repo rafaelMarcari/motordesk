@@ -32,7 +32,7 @@ dotenv.config();
 initFirestore();
 
 const app = express();
-const PORT = 3000;
+const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 
 // Default whitelisted origins for MotorDesk production & development
 const DEFAULT_ALLOWED_ORIGINS = [

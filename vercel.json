@@ -1,12 +1,22 @@
 {
   "version": 2,
-  "framework": "vite",
-  "buildCommand": "vite build",
-  "outputDirectory": "dist",
   "rewrites": [
     {
-      "source": "/(.*)",
+      "source": "/api/(.*)",
+      "destination": "/api/$1"
+    },
+    {
+      "source": "/((?!api/|assets/|favicon|manifest|apple-touch).*+)",
       "destination": "/index.html"
+    }
+  ],
+  "headers": [
+    {
+      "source": "/api/db/stream",
+      "headers": [
+        { "key": "Cache-Control", "value": "no-cache, no-transform, no-store, must-revalidate" },
+        { "key": "Content-Type", "value": "text/event-stream" }
+      ]
     }
   ]
 }

@@ -357,11 +357,43 @@
     };
   }
 
+  let sseDisabled = false;
+  let sseConsecutiveErrors = 0;
+
+  async function checkSseSupport() {
+    if (sseDisabled) return false;
+    try {
+      const ctrl = new AbortController();
+      const tid = setTimeout(() => ctrl.abort(), 3000);
+      const res = await fetch('/api/db/stream', {
+        method: 'GET',
+        headers: { Accept: 'text/event-stream' },
+        signal: ctrl.signal
+      });
+      clearTimeout(tid);
+      const ctype = (res.headers.get('content-type') || '').toLowerCase();
+      if (!res.ok || ctype.includes('text/html')) {
+        sseDisabled = true;
+        log('Ambiente de hospedagem estática/SPA detectado (Vercel/HTML fallback). SSE suspenso para manter console limpo.');
+        return false;
+      }
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
   // 2. Server-Sent Events (SSE) para entrega instantânea multi-máquinas (< 50ms)
-  function connectSSE() {
+  async function connectSSE() {
+    if (sseDisabled) return;
     if (sseReconnectTimer) {
       clearTimeout(sseReconnectTimer);
       sseReconnectTimer = null;
+    }
+
+    if (sseConsecutiveErrors === 0) {
+      const supported = await checkSseSupport();
+      if (!supported) return;
     }
 
     try {
@@ -377,6 +409,7 @@
 
       sseSource.addEventListener('connected', function (e) {
         try {
+          sseConsecutiveErrors = 0;
           const data = JSON.parse(e.data);
           lastReceivedSignalTime = Date.now();
           if (data.version && data.version > knownVersion) {
@@ -428,6 +461,7 @@
 
       sseSource.onerror = function () {
         updateIndicatorStatus('offline');
+        sseConsecutiveErrors++;
         if (sseSource) {
           try {
             sseSource.close();
@@ -435,8 +469,25 @@
           sseSource = null;
         }
 
+        if (sseConsecutiveErrors >= 2) {
+          checkSseSupport().then(supported => {
+            if (!supported) {
+              sseDisabled = true;
+              log('SSE desativado com segurança no ambiente estático.');
+            } else if (!sseReconnectTimer && !sseDisabled) {
+              const delay = sseReconnectDelay;
+              sseReconnectDelay = Math.min(sseReconnectDelay * 1.5, 30000);
+              sseReconnectTimer = setTimeout(() => {
+                sseReconnectTimer = null;
+                connectSSE();
+              }, delay);
+            }
+          });
+          return;
+        }
+
         // Tentar reconectar com backoff exponencial (5s a 30s) para respeitar limites de API Gateway
-        if (!sseReconnectTimer) {
+        if (!sseReconnectTimer && !sseDisabled) {
           const delay = sseReconnectDelay;
           sseReconnectDelay = Math.min(sseReconnectDelay * 1.5, 30000);
           sseReconnectTimer = setTimeout(() => {

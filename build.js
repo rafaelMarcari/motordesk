@@ -25,6 +25,18 @@ if (fs.existsSync(reportExporterSource)) {
   });
 }
 
+// Ensure firestoreSync.js is built from firestoreSync.ts
+const firestoreSyncSource = path.join(__dirname, 'src', 'services', 'firestoreSync.ts');
+if (fs.existsSync(firestoreSyncSource)) {
+  await esbuild.build({
+    entryPoints: [firestoreSyncSource],
+    bundle: false,
+    format: 'esm',
+    platform: 'node',
+    outfile: path.join(__dirname, 'src', 'services', 'firestoreSync.js')
+  });
+}
+
 // 1.9. Integrate All Features (Fiscal XML, Representative Orders, Expedition, Boleto Notifications)
 await import('./scripts/integrate-all.js');
 
