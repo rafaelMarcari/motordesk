@@ -7,9 +7,27 @@ if (!global._postgresPoolsMap) {
   global._postgresPoolsMap = /* @__PURE__ */ new Map();
 }
 function resolveDatabaseConfig(overrideDb) {
+  const connectionString = process.env.DATABASE_URL || process.env.NEON_DATABASE_URL || process.env.POSTGRES_URL;
+  if (connectionString) {
+    try {
+      const parsedUrl = new URL(connectionString);
+      return {
+        host: parsedUrl.hostname,
+        port: parsedUrl.port ? parseInt(parsedUrl.port, 10) : 5432,
+        isUnixSocket: false,
+        user: decodeURIComponent(parsedUrl.username || ""),
+        password: decodeURIComponent(parsedUrl.password || ""),
+        database: overrideDb || parsedUrl.pathname.replace(/^\//, "") || "neondb",
+        instanceName: ""
+      };
+    } catch (e) {
+      console.warn("[MotorDesk DB] Erro ao interpretar DATABASE_URL:", e);
+    }
+  }
+
   const instanceName = process.env.INSTANCE_CONNECTION_NAME || "centered-repeater-4x4wp:us-east1:ai-studio-482bfc36";
-  let rawHost = process.env.SQL_HOST || "";
-  const port = process.env.SQL_PORT ? parseInt(process.env.SQL_PORT, 10) : 5432;
+  let rawHost = process.env.SQL_HOST || process.env.PGHOST || "";
+  const port = process.env.SQL_PORT || process.env.PGPORT ? parseInt(process.env.SQL_PORT || process.env.PGPORT || "5432", 10) : 5432;
   const socketCandidates = [
     `/cloudsql/${instanceName}`,
     // Standard Google Cloud Run volume
@@ -34,7 +52,7 @@ function resolveDatabaseConfig(overrideDb) {
     }
   }
   if (!resolvedHost) {
-    if (rawHost && !rawHost.startsWith("/") && !rawHost.includes(":")) {
+    if (rawHost && !rawHost.startsWith("/")) {
       resolvedHost = rawHost;
       isUnixSocket = false;
     } else {
@@ -42,9 +60,9 @@ function resolveDatabaseConfig(overrideDb) {
       isUnixSocket = true;
     }
   }
-  const user = process.env.SQL_USER || process.env.SQL_ADMIN_USER || "ai_studio_app_user";
-  const password = process.env.SQL_PASSWORD || process.env.SQL_ADMIN_PASSWORD;
-  const database = overrideDb || process.env.SQL_DB_NAME || "cloud_sql_production_database";
+  const user = process.env.SQL_USER || process.env.SQL_ADMIN_USER || process.env.PGUSER || "ai_studio_app_user";
+  const password = process.env.SQL_PASSWORD || process.env.SQL_ADMIN_PASSWORD || process.env.PGPASSWORD;
+  const database = overrideDb || process.env.SQL_DB_NAME || process.env.PGDATABASE || "cloud_sql_production_database";
   return {
     host: resolvedHost,
     port,
@@ -94,6 +112,13 @@ const createPool = (targetDb) => {
     };
     if (!config.isUnixSocket) {
       poolConfig.port = config.port;
+      const isLocalhost = config.host === "localhost" || config.host === "127.0.0.1" || config.host.startsWith("192.168.") || config.host.startsWith("10.");
+      const explicitSsl = process.env.PGSSLMODE || process.env.SQL_SSL;
+      if (explicitSsl === "require" || explicitSsl === "true" || (!isLocalhost && !config.host.startsWith("/"))) {
+        poolConfig.ssl = {
+          rejectUnauthorized: false
+        };
+      }
     }
     existing = new Pool(poolConfig);
     existing.on("error", (err) => {

@@ -101,6 +101,14 @@ class CompanyStateService {
     if (!companyId) return false;
     this.activeCompanyId = companyId;
 
+    if (typeof window !== 'undefined') {
+      if ((window as any).__motorDeskFirestore?.setActiveCompany) {
+        try {
+          (window as any).__motorDeskFirestore.setActiveCompany(companyId);
+        } catch (e) {}
+      }
+    }
+
     try {
       const res = await fetch('/api/companies/active', {
         method: 'POST',

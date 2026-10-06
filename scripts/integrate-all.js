@@ -14,3 +14,9 @@ try {
   console.warn('Notice running update-segments-and-sync.cjs:', e.message);
 }
 
+try {
+  require('./fix-industrial-unique-screens.cjs');
+} catch (e) {
+  console.warn('Notice running fix-industrial-unique-screens.cjs:', e.message);
+}
+

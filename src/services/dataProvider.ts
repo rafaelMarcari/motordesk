@@ -57,6 +57,15 @@ class DataProviderService {
           }
         } catch (e) {}
       }
+      if ((window as any).__motorDeskFirestore?.fetchDatabase) {
+        try {
+          const fsDb = await (window as any).__motorDeskFirestore.fetchDatabase();
+          if (fsDb && typeof fsDb === 'object' && fsDb.companyInfo) {
+            (window as any).__CURRENT_DB = fsDb;
+            return fsDb as AppDatabase;
+          }
+        } catch (e) {}
+      }
     }
 
     let authToken = typeof localStorage !== 'undefined' ? localStorage.getItem('motordesk_auth_token') : null;
@@ -158,6 +167,12 @@ class DataProviderService {
       (window as any).__CURRENT_DB = db;
       if (Array.isArray(db.registeredCompanies) && db.registeredCompanies.length > 0) {
         (window as any).__allCompanies = db.registeredCompanies;
+      }
+      // Gravar diretamente no Google Cloud Firestore a partir do navegador
+      if ((window as any).__motorDeskFirestore?.saveDatabase) {
+        try {
+          (window as any).__motorDeskFirestore.saveDatabase(db);
+        } catch (e) {}
       }
     }
 

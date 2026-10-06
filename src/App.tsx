@@ -883,6 +883,9 @@ export default function App() {
     if (!currentUser) return;
     const targetComp = optionalTargetComp || 
       (db?.registeredCompanies || []).find(c => c.id === targetCompanyId) || 
+      (userAccessibleCompanies || []).find(c => c.id === targetCompanyId) ||
+      (registeredCompaniesList || []).find(c => c.id === targetCompanyId) ||
+      ((window as any).__allCompanies || []).find((c: any) => c && c.id === targetCompanyId) ||
       (db?.companyInfo?.id === targetCompanyId ? db?.companyInfo : null);
     if (!targetComp) {
       console.warn(`[WorkspaceSwitch] Company ${targetCompanyId} not found`);
@@ -891,7 +894,13 @@ export default function App() {
 
     const allowedIds = userAccessibleCompanies.map(c => c.id);
     const cleanUsername = currentUser.username?.toLowerCase() || '';
-    if (!allowedIds.includes(targetCompanyId) && currentUser.role !== 'qa' && currentUser.role !== 'admin' && cleanUsername !== 'admin' && cleanUsername !== 'validador') {
+    const isAuth = allowedIds.includes(targetCompanyId) || 
+      currentUser.role === 'qa' || 
+      currentUser.role === 'admin' || 
+      cleanUsername === 'admin' || 
+      cleanUsername === 'validador';
+
+    if (!isAuth) {
       console.warn(`[WorkspaceSwitch] User ${currentUser.username} is not authorized for company ${targetCompanyId}`);
       return;
     }
@@ -900,6 +909,7 @@ export default function App() {
     companyStateService.setActiveCompany(targetCompanyId);
     try {
       localStorage.setItem('motordesk_active_company_id', targetCompanyId);
+      window.dispatchEvent(new CustomEvent('motordesk_company_switched', { detail: { companyId: targetCompanyId } }));
     } catch (e) {}
 
     if (targetComp.globalModules) {

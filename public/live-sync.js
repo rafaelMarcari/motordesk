@@ -372,13 +372,14 @@
       });
       clearTimeout(tid);
       const ctype = (res.headers.get('content-type') || '').toLowerCase();
-      if (!res.ok || ctype.includes('text/html')) {
+      if (!res.ok || ctype.includes('text/html') || !ctype.includes('text/event-stream')) {
         sseDisabled = true;
         log('Ambiente de hospedagem estática/SPA detectado (Vercel/HTML fallback). SSE suspenso para manter console limpo.');
         return false;
       }
       return true;
     } catch (e) {
+      sseDisabled = true;
       return false;
     }
   }
@@ -521,6 +522,12 @@
       }
 
       if (!res.ok) return;
+
+      const ctype = (res.headers.get('content-type') || '').toLowerCase();
+      if (!ctype.includes('application/json')) {
+        sseDisabled = true;
+        return;
+      }
 
       const json = await res.json();
       if (json && json.success) {

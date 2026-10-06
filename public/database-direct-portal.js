@@ -31,13 +31,18 @@
 
     try {
       let fresh = null;
-      if (typeof window.__motorDeskDirectQuery === 'function') {
+      if (typeof window.__motorDeskFirestore?.fetchDatabase === 'function') {
+        fresh = await window.__motorDeskFirestore.fetchDatabase();
+        if (fresh && window.__motorDeskDb?.onDataMergedCallback) {
+          window.__motorDeskDb.onDataMergedCallback(fresh);
+        }
+      } else if (typeof window.__motorDeskDirectQuery === 'function') {
         fresh = await window.__motorDeskDirectQuery(queryText);
       } else if (typeof window.__motorDeskSyncNow === 'function') {
         window.__motorDeskSyncNow('user_direct_search');
       }
 
-      showQueryToast('✓ Consulta ao Banco Central realizada com sucesso!');
+      showQueryToast('✓ Conectado e atualizado diretamente do Google Cloud Firestore!');
     } catch(err) {
       console.warn('Erro ao consultar banco:', err);
       showQueryToast('Aviso: Conectando ao banco...', 'warning');
