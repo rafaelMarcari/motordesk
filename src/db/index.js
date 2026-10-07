@@ -1,7 +1,7 @@
 import { drizzle } from "drizzle-orm/node-postgres";
 import pg from "pg";
 import fs from "fs";
-import * as schema from "./schema.ts";
+import * as schema from "./schema.js";
 const { Pool } = pg;
 if (!global._postgresPoolsMap) {
   global._postgresPoolsMap = /* @__PURE__ */ new Map();
@@ -93,24 +93,25 @@ const createPool = (targetDb) => {
   const poolKey = `${config.user}@${config.database}#${config.host}`;
   let existing = pools.get(poolKey);
   if (!existing) {
+    const serverless = Boolean(process.env.VERCEL);
     const poolConfig = {
       host: config.host,
       user: config.user,
       password: config.password,
       database: config.database,
-      min: 3,
+      min: serverless ? 0 : 3,
       // Mantém permanentemente no mínimo 3 conexões ativas e aquecidas no pool
-      max: 30,
+      max: serverless ? 5 : 30,
       // Suporte robusto a múltiplos navegadores, abas e computadores simultâneos
       connectionTimeoutMillis: 1e4,
-      idleTimeoutMillis: 3e5,
+      idleTimeoutMillis: serverless ? 1e4 : 3e5,
       // 5 minutos antes de reciclar conexões ociosas
       maxUses: 1e4,
       keepAlive: true,
       // Ativa keepAlive TCP a nível de socket
       keepAliveInitialDelayMillis: 2e3,
       // Envia keepAlive após 2 segundos
-      allowExitOnIdle: false
+      allowExitOnIdle: serverless
       // JAMAIS desliga ou sai em ociosidade - conexão sempre aberta
     };
     if (!config.isUnixSocket) {

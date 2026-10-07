@@ -1,21 +1,25 @@
 {
   "version": 2,
+  "functions": {
+    "api/index.ts": {
+      "maxDuration": 60
+    }
+  },
   "rewrites": [
     {
       "source": "/api/(.*)",
-      "destination": "/api/$1"
+      "destination": "/api"
     },
     {
-      "source": "/((?!api/|assets/|favicon|manifest|apple-touch).*+)",
+      "source": "/((?!api/|assets/|favicon|manifest|apple-touch).*)",
       "destination": "/index.html"
     }
   ],
   "headers": [
     {
-      "source": "/api/db/stream",
+      "source": "/api/(.*)",
       "headers": [
-        { "key": "Cache-Control", "value": "no-cache, no-transform, no-store, must-revalidate" },
-        { "key": "Content-Type", "value": "text/event-stream" }
+        { "key": "Cache-Control", "value": "no-store, max-age=0" }
       ]
     }
   ]

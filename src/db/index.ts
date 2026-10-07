@@ -1,7 +1,7 @@
 import { drizzle } from 'drizzle-orm/node-postgres';
 import pg from 'pg';
 import fs from 'fs';
-import * as schema from './schema.ts';
+import * as schema from './schema.js';
 
 const { Pool } = pg;
 
@@ -126,19 +126,22 @@ export const createPool = (targetDb?: string): pg.Pool => {
 
   let existing = pools.get(poolKey);
   if (!existing) {
+    // Na Vercel (função serverless) cada instância abre seu próprio pool: poucas conexões e sem
+    // conexões fixas, para não esgotar o limite do Neon (use a URL "-pooler" do Neon).
+    const serverless = Boolean(process.env.VERCEL);
     const poolConfig: pg.PoolConfig = {
       host: config.host,
       user: config.user,
       password: config.password,
       database: config.database,
-      min: 3, // Mantém permanentemente no mínimo 3 conexões ativas e aquecidas no pool
-      max: 30, // Suporte robusto a múltiplos navegadores, abas e computadores simultâneos
+      min: serverless ? 0 : 3, // Mantém permanentemente no mínimo 3 conexões ativas e aquecidas no pool
+      max: serverless ? 5 : 30, // Suporte robusto a múltiplos navegadores, abas e computadores simultâneos
       connectionTimeoutMillis: 10000,
-      idleTimeoutMillis: 300000, // 5 minutos antes de reciclar conexões ociosas
+      idleTimeoutMillis: serverless ? 10000 : 300000, // 5 minutos antes de reciclar conexões ociosas
       maxUses: 10000,
       keepAlive: true, // Ativa keepAlive TCP a nível de socket
       keepAliveInitialDelayMillis: 2000, // Envia keepAlive após 2 segundos
-      allowExitOnIdle: false, // JAMAIS desliga ou sai em ociosidade - conexão sempre aberta
+      allowExitOnIdle: serverless, // JAMAIS desliga ou sai em ociosidade - conexão sempre aberta
     };
 
     if (!config.isUnixSocket) {

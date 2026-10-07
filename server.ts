@@ -3,7 +3,6 @@ import cors from "cors";
 import path from "path";
 import fs from "fs";
 import crypto from "crypto";
-import { createServer as createViteServer } from "vite";
 import { getDbInstance, checkDatabaseHealth, ensureAppStoreTableExists, createPool, extractPgErrorDetails, resolveDatabaseConfig, executeSqlWithRetry, warmUpDatabaseConnection, startDatabaseKeepAlive, isDatabaseSocketAvailable, isRemoteDatabaseConfigured, withDbTransaction } from "./src/db/index.js";
 import { appStore, clients as clientsTable, vehicles as vehiclesTable, parts as partsTable, serviceOrders as serviceOrdersTable } from "./src/db/schema.js";
 import { eq } from "drizzle-orm";
@@ -20,6 +19,8 @@ dotenv.config();
 // evitando que navegadores/computadores enxerguem bases divergentes.
 
 const app = express();
+// Na Vercel o Express roda como função (api/index.ts): sem app.listen, sem conexões longas (SSE)
+const IS_SERVERLESS = Boolean(process.env.VERCEL);
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 
 // Default whitelisted origins for MotorDesk production & development
@@ -128,7 +129,17 @@ app.use(express.json({ limit: "50mb" }));
 // 3.1. Mantém o cache em memória alinhado ao banco antes de qualquer rota que leia dele.
 // Necessário quando há mais de uma instância/servidor: uma gravação feita em outra
 // instância altera a versão no banco e o cache local é recarregado.
-const ROUTES_WITHOUT_CACHE_REFRESH = new Set(["/api/db", "/api/db/version", "/api/db/stream", "/api/health", "/health"]);
+const ROUTES_WITHOUT_CACHE_REFRESH = new Set(["/api/db/version", "/api/db/stream", "/api/health", "/health"]);
+app.use(async (req, res, next) => {
+  if (req.path.startsWith("/api") && req.method !== "OPTIONS") {
+    try {
+      await ensureServerReady();
+    } catch (err: any) {
+      return res.status(503).json({ success: false, code: "DB_UNAVAILABLE", error: "Banco de dados indisponível. Tente novamente em instantes." });
+    }
+  }
+  next();
+});
 app.use(async (req, res, next) => {
   if (req.path.startsWith("/api") && req.method !== "OPTIONS" && !ROUTES_WITHOUT_CACHE_REFRESH.has(req.path)) {
     await refreshServerCacheIfStale();
@@ -741,6 +752,8 @@ function clampPermissionsToContract(target: any, db: any): void {
 function guardIncomingDatabase(current: any, incoming: any, user: any, activeCompanyId: string): any {
   const db = current || {};
   const out: any = { ...incoming };
+  // Configurações compartilhadas só mudam por POST /api/settings (a cópia do navegador é filtrada por empresa)
+  delete out.sharedSettings;
   const master = isMasterAccount(user);
   const allowed = new Set(userCompanyIds(user, db));
   const activeCompany = companyForUser(db, user, activeCompanyId);
@@ -844,7 +857,28 @@ function stripSecretsForClient(data: any, user: any, companyId?: string): any {
   if (out.sefazConfig && !hasEffectivePermission(user, companyForUser(data, user, companyId) || data.companyInfo, 'accessFiscal')) {
     out.sefazConfig = {};
   }
+  if (out.sharedSettings && typeof out.sharedSettings === 'object') {
+    const ids = new Set(userCompanyIds(user, serverAppStoreCache || data));
+    out.sharedSettings = Object.fromEntries(Object.entries(out.sharedSettings).filter(([cid]) => ids.has(cid)));
+  }
   return out;
+}
+
+// Configurações que antes ficavam só no navegador (localStorage) e agora são da empresa, no banco.
+// Prefixo da chave -> quem pode alterar.
+const SHARED_SETTING_RULES: Array<{ prefix: string; manage: boolean }> = [
+  { prefix: 'motordesk_level_permissions', manage: true },
+  { prefix: 'motordesk_level_permissions_', manage: true },
+  { prefix: 'motordesk_backup_policy', manage: true },
+  { prefix: 'motordesk_backup_config_', manage: true },
+  { prefix: 'motordesk_operational_params', manage: false },
+  { prefix: 'motordesk_screen_params', manage: false },
+  { prefix: 'motordesk_doc_orientation_', manage: false },
+];
+const SHARED_SETTING_MAX_BYTES = 200 * 1024;
+
+function sharedSettingRule(key: string) {
+  return SHARED_SETTING_RULES.find((r) => key === r.prefix || (r.prefix.endsWith('_') && key.startsWith(r.prefix)));
 }
 
 // "Vitrine" pública para quem ainda não fez login: só o necessário para o site e a tela de login
@@ -2244,6 +2278,12 @@ app.get("/api/db", async (req: any, res) => {
 
 // Live SSE Stream for real-time synchronization across multiple browsers, tabs, and computers
 app.get("/api/db/stream", (req, res) => {
+  // Funções serverless não mantêm conexão aberta e cada instância tem seus próprios assinantes:
+  // o navegador detecta o 204 (sem text/event-stream) e sincroniza pela consulta de versão.
+  if (IS_SERVERLESS) {
+    res.setHeader("Cache-Control", "no-store");
+    return res.status(204).end();
+  }
   const reqHost = req.headers.host || "motordesk.app.br";
   const proto = (req.headers["x-forwarded-proto"] as string) || (req.secure ? "https" : "http");
   let origin = req.headers.origin;
@@ -2395,6 +2435,43 @@ app.post("/api/db", requireAuth, async (req: any, res) => {
       error: "Não foi possível gravar no banco de dados. Suas alterações não foram salvas; tente novamente.",
       durationMs: Date.now() - startTime,
     });
+  }
+});
+
+// Configurações da empresa (parâmetros operacionais, de tela, backup, permissões por nível...).
+// Antes ficavam no localStorage e cada navegador mostrava um valor diferente.
+app.post("/api/settings", requireAuth, async (req: any, res) => {
+  const key = String(req.body?.key || '');
+  const rawValue = req.body?.value;
+  const value = rawValue === null || rawValue === undefined ? null : String(rawValue);
+  const rule = sharedSettingRule(key);
+  if (!rule) return res.status(400).json({ success: false, error: "Configuração desconhecida." });
+  if (value !== null && Buffer.byteLength(value) > SHARED_SETTING_MAX_BYTES) {
+    return res.status(413).json({ success: false, error: "Configuração grande demais." });
+  }
+  const { companyId } = extractUserContext(req);
+  const user = req.authUser;
+  if (!userCompanyIds(user, serverAppStoreCache).includes(companyId)) {
+    return res.status(403).json({ success: false, error: "Empresa não vinculada ao usuário." });
+  }
+  if (rule.manage && !canManageUsers(user, findCompany(serverAppStoreCache, companyId))) {
+    return res.status(403).json({ success: false, code: "FORBIDDEN", error: "Somente administradores podem alterar esta configuração." });
+  }
+  try {
+    const { version, updatedAt } = await mutateAppStore((current) => {
+      const next = { ...(current || {}) };
+      const all = { ...(next.sharedSettings || {}) };
+      const company = { ...(all[companyId] || {}) };
+      if (value === null) delete company[key];
+      else company[key] = value;
+      all[companyId] = company;
+      next.sharedSettings = all;
+      return next;
+    }, { source: "settings_save", companyId, userId: user.id });
+    res.json({ success: true, companyId, key, version, updatedAt });
+  } catch (err: any) {
+    console.error("[SETTINGS] Falha ao gravar configuração:", err.message);
+    res.status(500).json({ success: false, error: "Não foi possível gravar a configuração. Tente novamente." });
   }
 });
 
@@ -4319,6 +4396,7 @@ async function startServer() {
   if (process.env.NODE_ENV !== "production") {
     // In local development mode, attach Vite middleware for AI Studio live preview
     try {
+      const { createServer: createViteServer } = await import("vite");
       const vite = await createViteServer({
         server: { middlewareMode: true },
         appType: "spa",
@@ -4372,10 +4450,8 @@ async function startServer() {
       if (hasDatabaseBackend()) {
         await warmUpDatabaseConnection();
         startDatabaseKeepAlive(15000);
-        await ensureAppStoreTableExists(config.database);
-        await ensureAuthTables();
-        const stored = await readAppStoreFromDb();
-        console.log(`[MotorDesk Boot] Banco ${config.database}@${config.host} conectado como fonte única de verdade (versão ${stored?.version ?? 'vazia'}).`);
+        await ensureServerReady();
+        console.log(`[MotorDesk Boot] Banco ${config.database}@${config.host} conectado como fonte única de verdade (versão ${serverCacheVersion || 'vazia'}).`);
       } else {
         console.warn(`[MotorDesk Boot] Nenhum banco configurado (DATABASE_URL ausente). Usando arquivo local data/app_store.json — os dados NÃO serão compartilhados entre computadores.`);
       }
@@ -4386,4 +4462,35 @@ async function startServer() {
   });
 }
 
-startServer();
+// Inicialização do banco feita uma vez por processo (servidor local ou instância da função na Vercel)
+let serverReadyPromise: Promise<void> | null = null;
+function ensureServerReady(): Promise<void> {
+  // Sem banco, o modo arquivo só serve para desenvolvimento local: na Vercel cada instância
+  // teria sua própria cópia (dados divergentes), então a API recusa.
+  if (!hasDatabaseBackend()) {
+    return IS_SERVERLESS ? Promise.reject(new Error("DATABASE_URL ausente")) : Promise.resolve();
+  }
+  if (!serverReadyPromise) {
+    serverReadyPromise = (async () => {
+      const config = resolveDatabaseConfig();
+      await ensureAppStoreTableExists(config.database);
+      await ensureAuthTables();
+      await readAppStoreFromDb();
+    })().catch((err) => {
+      serverReadyPromise = null; // tenta de novo no próximo request
+      console.error("[MotorDesk Boot] Falha ao inicializar o banco:", err?.message || err);
+      throw err;
+    });
+  }
+  return serverReadyPromise;
+}
+
+if (IS_SERVERLESS) {
+  if (!hasDatabaseBackend()) {
+    console.error("[MotorDesk Boot] DATABASE_URL não configurado na Vercel: a API recusará as requisições.");
+  }
+} else {
+  startServer();
+}
+
+export default app;
