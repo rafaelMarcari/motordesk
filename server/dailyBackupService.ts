@@ -557,7 +557,9 @@ export class DailyBackupService {
     targetCompanyId: string,
     source: { filename?: string; backupData?: any; sourceData?: any },
     currentDbGetter: () => Promise<any>,
-    dbPersister: (data: any) => Promise<any>
+    dbPersister: (data: any) => Promise<any>,
+    // Cópia de segurança antes de restaurar; quando há banco, o servidor a grava no próprio banco
+    createSafetyBackup?: () => Promise<{ filename: string }>
   ): Promise<{
     success: boolean;
     targetCompanyId: string;
@@ -653,7 +655,7 @@ export class DailyBackupService {
 
     // 4. Criar snapshot de segurança pré-restauração obrigatório
     console.log(`[DAILY-BACKUP] Criando snapshot de segurança pré-restauração para a empresa ${cleanTargetId}...`);
-    const safetyMeta = await this.createBackup(currentDbGetter, "pre_restore_safety");
+    const safetyMeta = createSafetyBackup ? await createSafetyBackup() : await this.createBackup(currentDbGetter, "pre_restore_safety");
 
     // 5. Preparar dados restaurados com isolamento estrito
     const updatedData: any = { ...currentData };

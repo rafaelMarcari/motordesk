@@ -754,6 +754,9 @@ function guardIncomingDatabase(current: any, incoming: any, user: any, activeCom
   const out: any = { ...incoming };
   // Configurações compartilhadas só mudam por POST /api/settings (a cópia do navegador é filtrada por empresa)
   delete out.sharedSettings;
+  // Conteúdo do site (~750 KB com imagens) só muda pelo editor do site (POST /api/landing):
+  // fora das gravações comuns, cada salvamento fica bem menor (limite de 4,5 MB por requisição na Vercel)
+  delete out.landingContent;
   const master = isMasterAccount(user);
   const allowed = new Set(userCompanyIds(user, db));
   const activeCompany = companyForUser(db, user, activeCompanyId);
@@ -791,7 +794,6 @@ function guardIncomingDatabase(current: any, incoming: any, user: any, activeCom
     }
     delete out.globalModules;
     delete out.contractModules;
-    delete out.landingContent;
 
     // 3. Configuração fiscal só com o módulo fiscal liberado
     if (!hasEffectivePermission(user, activeCompany, 'accessFiscal')) {
@@ -1044,6 +1046,7 @@ function isPublicApiRoute(req: any): boolean {
   if ((p === '/api/landing' || p === '/api/site') && m === 'GET') return true;
   if (p === '/api/companies' && m === 'GET') return true;
   if (p.startsWith('/api/public/')) return true;
+  if (p === '/api/cron/daily-backup' && m === 'GET') return true; // CRON_SECRET + idempotente por dia
   if (p.startsWith('/api/notas-api/')) return true; // autenticação própria (requireNotasApiAdmin)
   return false;
 }
@@ -2414,10 +2417,13 @@ app.post("/api/db", requireAuth, async (req: any, res) => {
 
     console.log(`[DB-TRACE] POST /api/db requestId=${requestId} result=SUCCESS version=${version} updatedAt=${updatedAt} latencyMs=${durationMs}`);
 
+    // O navegador já tem o conteúdo do site; a resposta não o repete (o estado do app mantém o anterior)
+    const { landingContent: _landingOmitted, ...responseData } = isolatedResponseData || {};
     return res.json({
       success: true,
       message: "Dados gravados no banco de dados",
-      data: isolatedResponseData,
+      data: responseData,
+      landingContentOmitted: true,
       source: hasDatabaseBackend() ? "postgres" : "local_file",
       database: config.database,
       durationMs,
@@ -4114,8 +4120,170 @@ async function getDbSnapshotForBackup(): Promise<any> {
   return serverAppStoreCache;
 }
 
+// ------------------------------------------------------------------
+// Backups guardados no próprio Neon (tabela app_store_backups).
+// Na Vercel não há disco gravável nem processo contínuo: o backup diário é disparado pelo
+// Cron da Vercel (vercel.json) e, no servidor local, por um verificador de hora em hora.
+// Sem banco configurado (desenvolvimento offline) continua o serviço antigo em arquivos.
+// ------------------------------------------------------------------
+type DbBackupType = "daily_automated" | "manual_trigger" | "pre_restore_safety";
+const BACKUP_RETENTION_DAYS = 30;
+const BACKUP_MIN_KEEP = 5;
+const BACKUP_COLLECTIONS = [
+  "clients", "suppliers", "vehicles", "parts", "services", "budgets", "serviceOrders", "sales",
+  "accountsReceivable", "accountsPayable", "financialTransactions", "fiscalDocuments", "carriers",
+  "quotations", "stockMovements", "users", "registeredCompanies", "history",
+];
+
+async function ensureBackupTable(): Promise<void> {
+  const cfg = resolveDatabaseConfig();
+  await executeSqlWithRetry(
+    `CREATE TABLE IF NOT EXISTS app_store_backups (
+       id TEXT PRIMARY KEY,
+       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+       type TEXT NOT NULL,
+       meta JSONB NOT NULL,
+       data JSONB NOT NULL
+     )`,
+    [],
+    cfg.database
+  );
+}
+
+function formatBackupBytes(bytes: number): string {
+  if (!bytes) return "0 B";
+  const units = ["B", "KB", "MB", "GB"];
+  const i = Math.min(units.length - 1, Math.floor(Math.log(bytes) / Math.log(1024)));
+  return `${parseFloat((bytes / Math.pow(1024, i)).toFixed(2))} ${units[i]}`;
+}
+
+// Data no fuso de Brasília (o "dia" do backup diário é o dia de quem usa o sistema)
+function brazilDateParts(now = new Date()) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false,
+  }).formatToParts(now).reduce((acc: any, p) => ((acc[p.type] = p.value), acc), {});
+  return { date: `${parts.year}-${parts.month}-${parts.day}`, time: `${parts.hour}-${parts.minute}-${parts.second}` };
+}
+
+function buildBackupMeta(id: string, type: DbBackupType, data: any, createdAt: string) {
+  const companies: any[] = [];
+  for (const c of [...(data?.companyInfo ? [data.companyInfo] : []), ...(Array.isArray(data?.registeredCompanies) ? data.registeredCompanies : [])]) {
+    if (c && c.id && !companies.some((x) => x.id === c.id)) {
+      companies.push({ id: c.id, name: c.name || "Sem Nome", cnpj: c.cnpj || "", companyType: c.companyType || "matriz", businessType: c.businessType || "OFICINA" });
+    }
+  }
+  const collectionsSummary: Record<string, number> = {};
+  let totalRecords = 0;
+  for (const col of BACKUP_COLLECTIONS) {
+    if (Array.isArray(data?.[col])) {
+      collectionsSummary[col] = data[col].length;
+      totalRecords += data[col].length;
+    }
+  }
+  const size = Buffer.byteLength(JSON.stringify(data || {}));
+  return {
+    backupId: id,
+    filename: id,
+    date: id.match(/\d{4}-\d{2}-\d{2}/)?.[0] || createdAt.slice(0, 10),
+    createdAt,
+    type,
+    database: resolveDatabaseConfig().database,
+    storage: "neon",
+    fileSizeBytes: size,
+    fileSizeFormatted: formatBackupBytes(size),
+    companiesCount: companies.length,
+    totalRecords,
+    companies,
+    collectionsSummary,
+  };
+}
+
+// Cria um backup a partir do estado atual do banco. O diário usa um id por dia: chamar de novo
+// no mesmo dia não duplica (ON CONFLICT DO NOTHING) — por isso a rota do cron é segura.
+async function createDbBackup(type: DbBackupType): Promise<{ created: boolean; meta: any }> {
+  await ensureBackupTable();
+  const stored = await readAppStoreFromDb();
+  if (!stored?.data) throw new Error("Base de dados vazia ou indisponível para backup.");
+  const { date, time } = brazilDateParts();
+  const id = type === "daily_automated" ? `motordesk_backup_${date}.json` : `motordesk_backup_${date}_${time}_${type}.json`;
+  const createdAt = new Date().toISOString();
+  const meta = buildBackupMeta(id, type, stored.data, createdAt);
+  const cfg = resolveDatabaseConfig();
+  const result = await executeSqlWithRetry(
+    `INSERT INTO app_store_backups (id, created_at, type, meta, data)
+     SELECT $1, $2, $3, $4::jsonb, data FROM app_store WHERE id = $5
+     ON CONFLICT (id) DO NOTHING`,
+    [id, createdAt, type, JSON.stringify(meta), APP_STORE_ID],
+    cfg.database
+  );
+  // Retenção: apaga os mais antigos que 30 dias, mantendo sempre os 5 mais recentes
+  await executeSqlWithRetry(
+    `DELETE FROM app_store_backups
+     WHERE created_at < NOW() - ($1 || ' days')::interval
+       AND id NOT IN (SELECT id FROM app_store_backups ORDER BY created_at DESC LIMIT $2)`,
+    [String(BACKUP_RETENTION_DAYS), BACKUP_MIN_KEEP],
+    cfg.database
+  );
+  const created = (result as any).rowCount > 0;
+  if (created) console.log(`[DB-BACKUP] Backup ${id} gravado no Neon (${meta.fileSizeFormatted}).`);
+  return { created, meta };
+}
+
+async function listDbBackups(): Promise<any[]> {
+  await ensureBackupTable();
+  const cfg = resolveDatabaseConfig();
+  const result = await executeSqlWithRetry(`SELECT meta FROM app_store_backups ORDER BY created_at DESC`, [], cfg.database);
+  return result.rows.map((r: any) => r.meta);
+}
+
+async function readDbBackup(id: string): Promise<{ meta: any; data: any } | null> {
+  await ensureBackupTable();
+  const cfg = resolveDatabaseConfig();
+  const result = await executeSqlWithRetry(`SELECT meta, data FROM app_store_backups WHERE id = $1`, [path.basename(String(id || ""))], cfg.database);
+  return result.rows[0] || null;
+}
+
+// Disparado pelo Cron da Vercel (vercel.json). Se CRON_SECRET estiver configurado na Vercel,
+// a chamada precisa trazê-lo (a Vercel envia automaticamente); sem ele, a rota continua segura
+// porque só cria o backup do dia uma vez.
+app.get("/api/cron/daily-backup", async (req, res) => {
+  const secret = process.env.CRON_SECRET;
+  if (secret && req.headers.authorization !== `Bearer ${secret}`) {
+    return res.status(401).json({ success: false, error: "Não autorizado." });
+  }
+  if (!hasDatabaseBackend()) {
+    return res.status(503).json({ success: false, error: "Banco de dados não configurado." });
+  }
+  try {
+    const { created, meta } = await createDbBackup("daily_automated");
+    res.json({ success: true, created, backup: meta.filename, size: meta.fileSizeFormatted });
+  } catch (err: any) {
+    console.error("[DB-BACKUP] Falha no backup diário:", err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // Status do Backup Diário Automático
-app.get("/api/backup/status", requireMaster, (req, res) => {
+app.get("/api/backup/status", requireMaster, async (req, res) => {
+  if (hasDatabaseBackend()) {
+    try {
+      const list = await listDbBackups();
+      return res.json({
+        success: true,
+        status: {
+          schedulerActive: true,
+          frequency: "Diário, às 03:00 (horário de Brasília)",
+          nextExecution: "03:00 (automático)",
+          lastBackupDate: list[0]?.date || "Nenhum ainda",
+          totalStoredBackups: list.length,
+          backupDirectory: `Banco Neon (tabela app_store_backups, ${BACKUP_RETENTION_DAYS} dias)`,
+        },
+      });
+    } catch (err: any) {
+      return res.status(500).json({ success: false, error: err.message });
+    }
+  }
   const service = DailyBackupService.getInstance();
   res.json({
     success: true,
@@ -4124,7 +4292,15 @@ app.get("/api/backup/status", requireMaster, (req, res) => {
 });
 
 // Lista todos os backups diários armazenados
-app.get("/api/backup/list", requireMaster, (req, res) => {
+app.get("/api/backup/list", requireMaster, async (req, res) => {
+  if (hasDatabaseBackend()) {
+    try {
+      const list = await listDbBackups();
+      return res.json({ success: true, total: list.length, backups: list });
+    } catch (err: any) {
+      return res.status(500).json({ success: false, error: err.message });
+    }
+  }
   const service = DailyBackupService.getInstance();
   const list = service.listBackups();
   res.json({
@@ -4136,6 +4312,14 @@ app.get("/api/backup/list", requireMaster, (req, res) => {
 
 // Executa um backup diário manual imediatamente
 app.post("/api/backup/trigger-daily", requireMaster, async (req, res) => {
+  if (hasDatabaseBackend()) {
+    try {
+      const { meta } = await createDbBackup("manual_trigger");
+      return res.json({ success: true, message: "Backup da base de dados gerado com sucesso!", metadata: meta });
+    } catch (err: any) {
+      return res.status(500).json({ success: false, error: err.message });
+    }
+  }
   try {
     const service = DailyBackupService.getInstance();
     const metadata = await service.createBackup(getDbSnapshotForBackup, "manual_trigger");
@@ -4150,7 +4334,18 @@ app.post("/api/backup/trigger-daily", requireMaster, async (req, res) => {
 });
 
 // Download do arquivo de backup geral
-app.get("/api/backup/download/:filename", requireMaster, (req, res) => {
+app.get("/api/backup/download/:filename", requireMaster, async (req, res) => {
+  if (hasDatabaseBackend()) {
+    try {
+      const backup = await readDbBackup(req.params.filename);
+      if (!backup) return res.status(404).json({ error: "Backup não encontrado." });
+      res.setHeader("Content-Disposition", `attachment; filename="${path.basename(backup.meta.filename)}"`);
+      res.setHeader("Content-Type", "application/json");
+      return res.send(JSON.stringify({ _system: "MotorDesk ERP Multi-Tenant", ...backup.meta, data: backup.data }));
+    } catch (err: any) {
+      return res.status(500).json({ error: err.message });
+    }
+  }
   try {
     const filename = path.basename(req.params.filename);
     const backupPath = path.resolve(process.cwd(), "data/backups", filename);
@@ -4190,6 +4385,18 @@ app.post("/api/backup/restore", requireMaster, async (req, res) => {
     if (!filename) {
       return res.status(400).json({ error: "Nome do arquivo de backup obrigatório." });
     }
+    if (hasDatabaseBackend()) {
+      const backup = await readDbBackup(filename);
+      if (!backup?.data) return res.status(404).json({ error: `Backup "${path.basename(filename)}" não encontrado.` });
+      // Cópia de segurança do estado atual antes de sobrescrever
+      const { meta: safety } = await createDbBackup("pre_restore_safety");
+      await mutateAppStore(() => backup.data, { source: "backup_restore" });
+      return res.json({
+        success: true,
+        message: `Base de dados restaurada com sucesso! ${backup.meta.totalRecords} registros carregados.`,
+        restoreResult: { success: true, safetyBackup: safety.filename, restoredCompaniesCount: backup.meta.companiesCount, restoredRecordsCount: backup.meta.totalRecords },
+      });
+    }
     const service = DailyBackupService.getInstance();
     const restoreResult = await service.restoreBackup(
       filename,
@@ -4217,14 +4424,21 @@ app.post("/api/backup/restore-company", requireMaster, async (req, res) => {
       return res.status(400).json({ error: "Identificador da empresa (targetCompanyId) é obrigatório." });
     }
 
+    let payload = backupData || sourceData;
+    if (!payload && filename && hasDatabaseBackend()) {
+      const backup = await readDbBackup(filename);
+      if (!backup?.data) return res.status(404).json({ error: `Backup "${path.basename(filename)}" não encontrado.` });
+      payload = backup.data;
+    }
     const service = DailyBackupService.getInstance();
     const result = await service.restoreCompanyBackup(
       targetCompanyId,
-      { filename, backupData: backupData || sourceData },
+      { filename, backupData: payload },
       getDbSnapshotForBackup,
       async (dataToPersist) => {
         await mutateAppStore(() => dataToPersist, { source: "company_backup_restore", companyId: targetCompanyId });
-      }
+      },
+      hasDatabaseBackend() ? async () => (await createDbBackup("pre_restore_safety")).meta : undefined
     );
 
     res.json({
@@ -4458,7 +4672,14 @@ async function startServer() {
     } catch (dbBootErr: any) {
       console.warn(`[MotorDesk Boot] Aviso ao inicializar conexão do banco: ${dbBootErr.message}`);
     }
-    DailyBackupService.getInstance().startAutomatedScheduler(getDbSnapshotForBackup);
+    if (hasDatabaseBackend()) {
+      // Mesmo backup diário do Cron da Vercel, no banco: verifica de hora em hora (um por dia)
+      const runDailyDbBackup = () => createDbBackup("daily_automated").catch((err) => console.warn("[DB-BACKUP] Falha no backup diário:", err.message));
+      setTimeout(runDailyDbBackup, 60_000);
+      setInterval(runDailyDbBackup, 60 * 60_000);
+    } else {
+      DailyBackupService.getInstance().startAutomatedScheduler(getDbSnapshotForBackup);
+    }
   });
 }
 

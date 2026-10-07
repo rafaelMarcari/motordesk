@@ -89,6 +89,25 @@
   } catch (e) {}
 
   let lastSharedSettings = {};
+
+  // window.__CURRENT_DB é trocado por vários scripts a cada resposta do servidor. Respostas de
+  // gravação não trazem o conteúdo do site e alguns scripts montam o objeto sem as configurações:
+  // mantém esses dois campos da versão anterior quando a nova não os traz.
+  let currentDbValue = window.__CURRENT_DB;
+  try {
+    Object.defineProperty(window, '__CURRENT_DB', {
+      configurable: true,
+      get: function () { return currentDbValue; },
+      set: function (next) {
+        if (next && typeof next === 'object' && currentDbValue && typeof currentDbValue === 'object' && next !== currentDbValue) {
+          if (next.landingContent === undefined && currentDbValue.landingContent) next.landingContent = currentDbValue.landingContent;
+          if (next.sharedSettings === undefined && currentDbValue.sharedSettings) next.sharedSettings = currentDbValue.sharedSettings;
+        }
+        if (next && next.sharedSettings && typeof next.sharedSettings === 'object') lastSharedSettings = next.sharedSettings;
+        currentDbValue = next;
+      }
+    });
+  } catch (e) {}
   function activeCompanyId() {
     try {
       const u = JSON.parse(nativeGetItem.call(realLocalStorage, 'motordesk_active_user') || '{}');
@@ -275,9 +294,31 @@
     window.location.reload();
   }
 
+  // Gravações da base (POST /api/db) não levam o conteúdo do site (~750 KB, só muda pelo editor
+  // do site) nem as configurações (só mudam por /api/settings): envio bem menor a cada salvamento.
+  function isDbWrite(method, url) {
+    if (String(method || 'GET').toUpperCase() !== 'POST' || !isSameOriginApi(url)) return false;
+    try { return new URL(url, window.location.href).pathname === '/api/db'; } catch (e) { return false; }
+  }
+  function slimDbBody(body) {
+    if (typeof body !== 'string' || (body.indexOf('"landingContent"') === -1 && body.indexOf('"sharedSettings"') === -1)) return body;
+    try {
+      const parsed = JSON.parse(body);
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return body;
+      delete parsed.landingContent;
+      delete parsed.sharedSettings;
+      return JSON.stringify(parsed);
+    } catch (e) {
+      return body;
+    }
+  }
+
   const nativeFetch = window.fetch.bind(window);
   window.fetch = function (input, init) {
     const url = typeof input === 'string' ? input : (input && input.url) || '';
+    if (init && isDbWrite(init.method, url) && typeof init.body === 'string') {
+      init = Object.assign({}, init, { body: slimDbBody(init.body) });
+    }
     if (isSameOriginApi(url)) {
       const token = getSessionToken();
       if (token) {
@@ -305,6 +346,7 @@
   const nativeSetHeader = XMLHttpRequest.prototype.setRequestHeader;
   XMLHttpRequest.prototype.open = function (method, url) {
     this.__mdUrl = url;
+    this.__mdMethod = method;
     this.__mdAuthSet = false;
     return nativeOpen.apply(this, arguments);
   };
@@ -330,6 +372,7 @@
         if (xhr.status === 502 || xhr.status === 503 || xhr.status === 504 || (xhr.status !== 204 && ct.indexOf('text/html') !== -1)) markOffline();
       });
       xhr.addEventListener('error', markOffline);
+      if (isDbWrite(xhr.__mdMethod, xhr.__mdUrl)) return nativeSend.call(this, slimDbBody(arguments[0]));
     }
     return nativeSend.apply(this, arguments);
   };

@@ -342,7 +342,7 @@ class DailyBackupService {
    * - Restores company info and operational records (clients, parts, OS, budgets, etc.) ONLY for targetCompanyId.
    * - 100% of other companies in the live database remain UNTOUCHED and fully preserved.
    */
-  async restoreCompanyBackup(targetCompanyId, source, currentDbGetter, dbPersister) {
+  async restoreCompanyBackup(targetCompanyId, source, currentDbGetter, dbPersister, createSafetyBackup) {
     const cleanTargetId = String(targetCompanyId).trim();
     if (!cleanTargetId) {
       throw new Error("Identificador da empresa alvo (targetCompanyId) \xE9 obrigat\xF3rio.");
@@ -397,7 +397,7 @@ class DailyBackupService {
     const liveCompany = currentCompanies.find((c) => c && c.id === cleanTargetId);
     const targetCompanyName = sourceCompany?.name || liveCompany?.name || `Empresa ${cleanTargetId}`;
     console.log(`[DAILY-BACKUP] Criando snapshot de seguran\xE7a pr\xE9-restaura\xE7\xE3o para a empresa ${cleanTargetId}...`);
-    const safetyMeta = await this.createBackup(currentDbGetter, "pre_restore_safety");
+    const safetyMeta = createSafetyBackup ? await createSafetyBackup() : await this.createBackup(currentDbGetter, "pre_restore_safety");
     const updatedData = { ...currentData };
     const restoredCollections = {};
     let totalRestoredRecords = 0;
