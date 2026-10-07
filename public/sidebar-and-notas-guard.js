@@ -783,7 +783,9 @@ curl -X GET https://motordesk.app.br/api/notas-api/v2/nfse/OS-8850 \\
   // =========================================================================
   function runGuards() {
     applySidebarFix();
-    injectLoginNotasApiButton();
+    // Portal da API da Nota Fiscal desativado: emitia NFS-e simulada e usava senha-mestra fixa.
+    // O servidor responde 503 em /api/notas-api até haver provedor fiscal real integrado.
+    // injectLoginNotasApiButton();
   }
 
   // Executar imediatamente e após carregamento

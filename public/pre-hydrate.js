@@ -37,9 +37,15 @@
     }
   }
 
-  // Respostas 401 destas rotas são esperadas (senha errada etc.) e não encerram a sessão
+  // Respostas 401 destas rotas são esperadas (senha errada, chave de API inválida etc.) e não encerram a sessão
   function isAuthFlowUrl(url) {
-    return /\/api\/(auth\/(login|verify-password|logout)|users\/update-password)/.test(String(url || ''));
+    return /\/api\/(auth\/(login|verify-password|logout)|users\/update-password|v1(\/|\?|$))/.test(String(url || ''));
+  }
+
+  // Chamada que já traz uma credencial própria (sessão mds_ ou chave de API mdk_) não é alterada
+  function hasOwnCredential(value) {
+    const v = String(value || '');
+    return v.indexOf('mds_') !== -1 || v.indexOf('mdk_') !== -1;
   }
 
   // ---------------------------------------------------------------------------
@@ -324,7 +330,7 @@
       if (token) {
         const headers = new Headers((init && init.headers) || (input && typeof input !== 'string' ? input.headers : undefined) || {});
         const current = headers.get('Authorization') || '';
-        if (current.indexOf('mds_') === -1) headers.set('Authorization', 'Bearer ' + token);
+        if (!hasOwnCredential(current)) headers.set('Authorization', 'Bearer ' + token);
         init = Object.assign({}, init || {}, { headers: headers });
       }
     }
@@ -355,7 +361,7 @@
       if (this.__mdAuthSet) return;
       this.__mdAuthSet = true;
       const token = getSessionToken();
-      if (token && String(value).indexOf('mds_') === -1) value = 'Bearer ' + token;
+      if (token && !hasOwnCredential(value)) value = 'Bearer ' + token;
     }
     return nativeSetHeader.call(this, name, value);
   };

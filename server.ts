@@ -151,6 +151,15 @@ app.use(async (req, res, next) => {
 // e bloqueia qualquer rota /api não pública sem sessão válida.
 app.use(async (req: any, res, next) => {
   await attachAuthContext(req);
+  // Sistemas externos (API v1, add-in SolidWorks) se identificam por chave de API, sem sessão
+  if (!req.authUser && isApiKeyRoute(req)) {
+    try {
+      await attachApiKeyContext(req);
+    } catch (err: any) {
+      return res.status(503).json({ success: false, error: "Não foi possível validar a chave de API. Tente novamente." });
+    }
+    if (req.apiKey) return next();
+  }
   if (!isPublicApiRoute(req) && !req.authUser) {
     return res.status(401).json({
       success: false,
@@ -292,19 +301,17 @@ app.get(["/api/health", "/health"], async (req, res) => {
   const status = dbHealth.connected ? "ok" : "degraded";
   const statusCode = dbHealth.connected ? 200 : 503;
 
+  // Rota pública: não expõe host, usuário nem detalhes de erro do banco
+  if (!dbHealth.connected) console.warn("[HEALTH] Banco indisponível:", dbHealth.error);
   res.status(statusCode).json({
     status,
     database: dbHealth.connected ? "connected" : "disconnected",
     databaseProvider: isRemoteDatabaseConfigured() ? "neon_postgresql" : "postgresql",
-    databaseName: dbHealth.database || null,
-    databaseUser: dbHealth.databaseUser || null,
-    databaseHost: dbHealth.databaseHost || null,
     appStoreTable: Boolean(dbHealth.appStoreTable),
     appStoreRecord: Boolean(dbHealth.appStoreRecord),
     appStoreDataSize: dbHealth.appStoreDataSize || 0,
     appStoreUpdatedAt: dbHealth.appStoreUpdatedAt || null,
     latencyMs,
-    error: dbHealth.error || null,
     timestamp: new Date().toISOString(),
     environment: process.env.NODE_ENV || "development",
   });
@@ -749,6 +756,42 @@ function clampPermissionsToContract(target: any, db: any): void {
  * - usuários só por quem gerencia usuários, dentro das próprias empresas,
  *   sem conceder empresa ou módulo fora do que a empresa contratou.
  */
+// Situações que só um provedor fiscal real pode atribuir a uma nota
+const FISCAL_FINAL_STATUSES = new Set(["authorized", "autorizado", "autorizada", "canceled", "cancelled", "cancelado", "cancelada", "inutilized", "inutilizado", "inutilizada"]);
+const FISCAL_LINK_FIELDS = ["nfeId", "nfeCode", "nfeStatus", "nfeAccessKey", "nfeKey", "fiscalStatus", "fiscalAccessKey", "fiscalDocumentId"];
+const isFiscalFinal = (v: any) => FISCAL_FINAL_STATUSES.has(String(v || "").toLowerCase());
+
+// As telas geravam notas "autorizadas" com chave e protocolo sorteados, sem falar com a SEFAZ.
+// Sem provedor fiscal: nota nova em situação final é descartada, mudança de situação/chave em nota
+// existente é desfeita, e títulos/OS/vendas não recebem vínculo de nota que não existe.
+function blockSimulatedFiscalRecords(current: any, out: any): void {
+  if (Array.isArray(out.fiscalDocuments)) {
+    const stored = new Map<string, any>((Array.isArray(current.fiscalDocuments) ? current.fiscalDocuments : []).map((d: any) => [d?.id, d]));
+    out.fiscalDocuments = out.fiscalDocuments.flatMap((doc: any) => {
+      if (!doc || !doc.id || !isFiscalFinal(doc.status)) return [doc];
+      const prev = stored.get(doc.id);
+      if (!prev) return [];
+      const unchanged = String(prev.status) === String(doc.status) && prev.accessKey === doc.accessKey && prev.protocolNumber === doc.protocolNumber;
+      return [unchanged ? doc : prev];
+    });
+  }
+  for (const [key, list] of Object.entries(out)) {
+    if (key === "fiscalDocuments" || !Array.isArray(list)) continue;
+    const storedMap = new Map<string, any>((Array.isArray(current[key]) ? current[key] : []).map((r: any) => [r?.id, r]));
+    out[key] = (list as any[]).map((rec: any) => {
+      if (!rec || typeof rec !== "object" || (!isFiscalFinal(rec.nfeStatus) && !isFiscalFinal(rec.fiscalStatus))) return rec;
+      const prev = storedMap.get(rec.id);
+      if (prev && FISCAL_LINK_FIELDS.every((f) => prev[f] === rec[f])) return rec;
+      const fixed = { ...rec };
+      for (const f of FISCAL_LINK_FIELDS) {
+        if (prev && prev[f] !== undefined) fixed[f] = prev[f];
+        else delete fixed[f];
+      }
+      return fixed;
+    });
+  }
+}
+
 function guardIncomingDatabase(current: any, incoming: any, user: any, activeCompanyId: string): any {
   const db = current || {};
   const out: any = { ...incoming };
@@ -757,6 +800,8 @@ function guardIncomingDatabase(current: any, incoming: any, user: any, activeCom
   // Conteúdo do site (~750 KB com imagens) só muda pelo editor do site (POST /api/landing):
   // fora das gravações comuns, cada salvamento fica bem menor (limite de 4,5 MB por requisição na Vercel)
   delete out.landingContent;
+  // Vale para todos, inclusive administradores da plataforma: nota só é autorizada pelo provedor fiscal
+  if (!fiscalProviderActive()) blockSimulatedFiscalRecords(db, out);
   const master = isMasterAccount(user);
   const allowed = new Set(userCompanyIds(user, db));
   const activeCompany = companyForUser(db, user, activeCompanyId);
@@ -1046,7 +1091,8 @@ function isPublicApiRoute(req: any): boolean {
   if ((p === '/api/landing' || p === '/api/site') && m === 'GET') return true;
   if (p === '/api/companies' && m === 'GET') return true;
   if (p.startsWith('/api/public/')) return true;
-  if (p === '/api/cron/daily-backup' && m === 'GET') return true; // CRON_SECRET + idempotente por dia
+  if (p === '/api/cron/daily-backup' && m === 'GET') return true;
+  if (p === '/api/v1' || p.startsWith('/api/v1/')) return true; // autenticação por chave de API na própria rota // CRON_SECRET + idempotente por dia
   if (p.startsWith('/api/notas-api/')) return true; // autenticação própria (requireNotasApiAdmin)
   return false;
 }
@@ -1086,6 +1132,187 @@ function requireContractedModule(moduleName: string, permissionKey: string, _get
     }
     req.validatedCompanyId = company?.id;
     next();
+  };
+}
+
+// =========================================================================
+// INTEGRAÇÕES: CHAVES DE API DO MOTORDESK E SISTEMAS EXTERNOS
+// Ficam em tabelas próprias (fora do app_store): nunca vão para o navegador, para backups
+// da base nem para a vitrine pública. Chave de API: só o hash SHA-256 é guardado.
+// Credenciais de sistemas externos: cifradas com AES-256-GCM.
+// =========================================================================
+const API_KEY_PREFIX = "mdk_";
+const API_KEY_SCOPES = ["read", "write", "solidworks"] as const;
+const API_RATE_LIMIT_PER_MIN = 120;
+const apiKeyCache = new Map<string, { record: any; at: number }>();
+const apiRateWindows = new Map<string, { start: number; count: number }>();
+
+let integrationTablesReady: Promise<void> | null = null;
+function ensureIntegrationTables(): Promise<void> {
+  if (!integrationTablesReady) {
+    const cfg = resolveDatabaseConfig();
+    integrationTablesReady = (async () => {
+      await executeSqlWithRetry(
+        `CREATE TABLE IF NOT EXISTS api_keys (
+           id TEXT PRIMARY KEY,
+           company_id TEXT NOT NULL,
+           name TEXT NOT NULL,
+           prefix TEXT NOT NULL,
+           key_hash TEXT NOT NULL UNIQUE,
+           scopes JSONB NOT NULL,
+           created_by TEXT,
+           created_at BIGINT NOT NULL,
+           last_used_at BIGINT,
+           revoked_at BIGINT
+         )`, [], cfg.database);
+      await executeSqlWithRetry(
+        `CREATE TABLE IF NOT EXISTS external_integrations (
+           id TEXT PRIMARY KEY,
+           company_id TEXT NOT NULL,
+           name TEXT NOT NULL,
+           kind TEXT NOT NULL,
+           base_url TEXT NOT NULL,
+           auth_type TEXT NOT NULL,
+           auth_header TEXT,
+           username TEXT,
+           secret_enc TEXT,
+           secret_last4 TEXT,
+           notes TEXT,
+           enabled BOOLEAN NOT NULL DEFAULT TRUE,
+           created_by TEXT,
+           created_at BIGINT NOT NULL,
+           updated_at BIGINT NOT NULL,
+           last_test_at BIGINT,
+           last_test_status TEXT
+         )`, [], cfg.database);
+      await executeSqlWithRetry(`CREATE TABLE IF NOT EXISTS app_secrets (name TEXT PRIMARY KEY, value TEXT NOT NULL)`, [], cfg.database);
+    })().catch((err) => { integrationTablesReady = null; throw err; });
+  }
+  return integrationTablesReady;
+}
+
+function integrationsUnavailable(res: any) {
+  return res.status(503).json({ success: false, error: "Integrações exigem o banco de dados (DATABASE_URL) configurado." });
+}
+
+// Chave do cofre: INTEGRATIONS_KEY (variável de ambiente) ou, na falta dela, uma chave aleatória
+// gerada uma vez e guardada na tabela app_secrets (fora do app_store e dos backups).
+let vaultKeyPromise: Promise<Buffer> | null = null;
+function vaultKey(): Promise<Buffer> {
+  if (!vaultKeyPromise) {
+    vaultKeyPromise = (async () => {
+      if (process.env.INTEGRATIONS_KEY) return crypto.createHash("sha256").update(process.env.INTEGRATIONS_KEY).digest();
+      await ensureIntegrationTables();
+      const cfg = resolveDatabaseConfig();
+      await executeSqlWithRetry(
+        `INSERT INTO app_secrets (name, value) VALUES ('integrations_key', $1) ON CONFLICT (name) DO NOTHING`,
+        [crypto.randomBytes(32).toString("base64")], cfg.database);
+      const r = await executeSqlWithRetry(`SELECT value FROM app_secrets WHERE name = 'integrations_key'`, [], cfg.database);
+      return Buffer.from(r.rows[0].value, "base64");
+    })().catch((err) => { vaultKeyPromise = null; throw err; });
+  }
+  return vaultKeyPromise;
+}
+async function encryptSecret(plain: string): Promise<string> {
+  const key = await vaultKey();
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv("aes-256-gcm", key, iv);
+  const enc = Buffer.concat([cipher.update(plain, "utf8"), cipher.final()]);
+  return `v1:${iv.toString("base64")}:${cipher.getAuthTag().toString("base64")}:${enc.toString("base64")}`;
+}
+async function decryptSecret(stored: string | null): Promise<string | null> {
+  if (!stored) return null;
+  const [v, iv, tag, data] = stored.split(":");
+  if (v !== "v1") return null;
+  const decipher = crypto.createDecipheriv("aes-256-gcm", await vaultKey(), Buffer.from(iv, "base64"));
+  decipher.setAuthTag(Buffer.from(tag, "base64"));
+  return Buffer.concat([decipher.update(Buffer.from(data, "base64")), decipher.final()]).toString("utf8");
+}
+
+const hashApiKey = (key: string) => crypto.createHash("sha256").update(key).digest("hex");
+
+function apiKeyFromRequest(req: any): string {
+  const header = String(req.headers["x-api-key"] || "").trim();
+  if (header.startsWith(API_KEY_PREFIX)) return header;
+  const bearer = bearerToken(req);
+  return bearer.startsWith(API_KEY_PREFIX) ? bearer : "";
+}
+
+// Identifica a empresa pela chave de API (rotas /api/v1 e integração SolidWorks)
+async function attachApiKeyContext(req: any): Promise<void> {
+  const key = apiKeyFromRequest(req);
+  if (!key || !hasDatabaseBackend()) return;
+  const hash = hashApiKey(key);
+  let cached = apiKeyCache.get(hash);
+  if (!cached || Date.now() - cached.at > 30000) {
+    await ensureIntegrationTables();
+    const cfg = resolveDatabaseConfig();
+    const r = await executeSqlWithRetry(`SELECT * FROM api_keys WHERE key_hash = $1`, [hash], cfg.database);
+    cached = { record: r.rows[0] || null, at: Date.now() };
+    apiKeyCache.set(hash, cached);
+    if (cached.record && !cached.record.revoked_at && (!cached.record.last_used_at || Date.now() - Number(cached.record.last_used_at) > 60000)) {
+      executeSqlWithRetry(`UPDATE api_keys SET last_used_at = $1 WHERE id = $2`, [Date.now(), cached.record.id], cfg.database).catch(() => {});
+    }
+  }
+  const rec = cached.record;
+  if (!rec || rec.revoked_at) return;
+  const company = findCompany(serverAppStoreCache, rec.company_id);
+  if (!company || company.subscriptionStatus === "blocked" || company.subscriptionStatus === "overdue") return;
+  req.apiKey = { id: rec.id, companyId: rec.company_id, scopes: Array.isArray(rec.scopes) ? rec.scopes : [], name: rec.name };
+}
+
+function isApiKeyRoute(req: any): boolean {
+  return req.path.startsWith("/api/v1/") || req.path === "/api/integrations/solidworks/sync-project";
+}
+
+function requireApiScope(scope: string) {
+  return (req: any, res: any, next: any) => {
+    if (!req.apiKey) {
+      return res.status(401).json({ success: false, code: "API_KEY_REQUIRED", error: "Envie a chave de API no cabeçalho Authorization: Bearer mdk_... (ou X-API-Key)." });
+    }
+    if (!req.apiKey.scopes.includes(scope)) {
+      return res.status(403).json({ success: false, code: "SCOPE_NOT_ALLOWED", error: `A chave de API não tem a permissão "${scope}".` });
+    }
+    const w = apiRateWindows.get(req.apiKey.id);
+    const now = Date.now();
+    if (!w || now - w.start > 60000) apiRateWindows.set(req.apiKey.id, { start: now, count: 1 });
+    else if (++w.count > API_RATE_LIMIT_PER_MIN) {
+      res.setHeader("Retry-After", String(Math.ceil((w.start + 60000 - now) / 1000)));
+      return res.status(429).json({ success: false, code: "RATE_LIMITED", error: `Limite de ${API_RATE_LIMIT_PER_MIN} requisições por minuto por chave.` });
+    }
+    next();
+  };
+}
+
+// Quem gerencia integrações: administrador da plataforma ou quem gerencia usuários da empresa
+function requireIntegrationManager(req: any, res: any, next: any) {
+  if (!req.authUser) return res.status(401).json({ success: false, code: "AUTH_REQUIRED", error: "Sessão expirada ou inválida. Faça login novamente." });
+  const { companyId } = extractUserContext(req);
+  const company = findCompany(serverAppStoreCache, companyId);
+  if (!company || !userCompanyIds(req.authUser, serverAppStoreCache).includes(companyId) || !canManageUsers(req.authUser, company)) {
+    return res.status(403).json({ success: false, code: "FORBIDDEN", error: "Somente administradores podem gerenciar integrações." });
+  }
+  if (!hasDatabaseBackend()) return integrationsUnavailable(res);
+  req.integrationCompanyId = companyId;
+  next();
+}
+
+// Bloqueia endereços internos no teste de conexão (evita usar o servidor para sondar a rede interna)
+function isPrivateAddress(ip: string): boolean {
+  const v = ip.replace(/^::ffff:/, "");
+  if (/^(10\.|127\.|0\.|169\.254\.|192\.168\.)/.test(v)) return true;
+  const m = v.match(/^172\.(\d+)\./);
+  if (m && Number(m[1]) >= 16 && Number(m[1]) <= 31) return true;
+  if (/^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./.test(v)) return true;
+  return v === "::1" || v === "::" || /^f[cd]/i.test(v) || /^fe80/i.test(v);
+}
+
+function publicIntegrationRow(r: any) {
+  return {
+    id: r.id, name: r.name, kind: r.kind, baseUrl: r.base_url, authType: r.auth_type, authHeader: r.auth_header,
+    username: r.username, hasSecret: Boolean(r.secret_enc), secretHint: r.secret_last4 ? `••••${r.secret_last4}` : "",
+    notes: r.notes || "", enabled: r.enabled, createdAt: Number(r.created_at), updatedAt: Number(r.updated_at),
+    lastTestAt: r.last_test_at ? Number(r.last_test_at) : null, lastTestStatus: r.last_test_status || null,
   };
 }
 
@@ -3363,6 +3590,283 @@ app.get("/api/production-orders", requireAuth, requireContractedModule("Produç�
 });
 
 // =========================================================================
+// INTEGRAÇÕES — GESTÃO (tela "Integrações e API", sessão de administrador)
+// =========================================================================
+app.get("/api/integrations/api-keys", requireIntegrationManager, async (req: any, res) => {
+  try {
+    await ensureIntegrationTables();
+    const cfg = resolveDatabaseConfig();
+    const r = await executeSqlWithRetry(
+      `SELECT id, name, prefix, scopes, created_by, created_at, last_used_at, revoked_at FROM api_keys WHERE company_id = $1 ORDER BY created_at DESC`,
+      [req.integrationCompanyId], cfg.database);
+    res.json({
+      success: true,
+      keys: r.rows.map((k: any) => ({
+        id: k.id, name: k.name, prefix: k.prefix, scopes: k.scopes, createdBy: k.created_by,
+        createdAt: Number(k.created_at), lastUsedAt: k.last_used_at ? Number(k.last_used_at) : null,
+        revokedAt: k.revoked_at ? Number(k.revoked_at) : null,
+      })),
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.post("/api/integrations/api-keys", requireIntegrationManager, async (req: any, res) => {
+  try {
+    const name = String(req.body?.name || "").trim().slice(0, 80);
+    const scopes = (Array.isArray(req.body?.scopes) ? req.body.scopes : []).filter((s: any) => (API_KEY_SCOPES as readonly string[]).includes(s));
+    if (!name) return res.status(400).json({ success: false, error: "Informe um nome para identificar a chave (ex.: ERP da contabilidade)." });
+    if (scopes.length === 0) return res.status(400).json({ success: false, error: "Escolha ao menos uma permissão: leitura, gravação ou SolidWorks." });
+    await ensureIntegrationTables();
+    const key = `${API_KEY_PREFIX}${crypto.randomBytes(24).toString("base64url")}`;
+    const id = `key-${crypto.randomBytes(6).toString("hex")}`;
+    const cfg = resolveDatabaseConfig();
+    await executeSqlWithRetry(
+      `INSERT INTO api_keys (id, company_id, name, prefix, key_hash, scopes, created_by, created_at) VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7,$8)`,
+      [id, req.integrationCompanyId, name, key.slice(0, 10), hashApiKey(key), JSON.stringify(scopes), req.authUser.name || req.authUser.username, Date.now()],
+      cfg.database);
+    // A chave completa só é mostrada agora; no banco fica apenas o hash
+    res.json({ success: true, id, key, prefix: key.slice(0, 10), scopes });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.delete("/api/integrations/api-keys/:id", requireIntegrationManager, async (req: any, res) => {
+  try {
+    await ensureIntegrationTables();
+    const cfg = resolveDatabaseConfig();
+    const r = await executeSqlWithRetry(
+      `UPDATE api_keys SET revoked_at = $1 WHERE id = $2 AND company_id = $3 AND revoked_at IS NULL RETURNING key_hash`,
+      [Date.now(), req.params.id, req.integrationCompanyId], cfg.database);
+    if (!r.rows[0]) return res.status(404).json({ success: false, error: "Chave não encontrada ou já revogada." });
+    apiKeyCache.delete(r.rows[0].key_hash);
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+const EXTERNAL_KINDS = ["erp", "contabilidade", "ecommerce", "crm", "banco", "marketplace", "cad", "outro"];
+const EXTERNAL_AUTH_TYPES = ["bearer", "header", "basic", "none"];
+
+app.get("/api/integrations/external", requireIntegrationManager, async (req: any, res) => {
+  try {
+    await ensureIntegrationTables();
+    const cfg = resolveDatabaseConfig();
+    const r = await executeSqlWithRetry(`SELECT * FROM external_integrations WHERE company_id = $1 ORDER BY created_at DESC`, [req.integrationCompanyId], cfg.database);
+    res.json({ success: true, integrations: r.rows.map(publicIntegrationRow) });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.post("/api/integrations/external", requireIntegrationManager, async (req: any, res) => {
+  try {
+    const b = req.body || {};
+    const name = String(b.name || "").trim().slice(0, 80);
+    const kind = EXTERNAL_KINDS.includes(b.kind) ? b.kind : "outro";
+    const authType = EXTERNAL_AUTH_TYPES.includes(b.authType) ? b.authType : "bearer";
+    const baseUrl = String(b.baseUrl || "").trim();
+    let parsed: URL | null = null;
+    try { parsed = new URL(baseUrl); } catch {}
+    if (!name) return res.status(400).json({ success: false, error: "Informe o nome do sistema externo." });
+    if (!parsed || parsed.protocol !== "https:") return res.status(400).json({ success: false, error: "Informe a URL da API do sistema externo começando com https://." });
+    const authHeader = authType === "header" ? String(b.authHeader || "").trim().slice(0, 60) : null;
+    if (authType === "header" && !/^[A-Za-z0-9-]+$/.test(authHeader || "")) return res.status(400).json({ success: false, error: "Informe o nome do cabeçalho de autenticação (ex.: X-API-Key)." });
+    const username = authType === "basic" ? String(b.username || "").trim().slice(0, 120) : null;
+    const secret = typeof b.secret === "string" ? b.secret.trim() : "";
+    const now = Date.now();
+    await ensureIntegrationTables();
+    const cfg = resolveDatabaseConfig();
+    if (b.id) {
+      const existing = await executeSqlWithRetry(`SELECT id FROM external_integrations WHERE id = $1 AND company_id = $2`, [b.id, req.integrationCompanyId], cfg.database);
+      if (!existing.rows[0]) return res.status(404).json({ success: false, error: "Integração não encontrada." });
+      // Credencial só é trocada quando uma nova é digitada
+      const secretSql = secret ? `, secret_enc = $11, secret_last4 = $12` : (authType === "none" ? `, secret_enc = NULL, secret_last4 = NULL` : "");
+      const params: any[] = [b.id, req.integrationCompanyId, name, kind, parsed.toString(), authType, authHeader, username, String(b.notes || "").slice(0, 500), b.enabled !== false];
+      if (secret) params.push(await encryptSecret(secret), secret.slice(-4));
+      const r = await executeSqlWithRetry(
+        `UPDATE external_integrations SET name = $3, kind = $4, base_url = $5, auth_type = $6, auth_header = $7, username = $8, notes = $9, enabled = $10,
+           updated_at = ${now}${secretSql} WHERE id = $1 AND company_id = $2 RETURNING *`, params, cfg.database);
+      return res.json({ success: true, integration: publicIntegrationRow(r.rows[0]) });
+    }
+    if (authType !== "none" && !secret) return res.status(400).json({ success: false, error: "Informe a chave/token de acesso da API do sistema externo." });
+    const id = `ext-${crypto.randomBytes(6).toString("hex")}`;
+    const r = await executeSqlWithRetry(
+      `INSERT INTO external_integrations (id, company_id, name, kind, base_url, auth_type, auth_header, username, secret_enc, secret_last4, notes, enabled, created_by, created_at, updated_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$14) RETURNING *`,
+      [id, req.integrationCompanyId, name, kind, parsed.toString(), authType, authHeader, username,
+        secret ? await encryptSecret(secret) : null, secret ? secret.slice(-4) : null, String(b.notes || "").slice(0, 500),
+        b.enabled !== false, req.authUser.name || req.authUser.username, now],
+      cfg.database);
+    res.json({ success: true, integration: publicIntegrationRow(r.rows[0]) });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.delete("/api/integrations/external/:id", requireIntegrationManager, async (req: any, res) => {
+  try {
+    await ensureIntegrationTables();
+    const cfg = resolveDatabaseConfig();
+    const r = await executeSqlWithRetry(`DELETE FROM external_integrations WHERE id = $1 AND company_id = $2 RETURNING id`, [req.params.id, req.integrationCompanyId], cfg.database);
+    if (!r.rows[0]) return res.status(404).json({ success: false, error: "Integração não encontrada." });
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Testa a conexão com a API do sistema externo usando a credencial guardada
+app.post("/api/integrations/external/:id/test", requireIntegrationManager, async (req: any, res) => {
+  const cfg = resolveDatabaseConfig();
+  let status = "";
+  try {
+    await ensureIntegrationTables();
+    const r = await executeSqlWithRetry(`SELECT * FROM external_integrations WHERE id = $1 AND company_id = $2`, [req.params.id, req.integrationCompanyId], cfg.database);
+    const row = r.rows[0];
+    if (!row) return res.status(404).json({ success: false, error: "Integração não encontrada." });
+    const target = new URL(row.base_url);
+    const { lookup } = await import("dns/promises");
+    const addrs = await lookup(target.hostname, { all: true }).catch(() => []);
+    if (!addrs.length) status = "Endereço não encontrado (DNS).";
+    else if (addrs.some((a: any) => isPrivateAddress(a.address))) status = "Endereço interno bloqueado por segurança.";
+    else {
+      const headers: Record<string, string> = { Accept: "application/json", "User-Agent": "MotorDesk-Integracoes/1.0" };
+      const secret = await decryptSecret(row.secret_enc);
+      if (row.auth_type === "bearer" && secret) headers.Authorization = `Bearer ${secret}`;
+      if (row.auth_type === "header" && secret && row.auth_header) headers[row.auth_header] = secret;
+      if (row.auth_type === "basic") headers.Authorization = `Basic ${Buffer.from(`${row.username || ""}:${secret || ""}`).toString("base64")}`;
+      const started = Date.now();
+      try {
+        const resp = await fetch(target, { method: "GET", headers, redirect: "manual", signal: AbortSignal.timeout(8000) });
+        const ms = Date.now() - started;
+        status = resp.status === 401 || resp.status === 403
+          ? `Conectou, mas a credencial foi recusada (HTTP ${resp.status}, ${ms} ms).`
+          : resp.status < 500 ? `Conectado (HTTP ${resp.status}, ${ms} ms).` : `O sistema externo respondeu com erro (HTTP ${resp.status}, ${ms} ms).`;
+      } catch (err: any) {
+        status = err?.name === "TimeoutError" ? "Sem resposta em 8 segundos." : `Falha de conexão: ${err?.cause?.code || err?.message || "erro desconhecido"}.`;
+      }
+    }
+    await executeSqlWithRetry(`UPDATE external_integrations SET last_test_at = $1, last_test_status = $2 WHERE id = $3`, [Date.now(), status, row.id], cfg.database);
+    res.json({ success: true, ok: status.startsWith("Conectado"), status });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// =========================================================================
+// API PÚBLICA DO MOTORDESK (v1) — sistemas externos, com chave de API da empresa
+// =========================================================================
+const V1_RESOURCES: Record<string, { collection: string; permission: string; label: string; key?: (r: any) => string }> = {
+  clients: { collection: "clients", permission: "accessClients", label: "Clientes", key: (r) => String(r.cpfCnpj || r.cpf || "").replace(/\D/g, "") },
+  vehicles: { collection: "vehicles", permission: "accessVehicles", label: "Veículos", key: (r) => String(r.plate || "").toUpperCase().replace(/[^A-Z0-9]/g, "") },
+  parts: { collection: "parts", permission: "accessParts", label: "Peças e estoque", key: (r) => String(r.code || "").trim().toUpperCase() },
+  services: { collection: "services", permission: "accessServices", label: "Serviços" },
+  "service-orders": { collection: "serviceOrders", permission: "accessServiceOrders", label: "Ordens de serviço" },
+  sales: { collection: "sales", permission: "accessSales", label: "Vendas balcão" },
+  budgets: { collection: "budgets", permission: "accessBudgets", label: "Orçamentos" },
+  "accounts-receivable": { collection: "accountsReceivable", permission: "accessAccountsReceivable", label: "Contas a receber" },
+  "accounts-payable": { collection: "accountsPayable", permission: "accessAccountsPayable", label: "Contas a pagar" },
+  suppliers: { collection: "suppliers", permission: "accessQuotations", label: "Fornecedores" },
+};
+
+function v1Resource(req: any, res: any) {
+  const def = V1_RESOURCES[req.params.resource];
+  if (!def) {
+    res.status(404).json({ success: false, error: `Recurso desconhecido. Disponíveis: ${Object.keys(V1_RESOURCES).join(", ")}.` });
+    return null;
+  }
+  const company = findCompany(serverAppStoreCache, req.apiKey.companyId);
+  if (!companyAllowsPermission(company, def.permission)) {
+    res.status(403).json({ success: false, code: "MODULE_NOT_ALLOWED", error: `O módulo "${def.label}" não está contratado pela empresa.` });
+    return null;
+  }
+  return def;
+}
+
+app.get("/api/v1", (req, res) => {
+  const base = `${req.headers["x-forwarded-proto"] || req.protocol}://${req.headers.host}/api/v1`;
+  res.json({
+    name: "MotorDesk API",
+    version: "1",
+    baseUrl: base,
+    authentication: "Cabeçalho Authorization: Bearer <chave mdk_...> (ou X-API-Key). Gere a chave em Integrações e API.",
+    rateLimit: `${API_RATE_LIMIT_PER_MIN} requisições por minuto por chave`,
+    endpoints: [
+      ...Object.entries(V1_RESOURCES).flatMap(([path, d]) => [
+        { method: "GET", path: `/${path}`, scope: "read", description: `Lista ${d.label.toLowerCase()} (parâmetros: limit até 200, offset, updatedSince=ISO-8601).` },
+        { method: "GET", path: `/${path}/{id}`, scope: "read", description: `Consulta um registro de ${d.label.toLowerCase()}.` },
+        ...(d.key ? [{ method: "POST", path: `/${path}`, scope: "write", description: `Cria ou atualiza (por id ou ${path === "clients" ? "CPF/CNPJ" : path === "vehicles" ? "placa" : "código"}).` }] : []),
+      ]),
+      { method: "POST", path: "/api/integrations/solidworks/sync-project", scope: "solidworks", description: "Envia projeto/BOM do add-in SolidWorks (gera ordem de produção e separação)." },
+    ],
+  });
+});
+
+app.get("/api/v1/:resource", requireApiScope("read"), (req: any, res) => {
+  const def = v1Resource(req, res);
+  if (!def) return;
+  const limit = Math.min(Math.max(parseInt(String(req.query.limit || "50"), 10) || 50, 1), 200);
+  const offset = Math.max(parseInt(String(req.query.offset || "0"), 10) || 0, 0);
+  const since = req.query.updatedSince ? Date.parse(String(req.query.updatedSince)) : NaN;
+  let rows = (serverAppStoreCache?.[def.collection] || []).filter((r: any) => r && r.companyId === req.apiKey.companyId);
+  if (!Number.isNaN(since)) rows = rows.filter((r: any) => Date.parse(r.updatedAt || r.createdAt || 0) >= since);
+  res.json({ success: true, total: rows.length, limit, offset, data: rows.slice(offset, offset + limit) });
+});
+
+app.get("/api/v1/:resource/:id", requireApiScope("read"), (req: any, res) => {
+  const def = v1Resource(req, res);
+  if (!def) return;
+  const row = (serverAppStoreCache?.[def.collection] || []).find((r: any) => r && r.id === req.params.id && r.companyId === req.apiKey.companyId);
+  if (!row) return res.status(404).json({ success: false, error: "Registro não encontrado." });
+  res.json({ success: true, data: row });
+});
+
+app.post("/api/v1/:resource", requireApiScope("write"), async (req: any, res) => {
+  const def = v1Resource(req, res);
+  if (!def) return;
+  if (!def.key) return res.status(405).json({ success: false, error: "Este recurso é somente leitura pela API." });
+  const body = req.body;
+  if (!body || typeof body !== "object" || Array.isArray(body)) return res.status(400).json({ success: false, error: "Envie um objeto JSON." });
+  if (Buffer.byteLength(JSON.stringify(body)) > 50 * 1024) return res.status(413).json({ success: false, error: "Registro grande demais (máx. 50 KB)." });
+  const clean: any = {};
+  for (const [k, v] of Object.entries(body)) if (!k.startsWith("_") && k !== "companyId") clean[k] = v;
+  const naturalKey = def.key(clean);
+  if (!clean.id && !naturalKey) {
+    return res.status(400).json({ success: false, error: `Informe o id ou ${def.collection === "clients" ? "o CPF/CNPJ (cpfCnpj)" : def.collection === "vehicles" ? "a placa (plate)" : "o código (code)"}.` });
+  }
+  const companyId = req.apiKey.companyId;
+  try {
+    let saved: any = null;
+    let created = false;
+    await mutateAppStore((current) => {
+      const next = { ...(current || {}) };
+      const list = Array.isArray(next[def.collection]) ? [...next[def.collection]] : [];
+      const idx = list.findIndex((r: any) => r && r.companyId === companyId && ((clean.id && r.id === clean.id) || (naturalKey && def.key!(r) === naturalKey)));
+      const now = new Date().toISOString();
+      if (idx >= 0) {
+        saved = { ...list[idx], ...clean, id: list[idx].id, companyId, updatedAt: now, _rev: Date.now() };
+        list[idx] = saved;
+      } else {
+        if (clean.id && list.some((r: any) => r && r.id === clean.id)) throw appStoreError("Já existe um registro com este id em outra empresa.", 409);
+        if (def.collection === "clients" && !clean.name) throw appStoreError("Informe o nome do cliente (name) para cadastrá-lo.", 400);
+        created = true;
+        saved = { ...clean, id: clean.id || `${def.collection.slice(0, 3)}-api-${Date.now()}-${crypto.randomBytes(3).toString("hex")}`, companyId, createdAt: now, updatedAt: now, _rev: Date.now() };
+        list.push(saved);
+      }
+      next[def.collection] = list;
+      return next;
+    }, { source: `api_v1_${def.collection}`, companyId, userId: `api:${req.apiKey.id}` });
+    res.status(created ? 201 : 200).json({ success: true, created, data: saved });
+  } catch (err: any) {
+    res.status(err.httpStatus || 500).json({ success: false, error: err.message });
+  }
+});
+
+// =========================================================================
 // INTEGRAÇÃO CAD SOLIDWORKS & AUTOMAÇÃO OPERACIONAL (PEDIDOS / SEPARAÇÃO)
 // =========================================================================
 app.get("/api/integrations/solidworks/projects", requireAuth, async (req: any, res) => {
@@ -3377,7 +3881,11 @@ app.get("/api/integrations/solidworks/projects", requireAuth, async (req: any, r
 
 app.post("/api/integrations/solidworks/sync-project", async (req: any, res) => {
   try {
-    const targetCompId = extractUserContext(req).companyId;
+    // Add-in do SolidWorks: chave de API da empresa com a permissão "solidworks" (ou usuário logado)
+    if (req.apiKey && !req.apiKey.scopes.includes("solidworks")) {
+      return res.status(403).json({ success: false, code: "SCOPE_NOT_ALLOWED", error: 'A chave de API não tem a permissão "solidworks".' });
+    }
+    const targetCompId = req.apiKey ? req.apiKey.companyId : extractUserContext(req).companyId;
     const payload = req.body || {};
     
     if (!payload.projectName && !payload.cadFile) {
@@ -3729,28 +4237,49 @@ app.post("/api/public/quotations/:id/respond", async (req, res) => {
 // Provedor Oficial: Focus NFe / Nuvem Fiscal (Homologação e Produção)
 // =========================================================================
 
+// -------------------------------------------------------------------------
+// EMISSÃO FISCAL BLOQUEADA ATÉ HAVER PROVEDOR INTEGRADO
+// O serviço fiscal anterior (fiscalProviderService) e as telas apenas SIMULAVAM a emissão:
+// chave de acesso e protocolo sorteados, "autorizado" sem nada ser enviado à SEFAZ/prefeitura.
+// Enquanto nenhum provedor real (ex.: Focus NFe) estiver integrado, nenhuma rota emite e o
+// servidor recusa gravar notas como autorizadas/canceladas/inutilizadas.
+// -------------------------------------------------------------------------
+function fiscalProviderActive(): boolean {
+  return false; // nenhum provedor fiscal integrado ainda
+}
+const FISCAL_NOT_CONFIGURED = {
+  success: false,
+  code: "FISCAL_PROVIDER_NOT_CONFIGURED",
+  error: "Emissão fiscal indisponível: nenhum provedor fiscal (ex.: Focus NFe) está configurado. Nenhuma nota foi enviada à SEFAZ ou à prefeitura.",
+};
+function blockFiscalWithoutProvider(req: any, res: any, next: any) {
+  if (!fiscalProviderActive()) return res.status(503).json(FISCAL_NOT_CONFIGURED);
+  next();
+}
+
 // Status geral e configuração do provedor fiscal
 app.get("/api/fiscal/config-status", async (req, res) => {
-  try {
-    const status = fiscalBackendService.getSystemStatus();
-    res.json(status);
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
-  }
+  res.json({
+    status: fiscalProviderActive() ? "operational" : "not_configured",
+    configured: fiscalProviderActive(),
+    provider: null,
+    message: fiscalProviderActive() ? "Provedor fiscal ativo." : FISCAL_NOT_CONFIGURED.error,
+    timestamp: new Date().toISOString(),
+  });
 });
 
 // Lista dos WebServices oficiais da SEFAZ SP e Municipal
 app.get("/api/fiscal/official-webservices", async (req, res) => {
   try {
     const modeInfo = fiscalBackendService.getCommunicationMode();
-    res.json(modeInfo);
+    res.json({ ...modeInfo, providerConfigured: fiscalProviderActive() });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// Teste de conectividade com todos os WebServices oficiais
-app.post("/api/fiscal/test-webservices", async (req, res) => {
+// Teste de conectividade: sem provedor não há o que testar (o teste anterior sempre dizia "OK")
+app.post("/api/fiscal/test-webservices", blockFiscalWithoutProvider, async (req, res) => {
   try {
     const results = await fiscalBackendService.testAllOfficialWebservices();
     res.json(results);
@@ -3778,7 +4307,7 @@ app.post("/api/fiscal/set-communication-mode", requireAuth, requireContractedMod
 });
 
 // Consulta de disponibilidade SEFAZ
-app.get("/api/fiscal/status-servico", async (req, res) => {
+app.get("/api/fiscal/status-servico", blockFiscalWithoutProvider, async (req, res) => {
   try {
     const uf = (req.query.uf as string) || "SP";
     const env = (req.query.env as "homologation" | "production") || undefined;
@@ -3790,7 +4319,7 @@ app.get("/api/fiscal/status-servico", async (req, res) => {
 });
 
 // Upload seguro de Certificado Digital A1 para o cofre do provedor
-app.post("/api/fiscal/certificate/upload", requireAuth, requireContractedModule("Fiscal", "accessFiscal", () => serverAppStoreCache), async (req, res) => {
+app.post("/api/fiscal/certificate/upload", requireAuth, blockFiscalWithoutProvider, requireContractedModule("Fiscal", "accessFiscal", () => serverAppStoreCache), async (req, res) => {
   try {
     const { companyCnpj, certBase64, certPassword, companyData, environment } = req.body;
     if (!companyCnpj || !certBase64 || !certPassword) {
@@ -3810,7 +4339,7 @@ app.post("/api/fiscal/certificate/upload", requireAuth, requireContractedModule(
 });
 
 // Emissão de NF-e (Modelo 55 - Produtos / Vendas)
-app.post("/api/fiscal/nfe/emit", requireAuth, requireContractedModule("Fiscal", "accessFiscal", () => serverAppStoreCache), async (req, res) => {
+app.post("/api/fiscal/nfe/emit", requireAuth, blockFiscalWithoutProvider, requireContractedModule("Fiscal", "accessFiscal", () => serverAppStoreCache), async (req, res) => {
   try {
     const { payload, refId, environment } = req.body;
     if (!payload || !refId) {
@@ -3824,7 +4353,7 @@ app.post("/api/fiscal/nfe/emit", requireAuth, requireContractedModule("Fiscal", 
 });
 
 // Emissão de NFC-e (Modelo 65 - Consumidor Final / Balcão)
-app.post("/api/fiscal/nfce/emit", requireAuth, requireContractedModule("Fiscal", "accessFiscal", () => serverAppStoreCache), async (req, res) => {
+app.post("/api/fiscal/nfce/emit", requireAuth, blockFiscalWithoutProvider, requireContractedModule("Fiscal", "accessFiscal", () => serverAppStoreCache), async (req, res) => {
   try {
     const { payload, refId, environment } = req.body;
     if (!payload || !refId) {
@@ -3838,7 +4367,7 @@ app.post("/api/fiscal/nfce/emit", requireAuth, requireContractedModule("Fiscal",
 });
 
 // Emissão de NFS-e (Serviços / Ordens de Serviço Oficina)
-app.post("/api/fiscal/nfse/emit", requireAuth, requireContractedModule("Fiscal", "accessFiscal", () => serverAppStoreCache), async (req, res) => {
+app.post("/api/fiscal/nfse/emit", requireAuth, blockFiscalWithoutProvider, requireContractedModule("Fiscal", "accessFiscal", () => serverAppStoreCache), async (req, res) => {
   try {
     const { payload, refId, environment } = req.body;
     if (!payload || !refId) {
@@ -3852,7 +4381,7 @@ app.post("/api/fiscal/nfse/emit", requireAuth, requireContractedModule("Fiscal",
 });
 
 // Cancelamento de Documento Fiscal (NF-e / NFC-e / NFS-e)
-app.post("/api/fiscal/cancel", requireAuth, requireContractedModule("Fiscal", "accessFiscal", () => serverAppStoreCache), async (req, res) => {
+app.post("/api/fiscal/cancel", requireAuth, blockFiscalWithoutProvider, requireContractedModule("Fiscal", "accessFiscal", () => serverAppStoreCache), async (req, res) => {
   try {
     const { docType, refId, justificativa, environment } = req.body;
     if (!docType || !refId || !justificativa) {
@@ -3866,7 +4395,7 @@ app.post("/api/fiscal/cancel", requireAuth, requireContractedModule("Fiscal", "a
 });
 
 // Carta de Correção Eletrônica (CC-e)
-app.post("/api/fiscal/cce", requireAuth, requireContractedModule("Fiscal", "accessFiscal", () => serverAppStoreCache), async (req, res) => {
+app.post("/api/fiscal/cce", requireAuth, blockFiscalWithoutProvider, requireContractedModule("Fiscal", "accessFiscal", () => serverAppStoreCache), async (req, res) => {
   try {
     const { refId, correcao, environment } = req.body;
     if (!refId || !correcao) {
@@ -3880,7 +4409,7 @@ app.post("/api/fiscal/cce", requireAuth, requireContractedModule("Fiscal", "acce
 });
 
 // Inutilização de Numeração Fiscal
-app.post("/api/fiscal/inutilize", requireAuth, requireContractedModule("Fiscal", "accessFiscal", () => serverAppStoreCache), async (req, res) => {
+app.post("/api/fiscal/inutilize", requireAuth, blockFiscalWithoutProvider, requireContractedModule("Fiscal", "accessFiscal", () => serverAppStoreCache), async (req, res) => {
   try {
     const { payload, environment } = req.body;
     if (!payload || !payload.cnpj || !payload.serie || !payload.numero_inicial || !payload.numero_final || !payload.justificativa) {
@@ -3896,6 +4425,13 @@ app.post("/api/fiscal/inutilize", requireAuth, requireContractedModule("Fiscal",
 // ==========================================
 // 4.1 ROTAS NOTAS-API / FOCUS NFE NFS-E GATEWAY
 // ==========================================
+
+// Desativado: emitia NFS-e simulada (protocolo sorteado), usava senha-mestra fixa no código e gravava
+// em arquivo (inexistente na Vercel). Volta a funcionar quando houver provedor fiscal real integrado.
+app.use("/api/notas-api", (req, res, next) => {
+  if (!fiscalProviderActive()) return res.status(503).json(FISCAL_NOT_CONFIGURED);
+  next();
+});
 
 // Store for admin tokens
 const notasApiAdminSessions = new Set<string>();
