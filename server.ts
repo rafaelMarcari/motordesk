@@ -2289,9 +2289,11 @@ app.get("/api/db/stream", (req, res) => {
   sseSubscribers.add(res);
   console.log(`[REALTIME-SSE] New machine connected to real-time stream. Total active: ${sseSubscribers.size}`);
 
+  // Evento nomeado (e não comentário SSE): comentários não disparam nada no navegador,
+  // e o watchdog do cliente derrubava a conexão saudável a cada ~45s.
   const keepAliveTimer = setInterval(() => {
     try {
-      res.write(": keep-alive\n\n");
+      res.write(`event: ping\ndata: ${Date.now()}\n\n`);
       if (typeof (res as any).flush === 'function') {
         (res as any).flush();
       }

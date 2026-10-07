@@ -331,45 +331,53 @@
     };
   }
 
-  let sseDisabled = false;
+  let sseDisabled = false; // mantido por compatibilidade; o SSE não é mais desligado de forma permanente
   let sseConsecutiveErrors = 0;
+  let sseConnecting = false;
 
+  // Confere se /api/db/stream responde como SSE ANTES de abrir o EventSource.
+  // Se a hospedagem devolver HTML (fallback de SPA, página de erro 502/503 durante deploy ou
+  // reinício), o EventSource nunca é aberto — evitando o erro de MIME "text/html" no console.
+  // A conexão de teste é encerrada logo após ler os cabeçalhos para não ficar presa no servidor.
   async function checkSseSupport() {
-    if (sseDisabled) return false;
+    const ctrl = new AbortController();
+    const tid = setTimeout(() => ctrl.abort(), 4000);
     try {
-      const ctrl = new AbortController();
-      const tid = setTimeout(() => ctrl.abort(), 3000);
-      const res = await fetch('/api/db/stream', {
+      const res = await fetch('/api/db/stream?probe=1', {
         method: 'GET',
         headers: { Accept: 'text/event-stream' },
+        cache: 'no-store',
         signal: ctrl.signal
       });
-      clearTimeout(tid);
       const ctype = (res.headers.get('content-type') || '').toLowerCase();
-      if (!res.ok || ctype.includes('text/html') || !ctype.includes('text/event-stream')) {
-        sseDisabled = true;
-        log('Ambiente de hospedagem estática/SPA detectado (Vercel/HTML fallback). SSE suspenso para manter console limpo.');
-        return false;
-      }
-      return true;
+      return res.ok && ctype.includes('text/event-stream');
     } catch (e) {
-      sseDisabled = true;
       return false;
+    } finally {
+      clearTimeout(tid);
+      try { ctrl.abort(); } catch (e) {}
     }
+  }
+
+  function scheduleSseReconnect(reason) {
+    if (sseReconnectTimer) return;
+    const delay = sseReconnectDelay;
+    sseReconnectDelay = Math.min(sseReconnectDelay * 1.5, 60000);
+    sseReconnectTimer = setTimeout(() => {
+      sseReconnectTimer = null;
+      log('Reconnecting SSE stream (' + reason + ', delay ' + Math.round(delay) + 'ms)...');
+      connectSSE();
+    }, delay);
   }
 
   // 2. Server-Sent Events (SSE) para entrega instantânea multi-máquinas (< 50ms)
   async function connectSSE() {
-    if (sseDisabled) return;
+    if (sseConnecting) return;
     if (sseReconnectTimer) {
       clearTimeout(sseReconnectTimer);
       sseReconnectTimer = null;
     }
-
-    if (sseConsecutiveErrors === 0) {
-      const supported = await checkSseSupport();
-      if (!supported) return;
-    }
+    sseConnecting = true;
 
     try {
       if (sseSource) {
@@ -377,6 +385,14 @@
           sseSource.close();
         } catch (e) {}
         sseSource = null;
+      }
+
+      // Sempre testar antes de (re)abrir: o polling de versão cobre a sincronização enquanto isso
+      const supported = await checkSseSupport();
+      if (!supported) {
+        updateIndicatorStatus('offline');
+        scheduleSseReconnect('stream indisponível');
+        return;
       }
 
       sseSource = new EventSource('/api/db/stream');
@@ -396,6 +412,11 @@
           updateIndicatorStatus('connected');
           log(`SSE stream connected. Current DB version: ${knownVersion}, Active machines: ${activeSubscribersCount}`);
         } catch (err) {}
+      });
+
+      // Batimento do servidor (a cada 5s): mantém o watchdog ciente de que a conexão está viva
+      sseSource.addEventListener('ping', function () {
+        lastReceivedSignalTime = Date.now();
       });
 
       sseSource.addEventListener('db_update', function (e) {
@@ -437,43 +458,21 @@
       sseSource.onerror = function () {
         updateIndicatorStatus('offline');
         sseConsecutiveErrors++;
+        // Fecha já: a reconexão automática do navegador não testa o tipo da resposta
+        // e geraria o erro de MIME se a hospedagem devolver uma página HTML.
         if (sseSource) {
           try {
             sseSource.close();
           } catch (e) {}
           sseSource = null;
         }
-
-        if (sseConsecutiveErrors >= 2) {
-          checkSseSupport().then(supported => {
-            if (!supported) {
-              sseDisabled = true;
-              log('SSE desativado com segurança no ambiente estático.');
-            } else if (!sseReconnectTimer && !sseDisabled) {
-              const delay = sseReconnectDelay;
-              sseReconnectDelay = Math.min(sseReconnectDelay * 1.5, 30000);
-              sseReconnectTimer = setTimeout(() => {
-                sseReconnectTimer = null;
-                connectSSE();
-              }, delay);
-            }
-          });
-          return;
-        }
-
-        // Tentar reconectar com backoff exponencial (5s a 30s) para respeitar limites de API Gateway
-        if (!sseReconnectTimer && !sseDisabled) {
-          const delay = sseReconnectDelay;
-          sseReconnectDelay = Math.min(sseReconnectDelay * 1.5, 30000);
-          sseReconnectTimer = setTimeout(() => {
-            sseReconnectTimer = null;
-            log('Reconnecting SSE stream after connection drop (delay ' + Math.round(delay) + 'ms)...');
-            connectSSE();
-          }, delay);
-        }
+        // Backoff exponencial (5s a 60s); cada tentativa passa pelo teste em connectSSE
+        scheduleSseReconnect('connection drop');
       };
     } catch (err) {
       console.warn('[MotorDesk LiveSync] SSE initialization error:', err);
+    } finally {
+      sseConnecting = false;
     }
   }
 
@@ -499,7 +498,6 @@
 
       const ctype = (res.headers.get('content-type') || '').toLowerCase();
       if (!ctype.includes('application/json')) {
-        sseDisabled = true;
         return;
       }
 
