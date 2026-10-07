@@ -35,19 +35,15 @@ class DataProviderService {
     }
   }
   async getDatabase() {
-    if (typeof window !== "undefined") {
-      if (window.__CURRENT_DB && typeof window.__CURRENT_DB === "object") {
-        return window.__CURRENT_DB;
-      }
-      if (window.__motorDeskDbPromise) {
-        try {
-          const preDb = await window.__motorDeskDbPromise;
-          if (preDb && typeof preDb === "object") {
-            window.__CURRENT_DB = preDb;
-            return preDb;
-          }
-        } catch (e) {
+    if (typeof window !== "undefined" && window.__motorDeskDbPromise && !window.__motorDeskBootDbConsumed) {
+      window.__motorDeskBootDbConsumed = true;
+      try {
+        const preDb = await window.__motorDeskDbPromise;
+        if (preDb && typeof preDb === "object") {
+          window.__CURRENT_DB = preDb;
+          return preDb;
         }
+      } catch (e) {
       }
     }
     let authToken = typeof localStorage !== "undefined" ? localStorage.getItem("motordesk_auth_token") : null;
@@ -91,7 +87,7 @@ class DataProviderService {
         throw new Error(`HTTP ${response.status} loading database from server`);
       }
       const payload = await response.json();
-      const serverDb = payload.data || payload;
+      const serverDb = payload && payload.success !== false ? payload.data : null;
       if (serverDb && typeof serverDb === "object") {
         if (typeof window !== "undefined") {
           window.__CURRENT_DB = serverDb;
@@ -114,6 +110,9 @@ class DataProviderService {
       }
     } catch (err) {
       console.warn("[DataProvider] Server fetch notice, evaluating fallback:", err);
+    }
+    if (typeof window !== "undefined" && window.__CURRENT_DB) {
+      return window.__CURRENT_DB;
     }
     if (typeof localStorage !== "undefined") {
       const raw = localStorage.getItem("motordesk_db_v1") || localStorage.getItem("motordesk_db") || localStorage.getItem("motordesk_full_database");

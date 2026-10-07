@@ -30,19 +30,19 @@
     }
 
     try {
+      // Fonte única de verdade: banco PostgreSQL (Neon) via API do servidor
       let fresh = null;
-      if (typeof window.__motorDeskFirestore?.fetchDatabase === 'function') {
-        fresh = await window.__motorDeskFirestore.fetchDatabase();
-        if (fresh && window.__motorDeskDb?.onDataMergedCallback) {
-          window.__motorDeskDb.onDataMergedCallback(fresh);
-        }
-      } else if (typeof window.__motorDeskDirectQuery === 'function') {
+      if (typeof window.__motorDeskDirectQuery === 'function') {
         fresh = await window.__motorDeskDirectQuery(queryText);
       } else if (typeof window.__motorDeskSyncNow === 'function') {
         window.__motorDeskSyncNow('user_direct_search');
       }
 
-      showQueryToast('✓ Conectado e atualizado diretamente do Google Cloud Firestore!');
+      if (fresh) {
+        showQueryToast('✓ Dados atualizados diretamente do Banco Central!');
+      } else {
+        showQueryToast('Aviso: não foi possível consultar o Banco Central. Tentando novamente...', 'warning');
+      }
     } catch(err) {
       console.warn('Erro ao consultar banco:', err);
       showQueryToast('Aviso: Conectando ao banco...', 'warning');

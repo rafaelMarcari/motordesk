@@ -73,6 +73,9 @@ function resolveDatabaseConfig(overrideDb) {
     instanceName
   };
 }
+function isRemoteDatabaseConfigured() {
+  return Boolean(process.env.DATABASE_URL || process.env.NEON_DATABASE_URL || process.env.POSTGRES_URL);
+}
 function isDatabaseSocketAvailable(targetDb) {
   const config = resolveDatabaseConfig(targetDb);
   if (config.isUnixSocket) {
@@ -251,8 +254,70 @@ async function executeSqlWithRetry(queryText, params = [], targetDb, maxRetries 
   }
   throw new Error("Max retries exceeded for SQL query");
 }
+function isBrokenSocketError(err) {
+  const msg = String(err?.message || "").toLowerCase();
+  return err?.code === "EPIPE" || err?.code === "ECONNRESET" || err?.code === "ECONNREFUSED" || err?.code === "57P01" || err?.code === "ETIMEDOUT" || msg.includes("epipe") || msg.includes("reset") || msg.includes("socket") || msg.includes("closed") || msg.includes("connection terminated");
+}
+async function withDbTransaction(fn, targetDb, maxRetries = 3) {
+  let attempt = 0;
+  while (true) {
+    attempt++;
+    const pool = createPool(targetDb);
+    let client = null;
+    let destroyClient = false;
+    try {
+      client = await pool.connect();
+      await client.query("BEGIN");
+      const result = await fn(client);
+      await client.query("COMMIT");
+      return result;
+    } catch (err) {
+      if (client) {
+        try {
+          await client.query("ROLLBACK");
+        } catch (e) {
+          destroyClient = true;
+        }
+      }
+      if (isBrokenSocketError(err)) {
+        destroyClient = true;
+        if (attempt <= maxRetries) {
+          if (client) {
+            try {
+              client.release(true);
+            } catch (e) {
+            }
+            client = null;
+          }
+          purgePool(targetDb);
+          const backoff = Math.min(200 * attempt, 1500);
+          console.warn(`[MotorDesk DB] Transa\xE7\xE3o interrompida (${err.code || err.message}), refazendo tentativa ${attempt}/${maxRetries} em ${backoff}ms...`);
+          await new Promise((r) => setTimeout(r, backoff));
+          continue;
+        }
+      }
+      throw err;
+    } finally {
+      if (client) {
+        try {
+          client.release(destroyClient);
+        } catch (e) {
+        }
+      }
+    }
+  }
+}
 const ensureAppStoreTableExists = async (targetDb) => {
   try {
+    await executeSqlWithRetry(
+      `CREATE TABLE IF NOT EXISTS user_active_company (
+        user_key TEXT PRIMARY KEY,
+        company_id TEXT NOT NULL,
+        updated_at TIMESTAMP DEFAULT NOW() NOT NULL
+      );`,
+      [],
+      targetDb
+    );
     const checkRes = await executeSqlWithRetry(
       `SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'app_store';`,
       [],
@@ -351,8 +416,10 @@ export {
   extractPgErrorDetails,
   getDbInstance,
   isDatabaseSocketAvailable,
+  isRemoteDatabaseConfigured,
   purgePool,
   resolveDatabaseConfig,
   startDatabaseKeepAlive,
-  warmUpDatabaseConnection
+  warmUpDatabaseConnection,
+  withDbTransaction
 };

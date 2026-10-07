@@ -98,6 +98,15 @@ export function resolveDatabaseConfig(overrideDb?: string): DbConfig {
   };
 }
 
+/**
+ * Indica se há uma URL de conexão remota (Neon Postgres) configurada.
+ * Quando verdadeiro, o banco é a ÚNICA fonte de verdade: nenhuma leitura ou
+ * gravação pode cair silenciosamente para cache em memória ou arquivo local.
+ */
+export function isRemoteDatabaseConfigured(): boolean {
+  return Boolean(process.env.DATABASE_URL || process.env.NEON_DATABASE_URL || process.env.POSTGRES_URL);
+}
+
 export function isDatabaseSocketAvailable(targetDb?: string): boolean {
   const config = resolveDatabaseConfig(targetDb);
   if (config.isUnixSocket) {
@@ -320,8 +329,87 @@ export async function executeSqlWithRetry<T extends pg.QueryResultRow = any>(
   throw new Error('Max retries exceeded for SQL query');
 }
 
+function isBrokenSocketError(err: any): boolean {
+  const msg = String(err?.message || '').toLowerCase();
+  return (
+    err?.code === 'EPIPE' ||
+    err?.code === 'ECONNRESET' ||
+    err?.code === 'ECONNREFUSED' ||
+    err?.code === '57P01' ||
+    err?.code === 'ETIMEDOUT' ||
+    msg.includes('epipe') ||
+    msg.includes('reset') ||
+    msg.includes('socket') ||
+    msg.includes('closed') ||
+    msg.includes('connection terminated')
+  );
+}
+
+/**
+ * Executa `fn` dentro de uma transação (BEGIN/COMMIT) em uma única conexão.
+ * Em erro de socket a transação inteira é refeita (é seguro, pois houve ROLLBACK).
+ */
+export async function withDbTransaction<T>(
+  fn: (client: pg.PoolClient) => Promise<T>,
+  targetDb?: string,
+  maxRetries = 3
+): Promise<T> {
+  let attempt = 0;
+  while (true) {
+    attempt++;
+    const pool = createPool(targetDb);
+    let client: pg.PoolClient | null = null;
+    let destroyClient = false;
+    try {
+      client = await pool.connect();
+      await client.query('BEGIN');
+      const result = await fn(client);
+      await client.query('COMMIT');
+      return result;
+    } catch (err: any) {
+      if (client) {
+        try {
+          await client.query('ROLLBACK');
+        } catch (e) {
+          destroyClient = true;
+        }
+      }
+      if (isBrokenSocketError(err)) {
+        destroyClient = true;
+        if (attempt <= maxRetries) {
+          if (client) {
+            try { client.release(true); } catch (e) {}
+            client = null;
+          }
+          purgePool(targetDb);
+          const backoff = Math.min(200 * attempt, 1500);
+          console.warn(`[MotorDesk DB] Transação interrompida (${err.code || err.message}), refazendo tentativa ${attempt}/${maxRetries} em ${backoff}ms...`);
+          await new Promise((r) => setTimeout(r, backoff));
+          continue;
+        }
+      }
+      throw err;
+    } finally {
+      if (client) {
+        try { client.release(destroyClient); } catch (e) {}
+      }
+    }
+  }
+}
+
 export const ensureAppStoreTableExists = async (targetDb?: string): Promise<boolean> => {
   try {
+    // Empresa ativa por usuário: mesma seleção em qualquer navegador/computador
+    await executeSqlWithRetry(
+      `CREATE TABLE IF NOT EXISTS user_active_company (
+        user_key TEXT PRIMARY KEY,
+        company_id TEXT NOT NULL,
+        updated_at TIMESTAMP DEFAULT NOW() NOT NULL
+      );`,
+      [],
+      targetDb
+    );
+
     const checkRes = await executeSqlWithRetry(
       `SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'app_store';`,
       [],

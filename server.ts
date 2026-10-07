@@ -3,7 +3,7 @@ import cors from "cors";
 import path from "path";
 import fs from "fs";
 import { createServer as createViteServer } from "vite";
-import { getDbInstance, checkDatabaseHealth, ensureAppStoreTableExists, createPool, extractPgErrorDetails, resolveDatabaseConfig, executeSqlWithRetry, warmUpDatabaseConnection, startDatabaseKeepAlive, isDatabaseSocketAvailable } from "./src/db/index.js";
+import { getDbInstance, checkDatabaseHealth, ensureAppStoreTableExists, createPool, extractPgErrorDetails, resolveDatabaseConfig, executeSqlWithRetry, warmUpDatabaseConnection, startDatabaseKeepAlive, isDatabaseSocketAvailable, isRemoteDatabaseConfigured, withDbTransaction } from "./src/db/index.js";
 import { appStore, clients as clientsTable, vehicles as vehiclesTable, parts as partsTable, serviceOrders as serviceOrdersTable } from "./src/db/schema.js";
 import { eq } from "drizzle-orm";
 import dotenv from "dotenv";
@@ -14,22 +14,11 @@ import { fiscalBackendService } from "./server/fiscalProviderService.js";
 import { DailyBackupService } from "./server/dailyBackupService.js";
 import { CompanySupportService } from "./server/companySupportService.js";
 import * as notasApiBackend from "./src/services/notasApiBackend.js";
-import {
-  initFirestore,
-  isFirestoreConnected,
-  getFirestoreDatabaseId,
-  syncDatabaseCollectionsToFirestore,
-  saveSingleDocumentToFirestore,
-  loadDatabaseFromFirestore,
-  saveCompanyToFirestore,
-  setActiveCompanyInFirestore,
-  getActiveCompanyFromFirestore
-} from "./src/services/firestoreSync.js";
 
 dotenv.config();
 
-// Inicializar conexão com o banco oficial no Google Cloud Firestore
-initFirestore();
+// Fonte única de verdade: PostgreSQL (Neon). O Firestore não é mais lido nem gravado,
+// evitando que navegadores/computadores enxerguem bases divergentes.
 
 const app = express();
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
@@ -136,6 +125,17 @@ app.use((req, res, next) => {
 
 // 3. Body Parser Middleware
 app.use(express.json({ limit: "50mb" }));
+
+// 3.1. Mantém o cache em memória alinhado ao banco antes de qualquer rota que leia dele.
+// Necessário quando há mais de uma instância/servidor: uma gravação feita em outra
+// instância altera a versão no banco e o cache local é recarregado.
+const ROUTES_WITHOUT_CACHE_REFRESH = new Set(["/api/db", "/api/db/version", "/api/db/stream", "/api/health", "/health"]);
+app.use(async (req, res, next) => {
+  if (req.path.startsWith("/api") && req.method !== "OPTIONS" && !ROUTES_WITHOUT_CACHE_REFRESH.has(req.path)) {
+    await refreshServerCacheIfStale();
+  }
+  next();
+});
 
 // Active Sessions Tracking Engine for System Integrity & Concurrency Guard
 export interface ActiveUserSession {
@@ -280,21 +280,19 @@ app.get("/api", (req, res) => {
 app.get(["/api/health", "/health"], async (req, res) => {
   const startTime = Date.now();
   const dbHealth = await checkDatabaseHealth();
-  const firestoreActive = isFirestoreConnected();
   const latencyMs = Date.now() - startTime;
-  const status = (dbHealth.connected || firestoreActive) ? "ok" : "degraded";
-  const statusCode = (dbHealth.connected || firestoreActive) ? 200 : 503;
+  const status = dbHealth.connected ? "ok" : "degraded";
+  const statusCode = dbHealth.connected ? 200 : 503;
 
   res.status(statusCode).json({
     status,
-    database: (dbHealth.connected || firestoreActive) ? "connected" : "disconnected",
-    databaseProvider: firestoreActive ? "google_cloud_firestore" : "cloud_sql_postgresql",
-    firestoreDatabaseId: getFirestoreDatabaseId() || null,
-    databaseName: dbHealth.database || "cloud_sql_production_database",
-    databaseUser: dbHealth.databaseUser || "ai_studio_app_user",
-    databaseHost: dbHealth.databaseHost || "cloudsql",
-    appStoreTable: Boolean(dbHealth.appStoreTable || firestoreActive),
-    appStoreRecord: Boolean(dbHealth.appStoreRecord || firestoreActive),
+    database: dbHealth.connected ? "connected" : "disconnected",
+    databaseProvider: isRemoteDatabaseConfigured() ? "neon_postgresql" : "postgresql",
+    databaseName: dbHealth.database || null,
+    databaseUser: dbHealth.databaseUser || null,
+    databaseHost: dbHealth.databaseHost || null,
+    appStoreTable: Boolean(dbHealth.appStoreTable),
+    appStoreRecord: Boolean(dbHealth.appStoreRecord),
     appStoreDataSize: dbHealth.appStoreDataSize || 0,
     appStoreUpdatedAt: dbHealth.appStoreUpdatedAt || null,
     latencyMs,
@@ -338,21 +336,22 @@ function loadInitialServerCache(): any {
   return null;
 }
 
+// Arquivo local só é usado como armazenamento quando NÃO há banco configurado (desenvolvimento offline).
+// Com o Neon configurado, o banco é a única fonte de verdade e nada é gravado em disco.
 function persistServerCacheToDisk(data: any): void {
+  if (hasDatabaseBackend()) return;
   try {
     if (!data || typeof data !== "object") return;
     const dir = path.dirname(STORE_PERSISTENCE_PATH);
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(STORE_PERSISTENCE_PATH, JSON.stringify(data), "utf-8");
-    // Sincronização direta e persistente com o banco de dados no Google Cloud (Firestore)
-    syncDatabaseCollectionsToFirestore(data).catch(() => {});
   } catch (e: any) {
     console.warn("[MotorDesk Store] Falha ao persistir em disco:", e.message);
   }
 }
 
-// In-memory and on-disk server-side cache for high availability and zero-data-loss resiliency
-let serverAppStoreCache: any = loadInitialServerCache();
+// Cache em memória: espelho somente-leitura do banco, recarregado quando a versão no banco muda
+let serverAppStoreCache: any = isRemoteDatabaseConfigured() ? null : loadInitialServerCache();
 
 // Write mutex / sequential queue to prevent async race conditions during concurrent multi-browser writes
 let dbWriteQueue: Promise<any> = Promise.resolve();
@@ -361,6 +360,182 @@ function enqueueDbWrite<T>(task: () => Promise<T>): Promise<T> {
   const next = dbWriteQueue.then(() => task(), () => task());
   dbWriteQueue = next.catch(() => {});
   return next;
+}
+
+// ============================================================================
+// FONTE ÚNICA DE VERDADE: PostgreSQL (Neon) — tabela app_store, registro motordesk_main
+// ----------------------------------------------------------------------------
+// - Toda leitura de /api/db vem do banco (nunca de cache local).
+// - Toda gravação é uma transação "SELECT ... FOR UPDATE -> merge -> UPDATE",
+//   serializada no próprio banco: funciona com vários servidores/instâncias.
+// - A versão é derivada de updated_at no banco, então qualquer navegador em qualquer
+//   máquina detecta a mudança via /api/db/version, independente da instância que gravou.
+// ============================================================================
+const APP_STORE_ID = "motordesk_main";
+const VERSION_SQL_COLUMNS = "(EXTRACT(EPOCH FROM updated_at) * 1000000)::bigint AS version, updated_at";
+
+let serverCacheVersion = 0;
+let lastVersionCheck: { at: number; version: number; updatedAt: string | null } | null = null;
+let versionCheckInFlight: Promise<{ at: number; version: number; updatedAt: string | null }> | null = null;
+
+function hasDatabaseBackend(): boolean {
+  if (isRemoteDatabaseConfigured()) return true;
+  return isDatabaseSocketAvailable(resolveDatabaseConfig().database);
+}
+
+function toIsoTimestamp(value: any): string {
+  if (!value) return new Date().toISOString();
+  const d = value instanceof Date ? value : new Date(value);
+  return isNaN(d.getTime()) ? String(value) : d.toISOString();
+}
+
+function rememberDbVersion(version: number, updatedAt: string | null): void {
+  lastVersionCheck = { at: Date.now(), version, updatedAt };
+  currentDbVersion = version;
+  if (updatedAt) currentDbUpdatedAt = updatedAt;
+}
+
+// Consulta leve (sem trafegar o JSON) da versão atual no banco, com memo curto para aliviar o polling
+async function getDbVersion(maxAgeMs = 1000): Promise<{ version: number; updatedAt: string | null }> {
+  if (!hasDatabaseBackend()) {
+    return { version: currentDbVersion, updatedAt: currentDbUpdatedAt };
+  }
+  if (lastVersionCheck && Date.now() - lastVersionCheck.at < maxAgeMs) {
+    return lastVersionCheck;
+  }
+  if (!versionCheckInFlight) {
+    versionCheckInFlight = (async () => {
+      const cfg = resolveDatabaseConfig();
+      const result = await executeSqlWithRetry(
+        `SELECT ${VERSION_SQL_COLUMNS} FROM app_store WHERE id = $1`,
+        [APP_STORE_ID],
+        cfg.database,
+        2
+      );
+      const row = result.rows[0];
+      rememberDbVersion(Number(row?.version) || 0, row ? toIsoTimestamp(row.updated_at) : null);
+      return lastVersionCheck!;
+    })().finally(() => {
+      versionCheckInFlight = null;
+    });
+  }
+  return versionCheckInFlight;
+}
+
+async function readAppStoreFromDb(): Promise<{ data: any; version: number; updatedAt: string } | null> {
+  const cfg = resolveDatabaseConfig();
+  const result = await executeSqlWithRetry(
+    `SELECT data, ${VERSION_SQL_COLUMNS} FROM app_store WHERE id = $1`,
+    [APP_STORE_ID],
+    cfg.database
+  );
+  const row = result.rows[0];
+  if (!row || !row.data) return null;
+
+  const data = sanitizeAndIsolateCompanies(row.data);
+  const version = Number(row.version) || 0;
+  const updatedAt = toIsoTimestamp(row.updated_at);
+  serverAppStoreCache = data;
+  serverCacheVersion = version;
+  rememberDbVersion(version, updatedAt);
+  return { data, version, updatedAt };
+}
+
+async function refreshServerCacheIfStale(): Promise<void> {
+  if (!hasDatabaseBackend()) return;
+  try {
+    const { version } = await getDbVersion(1500);
+    if (!serverAppStoreCache || version !== serverCacheVersion) {
+      await readAppStoreFromDb();
+    }
+  } catch (err: any) {
+    console.warn(`[MotorDesk DB] Não foi possível verificar a versão do banco: ${err.message}`);
+  }
+}
+
+// Erro de regra de negócio lançado dentro de uma mutação (desfaz a transação e vira resposta HTTP)
+function appStoreError(message: string, httpStatus = 400): Error {
+  const err: any = new Error(message);
+  err.httpStatus = httpStatus;
+  return err;
+}
+
+/**
+ * Lê o estado atual DIRETO do banco com bloqueio de linha, aplica `mutator` e grava o resultado
+ * na mesma transação. Ao final notifica todos os navegadores conectados.
+ * Lança erro se o banco estiver indisponível — nunca reporta sucesso sem gravar no banco.
+ */
+async function mutateAppStore(
+  mutator: (current: any) => any | Promise<any>,
+  meta: { source: string; companyId?: string; userId?: string }
+): Promise<{ data: any; version: number; updatedAt: string }> {
+  const result = await enqueueDbWrite(async () => {
+    if (!hasDatabaseBackend()) {
+      const next = await mutator(serverAppStoreCache);
+      if (!next || typeof next !== "object") throw appStoreError("Mutação inválida do banco de dados", 500);
+      serverAppStoreCache = next;
+      persistServerCacheToDisk(next);
+      const version = Math.max(currentDbVersion + 1, Date.now() * 1000);
+      const updatedAt = new Date().toISOString();
+      serverCacheVersion = version;
+      rememberDbVersion(version, updatedAt);
+      return { data: next, version, updatedAt };
+    }
+
+    const cfg = resolveDatabaseConfig();
+    return withDbTransaction(async (client) => {
+      const cur = await client.query(`SELECT data FROM app_store WHERE id = $1 FOR UPDATE`, [APP_STORE_ID]);
+      const current = cur.rows[0]?.data ?? null;
+      const next = await mutator(current);
+      if (!next || typeof next !== "object") throw appStoreError("Mutação inválida do banco de dados", 500);
+
+      const written = await client.query(
+        `INSERT INTO app_store (id, data, updated_at) VALUES ($1, $2, clock_timestamp())
+         ON CONFLICT (id) DO UPDATE SET data = EXCLUDED.data, updated_at = clock_timestamp()
+         RETURNING ${VERSION_SQL_COLUMNS}`,
+        [APP_STORE_ID, JSON.stringify(next)]
+      );
+      const row = written.rows[0];
+      return { data: next, version: Number(row?.version) || Date.now() * 1000, updatedAt: toIsoTimestamp(row?.updated_at) };
+    }, cfg.database);
+  });
+
+  serverAppStoreCache = result.data;
+  serverCacheVersion = result.version;
+  rememberDbVersion(result.version, result.updatedAt);
+  broadcastDbUpdate({
+    updatedAt: result.updatedAt,
+    version: result.version,
+    companyId: meta.companyId,
+    userId: meta.userId,
+    source: meta.source,
+  });
+  return result;
+}
+
+// Revisão por registro carimbada pelo servidor a cada alteração gravada.
+// Cada navegador envia a base inteira ao salvar; sem isso, uma cópia antiga de um registro
+// que o usuário nem alterou sobrescreveria a edição feita em outro computador.
+let lastRecordRev = 0;
+function nextRecordRev(): number {
+  lastRecordRev = Math.max(Date.now(), lastRecordRev + 1);
+  return lastRecordRev;
+}
+
+function mergeRecordWithRevision(existing: any, incoming: any): any {
+  const existingRev = Number(existing?._rev) || 0;
+  const hasIncomingRev = incoming?._rev !== undefined && incoming?._rev !== null;
+  // Cópia desatualizada (baseada numa revisão anterior à gravada): mantém a versão do banco
+  if (hasIncomingRev && existingRev > (Number(incoming._rev) || 0)) {
+    return existing;
+  }
+  const merged = { ...existing, ...incoming };
+  const { _rev: _a, ...existingBody } = existing;
+  const { _rev: _b, ...mergedBody } = merged;
+  if (JSON.stringify(existingBody) === JSON.stringify(mergedBody)) {
+    return existing; // nada mudou
+  }
+  return { ...merged, _rev: nextRecordRev() };
 }
 
 // Helper: Generic lossless entity merge by ID / secondary unique key
@@ -390,9 +565,9 @@ function mergeEntityCollection<T extends Record<string, any>>(
         const normalizedKey = String(key).trim().toLowerCase();
         const existing = map.get(normalizedKey);
         if (existing) {
-          map.set(normalizedKey, { ...existing, ...item });
+          map.set(normalizedKey, mergeRecordWithRevision(existing, item));
         } else {
-          map.set(normalizedKey, item);
+          map.set(normalizedKey, { ...item, _rev: nextRecordRev() } as T);
         }
       }
     }
@@ -1445,152 +1620,58 @@ app.get("/api/db", requireAuth, async (req: any, res) => {
   const syncMode = (req.headers['x-sync-mode'] || req.query?.mode || 'full') as string;
 
   try {
-    if (!isDatabaseSocketAvailable(config.database)) {
-      if (serverAppStoreCache) {
-        const isolatedData = isolateDatabaseForContext(serverAppStoreCache, { userId, companyId: reqCompanyId, userRole, syncMode });
-        const durationMs = Date.now() - startTime;
-        const empresas = (isolatedData.registeredCompanies || []).length;
-        const usuarios = (isolatedData.users || []).length;
-        const clientes = (isolatedData.clients || []).length;
-        const veiculos = (isolatedData.vehicles || []).length;
-        const pecas = (isolatedData.parts || []).length;
-        const companyId = reqCompanyId !== 'all' ? reqCompanyId : (isolatedData.companyInfo?.id || 'all');
-        const payloadSize = JSON.stringify(isolatedData).length;
-        const updatedAt = new Date().toISOString();
+    let data: any = null;
+    let version = 0;
+    let updatedAt: string | null = null;
+    let source = "postgres";
 
-        console.log(`[DB-TRACE] GET /api/db (Server Cache Resilient)\nrequestId=${requestId}\nuserId=${userId}\ncompanyId=${companyId}\npayloadSize=${payloadSize}\nempresas=${empresas}\nusuários=${usuarios}\nclientes=${clientes}\nveículos=${veiculos}\npeças=${pecas}\nresult=SUCCESS\nupdatedAt=${updatedAt}\ndatabase=${config.database}\nsource=server_cache\nlatencyMs=${durationMs}`);
-
-        return res.json({
-          success: true,
-          data: isolatedData,
-          source: "server_cache",
-          database: config.database,
-          durationMs,
-          updatedAt,
-        });
+    if (hasDatabaseBackend()) {
+      // Leitura SEMPRE direta do banco: qualquer navegador/computador recebe o mesmo estado
+      const stored = await readAppStoreFromDb();
+      if (stored) {
+        data = stored.data;
+        version = stored.version;
+        updatedAt = stored.updatedAt;
       }
+    } else {
+      // Sem banco configurado (desenvolvimento offline): arquivo local data/app_store.json
+      data = serverAppStoreCache;
+      version = currentDbVersion;
+      updatedAt = currentDbUpdatedAt;
+      source = "local_file";
     }
 
-    // 1. Query the configured/primary database using executeSqlWithRetry
-    const result = await executeSqlWithRetry(
-      'SELECT id, data, updated_at, pg_column_size(data) as size FROM app_store WHERE id = $1',
-      ['motordesk_main'],
-      config.database
-    );
-
-    if (result.rows.length > 0 && result.rows[0].data) {
-      const data = sanitizeAndIsolateCompanies(result.rows[0].data);
-      serverAppStoreCache = data;
-      persistServerCacheToDisk(data);
-      const isolatedData = isolateDatabaseForContext(data, { userId, companyId: reqCompanyId, userRole, syncMode });
-      const durationMs = Date.now() - startTime;
-      const empresas = (isolatedData.registeredCompanies || []).length;
-      const usuarios = (isolatedData.users || []).length;
-      const clientes = (isolatedData.clients || []).length;
-      const veiculos = (isolatedData.vehicles || []).length;
-      const pecas = (isolatedData.parts || []).length;
-      const companyId = reqCompanyId !== 'all' ? reqCompanyId : (isolatedData.companyInfo?.id || 'all');
-      const payloadSize = JSON.stringify(isolatedData).length;
-      const updatedAt = result.rows[0].updated_at || new Date().toISOString();
-
-      console.log(`[DB-TRACE] GET /api/db\nrequestId=${requestId}\nuserId=${userId}\ncompanyId=${companyId}\npayloadSize=${payloadSize}\nempresas=${empresas}\nusuários=${usuarios}\nclientes=${clientes}\nveículos=${veiculos}\npeças=${pecas}\nresult=SUCCESS\nupdatedAt=${updatedAt}\ndatabase=${config.database}\nsource=cloud_sql\nlatencyMs=${durationMs}`);
-
-      return res.json({
-        success: true,
-        data: isolatedData,
-        source: "cloud_sql",
-        database: config.database,
-        durationMs,
-        updatedAt,
-      });
+    const durationMs = Date.now() - startTime;
+    if (!data) {
+      console.log(`[DB-TRACE] GET /api/db requestId=${requestId} userId=${userId} result=EMPTY source=${source} latencyMs=${durationMs}`);
+      return res.json({ success: true, data: null, source, database: config.database, durationMs, updatedAt, version });
     }
 
-    // 2. If not found in primary DB, search the alternate database seamlessly
-    const fallbackDbs = ["cloud_sql_production_database", "cloud_sql_development_database"].filter(d => d !== config.database);
-    for (const altDb of fallbackDbs) {
-      try {
-        const altRes = await executeSqlWithRetry(
-          'SELECT id, data, updated_at, pg_column_size(data) as size FROM app_store WHERE id = $1',
-          ['motordesk_main'],
-          altDb
-        );
-        if (altRes.rows.length > 0 && altRes.rows[0].data) {
-          const data = sanitizeAndIsolateCompanies(altRes.rows[0].data);
-          serverAppStoreCache = data;
-          const isolatedData = isolateDatabaseForContext(data, { userId, companyId: reqCompanyId, userRole, syncMode });
-          const durationMs = Date.now() - startTime;
-          const empresas = (isolatedData.registeredCompanies || []).length;
-          const usuarios = (isolatedData.users || []).length;
-          const clientes = (isolatedData.clients || []).length;
-          const veiculos = (isolatedData.vehicles || []).length;
-          const pecas = (isolatedData.parts || []).length;
-          const companyId = isolatedData.companyInfo?.id || 'all';
-          const payloadSize = JSON.stringify(isolatedData).length;
-          const updatedAt = altRes.rows[0].updated_at || new Date().toISOString();
-
-          console.log(`[DB-TRACE] GET /api/db\nrequestId=${requestId}\nuserId=${userId}\ncompanyId=${companyId}\npayloadSize=${payloadSize}\nempresas=${empresas}\nusuários=${usuarios}\nclientes=${clientes}\nveículos=${veiculos}\npeças=${pecas}\nresult=SUCCESS\nupdatedAt=${updatedAt}\ndatabase=${altDb}\nsource=cloud_sql_alt\nlatencyMs=${durationMs}`);
-
-          return res.json({
-            success: true,
-            data: isolatedData,
-            source: "cloud_sql",
-            database: altDb,
-            durationMs,
-            updatedAt,
-          });
-        }
-      } catch (altErr) {
-        // Continue silently
-      }
-    }
-
-    if (serverAppStoreCache) {
-      const syncMode = (req.headers['x-sync-mode'] || req.query?.mode || 'full') as string;
-      const isolatedData = isolateDatabaseForContext(serverAppStoreCache, { userId, companyId: reqCompanyId, userRole, syncMode });
-      const empresas = (isolatedData.registeredCompanies || []).length;
-      const usuarios = (isolatedData.users || []).length;
-      const clientes = (isolatedData.clients || []).length;
-      const veiculos = (isolatedData.vehicles || []).length;
-      const pecas = (isolatedData.parts || []).length;
-      const companyId = isolatedData.companyInfo?.id || 'all';
-      const updatedAt = new Date().toISOString();
-
-      console.log(`[DB-TRACE] GET /api/db\nrequestId=${requestId}\nuserId=${userId}\ncompanyId=${companyId}\npayloadSize=${JSON.stringify(isolatedData).length}\nempresas=${empresas}\nusuários=${usuarios}\nclientes=${clientes}\nveículos=${veiculos}\npeças=${pecas}\nresult=SUCCESS\nupdatedAt=${updatedAt}\ndatabase=${config.database}\nsource=server_cache\nlatencyMs=${Date.now() - startTime}`);
-
-      return res.json({
-        success: true,
-        data: isolatedData,
-        source: "server_cache",
-        database: config.database,
-        durationMs: Date.now() - startTime,
-        updatedAt,
-      });
-    }
-
-    console.log(`[DB-TRACE] GET /api/db\nrequestId=${requestId}\nuserId=${userId}\ncompanyId=none\npayloadSize=0\nempresas=0\nusuários=0\nclientes=0\nveículos=0\npeças=0\nresult=EMPTY\nupdatedAt=null\ndatabase=${config.database}\nsource=cloud_sql\nlatencyMs=${Date.now() - startTime}`);
-
-    return res.json({ success: true, data: null, source: "cloud_sql", database: config.database, durationMs: Date.now() - startTime });
-  } catch (err: any) {
-    const pgErr = extractPgErrorDetails(err);
-    console.warn(`[DB-TRACE] GET /api/db ERROR\nrequestId=${requestId}\nuserId=${userId}\nresult=ERROR\nerror=${pgErr.message}\nlatencyMs=${Date.now() - startTime}`);
-    
-    if (serverAppStoreCache) {
-      return res.json({
-        success: true,
-        data: serverAppStoreCache,
-        source: "server_cache",
-        database: config.database,
-        durationMs: Date.now() - startTime,
-        updatedAt: new Date().toISOString(),
-      });
-    }
+    const isolatedData = isolateDatabaseForContext(data, { userId, companyId: reqCompanyId, userRole, syncMode });
+    const companyId = reqCompanyId !== 'all' ? reqCompanyId : (isolatedData.companyInfo?.id || 'all');
+    console.log(`[DB-TRACE] GET /api/db requestId=${requestId} userId=${userId} companyId=${companyId} clientes=${(isolatedData.clients || []).length} veículos=${(isolatedData.vehicles || []).length} peças=${(isolatedData.parts || []).length} version=${version} source=${source} latencyMs=${durationMs}`);
 
     return res.json({
       success: true,
+      data: isolatedData,
+      source,
+      database: config.database,
+      durationMs,
+      updatedAt,
+      version,
+    });
+  } catch (err: any) {
+    const pgErr = extractPgErrorDetails(err);
+    console.warn(`[DB-TRACE] GET /api/db ERROR requestId=${requestId} userId=${userId} error=${pgErr.message} latencyMs=${Date.now() - startTime}`);
+
+    // Não devolve dados em cache: o navegador mantém o que já tem e tenta de novo,
+    // evitando que máquinas diferentes exibam versões diferentes da base.
+    return res.status(503).json({
+      success: false,
       data: null,
-      source: "fallback",
+      code: "DATABASE_UNAVAILABLE",
+      error: "Banco de dados indisponível no momento. Tente novamente em instantes.",
       durationMs: Date.now() - startTime,
-      error: "Cloud SQL temporarily unavailable, using local client cache",
     });
   }
 });
@@ -1668,16 +1749,22 @@ app.get("/api/db/stream", (req, res) => {
 });
 
 // Lightweight database version check for ultra-fast polling without transferring large payloads
-app.get("/api/db/version", (req, res) => {
+// A versão vem do updated_at no banco: detecta gravações feitas por qualquer servidor/instância
+app.get("/api/db/version", async (req, res) => {
   res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
   res.setHeader("Pragma", "no-cache");
-  res.json({
-    success: true,
-    version: currentDbVersion,
-    updatedAt: currentDbUpdatedAt,
-    subscribersCount: sseSubscribers.size,
-    serverTime: Date.now(),
-  });
+  try {
+    const { version, updatedAt } = await getDbVersion(1000);
+    res.json({
+      success: true,
+      version,
+      updatedAt,
+      subscribersCount: sseSubscribers.size,
+      serverTime: Date.now(),
+    });
+  } catch (err: any) {
+    res.status(503).json({ success: false, code: "DATABASE_UNAVAILABLE", error: err.message });
+  }
 });
 
 app.post("/api/db", requireAuth, async (req: any, res) => {
@@ -1700,174 +1787,40 @@ app.post("/api/db", requireAuth, async (req: any, res) => {
     const inPecas = (incomingData.parts || []).length;
     const inCompanyId = reqCompanyId !== 'all' ? reqCompanyId : (incomingData.companyInfo?.id || 'all');
 
-    console.log(`[DB-TRACE] POST /api/db\nrequestId=${requestId}\nuserId=${userId}\ncompanyId=${inCompanyId}\npayloadSize=${JSON.stringify(incomingData).length}\nempresas=${inEmpresas}\nusuários=${inUsuarios}\nclientes=${inClientes}\nveículos=${inVeiculos}\npeças=${inPecas}\nupdatedAt=${new Date().toISOString()}`);
+    console.log(`[DB-TRACE] POST /api/db requestId=${requestId} userId=${userId} companyId=${inCompanyId} empresas=${inEmpresas} usuários=${inUsuarios} clientes=${inClientes} veículos=${inVeiculos} peças=${inPecas}`);
 
-    if (!isDatabaseSocketAvailable(config.database)) {
-      const { mergedData, durationMs, updatedAt } = await enqueueDbWrite(async () => {
-        let currentStoredData: any = serverAppStoreCache || incomingData;
-        const currentUpdatedAt: string = new Date().toISOString();
-        const merged = mergeAppDatabase(currentStoredData, incomingData);
-        serverAppStoreCache = merged;
-        persistServerCacheToDisk(merged);
-        return {
-          mergedData: merged,
-          durationMs: Date.now() - startTime,
-          updatedAt: currentUpdatedAt,
-        };
-      });
+    // Leitura do estado atual com bloqueio + merge + gravação na MESMA transação do banco:
+    // duas máquinas salvando ao mesmo tempo nunca sobrescrevem uma à outra.
+    const { data: mergedData, version, updatedAt } = await mutateAppStore(
+      (current) => mergeAppDatabase(current, incomingData),
+      { source: "db_save", companyId: inCompanyId, userId }
+    );
 
-      currentDbVersion++;
-      currentDbUpdatedAt = updatedAt;
-      broadcastDbUpdate({
-        updatedAt,
-        version: currentDbVersion,
-        companyId: inCompanyId,
-        userId,
-        source: "server_cache",
-      });
-
-      const isolatedResponseData = isolateDatabaseForContext(mergedData, { userId, companyId: inCompanyId, userRole, syncMode: 'full' });
-
-      console.log(`[DB-TRACE] POST /api/db (Server Cache Resilient)\nrequestId=${requestId}\nuserId=${userId}\ncompanyId=${inCompanyId}\npayloadSize=${JSON.stringify(isolatedResponseData).length}\nempresas=${inEmpresas}\nusuários=${inUsuarios}\nclientes=${inClientes}\nveículos=${inVeiculos}\npeças=${inPecas}\nresult=SUCCESS\nupdatedAt=${updatedAt}\ndatabase=${config.database}\nsource=server_cache\nlatencyMs=${durationMs}`);
-
-      return res.json({
-        success: true,
-        message: "Database saved and preserved in server persistent cache",
-        data: isolatedResponseData,
-        source: "server_cache",
-        database: config.database,
-        durationMs,
-        updatedAt,
-        version: currentDbVersion,
-      });
-    }
-
-    try {
-      await ensureAppStoreTableExists(config.database);
-    } catch (e) {}
-
-    // Execute atomic serialized read-merge-write to guarantee zero race conditions on concurrent multi-device writes
-    const { mergedData, durationMs, updatedAt } = await enqueueDbWrite(async () => {
-      // 1. Fetch current stored data from PostgreSQL for intelligent lossless merging
-      let currentStoredData: any = serverAppStoreCache;
-      let currentUpdatedAt: string = new Date().toISOString();
-      try {
-        const curRes = await executeSqlWithRetry(
-          'SELECT data, updated_at FROM app_store WHERE id = $1',
-          ['motordesk_main'],
-          config.database
-        );
-        if (curRes.rows.length > 0 && curRes.rows[0].data) {
-          currentStoredData = curRes.rows[0].data;
-          if (curRes.rows[0].updated_at) {
-            currentUpdatedAt = curRes.rows[0].updated_at;
-          }
-        }
-      } catch (readErr) {}
-
-      const curEmpresas = (currentStoredData?.registeredCompanies || []).length;
-      const curUsuarios = (currentStoredData?.users || []).length;
-      const curClientes = (currentStoredData?.clients || []).length;
-      const curVeiculos = (currentStoredData?.vehicles || []).length;
-      const curPecas = (currentStoredData?.parts || []).length;
-      const curCompanyId = currentStoredData?.companyInfo?.id || inCompanyId;
-
-      console.log(`[DB-TRACE] Cloud SQL BEFORE MERGE\nrequestId=${requestId}\ncompanyId=${curCompanyId}\nempresas=${curEmpresas}\nusuários=${curUsuarios}\nclientes=${curClientes}\nveículos=${curVeiculos}\npeças=${curPecas}\nupdatedAt=${currentUpdatedAt}`);
-
-      // 2. Perform intelligent bidirectional merge to protect multi-browser concurrency
-      const merged = mergeAppDatabase(currentStoredData, incomingData);
-
-      // Update in-memory server cache atomically
-      serverAppStoreCache = merged;
-      persistServerCacheToDisk(merged);
-
-      const payloadStr = JSON.stringify(merged);
-      const payloadSize = payloadStr.length;
-      const mergedEmpresas = (merged.registeredCompanies || []).length;
-      const mergedUsuarios = (merged.users || []).length;
-      const mergedClientes = (merged.clients || []).length;
-      const mergedVeiculos = (merged.vehicles || []).length;
-      const mergedPecas = (merged.parts || []).length;
-
-      // 3. Persist merged data to PostgreSQL
-      const insertRes = await executeSqlWithRetry(
-        `INSERT INTO app_store (id, data, updated_at) VALUES ($1, $2, NOW())
-         ON CONFLICT (id) DO UPDATE SET data = $2, updated_at = NOW()
-         RETURNING id, updated_at`,
-        ['motordesk_main', payloadStr],
-        config.database
-      );
-
-      const opDurationMs = Date.now() - startTime;
-      const opUpdatedAt = insertRes.rows[0]?.updated_at || new Date().toISOString();
-
-      console.log(`[DB-TRACE] Cloud SQL AFTER MERGE\nrequestId=${requestId}\ncompanyId=${inCompanyId}\npayloadSize=${payloadSize}\nempresas=${mergedEmpresas}\nusuários=${mergedUsuarios}\nclientes=${mergedClientes}\nveículos=${mergedVeiculos}\npeças=${mergedPecas}\nresult=SUCCESS\nupdatedAt=${opUpdatedAt}\ndatabase=${config.database}\nsource=cloud_sql\nlatencyMs=${opDurationMs}`);
-
-      // Also mirror to alternate database in background if available
-      const altDbs = ["cloud_sql_production_database", "cloud_sql_development_database"].filter(d => d !== config.database);
-      for (const altDb of altDbs) {
-        executeSqlWithRetry(
-          `INSERT INTO app_store (id, data, updated_at) VALUES ($1, $2, NOW())
-           ON CONFLICT (id) DO UPDATE SET data = $2, updated_at = NOW()`,
-          ['motordesk_main', payloadStr],
-          altDb
-        ).catch(() => {});
-      }
-
-      return {
-        mergedData: merged,
-        durationMs: opDurationMs,
-        updatedAt: opUpdatedAt,
-      };
-    });
-
-    // Update version tracking and broadcast change to all connected browsers & computers in real-time
-    currentDbVersion++;
-    currentDbUpdatedAt = updatedAt;
-    broadcastDbUpdate({
-      updatedAt,
-      version: currentDbVersion,
-      companyId: inCompanyId,
-      userId,
-      source: "cloud_sql",
-    });
-
+    const durationMs = Date.now() - startTime;
     const isolatedResponseData = isolateDatabaseForContext(mergedData, { userId, companyId: inCompanyId, userRole, syncMode: 'full' });
+
+    console.log(`[DB-TRACE] POST /api/db requestId=${requestId} result=SUCCESS version=${version} updatedAt=${updatedAt} latencyMs=${durationMs}`);
 
     return res.json({
       success: true,
-      message: "Database saved and merged to PostgreSQL Cloud SQL",
+      message: "Dados gravados no banco de dados",
       data: isolatedResponseData,
-      source: "cloud_sql",
+      source: hasDatabaseBackend() ? "postgres" : "local_file",
       database: config.database,
       durationMs,
       updatedAt,
-      version: currentDbVersion,
+      version,
     });
   } catch (err: any) {
     const pgErr = extractPgErrorDetails(err);
-    console.warn(`[DB-TRACE] POST /api/db ERROR\nrequestId=${requestId}\nuserId=${userId}\nresult=ERROR\nerror=${pgErr.message}\nlatencyMs=${Date.now() - startTime}`);
-    
-    // Server cache holds the data safely even if Cloud SQL is transiently busy or disconnected
-    const fallbackUpdatedAt = new Date().toISOString();
-    currentDbVersion++;
-    currentDbUpdatedAt = fallbackUpdatedAt;
-    broadcastDbUpdate({
-      updatedAt: fallbackUpdatedAt,
-      version: currentDbVersion,
-      userId,
-      source: "server_cache",
-    });
+    console.warn(`[DB-TRACE] POST /api/db ERROR requestId=${requestId} userId=${userId} error=${pgErr.message} latencyMs=${Date.now() - startTime}`);
 
-    return res.json({
-      success: true,
-      message: "Database saved and preserved in server cache",
-      data: serverAppStoreCache || req.body,
-      source: "server_cache",
-      database: config.database,
+    // Nunca reporta sucesso sem gravar no banco: o navegador mantém os dados e tenta novamente
+    return res.status(503).json({
+      success: false,
+      code: "DATABASE_WRITE_FAILED",
+      error: "Não foi possível gravar no banco de dados. Suas alterações não foram salvas; tente novamente.",
       durationMs: Date.now() - startTime,
-      updatedAt: fallbackUpdatedAt,
-      version: currentDbVersion,
     });
   }
 });
@@ -1951,26 +1904,40 @@ app.get("/api/companies", async (req, res) => {
   }
 });
 
-// Cache e mapa de empresas ativas em memória por operador/sessão
+// Mapa em memória usado apenas sem banco configurado (desenvolvimento offline)
 const userActiveCompanyMap = new Map<string, string>();
 
-// Endpoint: Obter empresa ativa autoritativa diretamente do Banco Central / Firestore
+// Chave da preferência: o próprio usuário (vale para qualquer navegador/computador);
+// sem usuário identificado, cai para o token da sessão.
+function activeCompanyUserKey(req: any): string {
+  const { userId } = extractUserContext(req);
+  const uid = String(userId || '');
+  const isIdentified = uid && uid !== 'anonymous' && uid !== 'authenticated_user' && !uid.includes('guest');
+  if (isIdentified) return `user:${uid}`;
+  const token = req.headers.authorization?.replace('Bearer ', '').trim();
+  return token ? `session:${token}` : 'guest';
+}
+
+// Endpoint: Obter empresa ativa do usuário diretamente do banco
 app.get("/api/companies/active", async (req: any, res) => {
   res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
-  const { userId } = extractUserContext(req);
-  const token = req.headers.authorization?.replace('Bearer ', '') || userId || 'guest';
-  
+  const userKey = activeCompanyUserKey(req);
+
   try {
-    // 1. Tentar Firestore
-    let activeId = await getActiveCompanyFromFirestore(token);
-    if (!activeId && userId && userId !== 'guest') {
-      activeId = await getActiveCompanyFromFirestore(userId);
+    let activeId: string | undefined;
+    if (hasDatabaseBackend()) {
+      const cfg = resolveDatabaseConfig();
+      const result = await executeSqlWithRetry(
+        'SELECT company_id FROM user_active_company WHERE user_key = $1',
+        [userKey],
+        cfg.database,
+        2
+      );
+      activeId = result.rows[0]?.company_id;
+    } else {
+      activeId = userActiveCompanyMap.get(userKey);
     }
-    // 2. Tentar memória do servidor
-    if (!activeId) {
-      activeId = userActiveCompanyMap.get(token) || userActiveCompanyMap.get(userId);
-    }
-    // 3. Fallback para primeira empresa registrada
+    // Fallback para primeira empresa registrada
     const companies = serverAppStoreCache?.registeredCompanies || [];
     if (!activeId || !companies.some((c: any) => c.id === activeId)) {
       activeId = companies[0]?.id || 'comp-1';
@@ -1993,54 +1960,49 @@ app.get("/api/companies/active", async (req: any, res) => {
   }
 });
 
-// Endpoint: Definir empresa ativa diretamente no Banco Central / Firestore
+// Endpoint: Definir empresa ativa do usuário diretamente no banco
 app.post("/api/companies/active", async (req: any, res) => {
   const { activeCompanyId } = req.body;
-  const { userId } = extractUserContext(req);
-  const token = req.headers.authorization?.replace('Bearer ', '') || userId || 'guest';
+  const userKey = activeCompanyUserKey(req);
 
   if (!activeCompanyId) {
     return res.status(400).json({ success: false, error: "activeCompanyId é obrigatório" });
   }
 
-  // Atualizar memória do servidor
-  userActiveCompanyMap.set(token, activeCompanyId);
-  if (userId) userActiveCompanyMap.set(userId, activeCompanyId);
-
-  // Persistir no Google Cloud Firestore
   try {
-    await setActiveCompanyInFirestore(token, activeCompanyId);
-    if (userId && userId !== token) {
-      await setActiveCompanyInFirestore(userId, activeCompanyId);
+    if (hasDatabaseBackend()) {
+      const cfg = resolveDatabaseConfig();
+      await executeSqlWithRetry(
+        `INSERT INTO user_active_company (user_key, company_id, updated_at) VALUES ($1, $2, NOW())
+         ON CONFLICT (user_key) DO UPDATE SET company_id = EXCLUDED.company_id, updated_at = NOW()`,
+        [userKey, activeCompanyId],
+        cfg.database
+      );
+    } else {
+      userActiveCompanyMap.set(userKey, activeCompanyId);
     }
-  } catch (e) {}
+  } catch (err: any) {
+    console.warn(`[COMPANY-STATE] Falha ao gravar empresa ativa (${userKey}): ${err.message}`);
+    return res.status(503).json({ success: false, code: "DATABASE_WRITE_FAILED", error: "Não foi possível gravar a empresa ativa no banco de dados." });
+  }
 
-  // Emitir broadcast SSE para todos os navegadores abertos (Firefox, Chrome, Opera)
-  broadcastDbUpdate({
-    updatedAt: new Date().toISOString(),
-    version: currentDbVersion,
-    companyId: activeCompanyId,
-    userId,
-    source: "company_switched"
-  });
-
-  console.log(`[COMPANY-STATE] Empresa ativa alterada para "${activeCompanyId}" (user: ${userId || token}). Notificado a todos os navegadores.`);
+  // Preferência individual: não dispara recarga nos navegadores de outros usuários
+  console.log(`[COMPANY-STATE] Empresa ativa de ${userKey} alterada para "${activeCompanyId}".`);
 
   return res.json({
     success: true,
     activeCompanyId,
-    message: "Empresa ativa sincronizada no Banco Central e transmitida aos navegadores"
+    message: "Empresa ativa gravada no banco de dados"
   });
 });
 
-// Endpoint: Registrar ou atualizar empresa diretamente no PostgreSQL e Firestore
+// Endpoint: Registrar ou atualizar empresa diretamente no banco
 app.post("/api/companies/register", async (req: any, res) => {
   const companyData = req.body;
   if (!companyData || !companyData.name) {
     return res.status(400).json({ success: false, error: "Dados da empresa inválidos" });
   }
 
-  const config = resolveDatabaseConfig();
   const companyId = companyData.id || `comp-${Date.now()}`;
   const newCompany = {
     ...companyData,
@@ -2050,12 +2012,8 @@ app.post("/api/companies/register", async (req: any, res) => {
   };
 
   try {
-    // 1. Salvar no Firestore
-    await saveCompanyToFirestore(newCompany);
-
-    // 2. Salvar no PostgreSQL / App Store
-    await enqueueDbWrite(async () => {
-      let currentData = serverAppStoreCache || { registeredCompanies: [], users: [] };
+    await mutateAppStore((current) => {
+      const currentData = current || { registeredCompanies: [], users: [] };
       const companies = Array.isArray(currentData.registeredCompanies) ? [...currentData.registeredCompanies] : [];
       const idx = companies.findIndex((c: any) => c.id === companyId);
       if (idx !== -1) {
@@ -2064,40 +2022,20 @@ app.post("/api/companies/register", async (req: any, res) => {
         companies.push(newCompany);
       }
       currentData.registeredCompanies = companies;
-      serverAppStoreCache = currentData;
-      persistServerCacheToDisk(currentData);
-
-      if (isDatabaseSocketAvailable(config.database)) {
-        await executeSqlWithRetry(
-          `INSERT INTO app_store (id, data, updated_at) VALUES ($1, $2, NOW())
-           ON CONFLICT (id) DO UPDATE SET data = $2, updated_at = NOW()`,
-          ['motordesk_main', JSON.stringify(currentData)],
-          config.database
-        );
-      }
-      return { success: true };
-    });
-
-    currentDbVersion++;
-    currentDbUpdatedAt = new Date().toISOString();
-    broadcastDbUpdate({
-      updatedAt: currentDbUpdatedAt,
-      version: currentDbVersion,
-      companyId,
-      source: "company_registered"
-    });
+      return currentData;
+    }, { source: "company_registered", companyId });
 
     return res.json({
       success: true,
       company: newCompany,
-      message: "Empresa registrada e sincronizada com sucesso no PostgreSQL e Firestore"
+      message: "Empresa registrada e gravada no banco de dados"
     });
   } catch (err: any) {
     return res.status(500).json({ success: false, error: err.message });
   }
 });
 
-// Endpoint: Obter conteúdo sincronizado do site (landing page) diretamente do Banco Central / Firestore
+// Endpoint: Obter conteúdo sincronizado do site (landing page) diretamente do banco
 app.get(["/api/landing", "/api/site"], async (req, res) => {
   res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
   let landing = serverAppStoreCache?.landingContent;
@@ -2135,37 +2073,12 @@ app.post(["/api/landing", "/api/site"], async (req: any, res) => {
     return res.status(400).json({ success: false, error: "landingContent inválido ou ausente" });
   }
 
-  const config = resolveDatabaseConfig();
   try {
-    await enqueueDbWrite(async () => {
-      let currentData = serverAppStoreCache || {};
+    await mutateAppStore((current) => {
+      const currentData = current || {};
       currentData.landingContent = landingContent;
-      serverAppStoreCache = currentData;
-      persistServerCacheToDisk(currentData);
-
-      if (isDatabaseSocketAvailable(config.database)) {
-        await executeSqlWithRetry(
-          `INSERT INTO app_store (id, data, updated_at) VALUES ($1, $2, NOW())
-           ON CONFLICT (id) DO UPDATE SET data = $2, updated_at = NOW()`,
-          ['motordesk_main', JSON.stringify(currentData)],
-          config.database
-        );
-      }
-      return { success: true };
-    });
-
-    // Salvar metadados no Firestore se conectado
-    try {
-      await saveSingleDocumentToFirestore('system_meta', 'landingContent', landingContent);
-    } catch (e) {}
-
-    currentDbVersion++;
-    currentDbUpdatedAt = new Date().toISOString();
-    broadcastDbUpdate({
-      updatedAt: currentDbUpdatedAt,
-      version: currentDbVersion,
-      source: "landing_content_updated"
-    });
+      return currentData;
+    }, { source: "landing_content_updated" });
 
     console.log('[LANDING-SYNC] Conteúdo do site sincronizado com sucesso no Banco Central.');
 
@@ -2183,26 +2096,16 @@ app.post(["/api/landing", "/api/site"], async (req: any, res) => {
 app.post("/api/companies/:companyId/modules", requireAuth, async (req: any, res) => {
   const { companyId } = req.params;
   const { modules, contractModules } = req.body;
-  const config = resolveDatabaseConfig();
 
   if (!modules || typeof modules !== 'object') {
     return res.status(400).json({ success: false, error: "Objeto de módulos não fornecido" });
   }
 
   try {
-    const result = await enqueueDbWrite(async () => {
-      let currentData = serverAppStoreCache;
+    let updatedCompany: any = null;
+    await mutateAppStore((currentData) => {
       if (!currentData) {
-        const readRes = await executeSqlWithRetry(
-          'SELECT data FROM app_store WHERE id = $1',
-          ['motordesk_main'],
-          config.database
-        );
-        if (readRes.rows.length > 0) currentData = readRes.rows[0].data;
-      }
-
-      if (!currentData) {
-        return { success: false, error: "Dados da aplicação não encontrados" };
+        throw appStoreError("Dados da aplicação não encontrados");
       }
 
       const companies = Array.isArray(currentData.registeredCompanies) ? [...currentData.registeredCompanies] : [];
@@ -2215,7 +2118,7 @@ app.post("/api/companies/:companyId/modules", requireAuth, async (req: any, res)
       }
 
       if (!targetCompany) {
-        return { success: false, error: "Empresa não encontrada" };
+        throw appStoreError("Empresa não encontrada", 404);
       }
 
       // Atualizar módulos globais
@@ -2243,33 +2146,13 @@ app.post("/api/companies/:companyId/modules", requireAuth, async (req: any, res)
         currentData.companyInfo = targetCompany;
       }
 
-      serverAppStoreCache = currentData;
+      updatedCompany = targetCompany;
+      return currentData;
+    }, { source: "modules_update", companyId });
 
-      const payloadStr = JSON.stringify(currentData);
-      await executeSqlWithRetry(
-        `INSERT INTO app_store (id, data, updated_at) VALUES ($1, $2, NOW())
-         ON CONFLICT (id) DO UPDATE SET data = $2, updated_at = NOW()`,
-        ['motordesk_main', payloadStr],
-        config.database
-      );
-
-      return { success: true, company: targetCompany };
-    });
-
-    if (result.success) {
-      currentDbVersion++;
-      currentDbUpdatedAt = new Date().toISOString();
-      broadcastDbUpdate({
-        updatedAt: currentDbUpdatedAt,
-        version: currentDbVersion,
-        companyId,
-        source: "modules_update"
-      });
-      return res.json(result);
-    }
-    return res.status(400).json(result);
+    return res.json({ success: true, company: updatedCompany });
   } catch (err: any) {
-    return res.status(500).json({ success: false, error: err.message });
+    return res.status(err.httpStatus || 500).json({ success: false, error: err.message });
   }
 });
 
@@ -2277,22 +2160,12 @@ app.post("/api/companies/:companyId/modules", requireAuth, async (req: any, res)
 app.post("/api/companies/:companyId/license", requireAuth, async (req: any, res) => {
   const { companyId } = req.params;
   const { userLimit, additionalUserPrice, monthlyFee } = req.body;
-  const config = resolveDatabaseConfig();
 
   try {
-    const result = await enqueueDbWrite(async () => {
-      let currentData = serverAppStoreCache;
+    let updatedCompany: any = null;
+    await mutateAppStore((currentData) => {
       if (!currentData) {
-        const readRes = await executeSqlWithRetry(
-          'SELECT data FROM app_store WHERE id = $1',
-          ['motordesk_main'],
-          config.database
-        );
-        if (readRes.rows.length > 0) currentData = readRes.rows[0].data;
-      }
-
-      if (!currentData) {
-        return { success: false, error: "Dados da aplicação não encontrados" };
+        throw appStoreError("Dados da aplicação não encontrados");
       }
 
       const companies = Array.isArray(currentData.registeredCompanies) ? [...currentData.registeredCompanies] : [];
@@ -2305,7 +2178,7 @@ app.post("/api/companies/:companyId/license", requireAuth, async (req: any, res)
       }
 
       if (!targetCompany) {
-        return { success: false, error: "Empresa não encontrada" };
+        throw appStoreError("Empresa não encontrada", 404);
       }
 
       if (userLimit !== undefined) {
@@ -2339,33 +2212,13 @@ app.post("/api/companies/:companyId/license", requireAuth, async (req: any, res)
         currentData.companyInfo = targetCompany;
       }
 
-      serverAppStoreCache = currentData;
+      updatedCompany = targetCompany;
+      return currentData;
+    }, { source: "license_update", companyId });
 
-      const payloadStr = JSON.stringify(currentData);
-      await executeSqlWithRetry(
-        `INSERT INTO app_store (id, data, updated_at) VALUES ($1, $2, NOW())
-         ON CONFLICT (id) DO UPDATE SET data = $2, updated_at = NOW()`,
-        ['motordesk_main', payloadStr],
-        config.database
-      );
-
-      return { success: true, company: targetCompany };
-    });
-
-    if (result.success) {
-      currentDbVersion++;
-      currentDbUpdatedAt = new Date().toISOString();
-      broadcastDbUpdate({
-        updatedAt: currentDbUpdatedAt,
-        version: currentDbVersion,
-        companyId,
-        source: "license_update"
-      });
-      return res.json(result);
-    }
-    return res.status(400).json(result);
+    return res.json({ success: true, company: updatedCompany });
   } catch (err: any) {
-    return res.status(500).json({ success: false, error: err.message });
+    return res.status(err.httpStatus || 500).json({ success: false, error: err.message });
   }
 });
 
@@ -2420,7 +2273,6 @@ app.get("/api/companies/:companyId/license", async (req: any, res) => {
 // Endpoint dedicado e atômico para alteração / primeiro acesso de senha de usuários
 app.post("/api/users/update-password", async (req: any, res) => {
   const { userId, username, companyId, newPassword, keepCurrent } = req.body || {};
-  const config = resolveDatabaseConfig();
 
   if (!userId && !username) {
     return res.status(400).json({ success: false, error: "Identificador do usuário ausente" });
@@ -2431,21 +2283,10 @@ app.post("/api/users/update-password", async (req: any, res) => {
   }
 
   try {
-    const { updatedUser, updatedAt } = await enqueueDbWrite(async () => {
-      let currentStoredData: any = serverAppStoreCache;
-      try {
-        const curRes = await executeSqlWithRetry(
-          'SELECT data FROM app_store WHERE id = $1',
-          ['motordesk_main'],
-          config.database
-        );
-        if (curRes.rows.length > 0 && curRes.rows[0].data) {
-          currentStoredData = curRes.rows[0].data;
-        }
-      } catch (readErr) {}
-
+    let updatedUser: any = null;
+    const { version } = await mutateAppStore((currentStoredData) => {
       if (!currentStoredData || !Array.isArray(currentStoredData.users)) {
-        throw new Error("Banco de dados não inicializado.");
+        throw appStoreError("Banco de dados não inicializado.", 500);
       }
 
       const user = currentStoredData.users.find((u: any) =>
@@ -2454,7 +2295,7 @@ app.post("/api/users/update-password", async (req: any, res) => {
       );
 
       if (!user) {
-        throw new Error("Usuário não encontrado.");
+        throw appStoreError("Usuário não encontrado.", 404);
       }
 
       const now = Date.now();
@@ -2467,60 +2308,25 @@ app.post("/api/users/update-password", async (req: any, res) => {
       user.passwordUpdatedAt = now;
       user.updatedAt = new Date().toISOString();
 
-      serverAppStoreCache = currentStoredData;
-
-      const payloadStr = JSON.stringify(currentStoredData);
-      const insertRes = await executeSqlWithRetry(
-        `INSERT INTO app_store (id, data, updated_at) VALUES ($1, $2, NOW())
-         ON CONFLICT (id) DO UPDATE SET data = $2, updated_at = NOW()
-         RETURNING updated_at`,
-        ['motordesk_main', payloadStr],
-        config.database
-      );
-
-      const opUpdatedAt = insertRes.rows[0]?.updated_at || new Date().toISOString();
-
-      const altDbs = ["cloud_sql_production_database", "cloud_sql_development_database"].filter(d => d !== config.database);
-      for (const altDb of altDbs) {
-        executeSqlWithRetry(
-          `INSERT INTO app_store (id, data, updated_at) VALUES ($1, $2, NOW())
-           ON CONFLICT (id) DO UPDATE SET data = $2, updated_at = NOW()`,
-          ['motordesk_main', payloadStr],
-          altDb
-        ).catch(() => {});
-      }
-
-      return {
-        updatedUser: {
-          id: user.id,
-          username: user.username,
-          name: user.name,
-          role: user.role,
-          companyId: user.companyId,
-          firstAccess: user.firstAccess,
-          mustChangePassword: user.mustChangePassword,
-          hasChosenPassword: user.hasChosenPassword,
-          passwordUpdatedAt: user.passwordUpdatedAt
-        },
-        updatedAt: opUpdatedAt
+      updatedUser = {
+        id: user.id,
+        username: user.username,
+        name: user.name,
+        role: user.role,
+        companyId: user.companyId,
+        firstAccess: user.firstAccess,
+        mustChangePassword: user.mustChangePassword,
+        hasChosenPassword: user.hasChosenPassword,
+        passwordUpdatedAt: user.passwordUpdatedAt
       };
-    });
-
-    currentDbVersion++;
-    currentDbUpdatedAt = updatedAt;
-    broadcastDbUpdate({
-      updatedAt,
-      version: currentDbVersion,
-      companyId: companyId || updatedUser.companyId,
-      userId: updatedUser.id,
-      source: "password_update"
-    });
+      return currentStoredData;
+    }, { source: "password_update", companyId, userId });
 
     console.log(`[USER-PASSWORD] Senha salva com sucesso para @${updatedUser.username} (${updatedUser.id})`);
-    return res.json({ success: true, user: updatedUser, version: currentDbVersion });
+    return res.json({ success: true, user: updatedUser, version });
   } catch (err: any) {
     console.error("[USER-PASSWORD] Erro:", err.message);
-    return res.status(500).json({ success: false, error: err.message });
+    return res.status(err.httpStatus || 500).json({ success: false, error: err.message });
   }
 });
 
@@ -2943,29 +2749,19 @@ app.post("/api/integrations/solidworks/sync-project", async (req: any, res) => {
       items: processedItems
     };
 
-    if (serverAppStoreCache) {
-      if (!serverAppStoreCache.solidworksProjects) serverAppStoreCache.solidworksProjects = [];
-      if (!serverAppStoreCache.productionOrders) serverAppStoreCache.productionOrders = [];
-      if (!serverAppStoreCache.boms) serverAppStoreCache.boms = [];
-      if (!serverAppStoreCache.materialSeparations) serverAppStoreCache.materialSeparations = [];
+    await mutateAppStore((current) => {
+      const db = current || {};
+      if (!db.solidworksProjects) db.solidworksProjects = [];
+      if (!db.productionOrders) db.productionOrders = [];
+      if (!db.boms) db.boms = [];
+      if (!db.materialSeparations) db.materialSeparations = [];
 
-      serverAppStoreCache.solidworksProjects.unshift(newProject);
-      serverAppStoreCache.productionOrders.unshift(newProductionOrder);
-      serverAppStoreCache.boms.unshift(newBom);
-      serverAppStoreCache.materialSeparations.unshift(newSeparation);
-
-      persistServerCacheToDisk(serverAppStoreCache);
-      const config = resolveDatabaseConfig();
-      if (isDatabaseSocketAvailable(config.database)) {
-        try {
-          await executeSqlWithRetry(
-            'UPDATE app_store SET data = $1, updated_at = NOW() WHERE id = $2',
-            [JSON.stringify(serverAppStoreCache), 'motordesk_main'],
-            config.database
-          );
-        } catch (e) {}
-      }
-    }
+      db.solidworksProjects.unshift(newProject);
+      db.productionOrders.unshift(newProductionOrder);
+      db.boms.unshift(newBom);
+      db.materialSeparations.unshift(newSeparation);
+      return db;
+    }, { source: "solidworks_sync", companyId: targetCompId });
 
     return res.status(201).json({
       success: true,
@@ -3097,90 +2893,70 @@ app.post("/api/public/quotations/:id/respond", async (req, res) => {
   try {
     const qId = req.params.id;
     const { supplierNotes, deliveryDays, paymentTerms, items, supplierName, supplierContact } = req.body;
-    
-    if (!serverAppStoreCache) {
-      return res.status(500).json({ error: "Banco de dados indisponível no momento." });
-    }
 
-    const quotations = serverAppStoreCache.quotations || [];
-    const qIdx = quotations.findIndex((q: any) => q.id === qId || q.code === qId);
-    if (qIdx === -1) {
-      return res.status(404).json({ error: "Cotação não encontrada." });
-    }
-
-    const targetQuotation = { ...quotations[qIdx] };
-    const updatedItems = (targetQuotation.items || []).map((it: any) => {
-      const respItem = (items || []).find((ri: any) => ri.id === it.id || ri.partId === it.partId || ri.code === it.code);
-      if (respItem) {
-        const uPrice = Number(respItem.unitPrice) || it.unitPrice || 0;
-        return {
-          ...it,
-          unitPrice: uPrice,
-          supplierPrice: uPrice,
-          brand: respItem.brand || it.brand || "",
-          supplierBrand: respItem.brand || "",
-          supplierNotes: respItem.notes || "",
-          totalPrice: uPrice * (it.quantity || 1)
-        };
+    let targetQuotation: any = null;
+    let totalEstimated = 0;
+    await mutateAppStore((current) => {
+      if (!current) {
+        throw appStoreError("Banco de dados indisponível no momento.", 503);
       }
-      return it;
-    });
 
-    const totalEstimated = updatedItems.reduce((acc: number, it: any) => acc + (it.totalPrice || 0), 0);
+      const quotations = current.quotations || [];
+      const qIdx = quotations.findIndex((q: any) => q.id === qId || q.code === qId);
+      if (qIdx === -1) {
+        throw appStoreError("Cotação não encontrada.", 404);
+      }
 
-    targetQuotation.items = updatedItems;
-    targetQuotation.status = "supplier_replied";
-    targetQuotation.supplierRepliedAt = new Date().toISOString();
-    targetQuotation.supplierNotes = supplierNotes || targetQuotation.supplierNotes;
-    targetQuotation.deliveryDays = deliveryDays !== undefined ? Number(deliveryDays) : targetQuotation.deliveryDays;
-    targetQuotation.paymentTerms = paymentTerms || targetQuotation.paymentTerms;
-    targetQuotation.totalAmount = totalEstimated;
-    targetQuotation.supplierRespondent = {
-      name: supplierName || targetQuotation.supplierName,
-      contact: supplierContact || "",
-      answeredAt: new Date().toISOString()
-    };
+      targetQuotation = { ...quotations[qIdx] };
+      const updatedItems = (targetQuotation.items || []).map((it: any) => {
+        const respItem = (items || []).find((ri: any) => ri.id === it.id || ri.partId === it.partId || ri.code === it.code);
+        if (respItem) {
+          const uPrice = Number(respItem.unitPrice) || it.unitPrice || 0;
+          return {
+            ...it,
+            unitPrice: uPrice,
+            supplierPrice: uPrice,
+            brand: respItem.brand || it.brand || "",
+            supplierBrand: respItem.brand || "",
+            supplierNotes: respItem.notes || "",
+            totalPrice: uPrice * (it.quantity || 1)
+          };
+        }
+        return it;
+      });
 
-    quotations[qIdx] = targetQuotation;
-    serverAppStoreCache.quotations = quotations;
+      totalEstimated = updatedItems.reduce((acc: number, it: any) => acc + (it.totalPrice || 0), 0);
 
-    // Log notification and history
-    const notifs = serverAppStoreCache.notifications || [];
-    notifs.unshift({
-      id: `notif-${Date.now()}`,
-      type: "quotation_answered",
-      title: "Cotação Respondida pelo Fornecedor",
-      message: `O fornecedor respondeu a cotação ${targetQuotation.code} com total de R$ ${totalEstimated.toFixed(2)}.`,
-      date: new Date().toISOString(),
-      read: false,
-      companyId: targetQuotation.companyId
-    });
-    serverAppStoreCache.notifications = notifs;
+      targetQuotation.items = updatedItems;
+      targetQuotation.status = "supplier_replied";
+      targetQuotation.supplierRepliedAt = new Date().toISOString();
+      targetQuotation.supplierNotes = supplierNotes || targetQuotation.supplierNotes;
+      targetQuotation.deliveryDays = deliveryDays !== undefined ? Number(deliveryDays) : targetQuotation.deliveryDays;
+      targetQuotation.paymentTerms = paymentTerms || targetQuotation.paymentTerms;
+      targetQuotation.totalAmount = totalEstimated;
+      targetQuotation.supplierRespondent = {
+        name: supplierName || targetQuotation.supplierName,
+        contact: supplierContact || "",
+        answeredAt: new Date().toISOString()
+      };
 
-    // Persistir imediatamente em disco (data/app_store.json) e backups
-    persistServerCacheToDisk(serverAppStoreCache);
+      quotations[qIdx] = targetQuotation;
+      current.quotations = quotations;
 
-    // Save to Cloud SQL / App Store
-    const config = resolveDatabaseConfig();
-    try {
-      await executeSqlWithRetry(
-        'UPDATE app_store SET data = $1, updated_at = NOW() WHERE id = $2',
-        [JSON.stringify(serverAppStoreCache), 'motordesk_main'],
-        config.database
-      );
-    } catch (e) {
-      console.warn("Could not persist quotation update immediately to Postgres, cached in memory:", e);
-    }
-
-    // Broadcast em tempo real para todos os navegadores e computadores conectados (Compradores recebem notificação instantânea)
-    currentDbVersion++;
-    currentDbUpdatedAt = new Date().toISOString();
-    broadcastDbUpdate({
-      updatedAt: currentDbUpdatedAt,
-      version: currentDbVersion,
-      companyId: targetQuotation.companyId,
-      source: "supplier_quotation_reply",
-    });
+      // Log notification and history
+      const notifs = current.notifications || [];
+      notifs.unshift({
+        id: `notif-${Date.now()}`,
+        type: "quotation_answered",
+        title: "Cotação Respondida pelo Fornecedor",
+        message: `O fornecedor respondeu a cotação ${targetQuotation.code} com total de R$ ${totalEstimated.toFixed(2)}.`,
+        date: new Date().toISOString(),
+        read: false,
+        companyId: targetQuotation.companyId
+      });
+      current.notifications = notifs;
+      return current;
+    }, { source: "supplier_quotation_reply" });
 
     console.log(`[QUOTATION-REPLY] Cotação ${targetQuotation.code} respondida por ${targetQuotation.supplierRespondent?.name || "Fornecedor"} (Total: R$ ${totalEstimated.toFixed(2)}). Notificação enviada ao módulo de compras.`);
 
@@ -3191,7 +2967,7 @@ app.post("/api/public/quotations/:id/respond", async (req, res) => {
       totalAmount: totalEstimated
     });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    res.status(err.httpStatus || 500).json({ error: err.message });
   }
 });
 
@@ -3578,43 +3354,17 @@ app.delete("/v1/nfse/:ref", (req, res) => {
 // ==========================================
 // 5. ROTAS DE BACKUP DIÁRIO DA BASE DE DADOS
 // ==========================================
+// Snapshot sempre lido do banco (fonte única de verdade); arquivo local apenas sem banco configurado
 async function getDbSnapshotForBackup(): Promise<any> {
-  if (serverAppStoreCache && typeof serverAppStoreCache === 'object' && Object.keys(serverAppStoreCache).length > 5) {
+  if (hasDatabaseBackend()) {
+    const stored = await readAppStoreFromDb();
+    return stored?.data || null;
+  }
+  if (serverAppStoreCache && typeof serverAppStoreCache === 'object') {
     return serverAppStoreCache;
   }
-  const initial = loadInitialServerCache();
-  if (initial) {
-    serverAppStoreCache = initial;
-    return serverAppStoreCache;
-  }
-  if (isFirestoreConnected()) {
-    try {
-      const firestoreData = await loadDatabaseFromFirestore();
-      if (firestoreData && typeof firestoreData === 'object') {
-        serverAppStoreCache = mergeAppDatabase(serverAppStoreCache, firestoreData);
-        persistServerCacheToDisk(serverAppStoreCache);
-        return serverAppStoreCache;
-      }
-    } catch (e) {
-      console.warn('[BACKUP] Falha ao carregar do Firestore para backup:', e);
-    }
-  }
-  const cfg = resolveDatabaseConfig();
-  if (isDatabaseSocketAvailable(cfg.database)) {
-    try {
-      const res = await executeSqlWithRetry(
-        'SELECT data FROM app_store WHERE id = $1',
-        ['motordesk_main'],
-        cfg.database
-      );
-      if (res.rows.length > 0 && res.rows[0].data) {
-        serverAppStoreCache = res.rows[0].data;
-        persistServerCacheToDisk(serverAppStoreCache);
-        return serverAppStoreCache;
-      }
-    } catch (e) {}
-  }
-  return serverAppStoreCache || null;
+  serverAppStoreCache = loadInitialServerCache();
+  return serverAppStoreCache;
 }
 
 // Status do Backup Diário Automático
@@ -3698,30 +3448,7 @@ app.post("/api/backup/restore", requireAuth, async (req, res) => {
       filename,
       getDbSnapshotForBackup,
       async (dataToPersist) => {
-        const cfg = resolveDatabaseConfig();
-        serverAppStoreCache = dataToPersist;
-        persistServerCacheToDisk(dataToPersist);
-        if (isDatabaseSocketAvailable(cfg.database)) {
-          await enqueueDbWrite(async () => {
-            try {
-              await executeSqlWithRetry(
-                `INSERT INTO app_store (id, data, updated_at) VALUES ($1, $2, NOW())
-                 ON CONFLICT (id) DO UPDATE SET data = $2, updated_at = NOW()`,
-                ['motordesk_main', dataToPersist],
-                cfg.database
-              );
-            } catch (sqlErr: any) {
-              console.warn("[RESTORE] Falha na gravação SQL:", sqlErr.message);
-            }
-          });
-        }
-        currentDbVersion++;
-        currentDbUpdatedAt = new Date().toISOString();
-        broadcastDbUpdate({
-          updatedAt: currentDbUpdatedAt,
-          version: currentDbVersion,
-          source: "backup_restore",
-        });
+        await mutateAppStore(() => dataToPersist, { source: "backup_restore" });
       }
     );
 
@@ -3749,31 +3476,7 @@ app.post("/api/backup/restore-company", requireAuth, async (req, res) => {
       { filename, backupData: backupData || sourceData },
       getDbSnapshotForBackup,
       async (dataToPersist) => {
-        const cfg = resolveDatabaseConfig();
-        serverAppStoreCache = dataToPersist;
-        persistServerCacheToDisk(dataToPersist);
-        if (isDatabaseSocketAvailable(cfg.database)) {
-          await enqueueDbWrite(async () => {
-            try {
-              await executeSqlWithRetry(
-                `INSERT INTO app_store (id, data, updated_at) VALUES ($1, $2, NOW())
-                 ON CONFLICT (id) DO UPDATE SET data = $2, updated_at = NOW()`,
-                ['motordesk_main', dataToPersist],
-                cfg.database
-              );
-            } catch (sqlErr: any) {
-              console.warn("[RESTORE-COMPANY] Falha na gravação SQL:", sqlErr.message);
-            }
-          });
-        }
-        currentDbVersion++;
-        currentDbUpdatedAt = new Date().toISOString();
-        broadcastDbUpdate({
-          updatedAt: currentDbUpdatedAt,
-          version: currentDbVersion,
-          companyId: targetCompanyId,
-          source: "company_backup_restore",
-        });
+        await mutateAppStore(() => dataToPersist, { source: "company_backup_restore", companyId: targetCompanyId });
       }
     );
 
@@ -3861,29 +3564,11 @@ app.post("/api/backup/policy/:companyId", requireAuth, async (req, res) => {
   try {
     const { companyId } = req.params;
     const policy = req.body || {};
-    const db = await getDbSnapshotForBackup();
     const service = DailyBackupService.getInstance();
-    const updatedDb = service.updateCompanyBackupPolicy(db, companyId, policy);
-
-    const cfg = resolveDatabaseConfig();
-    serverAppStoreCache = updatedDb;
-    await enqueueDbWrite(async () => {
-      await executeSqlWithRetry(
-        `INSERT INTO app_store (id, data, updated_at) VALUES ($1, $2, NOW())
-         ON CONFLICT (id) DO UPDATE SET data = $2, updated_at = NOW()`,
-        ['motordesk_main', updatedDb],
-        cfg.database
-      );
-    });
-
-    currentDbVersion++;
-    currentDbUpdatedAt = new Date().toISOString();
-    broadcastDbUpdate({
-      updatedAt: currentDbUpdatedAt,
-      version: currentDbVersion,
-      companyId,
-      source: "backup_policy_update",
-    });
+    const { data: updatedDb } = await mutateAppStore(
+      (current) => service.updateCompanyBackupPolicy(current, companyId, policy),
+      { source: "backup_policy_update", companyId }
+    );
 
     const policies = service.getCompanyBackupPolicies(updatedDb);
     const updatedPolicy = policies.find(p => p.companyId === companyId);
@@ -3923,33 +3608,13 @@ app.post("/api/support/company-repair", requireAuth, async (req, res) => {
       return res.status(400).json({ error: "targetCompanyId é obrigatório." });
     }
 
-    const db = await getDbSnapshotForBackup();
-    const { updatedDb, result } = CompanySupportService.executeIsolatedRepair(
-      db,
-      targetCompanyId,
-      correctionType || "all"
-    );
-
-    // Persistir apenas os dados atualizados com garantia atômica
-    const cfg = resolveDatabaseConfig();
-    serverAppStoreCache = updatedDb;
-    await enqueueDbWrite(async () => {
-      await executeSqlWithRetry(
-        `INSERT INTO app_store (id, data, updated_at) VALUES ($1, $2, NOW())
-         ON CONFLICT (id) DO UPDATE SET data = $2, updated_at = NOW()`,
-        ['motordesk_main', updatedDb],
-        cfg.database
-      );
-    });
-
-    currentDbVersion++;
-    currentDbUpdatedAt = new Date().toISOString();
-    broadcastDbUpdate({
-      updatedAt: currentDbUpdatedAt,
-      version: currentDbVersion,
-      companyId: targetCompanyId,
-      source: "support_repair_isolated",
-    });
+    // Correção aplicada sobre o estado atual do banco, na mesma transação da gravação
+    let result: any = null;
+    await mutateAppStore((current) => {
+      const repair = CompanySupportService.executeIsolatedRepair(current, targetCompanyId, correctionType || "all");
+      result = repair.result;
+      return repair.updatedDb;
+    }, { source: "support_repair_isolated", companyId: targetCompanyId });
 
     res.json({
       success: true,
@@ -4034,12 +3699,14 @@ async function startServer() {
     console.log(`MotorDesk Express REST API running on http://0.0.0.0:${PORT}`);
     try {
       const config = resolveDatabaseConfig();
-      if (isDatabaseSocketAvailable(config.database)) {
+      if (hasDatabaseBackend()) {
         await warmUpDatabaseConnection();
         startDatabaseKeepAlive(15000);
         await ensureAppStoreTableExists(config.database);
+        const stored = await readAppStoreFromDb();
+        console.log(`[MotorDesk Boot] Banco ${config.database}@${config.host} conectado como fonte única de verdade (versão ${stored?.version ?? 'vazia'}).`);
       } else {
-        console.log(`[MotorDesk Boot] Cloud SQL socket (${config.host}) não montado localmente. Operando em modo de resiliência com armazenamento persistente e cache.`);
+        console.warn(`[MotorDesk Boot] Nenhum banco configurado (DATABASE_URL ausente). Usando arquivo local data/app_store.json — os dados NÃO serão compartilhados entre computadores.`);
       }
     } catch (dbBootErr: any) {
       console.warn(`[MotorDesk Boot] Aviso ao inicializar conexão do banco: ${dbBootErr.message}`);

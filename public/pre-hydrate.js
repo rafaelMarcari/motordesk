@@ -79,7 +79,7 @@
     return res.json();
   })
   .then(function(payload) {
-    const freshDb = payload.data || payload;
+    const freshDb = payload && payload.success !== false ? payload.data : null;
     if (freshDb && typeof freshDb === 'object') {
       window.__CURRENT_DB = freshDb;
       if (Array.isArray(freshDb.registeredCompanies) && freshDb.registeredCompanies.length > 0) {
@@ -115,8 +115,10 @@
       });
       if (res.ok) {
         const json = await res.json();
-        const fresh = json.data || json;
-        if (fresh && window.__motorDeskDb && typeof window.__motorDeskDb.onDataMergedCallback === 'function') {
+        const fresh = json && json.success !== false ? json.data : null;
+        if (!fresh || typeof fresh !== 'object') return null;
+        window.__CURRENT_DB = fresh;
+        if (window.__motorDeskDb && typeof window.__motorDeskDb.onDataMergedCallback === 'function') {
           window.__motorDeskDb.onDataMergedCallback(fresh);
         }
         return fresh;

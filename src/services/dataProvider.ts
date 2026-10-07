@@ -43,29 +43,17 @@ class DataProviderService {
   }
 
   public async getDatabase(): Promise<AppDatabase> {
-    // 1. Se já existir banco ativo em memória global pelo conector direto assíncrono
-    if (typeof window !== 'undefined') {
-      if ((window as any).__CURRENT_DB && typeof (window as any).__CURRENT_DB === 'object') {
-        return (window as any).__CURRENT_DB as AppDatabase;
-      }
-      if ((window as any).__motorDeskDbPromise) {
-        try {
-          const preDb = await (window as any).__motorDeskDbPromise;
-          if (preDb && typeof preDb === 'object') {
-            (window as any).__CURRENT_DB = preDb;
-            return preDb as AppDatabase;
-          }
-        } catch (e) {}
-      }
-      if ((window as any).__motorDeskFirestore?.fetchDatabase) {
-        try {
-          const fsDb = await (window as any).__motorDeskFirestore.fetchDatabase();
-          if (fsDb && typeof fsDb === 'object' && fsDb.companyInfo) {
-            (window as any).__CURRENT_DB = fsDb;
-            return fsDb as AppDatabase;
-          }
-        } catch (e) {}
-      }
+    // A carga antecipada do boot (pre-hydrate.js) é aproveitada apenas uma vez;
+    // toda chamada seguinte consulta o servidor para enxergar gravações de outras máquinas.
+    if (typeof window !== 'undefined' && (window as any).__motorDeskDbPromise && !(window as any).__motorDeskBootDbConsumed) {
+      (window as any).__motorDeskBootDbConsumed = true;
+      try {
+        const preDb = await (window as any).__motorDeskDbPromise;
+        if (preDb && typeof preDb === 'object') {
+          (window as any).__CURRENT_DB = preDb;
+          return preDb as AppDatabase;
+        }
+      } catch (e) {}
     }
 
     let authToken = typeof localStorage !== 'undefined' ? localStorage.getItem('motordesk_auth_token') : null;
@@ -112,7 +100,7 @@ class DataProviderService {
       }
 
       const payload = await response.json();
-      const serverDb = payload.data || payload;
+      const serverDb = payload && payload.success !== false ? payload.data : null;
 
       if (serverDb && typeof serverDb === 'object') {
         if (typeof window !== 'undefined') {
@@ -135,6 +123,11 @@ class DataProviderService {
       }
     } catch (err) {
       console.warn('[DataProvider] Server fetch notice, evaluating fallback:', err);
+    }
+
+    // Servidor indisponível: mantém o estado já carregado nesta aba
+    if (typeof window !== 'undefined' && (window as any).__CURRENT_DB) {
+      return (window as any).__CURRENT_DB as AppDatabase;
     }
 
     // Local fallback se rede falhar completamente
@@ -167,12 +160,6 @@ class DataProviderService {
       (window as any).__CURRENT_DB = db;
       if (Array.isArray(db.registeredCompanies) && db.registeredCompanies.length > 0) {
         (window as any).__allCompanies = db.registeredCompanies;
-      }
-      // Gravar diretamente no Google Cloud Firestore a partir do navegador
-      if ((window as any).__motorDeskFirestore?.saveDatabase) {
-        try {
-          (window as any).__motorDeskFirestore.saveDatabase(db);
-        } catch (e) {}
       }
     }
 
