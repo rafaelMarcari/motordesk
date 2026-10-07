@@ -229,11 +229,16 @@
   }
   showGate('Carregando MotorDesk…', 'Conectando ao banco de dados.');
 
+  // Resposta marcada pelo servidor (X-MotorDesk-Api) só indica queda quando ele próprio avisa
+  // (banco fora: X-MotorDesk-Offline). Sem a marca, HTML ou 502/503/504 vêm da hospedagem: servidor fora.
+  function serverFailure(status, header) {
+    if (header('x-motordesk-api')) return Boolean(header('x-motordesk-offline'));
+    if (status === 502 || status === 503 || status === 504) return true;
+    return status !== 204 && String(header('content-type') || '').toLowerCase().indexOf('text/html') !== -1;
+  }
   function isServerFailure(res) {
     if (!res) return true;
-    if (res.status === 502 || res.status === 503 || res.status === 504) return true;
-    const ct = (res.headers && res.headers.get ? res.headers.get('content-type') : '') || '';
-    return res.status !== 204 && ct.toLowerCase().indexOf('text/html') !== -1;
+    return serverFailure(res.status, function (h) { return res.headers && res.headers.get ? res.headers.get(h) : null; });
   }
   function markOffline() {
     if (serverOffline) return;
@@ -374,8 +379,7 @@
       }
       xhr.addEventListener('load', function () {
         if (xhr.status === 401 && !isAuthFlowUrl(xhr.__mdUrl)) handleSessionExpired();
-        const ct = String(xhr.getResponseHeader('content-type') || '').toLowerCase();
-        if (xhr.status === 502 || xhr.status === 503 || xhr.status === 504 || (xhr.status !== 204 && ct.indexOf('text/html') !== -1)) markOffline();
+        if (serverFailure(xhr.status, function (h) { return xhr.getResponseHeader(h); })) markOffline();
       });
       xhr.addEventListener('error', markOffline);
       if (isDbWrite(xhr.__mdMethod, xhr.__mdUrl)) return nativeSend.call(this, slimDbBody(arguments[0]));

@@ -13,7 +13,7 @@
 
   const KIND_LABELS = { erp: 'ERP', contabilidade: 'Contabilidade', ecommerce: 'E-commerce', crm: 'CRM', banco: 'Banco', marketplace: 'Marketplace', cad: 'CAD / Engenharia', outro: 'Outro' };
   const AUTH_LABELS = { bearer: 'Token (Authorization: Bearer)', header: 'Chave em cabeçalho próprio', basic: 'Usuário e senha (Basic)', none: 'Sem autenticação' };
-  const SCOPE_LABELS = { read: 'Leitura', write: 'Gravação', solidworks: 'SolidWorks' };
+  const SCOPE_LABELS = { read: 'Leitura', write: 'Gravação', solidworks: 'SolidWorks', fiscal: 'Fiscal (NF-e)' };
 
   function esc(v) {
     return String(v == null ? '' : v).replace(/[&<>"']/g, function (c) {
@@ -160,7 +160,8 @@
       '<div class="f" style="font-size:12.5px;font-weight:600;color:#334155">Permissões<div class="row" style="font-weight:400;margin-top:6px">' +
       '<label><input type="checkbox" data-k="read" checked> Leitura</label>' +
       '<label><input type="checkbox" data-k="write"> Gravação (clientes, veículos, peças)</label>' +
-      '<label><input type="checkbox" data-k="solidworks"> SolidWorks</label></div></div></div>' +
+      '<label><input type="checkbox" data-k="solidworks"> SolidWorks</label>' +
+      '<label><input type="checkbox" data-k="fiscal"> Fiscal (emitir NF-e)</label></div></div></div>' +
       '<div class="row" style="margin-top:10px"><button type="button" class="btn" data-act="create-key">Gerar chave</button><span class="msg" data-keymsg></span></div>' +
       '<div data-newkey></div></div></section>' +
       '<section><h3>Add-in SolidWorks</h3><p class="t">No add-in, use uma chave com a permissão <b>SolidWorks</b> e o endereço:</p>' +
@@ -282,7 +283,7 @@
     if (act === 'create-key') {
       const b = body();
       const name = b.querySelector('[data-k=name]').value.trim();
-      const scopes = ['read', 'write', 'solidworks'].filter(function (s) { return b.querySelector('[data-k=' + s + ']').checked; });
+      const scopes = ['read', 'write', 'solidworks', 'fiscal'].filter(function (s) { return b.querySelector('[data-k=' + s + ']').checked; });
       t.disabled = true;
       try {
         const data = await api('POST', '/api/integrations/api-keys', { name: name, scopes: scopes });

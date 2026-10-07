@@ -53,12 +53,13 @@
     overlay.style.cssText = 'position:fixed;inset:0;z-index:2147483646;background:rgba(15,23,42,.6);display:flex;align-items:center;justify-content:center;padding:16px;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif';
     overlay.innerHTML =
       '<div style="background:#fff;color:#0f172a;max-width:440px;width:100%;border-radius:12px;padding:20px 22px;box-shadow:0 20px 50px rgba(0,0,0,.3)">' +
-      '<div style="font-size:16px;font-weight:700;margin-bottom:8px">Emissão fiscal indisponível</div>' +
-      '<p style="font-size:14px;line-height:1.5;color:#334155;margin:0 0 10px">Nenhum provedor fiscal está configurado. Sem ele, a nota não é enviada à SEFAZ nem à prefeitura e não tem validade fiscal, por isso a emissão está bloqueada.</p>' +
-      '<p style="font-size:13px;line-height:1.5;color:#64748b;margin:0 0 16px">Para emitir NF-e, NFC-e e NFS-e é preciso contratar um provedor homologado (ex.: Focus NFe) e integrá-lo ao MotorDesk.</p>' +
-      '<div style="text-align:right"><button type="button" data-close style="background:#4f46e5;color:#fff;border:0;border-radius:8px;padding:8px 16px;font-size:14px;font-weight:600;cursor:pointer">Entendi</button></div>' +
+      '<div style="font-size:16px;font-weight:700;margin-bottom:8px">Emissão fiscal indisponível nesta tela</div>' +
+      '<p style="font-size:14px;line-height:1.5;color:#334155;margin:0 0 10px">Este botão gerava uma nota simulada, sem envio à SEFAZ e sem validade fiscal, por isso está bloqueado.</p>' +
+      '<p style="font-size:13px;line-height:1.5;color:#64748b;margin:0 0 16px">A NF-e de produto (modelo 55) é emitida pela tela <b>Notas Fiscais (NF-e)</b> do menu lateral, direto na SEFAZ com o certificado da empresa.</p>' +
+      '<div style="text-align:right">' + (typeof window.MotorDeskOpenFiscal === 'function' ? '<button type="button" data-open-fiscal style="background:#047857;color:#fff;border:0;border-radius:8px;padding:8px 16px;font-size:14px;font-weight:600;cursor:pointer;margin-right:8px">Abrir Notas Fiscais</button>' : '') + '<button type="button" data-close style="background:#4f46e5;color:#fff;border:0;border-radius:8px;padding:8px 16px;font-size:14px;font-weight:600;cursor:pointer">Entendi</button></div>' +
       '</div>';
     overlay.addEventListener('click', function (e) {
+      if (e.target.hasAttribute('data-open-fiscal')) { overlay.remove(); window.MotorDeskOpenFiscal('emitir'); return; }
       if (e.target === overlay || e.target.hasAttribute('data-close')) overlay.remove();
     });
     (document.body || document.documentElement).appendChild(overlay);
@@ -68,7 +69,8 @@
 
   document.addEventListener('click', function (e) {
     const el = e.target && e.target.closest ? e.target.closest('button, [role="button"]') : null;
-    if (!el || !isEmissionButton(el)) return;
+    // A tela "Notas Fiscais (NF-e)" emite de verdade pelo servidor: não é bloqueada
+    if (!el || el.closest('#md-fis') || !isEmissionButton(el)) return;
     refreshProviderStatus();
     if (providerReady) return;
     e.preventDefault();

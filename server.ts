@@ -12,6 +12,7 @@ import { fiscalBackendService } from "./server/fiscalProviderService.js";
 import { DailyBackupService } from "./server/dailyBackupService.js";
 import { CompanySupportService } from "./server/companySupportService.js";
 import * as notasApiBackend from "./src/services/notasApiBackend.js";
+import { registerFiscalRoutes } from "./server/fiscal/routes.ts";
 
 dotenv.config();
 
@@ -93,6 +94,13 @@ const corsOptions: cors.CorsOptions = {
 // 1. REGISTER CORS MIDDLEWARE FIRST BEFORE ALL OTHER ROUTERS AND MIDDLEWARES
 app.use(cors(corsOptions));
 
+// Marca as respostas da API: o navegador distingue "página HTML da hospedagem" (servidor fora) de uma
+// resposta legítima da API (ex.: DANFE em HTML, 503 de rota desativada)
+app.use((req, res, next) => {
+  if (req.path.startsWith("/api")) res.setHeader("X-MotorDesk-Api", "1");
+  next();
+});
+
 // 2. EXPLICITLY HANDLE ALL PREFLIGHT 'OPTIONS' REQUESTS BEFORE ANY OTHER ROUTE
 app.options("*", cors(corsOptions));
 app.use((req, res, next) => {
@@ -135,6 +143,7 @@ app.use(async (req, res, next) => {
     try {
       await ensureServerReady();
     } catch (err: any) {
+      res.setHeader("X-MotorDesk-Offline", "1");
       return res.status(503).json({ success: false, code: "DB_UNAVAILABLE", error: "Banco de dados indisponível. Tente novamente em instantes." });
     }
   }
@@ -302,7 +311,10 @@ app.get(["/api/health", "/health"], async (req, res) => {
   const statusCode = dbHealth.connected ? 200 : 503;
 
   // Rota pública: não expõe host, usuário nem detalhes de erro do banco
-  if (!dbHealth.connected) console.warn("[HEALTH] Banco indisponível:", dbHealth.error);
+  if (!dbHealth.connected) {
+    console.warn("[HEALTH] Banco indisponível:", dbHealth.error);
+    res.setHeader("X-MotorDesk-Offline", "1");
+  }
   res.status(statusCode).json({
     status,
     database: dbHealth.connected ? "connected" : "disconnected",
@@ -1142,7 +1154,7 @@ function requireContractedModule(moduleName: string, permissionKey: string, _get
 // Credenciais de sistemas externos: cifradas com AES-256-GCM.
 // =========================================================================
 const API_KEY_PREFIX = "mdk_";
-const API_KEY_SCOPES = ["read", "write", "solidworks"] as const;
+const API_KEY_SCOPES = ["read", "write", "solidworks", "fiscal"] as const;
 const API_RATE_LIMIT_PER_MIN = 120;
 const apiKeyCache = new Map<string, { record: any; at: number }>();
 const apiRateWindows = new Map<string, { start: number; count: number }>();
@@ -1262,7 +1274,7 @@ async function attachApiKeyContext(req: any): Promise<void> {
 }
 
 function isApiKeyRoute(req: any): boolean {
-  return req.path.startsWith("/api/v1/") || req.path === "/api/integrations/solidworks/sync-project";
+  return req.path.startsWith("/api/v1/") || req.path.startsWith("/api/fiscal/v2/") || req.path === "/api/integrations/solidworks/sync-project";
 }
 
 function requireApiScope(scope: string) {
@@ -3802,6 +3814,14 @@ app.get("/api/v1", (req, res) => {
         ...(d.key ? [{ method: "POST", path: `/${path}`, scope: "write", description: `Cria ou atualiza (por id ou ${path === "clients" ? "CPF/CNPJ" : path === "vehicles" ? "placa" : "código"}).` }] : []),
       ]),
       { method: "POST", path: "/api/integrations/solidworks/sync-project", scope: "solidworks", description: "Envia projeto/BOM do add-in SolidWorks (gera ordem de produção e separação)." },
+      { method: "POST", path: "/api/fiscal/v2/nfe?ref={ref}", scope: "fiscal", description: "Emite NF-e modelo 55 (campos no padrão Focus NFe); responde com status, chave, protocolo e guias." },
+      { method: "GET", path: "/api/fiscal/v2/nfe/{ref}", scope: "fiscal", description: "Consulta a NF-e pela referência." },
+      { method: "DELETE", path: "/api/fiscal/v2/nfe/{ref}", scope: "fiscal", description: "Cancela a NF-e (justificativa com 15 a 255 caracteres)." },
+      { method: "POST", path: "/api/fiscal/v2/nfe/{ref}/carta_correcao", scope: "fiscal", description: "Envia carta de correção." },
+      { method: "GET", path: "/api/fiscal/v2/nfe/{ref}/xml", scope: "fiscal", description: "XML autorizado (nfeProc)." },
+      { method: "GET", path: "/api/fiscal/v2/nfe/{ref}/danfe", scope: "fiscal", description: "DANFE para impressão." },
+      { method: "POST", path: "/api/fiscal/v2/nfe/calcular", scope: "fiscal", description: "Prévia de tributos e guias, sem emitir." },
+      { method: "POST", path: "/api/fiscal/v2/nfe/inutilizacao", scope: "fiscal", description: "Inutiliza faixa de numeração." },
     ],
   });
 });
@@ -3864,6 +3884,44 @@ app.post("/api/v1/:resource", requireApiScope("write"), async (req: any, res) =>
   } catch (err: any) {
     res.status(err.httpStatus || 500).json({ success: false, error: err.message });
   }
+});
+
+// =========================================================================
+// EMISSÃO FISCAL PRÓPRIA (NF-e modelo 55) — /api/fiscal/v2, padrão Focus NFe
+// Certificado A1 e senha ficam no mesmo cofre cifrado das integrações (fora do app_store).
+// =========================================================================
+const FISCAL_NEED_PERMISSION = { ler: "accessFiscal", emitir: "fiscalEmit", cancelar: "fiscalCancel" } as const;
+registerFiscalRoutes(app, {
+  exec: (sql, params = []) => executeSqlWithRetry(sql, params, resolveDatabaseConfig().database),
+  hasDb: () => hasDatabaseBackend(),
+  encrypt: encryptSecret,
+  decrypt: decryptSecret,
+  getStore: () => serverAppStoreCache,
+  mutateStore: (fn, meta) => mutateAppStore(fn, meta),
+  isMaster: (req: any) => Boolean(req.authUser && isMasterAccount(req.authUser)),
+  access: (req: any, need) => {
+    if (req.apiKey) {
+      const company = findCompany(serverAppStoreCache, req.apiKey.companyId);
+      if (!req.apiKey.scopes.includes("fiscal")) return { status: 403, error: 'A chave de API não tem a permissão "fiscal".' };
+      if (!companyAllowsPermission(company, "accessFiscal")) return { status: 403, error: "Módulo fiscal não contratado pela empresa." };
+      if (need === "configurar") return { status: 403, error: "A configuração fiscal é feita pela tela do sistema." };
+      return { companyId: req.apiKey.companyId, actor: `api:${req.apiKey.name}` };
+    }
+    if (!req.authUser) return { status: 401, error: "Sessão expirada ou inválida. Faça login novamente." };
+    const { companyId } = extractUserContext(req);
+    const company = findCompany(serverAppStoreCache, companyId);
+    if (!company || !userCompanyIds(req.authUser, serverAppStoreCache).includes(companyId)) return { status: 403, error: "Empresa não vinculada ao usuário." };
+    const actor = req.authUser.name || req.authUser.username;
+    if (need === "configurar") {
+      return canManageUsers(req.authUser, company) ? { companyId, actor } : { status: 403, error: "Somente administradores configuram a emissão fiscal." };
+    }
+    if (!hasEffectivePermission(req.authUser, company, "accessFiscal")) return { status: 403, error: "Módulo fiscal não contratado pela empresa ou não liberado para o seu usuário." };
+    const key = FISCAL_NEED_PERMISSION[need];
+    if (key !== "accessFiscal" && !hasEffectivePermission(req.authUser, company, key)) {
+      return { status: 403, error: need === "cancelar" ? "Seu usuário não tem permissão para cancelar notas." : "Seu usuário não tem permissão para emitir notas." };
+    }
+    return { companyId, actor };
+  },
 });
 
 // =========================================================================
