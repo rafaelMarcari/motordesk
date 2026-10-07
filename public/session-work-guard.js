@@ -610,28 +610,26 @@
           return;
         }
 
-        // Validar senha
-        let isValid = false;
-        if (user.passwordHash && (user.passwordHash === pwd || user.passwordHash.toLowerCase() === pwd.toLowerCase())) {
-          isValid = true;
-        } else if (db && Array.isArray(db.users)) {
-          const match = db.users.find(u => 
-            u && u.username && u.username.toLowerCase() === (user.username || '').toLowerCase() &&
-            (u.passwordHash === pwd || (u.passwordHash && u.passwordHash.toLowerCase() === pwd.toLowerCase()))
-          );
-          if (match) isValid = true;
-        }
-
-        if (isValid) {
-          // Desbloqueio autorizado!
-          unlockSessionSuccess();
-        } else {
-          showError('Senha incorreta. Por favor, tente novamente.');
-          if (pwdInput) {
-            pwdInput.value = '';
-            pwdInput.focus();
-          }
-        }
+        // Senha validada no servidor (o navegador não possui as senhas)
+        fetch('/api/auth/verify-password', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ password: pwd })
+        })
+          .then((res) => res.json().catch(() => ({})).then((data) => ({ ok: res.ok, data })))
+          .then(({ ok, data }) => {
+            if (ok && data && data.success) {
+              // Desbloqueio autorizado!
+              unlockSessionSuccess();
+            } else {
+              showError((data && data.error) || 'Senha incorreta. Por favor, tente novamente.');
+              if (pwdInput) {
+                pwdInput.value = '';
+                pwdInput.focus();
+              }
+            }
+          })
+          .catch(() => showError('Não foi possível validar a senha no servidor. Verifique sua conexão.'));
       };
     }
 

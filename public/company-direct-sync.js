@@ -14,6 +14,8 @@
     try {
       const token = localStorage.getItem('motordesk_auth_token') || 'guest';
       const userStr = localStorage.getItem('motordesk_active_user');
+      // Preferência do usuário logado: sem sessão não há o que consultar
+      if (!userStr) return currentActiveCompanyId;
       const headers = {
         'Cache-Control': 'no-cache, no-store, must-revalidate',
         'Authorization': 'Bearer ' + token

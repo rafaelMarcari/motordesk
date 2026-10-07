@@ -76,86 +76,48 @@
     }, 4000);
   }
 
-  function saveUserPasswordUpdate(user, newPassword, keepCurrent, onComplete) {
+  function saveUserPasswordUpdate(user, newPassword, keepCurrent, onComplete, onFailure) {
     if (isProcessing) return;
     isProcessing = true;
 
-    var now = Date.now();
-    var finalPassword = keepCurrent ? (user.passwordHash || '123456') : newPassword;
-
-    // 1. Atualizar active user no localStorage
-    user.passwordHash = finalPassword;
-    user.firstAccess = false;
-    user.mustChangePassword = false;
-    user.hasChosenPassword = true;
-    user.passwordUpdatedAt = now;
-    user.updatedAt = new Date().toISOString();
-    try {
-      localStorage.setItem('motordesk_active_user', JSON.stringify(user));
-    } catch (e) {}
-
-    // 2. Atualizar banco local (motordesk_db_v1 e motordesk_db)
-    var dbKeys = ['motordesk_db_v1', 'motordesk_db'];
-    var updatedDb = null;
-    dbKeys.forEach(function (k) {
-      try {
-        var raw = localStorage.getItem(k);
-        if (raw) {
-          var db = JSON.parse(raw);
-          if (Array.isArray(db.users)) {
-            db.users = db.users.map(function (u) {
-              if (u.id === user.id || (u.username && u.username.toLowerCase() === user.username.toLowerCase() && u.companyId === user.companyId)) {
-                return Object.assign({}, u, {
-                  passwordHash: finalPassword,
-                  firstAccess: false,
-                  mustChangePassword: false,
-                  hasChosenPassword: true,
-                  passwordUpdatedAt: now,
-                  updatedAt: new Date().toISOString()
-                });
-              }
-              return u;
-            });
-            localStorage.setItem(k, JSON.stringify(db));
-            updatedDb = db;
-          }
-        }
-      } catch (e) {}
-    });
-
-    // 3. Chamar API dedicada no backend com fallback resiliente
+    // A senha é gravada SOMENTE pelo servidor (o navegador não guarda senhas)
     fetch('/api/users/update-password', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-User-Id': user.id,
-        'X-Company-Id': user.companyId || 'comp-1',
-        'X-User-Role': user.role || 'mecanico'
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         userId: user.id,
-        username: user.username,
-        companyId: user.companyId,
-        newPassword: keepCurrent ? undefined : finalPassword,
+        newPassword: keepCurrent ? undefined : newPassword,
         keepCurrent: Boolean(keepCurrent)
       })
     })
-      .then(function (res) { return res.json(); })
-      .then(function (data) {
-        console.log('[FIRST-ACCESS] Resposta da API:', data);
-        // Também enviar atualização global do db para persistência cruzada de forma gerenciada
-        if (updatedDb) {
-          if (window.__motorDeskDb && typeof window.__motorDeskDb.saveDatabase === 'function') {
-            window.__motorDeskDb.saveDatabase(updatedDb);
-          }
+      .then(function (res) {
+        return res.json().catch(function () { return {}; }).then(function (data) { return { ok: res.ok, data: data }; });
+      })
+      .then(function (result) {
+        if (!result.ok || !result.data || !result.data.success) {
+          showToast((result.data && result.data.error) || 'Não foi possível salvar a senha. Tente novamente.', false);
+          if (typeof onFailure === 'function') onFailure();
+          return;
         }
+        // Atualiza apenas as marcações de primeiro acesso do usuário logado
+        user.firstAccess = false;
+        user.mustChangePassword = false;
+        user.hasChosenPassword = true;
+        user.passwordUpdatedAt = Date.now();
+        delete user.passwordHash;
+        try {
+          localStorage.setItem('motordesk_active_user', JSON.stringify(user));
+        } catch (e) {}
+        if (typeof window.__motorDeskSyncNow === 'function') window.__motorDeskSyncNow('first_access_password');
+        if (typeof onComplete === 'function') onComplete();
       })
       .catch(function (err) {
-        console.warn('[FIRST-ACCESS] Erro na requisição (usando persistência local e sync):', err);
+        console.warn('[FIRST-ACCESS] Erro ao gravar a senha no servidor:', err);
+        showToast('Não foi possível conectar ao servidor para salvar a senha.', false);
+        if (typeof onFailure === 'function') onFailure();
       })
       .finally(function () {
         isProcessing = false;
-        if (typeof onComplete === 'function') onComplete();
       });
   }
 
@@ -309,6 +271,7 @@
       }
 
       errorBox.classList.add('hidden');
+      var saveLabel = btnSave.innerHTML;
       btnSave.disabled = true;
       btnKeep.disabled = true;
       btnSave.innerHTML = '<svg class="animate-spin -ml-1 mr-2 h-4 w-4 text-white" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>Salvando nova senha...';
@@ -316,10 +279,15 @@
       saveUserPasswordUpdate(user, pass1, false, function () {
         if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
         showToast('Nova senha configurada com sucesso! Bem-vindo ao MotorDesk.', true);
+      }, function () {
+        btnSave.disabled = false;
+        btnKeep.disabled = false;
+        btnSave.innerHTML = saveLabel;
       });
     });
 
     btnKeep.addEventListener('click', function () {
+      var keepLabel = btnKeep.innerHTML;
       btnSave.disabled = true;
       btnKeep.disabled = true;
       btnKeep.innerHTML = '<svg class="animate-spin -ml-1 mr-2 h-4 w-4 text-slate-700" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>Confirmando...';
@@ -327,6 +295,10 @@
       saveUserPasswordUpdate(user, null, true, function () {
         if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
         showToast('Senha inicial mantida. Bem-vindo ao MotorDesk!', true);
+      }, function () {
+        btnSave.disabled = false;
+        btnKeep.disabled = false;
+        btnKeep.innerHTML = keepLabel;
       });
     });
   }

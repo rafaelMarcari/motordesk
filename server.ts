@@ -2,13 +2,12 @@ import express from "express";
 import cors from "cors";
 import path from "path";
 import fs from "fs";
+import crypto from "crypto";
 import { createServer as createViteServer } from "vite";
 import { getDbInstance, checkDatabaseHealth, ensureAppStoreTableExists, createPool, extractPgErrorDetails, resolveDatabaseConfig, executeSqlWithRetry, warmUpDatabaseConnection, startDatabaseKeepAlive, isDatabaseSocketAvailable, isRemoteDatabaseConfigured, withDbTransaction } from "./src/db/index.js";
 import { appStore, clients as clientsTable, vehicles as vehiclesTable, parts as partsTable, serviceOrders as serviceOrdersTable } from "./src/db/schema.js";
 import { eq } from "drizzle-orm";
 import dotenv from "dotenv";
-import { requireAuth } from "./src/middleware/auth.js";
-import { requireContractedModule } from "./src/middleware/contractGuard.js";
 import { isCompanyActive } from "./src/utils/securityUtils.js";
 import { fiscalBackendService } from "./server/fiscalProviderService.js";
 import { DailyBackupService } from "./server/dailyBackupService.js";
@@ -137,6 +136,20 @@ app.use(async (req, res, next) => {
   next();
 });
 
+// 3.2. Autenticação: identifica o usuário pela sessão (token emitido no login pelo servidor)
+// e bloqueia qualquer rota /api não pública sem sessão válida.
+app.use(async (req: any, res, next) => {
+  await attachAuthContext(req);
+  if (!isPublicApiRoute(req) && !req.authUser) {
+    return res.status(401).json({
+      success: false,
+      code: "AUTH_REQUIRED",
+      error: "Sessão expirada ou inválida. Faça login novamente.",
+    });
+  }
+  next();
+});
+
 // Active Sessions Tracking Engine for System Integrity & Concurrency Guard
 export interface ActiveUserSession {
   sessionId: string;
@@ -245,23 +258,7 @@ app.use((req: any, res: any, next: any) => {
     }
   }
 
-  // 4.2. Verificação de Colaborador Demitido
-  const userId = req.headers["x-user-id"] || req.headers["X-User-Id"];
-  if (userId && serverAppStoreCache && Array.isArray(serverAppStoreCache.users)) {
-    const user = serverAppStoreCache.users.find(
-      (u: any) => u.id === userId || (u.username && u.username.toLowerCase() === String(userId).toLowerCase())
-    );
-    if (user) {
-      const hasContractEndDate = Boolean(user.contractEndDate && String(user.contractEndDate).trim().length > 0);
-      if (hasContractEndDate || user.isTerminated) {
-        return res.status(403).json({
-          error: "Forbidden: Access Revoked",
-          code: "USER_CONTRACT_TERMINATED",
-          message: `Acesso Revogado: O colaborador "${user.name}" teve seu vínculo de trabalho finalizado em ${user.contractEndDate || user.terminationDate || "data anterior"}. Todos os acessos ao sistema foram cancelados pela administração.`
-        });
-      }
-    }
-  }
+  // 4.2. Colaborador desligado: a sessão deixa de ser aceita em attachAuthContext (isUserActive)
   next();
 });
 
@@ -473,6 +470,7 @@ async function mutateAppStore(
     if (!hasDatabaseBackend()) {
       const next = await mutator(serverAppStoreCache);
       if (!next || typeof next !== "object") throw appStoreError("Mutação inválida do banco de dados", 500);
+      hashPlaintextPasswords(next);
       serverAppStoreCache = next;
       persistServerCacheToDisk(next);
       const version = Math.max(currentDbVersion + 1, Date.now() * 1000);
@@ -488,6 +486,7 @@ async function mutateAppStore(
       const current = cur.rows[0]?.data ?? null;
       const next = await mutator(current);
       if (!next || typeof next !== "object") throw appStoreError("Mutação inválida do banco de dados", 500);
+      hashPlaintextPasswords(next);
 
       const written = await client.query(
         `INSERT INTO app_store (id, data, updated_at) VALUES ($1, $2, clock_timestamp())
@@ -511,6 +510,569 @@ async function mutateAppStore(
     source: meta.source,
   });
   return result;
+}
+
+// ============================================================================
+// AUTENTICAÇÃO E AUTORIZAÇÃO NO SERVIDOR
+// ----------------------------------------------------------------------------
+// - Senhas são verificadas somente aqui (hash scrypt). Senhas legadas em texto puro
+//   são convertidas para hash na primeira gravação/login.
+// - Sessões ficam na tabela user_sessions do banco: valem em qualquer servidor/instância.
+// - A identidade vem da sessão; cabeçalhos X-User-Id / X-User-Role do navegador são ignorados.
+// - passwordHash nunca é enviado ao navegador.
+// ============================================================================
+const SESSION_TTL_MS = 12 * 60 * 60 * 1000;
+const SESSION_CACHE_MS = 30 * 1000;
+const MASTER_USERNAMES = new Set(["admin", "validador"]);
+const SCRYPT_PREFIX = "scrypt$";
+
+type SessionRecord = { userId: string; companyId: string | null; expiresAt: number };
+const memorySessions = new Map<string, SessionRecord>();
+const sessionCache = new Map<string, SessionRecord & { checkedAt: number }>();
+
+// Coleções operacionais isoladas por empresa (companyId)
+const TENANT_COLLECTIONS = [
+  'clients', 'suppliers', 'vehicles', 'parts', 'services', 'budgets', 'serviceOrders', 'sales', 'goodsWithdrawals',
+  'quotations', 'supplierPartPrices', 'accountsReceivable', 'accountsPayable', 'financialTransactions', 'fiscalDocuments',
+  'boletos', 'interBranchSales', 'stockMovements', 'maintenanceLogs', 'boms', 'billOfMaterials', 'productionOrders',
+  'solidworksProjects', 'materialSeparations', 'productLots', 'operationalAlerts', 'factoryOperators', 'history',
+  'notifications', 'carriers', 'taxObligationGuides', 'installedEquipment', 'equipmentMaintenancePlans',
+  'equipmentMaintenanceOrders', 'productionScrapLogs', 'productionReworkLogs', 'purchaseHistory', 'billingClosings',
+  'monthlyAccountingClosings', 'qualityInspections', 'technicalDocuments', 'warehouseLocations', 'shopFloorEntries',
+  'nonConformityReports', 'bankStatements', 'unitsOfMeasure', 'accessGroups', 'pendingPriceRevisions',
+  'priceChangeHistory', 'priceCalculationHistory',
+];
+
+// Campos de contrato/licença da empresa: só o administrador mestre da plataforma altera
+const PROTECTED_COMPANY_FIELDS = [
+  'globalModules', 'contractModules', 'modules', 'subscriptionStatus', 'paymentStatus', 'expirationDate',
+  'userLimit', 'additionalUserPrice', 'monthlyFee', 'basePlanFee', 'enableRepresentativeCommerce', 'backupService',
+];
+
+// Campos de acesso do usuário: só quem gerencia usuários altera (e nunca no próprio cadastro por /api/db)
+const PROTECTED_USER_FIELDS = [
+  'role', 'permissions', 'individualExceptions', 'customPermissions', 'allowedCompanyIds', 'companyId', 'groupId',
+  'accessGroupId', 'isTerminated', 'contractEndDate', 'terminationDate', 'status', 'isActive', 'active', 'username',
+  'passwordHash', 'passwordUpdatedAt', 'mustChangePassword', 'firstAccess', 'hasChosenPassword',
+];
+
+const PUBLIC_COMPANY_FIELDS = ['id', 'name', 'tradeName', 'businessType', 'companyType', 'logo', 'logoUrl', 'phone', 'whatsapp', 'email', 'address', 'welcomeMessage'];
+
+function lc(v: any): string {
+  return String(v || '').trim().toLowerCase();
+}
+
+function isMasterAccount(u: any): boolean {
+  return Boolean(u && (MASTER_USERNAMES.has(lc(u.username)) || u.role === 'qa'));
+}
+
+function isUserActive(u: any): boolean {
+  if (!u) return false;
+  const hasContractEnd = Boolean(u.contractEndDate && String(u.contractEndDate).trim());
+  return !(u.isTerminated || u.status === 'terminated' || u.isActive === false || u.active === false || hasContractEnd);
+}
+
+function isPasswordHashed(value: any): boolean {
+  return typeof value === 'string' && value.startsWith(SCRYPT_PREFIX);
+}
+
+function hashPassword(plain: string): string {
+  const salt = crypto.randomBytes(16).toString('hex');
+  const hash = crypto.scryptSync(plain, salt, 64).toString('hex');
+  return `${SCRYPT_PREFIX}${salt}$${hash}`;
+}
+
+function verifyPassword(plain: string, stored: any): boolean {
+  if (!plain || !stored || typeof stored !== 'string') return false;
+  if (isPasswordHashed(stored)) {
+    const [, salt, hash] = stored.split('$');
+    if (!salt || !hash) return false;
+    const expected = Buffer.from(hash, 'hex');
+    const actual = crypto.scryptSync(plain, salt, expected.length);
+    return expected.length === actual.length && crypto.timingSafeEqual(expected, actual);
+  }
+  // Legado: senha gravada em texto puro (convertida para hash na próxima gravação)
+  const a = Buffer.from(stored);
+  const b = Buffer.from(plain);
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+
+function hashPlaintextPasswords(db: any): void {
+  if (!db || !Array.isArray(db.users)) return;
+  for (const u of db.users) {
+    if (u && typeof u.passwordHash === 'string' && u.passwordHash && !isPasswordHashed(u.passwordHash)) {
+      u.passwordHash = hashPassword(u.passwordHash);
+    }
+  }
+}
+
+function sanitizeUserForClient(u: any): any {
+  if (!u || typeof u !== 'object') return u;
+  const { passwordHash, ...rest } = u;
+  return rest;
+}
+
+function pickFields(obj: any, fields: string[]): any {
+  if (!obj || typeof obj !== 'object') return null;
+  const out: any = {};
+  for (const f of fields) if (obj[f] !== undefined) out[f] = obj[f];
+  return out;
+}
+
+function allCompanyIds(db: any): string[] {
+  return (Array.isArray(db?.registeredCompanies) ? db.registeredCompanies : []).map((c: any) => c?.id).filter(Boolean);
+}
+
+// Empresas em que o usuário está cadastrado (empresa principal + empresas adicionais)
+function userCompanyIds(u: any, db: any): string[] {
+  if (!u) return [];
+  const allowed = Array.isArray(u.allowedCompanyIds) ? u.allowedCompanyIds : [];
+  if (isMasterAccount(u) || allowed.includes('*')) return allCompanyIds(db);
+  return [...new Set([u.companyId, ...allowed].filter((id: any) => id && id !== '*'))];
+}
+
+function findCompany(db: any, companyId: string | null | undefined): any {
+  if (!companyId) return null;
+  return (db?.registeredCompanies || []).find((c: any) => c?.id === companyId) ||
+    (db?.companyInfo?.id === companyId ? db.companyInfo : null);
+}
+
+// Empresa efetiva da requisição: a solicitada, se o usuário tiver vínculo; senão a principal dele
+function companyForUser(db: any, u: any, requestedId?: string | null): any {
+  const ids = userCompanyIds(u, db);
+  const target = requestedId && requestedId !== 'all' && ids.includes(requestedId) ? requestedId : (u?.companyId || ids[0]);
+  return findCompany(db, target);
+}
+
+// Chave de módulo a que uma permissão pertence (ex.: fiscalEmit -> accessFiscal)
+function permissionModuleKey(key: string): string {
+  if (key.startsWith('access')) return key;
+  const rules: Array<[RegExp, string]> = [
+    [/^(fiscal|sefaz|nfe|nfce|nfse)/i, 'accessFiscal'],
+    [/^(boleto|pix)/i, 'accessBoletos'],
+    [/^accountsReceivable/i, 'accessAccountsReceivable'],
+    [/^accountsPayable/i, 'accessAccountsPayable'],
+    [/^financial/i, 'accessFinancial'],
+    [/^sales/i, 'accessSales'],
+    [/^(budgets|canEditBudgets)/i, 'accessBudgets'],
+    [/^serviceOrders/i, 'accessServiceOrders'],
+    [/^clients/i, 'accessClients'],
+    [/^vehicles/i, 'accessVehicles'],
+    [/^parts/i, 'accessParts'],
+    [/^services/i, 'accessServices'],
+    [/^quotations/i, 'accessQuotations'],
+    [/^carriers/i, 'accessCarriers'],
+    [/^unitsOfMeasure/i, 'accessUnitsOfMeasure'],
+    [/^reports/i, 'accessReports'],
+    [/^history/i, 'accessHistory'],
+    [/^(production|bom)/i, 'accessProduction'],
+    [/^representative/i, 'accessRepresentativeCommerce'],
+  ];
+  for (const [re, moduleKey] of rules) if (re.test(key)) return moduleKey;
+  return key;
+}
+
+// Bloqueio explícito do módulo no contrato da empresa (mesma regra usada nas telas)
+function companyBlocksKey(company: any, key: string): boolean {
+  if (!company) return false;
+  const gm = company.globalModules || {};
+  const mm = company.modules || {};
+  const cm = company.contractModules || {};
+  if (gm[key] === false || mm[key] === false || cm[key] === false) return true;
+  const contract = cm[key];
+  if (contract && typeof contract === 'object') {
+    if (contract.contracted === false || contract.status === 'canceled' || contract.status === 'suspended') return true;
+    const today = new Date().toISOString().slice(0, 10);
+    if ((contract.startDate && contract.startDate > today) || (contract.endDate && contract.endDate < today)) return true;
+  }
+  return false;
+}
+
+function companyAllowsPermission(company: any, key: string): boolean {
+  if (!company) return false;
+  if (company.subscriptionStatus === 'blocked' || company.subscriptionStatus === 'overdue') return false;
+  return !companyBlocksKey(company, key) && !companyBlocksKey(company, permissionModuleKey(key));
+}
+
+// Permissão efetiva = empresa contratou o módulo E o usuário recebeu a permissão
+function hasEffectivePermission(u: any, company: any, key: string): boolean {
+  if (!u || !isUserActive(u)) return false;
+  if (isMasterAccount(u)) return true;
+  if (!companyAllowsPermission(company, key)) return false;
+  const p = u.permissions || {};
+  const ie = u.individualExceptions || {};
+  const cp = u.customPermissions || {};
+  if (p[key] === false || ie[key] === false || cp[key] === false) return false;
+  if (p[key] === true || ie[key] === true || cp[key] === true) return true;
+  // Administrador da empresa: tudo o que a empresa contratou
+  return u.role === 'admin';
+}
+
+function canManageUsers(u: any, company: any): boolean {
+  return isMasterAccount(u) || hasEffectivePermission(u, company, 'accessUserManagement');
+}
+
+// Remove permissões de módulos que nenhuma empresa do usuário contratou
+function clampPermissionsToContract(target: any, db: any): void {
+  if (!target || isMasterAccount(target)) return;
+  const companies = userCompanyIds(target, db).map((id) => findCompany(db, id)).filter(Boolean);
+  if (companies.length === 0) return;
+  for (const field of ['permissions', 'individualExceptions', 'customPermissions']) {
+    const perms = target[field];
+    if (!perms || typeof perms !== 'object') continue;
+    const next = { ...perms };
+    for (const [key, value] of Object.entries(perms)) {
+      const blockedEverywhere = companies.every((c: any) => companyBlocksKey(c, key) || companyBlocksKey(c, permissionModuleKey(key)));
+      if (value === true && blockedEverywhere) {
+        next[key] = false;
+      }
+    }
+    target[field] = next;
+  }
+}
+
+/**
+ * Filtra o que um usuário pode gravar via POST /api/db antes do merge:
+ * - registros só das empresas em que ele está cadastrado;
+ * - contrato/módulos da empresa só pelo administrador mestre;
+ * - usuários só por quem gerencia usuários, dentro das próprias empresas,
+ *   sem conceder empresa ou módulo fora do que a empresa contratou.
+ */
+function guardIncomingDatabase(current: any, incoming: any, user: any, activeCompanyId: string): any {
+  const db = current || {};
+  const out: any = { ...incoming };
+  const master = isMasterAccount(user);
+  const allowed = new Set(userCompanyIds(user, db));
+  const activeCompany = companyForUser(db, user, activeCompanyId);
+
+  if (!master) {
+    // 1. Dados operacionais apenas das empresas do usuário
+    for (const key of TENANT_COLLECTIONS) {
+      if (!Array.isArray(out[key])) continue;
+      out[key] = out[key]
+        .filter((r: any) => r && (!r.companyId || allowed.has(r.companyId)))
+        .map((r: any) => (r.companyId ? r : { ...r, companyId: activeCompany?.id || user.companyId }));
+    }
+
+    // 2. Empresas: sem criar empresas e sem alterar contrato/licença
+    const existingCompanies = new Map((db.registeredCompanies || []).map((c: any) => [c?.id, c]));
+    const restoreProtected = (c: any) => {
+      const prev: any = existingCompanies.get(c.id) || (db.companyInfo?.id === c.id ? db.companyInfo : null);
+      if (!prev) return null;
+      const safe = { ...c };
+      for (const f of PROTECTED_COMPANY_FIELDS) {
+        if (prev[f] === undefined) delete safe[f];
+        else safe[f] = prev[f];
+      }
+      return safe;
+    };
+    if (Array.isArray(out.registeredCompanies)) {
+      out.registeredCompanies = out.registeredCompanies
+        .filter((c: any) => c && allowed.has(c.id))
+        .map(restoreProtected)
+        .filter(Boolean);
+    }
+    if (out.companyInfo) {
+      out.companyInfo = allowed.has(out.companyInfo.id) ? restoreProtected(out.companyInfo) : null;
+      if (!out.companyInfo) delete out.companyInfo;
+    }
+    delete out.globalModules;
+    delete out.contractModules;
+    delete out.landingContent;
+
+    // 3. Configuração fiscal só com o módulo fiscal liberado
+    if (!hasEffectivePermission(user, activeCompany, 'accessFiscal')) {
+      delete out.sefazConfig;
+      delete out.taxRules;
+      delete out.taxOperationNatures;
+    }
+  }
+
+  // 4. Usuários e perfis de acesso
+  if (Array.isArray(out.users)) {
+    const existingUsers = new Map((db.users || []).map((u: any) => [u?.id, u]));
+    const manager = canManageUsers(user, activeCompany);
+    const guarded: any[] = [];
+    for (const u of out.users) {
+      if (!u || !u.id) continue;
+      const prev: any = existingUsers.get(u.id);
+      let next = { ...u };
+
+      if (u.id === user.id) {
+        // Próprio cadastro: dados pessoais sim; acesso e senha não (senha só por /api/users/update-password)
+        if (!prev) continue;
+        for (const f of PROTECTED_USER_FIELDS) {
+          if (prev[f] === undefined) delete next[f];
+          else next[f] = prev[f];
+        }
+        guarded.push(next);
+        continue;
+      }
+
+      if (!manager) continue;
+      if (!master) {
+        // Gestor de empresa: apenas usuários das próprias empresas; nunca contas mestres
+        const targetCompanies = userCompanyIds(prev || u, db);
+        if (prev && (isMasterAccount(prev) || !targetCompanies.some((id) => allowed.has(id)))) continue;
+        if (!prev && (MASTER_USERNAMES.has(lc(u.username)) || !allowed.has(u.companyId))) continue;
+        if (next.role === 'qa') next.role = prev?.role || 'atendente';
+        if (prev && !allowed.has(prev.companyId)) next.companyId = prev.companyId;
+        if (!allowed.has(next.companyId)) next.companyId = prev?.companyId || activeCompany?.id;
+        // Empresas adicionais: só dentro do alcance do gestor (mantém as de fora que já existiam)
+        const outsideScope = (prev?.allowedCompanyIds || []).filter((id: string) => id !== '*' && !allowed.has(id));
+        const requested = (Array.isArray(next.allowedCompanyIds) ? next.allowedCompanyIds : []).filter((id: string) => id !== '*' && allowed.has(id));
+        next.allowedCompanyIds = [...new Set([...outsideScope, ...requested])];
+      }
+      clampPermissionsToContract(next, db);
+      guarded.push(next);
+    }
+    out.users = guarded;
+  }
+
+  if (!master && Array.isArray(out.accessGroups) && !canManageUsers(user, activeCompany)) {
+    delete out.accessGroups;
+  }
+
+  return out;
+}
+
+// Remove segredos antes de enviar dados ao navegador
+function stripSecretsForClient(data: any, user: any, companyId?: string): any {
+  if (!data || typeof data !== 'object') return data;
+  const out = { ...data };
+  if (Array.isArray(out.users)) out.users = out.users.map(sanitizeUserForClient);
+  if (out.sefazConfig && !hasEffectivePermission(user, companyForUser(data, user, companyId) || data.companyInfo, 'accessFiscal')) {
+    out.sefazConfig = {};
+  }
+  return out;
+}
+
+// "Vitrine" pública para quem ainda não fez login: só o necessário para o site e a tela de login
+function buildPublicShell(db: any): any {
+  const shell: any = {};
+  for (const [key, value] of Object.entries(db || {})) {
+    if (Array.isArray(value)) shell[key] = [];
+    else if (value && typeof value === 'object') shell[key] = {};
+  }
+  shell.companyInfo = pickFields(db?.companyInfo, PUBLIC_COMPANY_FIELDS);
+  shell.landingContent = db?.landingContent || null;
+  shell.registeredCompanies = [];
+  shell.users = [];
+  if (db?.activeAccountingPeriod) shell.activeAccountingPeriod = db.activeAccountingPeriod;
+  return shell;
+}
+
+// ---- Sessões --------------------------------------------------------------
+let authTablesReady: Promise<void> | null = null;
+function ensureAuthTables(): Promise<void> {
+  if (!hasDatabaseBackend()) return Promise.resolve();
+  if (!authTablesReady) {
+    const cfg = resolveDatabaseConfig();
+    authTablesReady = (async () => {
+      await executeSqlWithRetry(
+        `CREATE TABLE IF NOT EXISTS user_sessions (
+          token TEXT PRIMARY KEY,
+          user_id TEXT NOT NULL,
+          company_id TEXT,
+          created_at BIGINT NOT NULL,
+          expires_at BIGINT NOT NULL,
+          user_agent TEXT,
+          ip TEXT
+        );`,
+        [],
+        cfg.database
+      );
+      await executeSqlWithRetry(`CREATE INDEX IF NOT EXISTS user_sessions_user_idx ON user_sessions (user_id);`, [], cfg.database);
+      await executeSqlWithRetry(`DELETE FROM user_sessions WHERE expires_at < $1`, [Date.now()], cfg.database);
+    })().catch((err) => {
+      authTablesReady = null;
+      throw err;
+    });
+  }
+  return authTablesReady;
+}
+
+async function createSession(userId: string, companyId: string | null, req: any): Promise<{ token: string; expiresAt: number }> {
+  const token = `mds_${crypto.randomBytes(32).toString('hex')}`;
+  const now = Date.now();
+  const expiresAt = now + SESSION_TTL_MS;
+  if (hasDatabaseBackend()) {
+    await ensureAuthTables();
+    await executeSqlWithRetry(
+      `INSERT INTO user_sessions (token, user_id, company_id, created_at, expires_at, user_agent, ip) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      [token, userId, companyId, now, expiresAt, String(req.headers['user-agent'] || '').slice(0, 300), getClientIp(req)],
+      resolveDatabaseConfig().database
+    );
+  } else {
+    memorySessions.set(token, { userId, companyId, expiresAt });
+  }
+  sessionCache.set(token, { userId, companyId, expiresAt, checkedAt: now });
+  return { token, expiresAt };
+}
+
+async function getSession(token: string): Promise<SessionRecord | null> {
+  if (!token || !token.startsWith('mds_')) return null;
+  const now = Date.now();
+  const cached = sessionCache.get(token);
+  if (cached && now - cached.checkedAt < SESSION_CACHE_MS) {
+    return cached.expiresAt > now ? cached : null;
+  }
+
+  let session: SessionRecord | null = null;
+  if (hasDatabaseBackend()) {
+    await ensureAuthTables();
+    const result = await executeSqlWithRetry(
+      `SELECT user_id, company_id, expires_at FROM user_sessions WHERE token = $1`,
+      [token],
+      resolveDatabaseConfig().database,
+      2
+    );
+    const row = result.rows[0];
+    if (row) session = { userId: row.user_id, companyId: row.company_id, expiresAt: Number(row.expires_at) };
+  } else {
+    session = memorySessions.get(token) || null;
+  }
+
+  if (!session || session.expiresAt <= now) {
+    sessionCache.delete(token);
+    return null;
+  }
+
+  // Expiração deslizante: renova enquanto o usuário estiver usando o sistema
+  if (session.expiresAt - now < SESSION_TTL_MS - 15 * 60 * 1000) {
+    session.expiresAt = now + SESSION_TTL_MS;
+    if (hasDatabaseBackend()) {
+      executeSqlWithRetry(`UPDATE user_sessions SET expires_at = $2 WHERE token = $1`, [token, session.expiresAt], resolveDatabaseConfig().database, 1).catch(() => {});
+    }
+  }
+  sessionCache.set(token, { ...session, checkedAt: now });
+  return session;
+}
+
+async function deleteSession(token: string): Promise<void> {
+  sessionCache.delete(token);
+  memorySessions.delete(token);
+  if (hasDatabaseBackend() && token) {
+    await ensureAuthTables();
+    await executeSqlWithRetry(`DELETE FROM user_sessions WHERE token = $1`, [token], resolveDatabaseConfig().database);
+  }
+}
+
+// Encerra as outras sessões do usuário (ex.: após troca de senha)
+async function deleteOtherUserSessions(userId: string, keepToken?: string): Promise<void> {
+  for (const [token, s] of sessionCache) if (s.userId === userId && token !== keepToken) sessionCache.delete(token);
+  for (const [token, s] of memorySessions) if (s.userId === userId && token !== keepToken) memorySessions.delete(token);
+  if (hasDatabaseBackend()) {
+    await ensureAuthTables();
+    await executeSqlWithRetry(
+      `DELETE FROM user_sessions WHERE user_id = $1 AND token <> $2`,
+      [userId, keepToken || ''],
+      resolveDatabaseConfig().database
+    );
+  }
+}
+
+function bearerToken(req: any): string {
+  // Aceita o primeiro valor caso o navegador tenha enviado o cabeçalho repetido ("Bearer a, Bearer b")
+  const header = String(req.headers.authorization || '').split(',')[0].trim();
+  return header.startsWith('Bearer ') ? header.slice(7).trim() : '';
+}
+
+async function attachAuthContext(req: any): Promise<void> {
+  req.authUser = null;
+  req.authSession = null;
+  const token = bearerToken(req);
+  if (!token.startsWith('mds_')) return;
+  try {
+    const session = await getSession(token);
+    if (!session) return;
+    if (!serverAppStoreCache) await refreshServerCacheIfStale();
+    const user = (serverAppStoreCache?.users || []).find((u: any) => u && u.id === session.userId);
+    if (user && isUserActive(user)) {
+      req.authUser = user;
+      req.authSession = { token, ...session };
+    }
+  } catch (err: any) {
+    console.warn(`[AUTH] Falha ao validar sessão: ${err.message}`);
+  }
+}
+
+// Rotas que não exigem sessão (site público, tela de login, portal do fornecedor, etc.)
+function isPublicApiRoute(req: any): boolean {
+  const p: string = req.path;
+  const m: string = req.method;
+  if (!p.startsWith('/api') || m === 'OPTIONS') return true;
+  if (p === '/api' || p === '/api/health') return true;
+  if (p === '/api/db' && m === 'GET') return true; // sem sessão responde apenas a vitrine pública
+  if (p === '/api/db/version' || p === '/api/db/stream') return true;
+  if (p === '/api/auth/login' || p === '/api/auth/login-companies') return true;
+  if (['/api/auth/check-session', '/api/auth/knockdown-session', '/api/auth/register-session', '/api/auth/logout-session', '/api/auth/session-heartbeat'].includes(p)) return true;
+  if ((p === '/api/landing' || p === '/api/site') && m === 'GET') return true;
+  if (p === '/api/companies' && m === 'GET') return true;
+  if (p.startsWith('/api/public/')) return true;
+  if (p.startsWith('/api/notas-api/')) return true; // autenticação própria (requireNotasApiAdmin)
+  return false;
+}
+
+function requireAuth(req: any, res: any, next: any) {
+  if (!req.authUser) {
+    return res.status(401).json({ success: false, code: "AUTH_REQUIRED", error: "Sessão expirada ou inválida. Faça login novamente." });
+  }
+  next();
+}
+
+// Operações da plataforma (contratos, licenças, backups, suporte, site): só o administrador mestre
+function requireMaster(req: any, res: any, next: any) {
+  if (!req.authUser) {
+    return res.status(401).json({ success: false, code: "AUTH_REQUIRED", error: "Sessão expirada ou inválida. Faça login novamente." });
+  }
+  if (!isMasterAccount(req.authUser)) {
+    return res.status(403).json({ success: false, code: "MASTER_ONLY", error: "Operação permitida somente ao administrador da plataforma." });
+  }
+  next();
+}
+
+// Módulo precisa estar contratado pela empresa E liberado para o usuário
+function requireContractedModule(moduleName: string, permissionKey: string, _getCache?: () => any) {
+  return (req: any, res: any, next: any) => {
+    if (!req.authUser) {
+      return res.status(401).json({ success: false, code: "AUTH_REQUIRED", error: "Sessão expirada ou inválida. Faça login novamente." });
+    }
+    const { companyId } = extractUserContext(req);
+    const company = companyForUser(serverAppStoreCache, req.authUser, companyId);
+    if (!hasEffectivePermission(req.authUser, company, permissionKey)) {
+      return res.status(403).json({
+        success: false,
+        code: "MODULE_NOT_ALLOWED",
+        error: `Acesso negado ao módulo "${moduleName}": não contratado pela empresa ou não liberado para o seu usuário.`,
+      });
+    }
+    req.validatedCompanyId = company?.id;
+    next();
+  };
+}
+
+// Limite de tentativas de login por usuário + IP
+const loginAttempts = new Map<string, { count: number; firstAt: number }>();
+const LOGIN_WINDOW_MS = 10 * 60 * 1000;
+const LOGIN_MAX_FAILURES = 8;
+
+function loginThrottleKey(req: any, username: string): string {
+  return `${getClientIp(req)}|${lc(username)}`;
+}
+function isLoginThrottled(key: string): boolean {
+  const entry = loginAttempts.get(key);
+  if (!entry) return false;
+  if (Date.now() - entry.firstAt > LOGIN_WINDOW_MS) {
+    loginAttempts.delete(key);
+    return false;
+  }
+  return entry.count >= LOGIN_MAX_FAILURES;
+}
+function registerLoginFailure(key: string): void {
+  const entry = loginAttempts.get(key);
+  if (!entry || Date.now() - entry.firstAt > LOGIN_WINDOW_MS) loginAttempts.set(key, { count: 1, firstAt: Date.now() });
+  else entry.count++;
 }
 
 // Revisão por registro carimbada pelo servidor a cada alteração gravada.
@@ -755,13 +1317,11 @@ export function sanitizeAndIsolateCompanies(db: any): any {
   for (const u of usersList) {
     if (u && u.username && u.username.toLowerCase() === 'qa') {
       u.username = 'validador';
-      u.passwordHash = 'Donatelo@123';
       u.role = 'qa';
       u.allowedCompanyIds = ['*'];
       u.name = u.name ? u.name.replace(/Analista de QA/gi, 'Validador QA') : 'Validador QA';
     }
     if (u && u.username && u.username.toLowerCase() === 'validador') {
-      u.passwordHash = 'Donatelo@123';
       u.role = 'qa';
       u.allowedCompanyIds = ['*'];
     }
@@ -969,7 +1529,11 @@ export function mergeAppDatabase(existing: any, incoming: any): any {
     uniqueCompanies.push(c);
   }
 
-  const rawCompanyInfo = incoming.companyInfo || existing.companyInfo || (uniqueCompanies.length > 0 ? uniqueCompanies[0] : null);
+  // companyInfo recebido é mesclado ao registro existente da mesma empresa (envio parcial não apaga campos)
+  const incomingCompanyBase = incoming.companyInfo?.id
+    ? (existing.companyInfo?.id === incoming.companyInfo.id ? existing.companyInfo : companiesMap.get(incoming.companyInfo.id)) || {}
+    : {};
+  const rawCompanyInfo = (incoming.companyInfo ? { ...incomingCompanyBase, ...incoming.companyInfo } : null) || existing.companyInfo || (uniqueCompanies.length > 0 ? uniqueCompanies[0] : null);
   const normalizedCompanyInfo = rawCompanyInfo ? {
     ...rawCompanyInfo,
     businessType: normalizeBusinessType(rawCompanyInfo?.businessType, rawCompanyInfo?.name),
@@ -1094,15 +1658,11 @@ export function mergeAppDatabase(existing: any, incoming: any): any {
     }
   }
 
-  // Garantia para o usuário QA master denominado "validador" com senha inicial "Donatelo@123"
+  // Garantia para o usuário QA master denominado "validador" (senha inicial só na criação da conta)
   for (const u of deduplicatedUsers) {
     if (u && u.username && u.username.toLowerCase() === 'qa') {
       u.username = 'validador';
-      u.passwordHash = 'Donatelo@123';
       u.name = u.name ? u.name.replace(/Analista de QA/gi, 'Validador QA') : 'Validador QA';
-    }
-    if (u && u.username && u.username.toLowerCase() === 'validador') {
-      u.passwordHash = 'Donatelo@123';
     }
   }
 
@@ -1131,7 +1691,9 @@ export function mergeAppDatabase(existing: any, incoming: any): any {
     };
     deduplicatedUsers.push(validadorMaster);
   } else {
-    validadorMaster.passwordHash = 'Donatelo@123';
+    if (!validadorMaster.passwordHash) {
+      validadorMaster.passwordHash = 'Donatelo@123';
+    }
     validadorMaster.role = 'qa';
     validadorMaster.isActive = true;
     validadorMaster.status = 'active';
@@ -1398,20 +1960,19 @@ export function isolateDatabaseForContext(
     userRole === 'qa'
   );
 
+  // Somente o administrador mestre da plataforma (usuário "admin") enxerga todas as empresas.
+  // O perfil "admin" de uma empresa cliente fica restrito às empresas em que está cadastrado.
   const isAdminUser = Boolean(
-    (reqUser && (reqUser.role === 'admin' || (reqUser.username && reqUser.username.toLowerCase() === 'admin'))) ||
-    userId?.toLowerCase() === 'admin' ||
-    (typeof userId === 'string' && userId.includes('admin')) ||
-    userRole === 'admin'
+    (reqUser && reqUser.username && reqUser.username.toLowerCase() === 'admin') ||
+    userId?.toLowerCase() === 'admin'
   );
 
   const isMasterUser = Boolean(
     isAdminUser ||
     isQaUser ||
     userId?.toLowerCase() === 'validador' ||
-    userId?.toLowerCase() === 'admin' ||
     userId?.toLowerCase() === 'usr-validador' ||
-    (reqUser && (reqUser.username?.toLowerCase() === 'validador' || reqUser.username?.toLowerCase() === 'admin' || reqUser.role === 'admin' || reqUser.role === 'qa'))
+    (reqUser && (reqUser.username?.toLowerCase() === 'validador' || reqUser.role === 'qa'))
   );
 
   const hasWildcard = Boolean(
@@ -1421,8 +1982,9 @@ export function isolateDatabaseForContext(
 
   const isPreLogin = !userId || userId === 'guest' || userId.startsWith('guest') || userId === 'authenticated_user' || userId === 'all' || userId === 'anonymous';
 
-  // Se for Master User (admin ou validador), tiver wildcard (*), for requisição global ('all'), ou pré-login (qualquer novo navegador/máquina):
-  if (isMasterUser || hasWildcard || reqCompanyId === 'all' || isPreLogin) {
+  // Somente contas mestres (admin, validador, QA) ou com acesso '*' recebem todas as empresas.
+  // Requisições sem sessão nem chegam aqui: recebem apenas a vitrine pública (buildPublicShell).
+  if (isMasterUser || hasWildcard) {
     const currentCompany = allRegistered.find((c: any) => c.id === targetCompanyId) || (allRegistered.length > 0 ? allRegistered[0] : db.companyInfo);
     return {
       ...db,
@@ -1570,24 +2132,19 @@ export function broadcastSessionRevocation(revocation: {
 }
 
 // Helper: Extract user and company identity context from request
+// A identidade vem SOMENTE da sessão validada no servidor (cabeçalhos do navegador não são confiáveis).
+// A empresa solicitada (X-Company-Id) só é aceita se o usuário tiver vínculo com ela.
 function extractUserContext(req: any): { userId: string; companyId: string; userRole: string } {
-  let userId = req.headers['x-user-id'] || req.query?.userId || req.query?.username;
-  const authHeader = req.headers.authorization;
-  if (!userId && authHeader?.startsWith('Bearer motordesk_session_')) {
-    const raw = authHeader.replace('Bearer motordesk_session_', '');
-    const parts = raw.split('_');
-    userId = parts[0] || 'authenticated_user';
+  const user = req.authUser;
+  if (!user) {
+    return { userId: 'anonymous', companyId: 'all', userRole: 'guest' };
   }
-  if (!userId) {
-    userId = req.user?.uid || (authHeader ? 'authenticated_user' : 'anonymous');
-  }
-  if (typeof userId === 'string' && userId.startsWith('motordesk_session_')) {
-    userId = userId.replace('motordesk_session_', '').split('_')[0] || 'authenticated_user';
-  }
-  const isGuest = !userId || userId === 'anonymous' || userId === 'authenticated_user' || userId.startsWith('guest') || userId.includes('guest');
-  const companyId = req.headers['x-company-id'] || req.query?.companyId || (isGuest ? 'all' : 'all');
-  const userRole = req.headers['x-user-role'] || req.query?.userRole || req.user?.role || (isGuest ? 'guest' : 'user');
-  return { userId, companyId, userRole };
+  const requested = String(req.headers['x-company-id'] || req.query?.companyId || '').trim();
+  const ids = userCompanyIds(user, serverAppStoreCache);
+  const companyId = requested && requested !== 'all' && ids.includes(requested)
+    ? requested
+    : (req.authSession?.companyId && ids.includes(req.authSession.companyId) ? req.authSession.companyId : (user.companyId || ids[0] || 'comp-1'));
+  return { userId: user.id, companyId, userRole: user.role || 'user' };
 }
 
 // Global Session Integrity Check: Bloquear terminais cuja sessão foi revogada por outro acesso
@@ -1612,7 +2169,7 @@ app.use((req: any, res, next) => {
 });
 
 // 4. ERP Database APIs - Cloud SQL PostgreSQL with seamless high-availability cache
-app.get("/api/db", requireAuth, async (req: any, res) => {
+app.get("/api/db", async (req: any, res) => {
   const startTime = Date.now();
   const requestId = `req-get-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
   const { userId, companyId: reqCompanyId, userRole } = extractUserContext(req);
@@ -1647,7 +2204,16 @@ app.get("/api/db", requireAuth, async (req: any, res) => {
       return res.json({ success: true, data: null, source, database: config.database, durationMs, updatedAt, version });
     }
 
-    const isolatedData = isolateDatabaseForContext(data, { userId, companyId: reqCompanyId, userRole, syncMode });
+    // Sem sessão: apenas a vitrine pública (site e tela de login), sem usuários, senhas ou dados das empresas
+    if (!req.authUser) {
+      return res.json({ success: true, data: buildPublicShell(data), source, public: true, durationMs, updatedAt, version });
+    }
+
+    const isolatedData = stripSecretsForClient(
+      isolateDatabaseForContext(data, { userId, companyId: reqCompanyId, userRole, syncMode }),
+      req.authUser,
+      reqCompanyId
+    );
     const companyId = reqCompanyId !== 'all' ? reqCompanyId : (isolatedData.companyInfo?.id || 'all');
     console.log(`[DB-TRACE] GET /api/db requestId=${requestId} userId=${userId} companyId=${companyId} clientes=${(isolatedData.clients || []).length} veículos=${(isolatedData.vehicles || []).length} peças=${(isolatedData.parts || []).length} version=${version} source=${source} latencyMs=${durationMs}`);
 
@@ -1791,13 +2357,18 @@ app.post("/api/db", requireAuth, async (req: any, res) => {
 
     // Leitura do estado atual com bloqueio + merge + gravação na MESMA transação do banco:
     // duas máquinas salvando ao mesmo tempo nunca sobrescrevem uma à outra.
+    // Regras de autorização aplicadas sobre o estado atual do banco, na mesma transação
     const { data: mergedData, version, updatedAt } = await mutateAppStore(
-      (current) => mergeAppDatabase(current, incomingData),
+      (current) => mergeAppDatabase(current, guardIncomingDatabase(current, incomingData, req.authUser, inCompanyId)),
       { source: "db_save", companyId: inCompanyId, userId }
     );
 
     const durationMs = Date.now() - startTime;
-    const isolatedResponseData = isolateDatabaseForContext(mergedData, { userId, companyId: inCompanyId, userRole, syncMode: 'full' });
+    const isolatedResponseData = stripSecretsForClient(
+      isolateDatabaseForContext(mergedData, { userId, companyId: inCompanyId, userRole, syncMode: 'full' }),
+      req.authUser,
+      inCompanyId
+    );
 
     console.log(`[DB-TRACE] POST /api/db requestId=${requestId} result=SUCCESS version=${version} updatedAt=${updatedAt} latencyMs=${durationMs}`);
 
@@ -1826,82 +2397,20 @@ app.post("/api/db", requireAuth, async (req: any, res) => {
 });
 
 // List all registered companies endpoint (strict isolation: only returns companies accessible by user)
-app.get("/api/companies", async (req, res) => {
+app.get("/api/companies", async (req: any, res) => {
   const startTime = Date.now();
   const requestId = `req-comp-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
-  const config = resolveDatabaseConfig();
-  const { userId, userRole } = extractUserContext(req);
+  const { userId } = extractUserContext(req);
 
-  try {
-    let rawCompanies: any[] = [];
-    let allUsers: any[] = [];
-
-    if (isDatabaseSocketAvailable(config.database)) {
-      try {
-        const result = await executeSqlWithRetry(
-          'SELECT data->\'registeredCompanies\' as companies, data->\'companyInfo\' as main_company, data->\'users\' as users, updated_at FROM app_store WHERE id = $1',
-          ['motordesk_main'],
-          config.database
-        );
-        if (result.rows.length > 0) {
-          rawCompanies = result.rows[0].companies || [result.rows[0].main_company];
-          allUsers = result.rows[0].users || [];
-        }
-      } catch (sqlErr) {
-        console.warn('[GET /api/companies] Fallback para serverAppStoreCache devido a erro SQL:', sqlErr);
-      }
-    }
-
-    if (rawCompanies.length === 0 && serverAppStoreCache) {
-      rawCompanies = serverAppStoreCache.registeredCompanies || [serverAppStoreCache.companyInfo];
-      allUsers = serverAppStoreCache.users || [];
-    }
-
-    const allRegistered = Array.isArray(rawCompanies) ? rawCompanies : [rawCompanies].filter(Boolean);
-    const isPreLogin = !userId || userId === 'guest' || userId.startsWith('guest') || userId === 'authenticated_user' || userId === 'all' || userId === 'anonymous';
-    const isAdminUser = userRole === 'admin' || userId === 'usr-admin' || userId === 'admin';
-    const isQaUser = userRole === 'qa' || userId === 'usr-validador' || userId === 'validador' || (typeof userId === 'string' && userId.includes('validador'));
-
-    // Query parameter username may be provided during login typing or pre-login
-    const queryUsername = (req.query.username as string || '').trim().toLowerCase();
-    const effectiveUsername = queryUsername || (!isPreLogin && userId ? userId.toLowerCase() : '');
-
-    let allowedCompanies: any[] = allRegistered;
-    const isMasterUser = effectiveUsername === 'validador' || effectiveUsername === 'admin' || effectiveUsername === 'usr-validador' || isAdminUser || isQaUser;
-
-    if (effectiveUsername && !isMasterUser && !isPreLogin) {
-      // Find matching user records
-      const matchingUsers = allUsers.filter((u: any) =>
-        u && (u.id === effectiveUsername || (u.username && u.username.toLowerCase() === effectiveUsername)) &&
-        u.status !== 'terminated' && !u.isTerminated
-      );
-
-      const hasWildcard = matchingUsers.some((u: any) => Array.isArray(u.allowedCompanyIds) && u.allowedCompanyIds.includes('*'));
-
-      if (!hasWildcard) {
-        const accessibleCompIds = new Set<string>();
-        matchingUsers.forEach((u: any) => {
-          if (u.companyId) accessibleCompIds.add(u.companyId);
-          if (Array.isArray(u.allowedCompanyIds)) {
-            u.allowedCompanyIds.forEach((id: string) => {
-              if (id && id !== '*') accessibleCompIds.add(id);
-            });
-          }
-        });
-        allowedCompanies = allRegistered.filter((c: any) => accessibleCompIds.has(c.id));
-      }
-    }
-
-    const count = allowedCompanies.length;
-    console.log(`[DB-TRACE][GET /api/companies]\nrequestId=${requestId}\nuserId=${userId || 'anonymous'}\ncompanies=${count}\nresult=SUCCESS\nlatencyMs=${Date.now() - startTime}`);
-    return res.json({ success: true, companies: allowedCompanies, durationMs: Date.now() - startTime });
-  } catch (err: any) {
-    if (serverAppStoreCache) {
-      const companies = serverAppStoreCache.registeredCompanies || [serverAppStoreCache.companyInfo];
-      return res.json({ success: true, companies, durationMs: Date.now() - startTime });
-    }
-    return res.json({ success: true, companies: [], error: err.message });
+  // Lista de empresas pertence ao usuário da sessão; sem sessão não é divulgada
+  // (a tela de login usa /api/auth/login-companies com o usuário digitado)
+  if (!req.authUser) {
+    return res.json({ success: true, companies: [], durationMs: Date.now() - startTime });
   }
+  const db = serverAppStoreCache;
+  const companies = userCompanyIds(req.authUser, db).map((id) => findCompany(db, id)).filter(Boolean);
+  console.log(`[DB-TRACE][GET /api/companies] requestId=${requestId} userId=${userId} companies=${companies.length}`);
+  return res.json({ success: true, companies, durationMs: Date.now() - startTime });
 });
 
 // Mapa em memória usado apenas sem banco configurado (desenvolvimento offline)
@@ -1968,6 +2477,9 @@ app.post("/api/companies/active", async (req: any, res) => {
   if (!activeCompanyId) {
     return res.status(400).json({ success: false, error: "activeCompanyId é obrigatório" });
   }
+  if (!userCompanyIds(req.authUser, serverAppStoreCache).includes(activeCompanyId)) {
+    return res.status(403).json({ success: false, code: "COMPANY_NOT_ALLOWED", error: "Você não está cadastrado nesta empresa." });
+  }
 
   try {
     if (hasDatabaseBackend()) {
@@ -1997,7 +2509,7 @@ app.post("/api/companies/active", async (req: any, res) => {
 });
 
 // Endpoint: Registrar ou atualizar empresa diretamente no banco
-app.post("/api/companies/register", async (req: any, res) => {
+app.post("/api/companies/register", requireMaster, async (req: any, res) => {
   const companyData = req.body;
   if (!companyData || !companyData.name) {
     return res.status(400).json({ success: false, error: "Dados da empresa inválidos" });
@@ -2067,7 +2579,7 @@ app.get(["/api/landing", "/api/site"], async (req, res) => {
 });
 
 // Endpoint: Atualizar e persistir o conteúdo do site diretamente no Banco Central
-app.post(["/api/landing", "/api/site"], async (req: any, res) => {
+app.post(["/api/landing", "/api/site"], requireMaster, async (req: any, res) => {
   const { landingContent } = req.body;
   if (!landingContent || typeof landingContent !== 'object') {
     return res.status(400).json({ success: false, error: "landingContent inválido ou ausente" });
@@ -2093,7 +2605,7 @@ app.post(["/api/landing", "/api/site"], async (req: any, res) => {
 });
 
 // Endpoint: Atualizar ou liberar módulos contratados de uma empresa pós-contrato (ex: Boletos, Vendas, Fiscal)
-app.post("/api/companies/:companyId/modules", requireAuth, async (req: any, res) => {
+app.post("/api/companies/:companyId/modules", requireMaster, async (req: any, res) => {
   const { companyId } = req.params;
   const { modules, contractModules } = req.body;
 
@@ -2157,7 +2669,7 @@ app.post("/api/companies/:companyId/modules", requireAuth, async (req: any, res)
 });
 
 // Endpoint: Atualizar limite de usuários e valor por usuário adicional da licença
-app.post("/api/companies/:companyId/license", requireAuth, async (req: any, res) => {
+app.post("/api/companies/:companyId/license", requireMaster, async (req: any, res) => {
   const { companyId } = req.params;
   const { userLimit, additionalUserPrice, monthlyFee } = req.body;
 
@@ -2271,8 +2783,142 @@ app.get("/api/companies/:companyId/license", async (req: any, res) => {
 });
 
 // Endpoint dedicado e atômico para alteração / primeiro acesso de senha de usuários
+// ---- Login / sessão (senha verificada SOMENTE no servidor) -------------------
+app.post("/api/auth/login", async (req: any, res) => {
+  const username = lc(req.body?.username);
+  const password = String(req.body?.password || '');
+  const requestedCompanyId = String(req.body?.companyId || '').trim();
+
+  if (!username || !password) {
+    return res.status(400).json({ success: false, code: "MISSING_CREDENTIALS", error: "Informe usuário e senha." });
+  }
+
+  const throttleKey = loginThrottleKey(req, username);
+  if (isLoginThrottled(throttleKey)) {
+    return res.status(429).json({ success: false, code: "TOO_MANY_ATTEMPTS", error: "Muitas tentativas de login sem sucesso. Aguarde alguns minutos e tente novamente." });
+  }
+
+  try {
+    let db = serverAppStoreCache;
+    if (hasDatabaseBackend()) {
+      db = (await readAppStoreFromDb())?.data || db;
+    }
+
+    const user = (db?.users || []).find((u: any) => u && lc(u.username) === username && verifyPassword(password, u.passwordHash));
+    if (!user) {
+      registerLoginFailure(throttleKey);
+      console.warn(`[AUTH] Login recusado para @${username} (IP ${getClientIp(req)})`);
+      return res.status(401).json({ success: false, code: "INVALID_CREDENTIALS", error: "Usuário ou senha incorretos. Por favor, verifique suas credenciais." });
+    }
+
+    if (!isUserActive(user)) {
+      return res.status(403).json({
+        success: false,
+        code: "USER_TERMINATED",
+        error: `Acesso Revogado: O colaborador "${user.name}" teve seu contrato de trabalho finalizado em ${user.contractEndDate || user.terminationDate || "data anterior"}. Todos os acessos ao sistema foram permanentemente revogados.`,
+      });
+    }
+
+    const ids = userCompanyIds(user, db);
+    if (ids.length === 0) {
+      return res.status(403).json({ success: false, code: "NO_COMPANY", error: "Usuário sem empresa vinculada. Procure o administrador." });
+    }
+    const companyId = requestedCompanyId && ids.includes(requestedCompanyId)
+      ? requestedCompanyId
+      : (ids.includes(user.companyId) ? user.companyId : ids[0]);
+    const company = findCompany(db, companyId);
+
+    if (!isMasterAccount(user) && company && (company.subscriptionStatus === 'blocked' || company.subscriptionStatus === 'overdue' || company.paymentStatus === 'overdue')) {
+      return res.status(403).json({
+        success: false,
+        code: "COMPANY_BLOCKED",
+        error: `Acesso Bloqueado por Inadimplência: A empresa "${company.name}" está com a assinatura/licença suspensa ou pagamento pendente. Por favor, entre em contato com o suporte ou gestor financeiro.`,
+      });
+    }
+
+    loginAttempts.delete(throttleKey);
+
+    // Senha legada em texto puro: converte para hash imediatamente
+    if (!isPasswordHashed(user.passwordHash)) {
+      await mutateAppStore((current) => current, { source: "password_hash_migration", userId: user.id })
+        .catch((err) => console.warn(`[AUTH] Falha ao converter senha legada para hash: ${err.message}`));
+    }
+
+    const { token, expiresAt } = await createSession(user.id, companyId, req);
+
+    const clientUser: any = { ...sanitizeUserForClient(user), companyId };
+    if (isMasterAccount(user)) clientUser.allowedCompanyIds = ['*'];
+    // Senha padrão inicial ainda não trocada: força a troca no primeiro acesso
+    if (password === '123456' && user.hasChosenPassword !== true) clientUser.mustChangePassword = true;
+
+    // Empresas do usuário (com módulos contratados) para a tela calcular as permissões efetivas já no login
+    const companies = ids.map((id) => findCompany(db, id)).filter(Boolean);
+
+    console.log(`[AUTH] Login de @${user.username} na empresa ${companyId} (IP ${getClientIp(req)})`);
+    return res.json({ success: true, token, expiresAt, companyId, user: clientUser, companies });
+  } catch (err: any) {
+    console.error(`[AUTH] Erro no login: ${err.message}`);
+    return res.status(503).json({ success: false, code: "AUTH_UNAVAILABLE", error: "Não foi possível validar o login agora. Tente novamente em instantes." });
+  }
+});
+
+// Empresas do usuário digitado na tela de login (sem expor senhas nem dados de outros usuários)
+app.get("/api/auth/login-companies", (req: any, res) => {
+  const username = lc(req.query?.username);
+  const db = serverAppStoreCache;
+  const user = username ? (db?.users || []).find((u: any) => u && lc(u.username) === username && isUserActive(u)) : null;
+  if (!user) {
+    return res.json({ success: true, companies: [], users: [] });
+  }
+  const companies = userCompanyIds(user, db)
+    .map((id) => findCompany(db, id))
+    .filter(Boolean)
+    .map((c: any) => pickFields(c, [...PUBLIC_COMPANY_FIELDS, 'subscriptionStatus']));
+  return res.json({
+    success: true,
+    companies,
+    users: [{
+      id: user.id,
+      username: user.username,
+      companyId: user.companyId,
+      allowedCompanyIds: isMasterAccount(user) ? ['*'] : (user.allowedCompanyIds || []),
+      status: user.status || 'active',
+    }],
+  });
+});
+
+app.post("/api/auth/logout", async (req: any, res) => {
+  try {
+    if (req.authSession?.token) await deleteSession(req.authSession.token);
+  } catch (err: any) {
+    console.warn(`[AUTH] Falha ao encerrar sessão: ${err.message}`);
+  }
+  return res.json({ success: true });
+});
+
+app.get("/api/auth/me", (req: any, res) => {
+  const { companyId } = extractUserContext(req);
+  return res.json({ success: true, user: { ...sanitizeUserForClient(req.authUser), companyId }, expiresAt: req.authSession?.expiresAt });
+});
+
+// Confirma a senha do usuário logado (desbloqueio por inatividade, confirmações sensíveis)
+app.post("/api/auth/verify-password", (req: any, res) => {
+  const throttleKey = loginThrottleKey(req, req.authUser.username);
+  if (isLoginThrottled(throttleKey)) {
+    return res.status(429).json({ success: false, code: "TOO_MANY_ATTEMPTS", error: "Muitas tentativas sem sucesso. Aguarde alguns minutos." });
+  }
+  if (!verifyPassword(String(req.body?.password || ''), req.authUser.passwordHash)) {
+    registerLoginFailure(throttleKey);
+    return res.status(401).json({ success: false, code: "INVALID_PASSWORD", error: "Senha incorreta." });
+  }
+  loginAttempts.delete(throttleKey);
+  return res.json({ success: true });
+});
+
+// Troca de senha: o próprio usuário (com a senha atual) ou quem gerencia usuários da mesma empresa
 app.post("/api/users/update-password", async (req: any, res) => {
-  const { userId, username, companyId, newPassword, keepCurrent } = req.body || {};
+  const { userId, username, companyId, newPassword, keepCurrent, currentPassword } = req.body || {};
+  const actor = req.authUser;
 
   if (!userId && !username) {
     return res.status(400).json({ success: false, error: "Identificador do usuário ausente" });
@@ -2284,6 +2930,7 @@ app.post("/api/users/update-password", async (req: any, res) => {
 
   try {
     let updatedUser: any = null;
+    let isSelf = false;
     const { version } = await mutateAppStore((currentStoredData) => {
       if (!currentStoredData || !Array.isArray(currentStoredData.users)) {
         throw appStoreError("Banco de dados não inicializado.", 500);
@@ -2291,16 +2938,31 @@ app.post("/api/users/update-password", async (req: any, res) => {
 
       const user = currentStoredData.users.find((u: any) =>
         (userId && u.id === userId) ||
-        (username && u.username && u.username.toLowerCase() === String(username).toLowerCase() && (!companyId || u.companyId === companyId))
+        (!userId && username && u.username && u.username.toLowerCase() === String(username).toLowerCase() && (!companyId || u.companyId === companyId))
       );
 
       if (!user) {
         throw appStoreError("Usuário não encontrado.", 404);
       }
 
+      isSelf = user.id === actor.id;
+      if (isSelf) {
+        // Primeiro acesso (senha inicial) dispensa a senha atual; nos demais casos ela é obrigatória
+        const isFirstAccess = user.mustChangePassword === true || user.firstAccess === true || user.hasChosenPassword !== true;
+        if (!keepCurrent && !isFirstAccess && !verifyPassword(String(currentPassword || ''), user.passwordHash)) {
+          throw appStoreError("Senha Atual Incorreta. Não foi possível autorizar a alteração.", 403);
+        }
+      } else {
+        const actorCompany = companyForUser(currentStoredData, actor, user.companyId);
+        const sharesCompany = userCompanyIds(user, currentStoredData).some((id) => userCompanyIds(actor, currentStoredData).includes(id));
+        if (!canManageUsers(actor, actorCompany) || !sharesCompany || (isMasterAccount(user) && !isMasterAccount(actor))) {
+          throw appStoreError("Você não tem permissão para alterar a senha deste usuário.", 403);
+        }
+      }
+
       const now = Date.now();
       if (!keepCurrent && newPassword) {
-        user.passwordHash = String(newPassword).trim();
+        user.passwordHash = hashPassword(String(newPassword).trim());
       }
       user.firstAccess = false;
       user.mustChangePassword = false;
@@ -2321,6 +2983,12 @@ app.post("/api/users/update-password", async (req: any, res) => {
       };
       return currentStoredData;
     }, { source: "password_update", companyId, userId });
+
+    // Senha alterada: encerra as demais sessões do usuário (mantém a sessão atual de quem trocou a própria senha)
+    if (!keepCurrent) {
+      await deleteOtherUserSessions(updatedUser.id, isSelf ? req.authSession?.token : undefined)
+        .catch((err) => console.warn(`[USER-PASSWORD] Falha ao encerrar sessões antigas: ${err.message}`));
+    }
 
     console.log(`[USER-PASSWORD] Senha salva com sucesso para @${updatedUser.username} (${updatedUser.id})`);
     return res.json({ success: true, user: updatedUser, version });
@@ -2512,7 +3180,7 @@ app.post("/api/auth/logout-session", (req: any, res) => {
 });
 
 // 5. Consulta de Sessões Ativas (para diagnóstico do sistema)
-app.get("/api/auth/active-sessions", (req, res) => {
+app.get("/api/auth/active-sessions", requireMaster, (req, res) => {
   const list = Array.from(activeSessionsByUsername.values()).map(s => ({
     username: s.username,
     name: s.name,
@@ -2624,7 +3292,7 @@ app.get("/api/integrations/solidworks/projects", requireAuth, async (req: any, r
 
 app.post("/api/integrations/solidworks/sync-project", async (req: any, res) => {
   try {
-    const targetCompId = req.headers['x-company-id'] || req.query.companyId || 'comp-1';
+    const targetCompId = extractUserContext(req).companyId;
     const payload = req.body || {};
     
     if (!payload.projectName && !payload.cadFile) {
@@ -3368,7 +4036,7 @@ async function getDbSnapshotForBackup(): Promise<any> {
 }
 
 // Status do Backup Diário Automático
-app.get("/api/backup/status", requireAuth, (req, res) => {
+app.get("/api/backup/status", requireMaster, (req, res) => {
   const service = DailyBackupService.getInstance();
   res.json({
     success: true,
@@ -3377,7 +4045,7 @@ app.get("/api/backup/status", requireAuth, (req, res) => {
 });
 
 // Lista todos os backups diários armazenados
-app.get("/api/backup/list", requireAuth, (req, res) => {
+app.get("/api/backup/list", requireMaster, (req, res) => {
   const service = DailyBackupService.getInstance();
   const list = service.listBackups();
   res.json({
@@ -3388,7 +4056,7 @@ app.get("/api/backup/list", requireAuth, (req, res) => {
 });
 
 // Executa um backup diário manual imediatamente
-app.post("/api/backup/trigger-daily", requireAuth, async (req, res) => {
+app.post("/api/backup/trigger-daily", requireMaster, async (req, res) => {
   try {
     const service = DailyBackupService.getInstance();
     const metadata = await service.createBackup(getDbSnapshotForBackup, "manual_trigger");
@@ -3403,7 +4071,7 @@ app.post("/api/backup/trigger-daily", requireAuth, async (req, res) => {
 });
 
 // Download do arquivo de backup geral
-app.get("/api/backup/download/:filename", requireAuth, (req, res) => {
+app.get("/api/backup/download/:filename", requireMaster, (req, res) => {
   try {
     const filename = path.basename(req.params.filename);
     const backupPath = path.resolve(process.cwd(), "data/backups", filename);
@@ -3419,7 +4087,7 @@ app.get("/api/backup/download/:filename", requireAuth, (req, res) => {
 });
 
 // Download de backup 100% isolado por ID da Empresa
-app.get("/api/backup/download-company/:companyId", requireAuth, async (req, res) => {
+app.get("/api/backup/download-company/:companyId", requireMaster, async (req, res) => {
   try {
     const { companyId } = req.params;
     const service = DailyBackupService.getInstance();
@@ -3437,7 +4105,7 @@ app.get("/api/backup/download-company/:companyId", requireAuth, async (req, res)
 });
 
 // Restaura um backup
-app.post("/api/backup/restore", requireAuth, async (req, res) => {
+app.post("/api/backup/restore", requireMaster, async (req, res) => {
   try {
     const { filename } = req.body;
     if (!filename) {
@@ -3463,7 +4131,7 @@ app.post("/api/backup/restore", requireAuth, async (req, res) => {
 });
 
 // Restaura dados EXCLUSIVAMENTE de uma única empresa (100% isolada, sem alterar nenhuma outra)
-app.post("/api/backup/restore-company", requireAuth, async (req, res) => {
+app.post("/api/backup/restore-company", requireMaster, async (req, res) => {
   try {
     const { targetCompanyId, filename, backupData, sourceData } = req.body;
     if (!targetCompanyId) {
@@ -3496,7 +4164,7 @@ app.post("/api/backup/restore-company", requireAuth, async (req, res) => {
 // =========================================================================
 
 // Listagem de empresas com seus IDs explícitos para suporte
-app.get("/api/companies/list-with-ids", requireAuth, async (req, res) => {
+app.get("/api/companies/list-with-ids", requireMaster, async (req, res) => {
   try {
     const db = await getDbSnapshotForBackup();
     if (!db) return res.json({ success: true, companies: [] });
@@ -3544,7 +4212,7 @@ app.get("/api/companies/list-with-ids", requireAuth, async (req, res) => {
 });
 
 // Listagem de políticas de backup de todas as empresas cadastradas
-app.get("/api/backup/policies", requireAuth, async (req, res) => {
+app.get("/api/backup/policies", requireMaster, async (req, res) => {
   try {
     const db = await getDbSnapshotForBackup();
     const service = DailyBackupService.getInstance();
@@ -3560,7 +4228,7 @@ app.get("/api/backup/policies", requireAuth, async (req, res) => {
 });
 
 // Atualização da política de backup de uma empresa específica
-app.post("/api/backup/policy/:companyId", requireAuth, async (req, res) => {
+app.post("/api/backup/policy/:companyId", requireMaster, async (req, res) => {
   try {
     const { companyId } = req.params;
     const policy = req.body || {};
@@ -3586,7 +4254,7 @@ app.post("/api/backup/policy/:companyId", requireAuth, async (req, res) => {
 });
 
 // Diagnóstico de isolamento e integridade para uma empresa específica
-app.get("/api/support/company-diagnostic/:companyId", requireAuth, async (req, res) => {
+app.get("/api/support/company-diagnostic/:companyId", requireMaster, async (req, res) => {
   try {
     const { companyId } = req.params;
     const db = await getDbSnapshotForBackup();
@@ -3601,7 +4269,7 @@ app.get("/api/support/company-diagnostic/:companyId", requireAuth, async (req, r
 });
 
 // Executa correção/ajuste isolado garantindo que outras empresas não sejam atingidas
-app.post("/api/support/company-repair", requireAuth, async (req, res) => {
+app.post("/api/support/company-repair", requireMaster, async (req, res) => {
   try {
     const { targetCompanyId, correctionType } = req.body;
     if (!targetCompanyId) {
@@ -3703,6 +4371,7 @@ async function startServer() {
         await warmUpDatabaseConnection();
         startDatabaseKeepAlive(15000);
         await ensureAppStoreTableExists(config.database);
+        await ensureAuthTables();
         const stored = await readAppStoreFromDb();
         console.log(`[MotorDesk Boot] Banco ${config.database}@${config.host} conectado como fonte única de verdade (versão ${stored?.version ?? 'vazia'}).`);
       } else {
