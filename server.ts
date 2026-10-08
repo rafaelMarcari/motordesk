@@ -15,6 +15,7 @@ import * as notasApiBackend from "./src/services/notasApiBackend.js";
 import { registerFiscalRoutes } from "./server/fiscal/routes.ts";
 import { registerRepresentacaoRoutes } from "./server/representacao/routes.ts";
 import { registerFinanceiroRoutes, renovarTodas } from "./server/financeiro/routes.ts";
+import { registerTransacoesRoutes } from "./server/financeiro/transacoes.ts";
 
 dotenv.config();
 
@@ -574,7 +575,7 @@ const TENANT_COLLECTIONS = [
   'nonConformityReports', 'bankStatements', 'unitsOfMeasure', 'accessGroups', 'pendingPriceRevisions',
   'priceChangeHistory', 'priceCalculationHistory',
   // Representação comercial (pedidos, representadas, faturamento e conciliações)
-  'representativeOrders', 'representedCompanies', 'representativeFactoryOrders', 'factoryBillingImports', 'representativeCommissions', 'representativeReconciliations', 'representativePendingLines', 'accountTypes',
+  'representativeOrders', 'representedCompanies', 'representativeFactoryOrders', 'factoryBillingImports', 'representativeCommissions', 'representativeReconciliations', 'representativePendingLines', 'accountTypes', 'bankAccounts', 'bankTransfers',
 ];
 
 // Campos de contrato/licença da empresa: só o administrador mestre da plataforma altera
@@ -1539,6 +1540,8 @@ export function sanitizeAndIsolateCompanies(db: any): any {
     'representativeReconciliations',
     'representativePendingLines',
     'accountTypes',
+    'bankAccounts',
+    'bankTransfers',
   ];
 
   const sanitized: any = { ...db };
@@ -2164,6 +2167,8 @@ export function mergeAppDatabase(existing: any, incoming: any): any {
     representativeReconciliations: mergeEntityCollection(existing.representativeReconciliations, incoming.representativeReconciliations, 'id'),
     representativePendingLines: mergeEntityCollection(existing.representativePendingLines, incoming.representativePendingLines, 'id'),
     accountTypes: mergeEntityCollection(existing.accountTypes, incoming.accountTypes, 'id'),
+    bankAccounts: mergeEntityCollection(existing.bankAccounts, incoming.bankAccounts, 'id'),
+    bankTransfers: mergeEntityCollection(existing.bankTransfers, incoming.bankTransfers, 'id'),
     contractModules: { ...(existing.contractModules || {}), ...(incoming.contractModules || {}) },
     globalModules: { ...(existing.globalModules || {}), ...(incoming.globalModules || {}) },
     alertSettings: { ...(existing.alertSettings || {}), ...(incoming.alertSettings || {}) },
@@ -2241,6 +2246,8 @@ export function isolateDatabaseForContext(
     'representativeReconciliations',
     'representativePendingLines',
     'accountTypes',
+    'bankAccounts',
+    'bankTransfers',
   ];
 
   const allRegistered = Array.isArray(db.registeredCompanies) && db.registeredCompanies.length > 0
@@ -3946,6 +3953,40 @@ registerFinanceiroRoutes(app, {
       return { status: 403, error: "Seu usuário não tem permissão para alterar " + nome.toLowerCase() + "." };
     }
     return { companyId, actor: u.name || u.username, userId: u.id };
+  },
+});
+
+// Transações (recebimentos, despesas e transferências do mês, contas bancárias)
+registerTransacoesRoutes(app, {
+  getStore: () => serverAppStoreCache,
+  mutateStore: (fn, meta) => mutateAppStore(fn, meta),
+  nextRev: () => nextRecordRev(),
+  access: (req: any, need, natureza) => {
+    if (!req.authUser) return { status: 401, error: "Sessão expirada ou inválida. Faça login novamente." };
+    const { companyId } = extractUserContext(req);
+    const company = findCompany(serverAppStoreCache, companyId);
+    if (!company || !userCompanyIds(req.authUser, serverAppStoreCache).includes(companyId)) return { status: 403, error: "Empresa não vinculada ao usuário." };
+    const u = req.authUser;
+    const tem = (k: string) => hasEffectivePermission(u, company, k);
+    const ver = {
+      receber: tem("accessAccountsReceivable") || tem("accessFinancial"),
+      pagar: tem("accessAccountsPayable") || tem("accessFinancial"),
+    };
+    const chaves: Record<string, Record<string, string[]>> = {
+      criar: { receber: ["accountsReceivableCreate", "accountsReceivableEdit"], pagar: ["accountsPayableCreate", "accountsPayableEdit"] },
+      baixar: { receber: ["accountsReceivableSettle", "accountsReceivableCreate", "accountsReceivableEdit"], pagar: ["accountsPayableSettle", "accountsPayableCreate", "accountsPayableEdit"] },
+      excluir: { receber: ["accountsReceivableCancel", "accountsReceivableEdit"], pagar: ["accountsPayableCancel", "accountsPayableEdit"] },
+    };
+    const pode = (n: string, nat: "receber" | "pagar") => {
+      if (n === "ler") return ver[nat];
+      if (n === "contas") return tem("accessFinancial") || tem("accessUserManagement") || ["accountsPayableCreate", "accountsPayableEdit", "accountsReceivableCreate", "accountsReceivableEdit"].some(tem);
+      return ver[nat] && (tem("accessUserManagement") || (chaves[n]?.[nat] || []).some(tem));
+    };
+    if (!ver.receber && !ver.pagar) return { status: 403, error: "Financeiro não liberado para o seu usuário." };
+    if (need === "contas" ? !pode("contas", "pagar") : natureza ? !pode(need, natureza) : false) {
+      return { status: 403, error: "Seu usuário não tem permissão para esta operação." };
+    }
+    return { companyId, actor: u.name || u.username, userId: u.id, ver, pode };
   },
 });
 
