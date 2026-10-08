@@ -13,6 +13,7 @@ import { DailyBackupService } from "./server/dailyBackupService.js";
 import { CompanySupportService } from "./server/companySupportService.js";
 import * as notasApiBackend from "./src/services/notasApiBackend.js";
 import { registerFiscalRoutes } from "./server/fiscal/routes.ts";
+import { registerRepresentacaoRoutes } from "./server/representacao/routes.ts";
 
 dotenv.config();
 
@@ -571,6 +572,8 @@ const TENANT_COLLECTIONS = [
   'monthlyAccountingClosings', 'qualityInspections', 'technicalDocuments', 'warehouseLocations', 'shopFloorEntries',
   'nonConformityReports', 'bankStatements', 'unitsOfMeasure', 'accessGroups', 'pendingPriceRevisions',
   'priceChangeHistory', 'priceCalculationHistory',
+  // Representação comercial (pedidos, representadas, faturamento e conciliações)
+  'representativeOrders', 'representedCompanies', 'representativeFactoryOrders', 'factoryBillingImports', 'representativeCommissions', 'representativeReconciliations',
 ];
 
 // Campos de contrato/licença da empresa: só o administrador mestre da plataforma altera
@@ -1527,6 +1530,12 @@ export function sanitizeAndIsolateCompanies(db: any): any {
     'pendingPriceRevisions',
     'priceChangeHistory',
     'priceCalculationHistory',
+    'representativeOrders',
+    'representedCompanies',
+    'representativeFactoryOrders',
+    'factoryBillingImports',
+    'representativeCommissions',
+    'representativeReconciliations',
   ];
 
   const sanitized: any = { ...db };
@@ -2136,6 +2145,12 @@ export function mergeAppDatabase(existing: any, incoming: any): any {
     pendingPriceRevisions: mergeEntityCollection(existing.pendingPriceRevisions, incoming.pendingPriceRevisions, 'id'),
     priceChangeHistory: mergeEntityCollection(existing.priceChangeHistory, incoming.priceChangeHistory, 'id'),
     priceCalculationHistory: mergeEntityCollection(existing.priceCalculationHistory, incoming.priceCalculationHistory, 'id'),
+    representativeOrders: mergeEntityCollection(existing.representativeOrders, incoming.representativeOrders, 'id'),
+    representedCompanies: mergeEntityCollection(existing.representedCompanies, incoming.representedCompanies, 'id'),
+    representativeFactoryOrders: mergeEntityCollection(existing.representativeFactoryOrders, incoming.representativeFactoryOrders, 'id'),
+    factoryBillingImports: mergeEntityCollection(existing.factoryBillingImports, incoming.factoryBillingImports, 'id'),
+    representativeCommissions: mergeEntityCollection(existing.representativeCommissions, incoming.representativeCommissions, 'id'),
+    representativeReconciliations: mergeEntityCollection(existing.representativeReconciliations, incoming.representativeReconciliations, 'id'),
     contractModules: { ...(existing.contractModules || {}), ...(incoming.contractModules || {}) },
     globalModules: { ...(existing.globalModules || {}), ...(incoming.globalModules || {}) },
     alertSettings: { ...(existing.alertSettings || {}), ...(incoming.alertSettings || {}) },
@@ -2205,6 +2220,12 @@ export function isolateDatabaseForContext(
     'pendingPriceRevisions',
     'priceChangeHistory',
     'priceCalculationHistory',
+    'representativeOrders',
+    'representedCompanies',
+    'representativeFactoryOrders',
+    'factoryBillingImports',
+    'representativeCommissions',
+    'representativeReconciliations',
   ];
 
   const allRegistered = Array.isArray(db.registeredCompanies) && db.registeredCompanies.length > 0
@@ -3889,8 +3910,28 @@ app.post("/api/v1/:resource", requireApiScope("write"), async (req: any, res) =>
 // =========================================================================
 // EMISSÃO FISCAL PRÓPRIA (NF-e modelo 55) — /api/fiscal/v2, padrão Focus NFe
 // Certificado A1 e senha ficam no mesmo cofre cifrado das integrações (fora do app_store).
+// Conciliação dos pedidos de representação com a planilha de fechamento da representada
+registerRepresentacaoRoutes(app, {
+  getStore: () => serverAppStoreCache,
+  mutateStore: (fn, meta) => mutateAppStore(fn, meta),
+  nextRev: () => nextRecordRev(),
+  access: (req: any, need) => {
+    if (!req.authUser) return { status: 401, error: "Sessão expirada ou inválida. Faça login novamente." };
+    const { companyId } = extractUserContext(req);
+    const company = findCompany(serverAppStoreCache, companyId);
+    if (!company || !userCompanyIds(req.authUser, serverAppStoreCache).includes(companyId)) return { status: 403, error: "Empresa não vinculada ao usuário." };
+    const u = req.authUser;
+    const canRead = hasEffectivePermission(u, company, "accessRepresentativeOrders") || hasEffectivePermission(u, company, "accessRepresentativeCommerce");
+    if (!canRead) return { status: 403, error: "Módulo de pedidos de representação não liberado para o seu usuário." };
+    if (need === "conciliar" && !["representativeReconcile", "representativeReconciliationApprove", "representativeOrdersEdit"].some((k) => hasEffectivePermission(u, company, k))) {
+      return { status: 403, error: "Seu usuário não tem permissão para confirmar conciliações." };
+    }
+    return { companyId, actor: u.name || u.username, userId: u.id };
+  },
+});
+
 // =========================================================================
-const FISCAL_NEED_PERMISSION = { ler: "accessFiscal", emitir: "fiscalEmit", cancelar: "fiscalCancel" } as const;
+const FISCAL_NEED_PERMISSION ={ ler: "accessFiscal", emitir: "fiscalEmit", cancelar: "fiscalCancel" } as const;
 registerFiscalRoutes(app, {
   exec: (sql, params = []) => executeSqlWithRetry(sql, params, resolveDatabaseConfig().database),
   hasDb: () => hasDatabaseBackend(),

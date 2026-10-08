@@ -12724,7 +12724,8 @@ function RepresentativeOrdersView({
     }
   ]);
   const representedCompanies = useMemo(() => {
-    return db.representedCompanies && db.representedCompanies.length > 0 ? db.representedCompanies : [
+    const own = (db.representedCompanies || []).filter((r) => r && (r.companyId || companyId) === companyId);
+    return own.length > 0 ? own : [
       {
         id: "prin-abc-01",
         companyId,
@@ -12755,8 +12756,8 @@ function RepresentativeOrdersView({
     ];
   }, [db.representedCompanies, companyId]);
   const representativeOrders = useMemo(() => {
-    const rawList = db.representativeOrders || [];
-    if (rawList.length > 0) return rawList;
+    const rawList = (db.representativeOrders || []).filter((o) => o && (o.companyId || companyId) === companyId);
+    if (rawList.length > 0 || true) return rawList;
     return [
       {
         id: "ord-rep-000123",
@@ -13030,7 +13031,9 @@ function RepresentativeOrdersView({
         return {
           ...o,
           status: "FATURADO_TOTAL",
-          factoryOrderNumbers: [factoryInvoiceNumber || "NF-FBR-001"],
+          factoryOrderNumbers: o.factoryOrderNumbers || [],
+          representedInvoices: [...(o.representedInvoices || []), { numero: factoryInvoiceNumber || "", data: factoryInvoiceDate, valor: Number(o.totalOrderAmount || 0), pedidoRepresentada: "" }],
+          invoicedAmount: Number(o.totalOrderAmount || 0),
           factoryInvoiceDate,
           commissionStatus: "LIBERADA"
         };
@@ -13387,7 +13390,7 @@ function RepresentativeOrdersView({
             "span",
             {
               className: `px-2.5 py-1 rounded-full text-[10px] font-bold inline-block uppercase tracking-wider ${isBilled ? "bg-emerald-50 text-emerald-800 border border-emerald-200" : isSent ? "bg-blue-50 text-blue-800 border border-blue-200" : isDraft ? "bg-amber-50 text-amber-800 border border-amber-200" : "bg-slate-100 text-slate-700"}`,
-              children: order.status === "FATURADO_TOTAL" ? "Faturado Total" : order.status === "ENVIADO_FABRICA" ? "Enviado \xE0 F\xE1brica" : order.status === "EM_DIGITACAO" ? "Em Digita\xE7\xE3o" : order.status
+              children: order.status === "FATURADO_TOTAL" ? "Faturado Total" : order.status === "ENVIADO_FABRICA" ? "Enviado \xE0 F\xE1brica" : order.status === "EM_DIGITACAO" ? "Em Digita\xE7\xE3o" : order.status === "FATURADO_PARCIAL" ? "Faturado Parcial" : order.status === "CANCELADO" ? "Cancelado" : order.status
             }
           ) }),
           /* @__PURE__ */ jsx("td", { className: "p-3.5 text-center", children: /* @__PURE__ */ jsx(
