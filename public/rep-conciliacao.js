@@ -140,6 +140,7 @@
       '#md-rep .legend{display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 10px}',
       '#md-rep .sticky-actions{position:sticky;bottom:-16px;background:#fff;border-top:1px solid #e2e8f0;padding:10px 0;margin-top:12px;display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between}',
       '#md-rep .nfs div{white-space:nowrap}',
+      '#md-rep .motivo{display:flex;flex-direction:column;gap:5px;min-width:230px;background:#fff;border:1px solid #fca5a5;border-radius:8px;padding:7px}',
       '#menu-btn-rep-conciliacao{width:100%;display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:8px;border:0;background:none;color:#cbd5e1;font-size:12px;font-weight:600;letter-spacing:.02em;cursor:pointer;text-align:left}',
       '#menu-btn-rep-conciliacao:hover{background:#1e293b;color:#fff}#menu-btn-rep-conciliacao svg{width:16px;height:16px;flex-shrink:0;color:#a78bfa}',
     ].join('\n');
@@ -154,7 +155,7 @@
   let pedidos = [];
   let representadas = [];
   let filtro = { texto: '', representada: '', situacao: '' };
-  const imp = { arquivo: '', planilhas: [], aba: '', matriz: [], cabecalho: 0, colunas: [], mapa: {}, linhas: [], opcoes: { representadaId: '', de: '', ate: '', toleranciaValor: 1, toleranciaPercentual: 0.5, vinculos: {}, ignorar: [] }, resultado: null, marcados: new Set(), filtroStatus: '', wb: null };
+  const imp = { arquivo: '', planilhas: [], aba: '', matriz: [], cabecalho: 0, colunas: [], mapa: {}, linhas: [], opcoes: { representadaId: '', de: '', ate: '', toleranciaValor: 1, toleranciaPercentual: 0.5, vinculos: {}, ignorar: [] }, resultado: null, marcados: new Set(), filtroStatus: '', wb: null, baixasLinhas: {}, baixasPedidos: {}, soPendencias: false };
 
   function open(initialTab) {
     ensureStyles();
@@ -165,7 +166,7 @@
     root.setAttribute('role', 'dialog');
     root.setAttribute('aria-modal', 'true');
     root.setAttribute('aria-label', 'Conciliação de Pedidos');
-    const tabs = [['pedidos', 'Pedidos e nº da representada'], ['importar', 'Importar planilha de fechamento'], ['historico', 'Histórico de conciliações']];
+    const tabs = [['pedidos', 'Pedidos e nº da representada'], ['importar', 'Importar planilha de fechamento'], ['pendencias', 'Pendências'], ['historico', 'Histórico de conciliações']];
     root.innerHTML = '<div class="p"><div class="hd"><div><h2>Conciliação de Pedidos</h2><p class="sub">Pedidos enviados às representadas × pedidos recebidos e faturados por elas.</p></div><button type="button" class="x" data-act="close" aria-label="Fechar">×</button></div>' +
       '<div class="tabs" role="tablist">' + tabs.map((t) => '<button type="button" class="tab" role="tab" data-tab="' + t[0] + '">' + t[1] + '</button>').join('') + '</div><div class="bd" data-body></div></div>';
     root.addEventListener('click', onClick);
@@ -188,12 +189,14 @@
     root.querySelectorAll('.tab').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.tab === tab)));
     if (tab === 'pedidos') renderPedidos();
     else if (tab === 'importar') renderImportar();
+    else if (tab === 'pendencias') renderPendencias();
     else renderHistorico();
   }
 
   const badge = (cor, texto) => '<span class="badge" style="color:' + cor[1] + ';background:' + cor[2] + '">' + esc(texto || cor[0]) + '</span>';
   function situacaoPedido(p) {
     if (/CANCEL/i.test(p.status)) return ['Cancelado', '#7f1d1d', '#fecaca'];
+    if (p.conciliacao === 'BAIXA_MANUAL') return ['Baixa manual', '#334155', '#e2e8f0'];
     if (SITUACAO_PEDIDO[p.conciliacao]) return SITUACAO_PEDIDO[p.conciliacao];
     if (/DIGITA|RASCUNHO/i.test(p.status)) return ['Em digitação', '#475569', '#e2e8f0'];
     if (p.numerosRepresentada.length === 0) return ['Aguardando nº da representada', '#92400e', '#ffedd5'];
@@ -286,6 +289,7 @@
       '<div class="drop" data-act="escolher-arquivo" tabindex="0" role="button"><b>' + (imp.arquivo ? 'Arquivo: ' + esc(imp.arquivo) : 'Clique para escolher a planilha ou arraste o arquivo para cá') + '</b><div class="muted">XLSX, XLS, ODS ou CSV</div></div>' +
       '<input type="file" data-file accept=".xlsx,.xls,.xlsm,.ods,.csv,.txt" hidden>' +
       (imp.planilhas.length > 1 ? '<label class="f" style="margin-top:10px;max-width:320px">Aba da planilha<select data-aba>' + imp.planilhas.map((n) => '<option' + (n === imp.aba ? ' selected' : '') + '>' + esc(n) + '</option>').join('') + '</select></label>' : '') +
+      (imp.soPendencias ? '<div class="info" style="margin-top:10px">Conciliando somente as <b>pendências de fechamentos anteriores</b>. Para incluir uma planilha nova, escolha o arquivo acima.</div>' : '') +
       '<div class="msg" data-imsg></div></section>';
     let passo2 = '';
     if (imp.colunas.length) {
@@ -311,6 +315,7 @@
       const buf = await file.arrayBuffer();
       const wb = XLSX.read(buf, { type: 'array', cellDates: false, raw: false, codepage: 1252 });
       imp.wb = wb;
+      imp.soPendencias = false;
       imp.arquivo = file.name;
       imp.planilhas = wb.SheetNames.slice();
       imp.aba = wb.SheetNames.find((n) => { const ws = wb.Sheets[n]; return ws && ws['!ref']; }) || wb.SheetNames[0];
@@ -387,28 +392,34 @@
     imp.linhas = linhas;
   }
 
+  // Linhas enviadas ao servidor: as da planilha (ou nenhuma, para conciliar só as pendências anteriores)
+  const linhasEnvio = () => (imp.soPendencias ? [] : imp.linhas);
+  const opcoesEnvio = () => Object.assign({}, imp.opcoes, { ignorar: Object.keys(imp.baixasLinhas).map(Number) });
+
   async function analisar(btn) {
-    const msg = body().querySelector('[data-amsg]');
-    if (!imp.linhas.length) { msg.className = 'msg bad'; msg.textContent = 'Nenhuma linha com pedido, nota ou cliente nas colunas escolhidas.'; return; }
-    if (!['pedidoRepresentada', 'nossoPedido', 'cliente', 'documento'].some((c) => imp.mapa[c] !== undefined && imp.mapa[c] !== '')) {
-      msg.className = 'msg bad'; msg.textContent = 'Escolha a coluna do nº do pedido (da representada ou o nosso) ou a do cliente.'; return;
+    const msg = body().querySelector('[data-amsg]') || body().querySelector('[data-imsg]');
+    if (!imp.soPendencias) {
+      if (!imp.linhas.length) { msg.className = 'msg bad'; msg.textContent = 'Nenhuma linha com pedido, nota ou cliente nas colunas escolhidas.'; return; }
+      if (!['pedidoRepresentada', 'nossoPedido', 'cliente', 'documento'].some((c) => imp.mapa[c] !== undefined && imp.mapa[c] !== '')) {
+        msg.className = 'msg bad'; msg.textContent = 'Escolha a coluna do nº do pedido (da representada ou o nosso) ou a do cliente.'; return;
+      }
     }
     if (btn) btn.disabled = true;
-    msg.className = 'msg'; msg.textContent = 'Analisando…';
+    if (msg) { msg.className = 'msg'; msg.textContent = 'Analisando…'; }
     try {
       const anterior = imp.resultado;
-      imp.resultado = await api('POST', '/conciliacao/analisar', { linhas: imp.linhas, opcoes: imp.opcoes });
+      imp.resultado = await api('POST', '/conciliacao/analisar', { linhas: linhasEnvio(), opcoes: opcoesEnvio() });
       // Marcados por padrão: o que fechou, parciais e recebidos; sugestões e divergências pedem conferência
-      // Ao reanalisar (vínculo manual, linha ignorada, tolerância) mantém as escolhas já feitas
+      // Ao reanalisar (vínculo manual, baixa, tolerância) mantém as escolhas já feitas
       const antes = imp.marcados;
       const padrao = (p) => (anterior ? antes.has(p.id) || p.metodo === 'manual' : ['conciliado', 'parcial', 'recebido'].includes(p.status));
-      imp.marcados = new Set(imp.resultado.pedidos.filter((p) => p.linhas.length && padrao(p)).map((p) => p.id));
-      msg.textContent = '';
+      imp.marcados = new Set(imp.resultado.pedidos.filter((p) => p.linhas.length && padrao(p) && !imp.baixasPedidos[p.id]).map((p) => p.id));
+      if (msg) msg.textContent = '';
       renderResultado();
       const r = body().querySelector('[data-resultado]');
       if (r && !anterior) r.scrollIntoView({ behavior: 'smooth', block: 'start' });
     } catch (err) {
-      msg.className = 'msg bad'; msg.textContent = err.message;
+      if (msg) { msg.className = 'msg bad'; msg.textContent = err.message; }
     } finally { if (btn) btn.disabled = false; }
   }
 
@@ -416,6 +427,24 @@
     const ant = p.notasAnteriores.map((n) => '<div class="muted">NF ' + esc(n.numero || '—') + ' · ' + money(n.valor) + ' (conciliação anterior)</div>').join('');
     return '<div class="nfs">' + p.notas.map((n) => '<div>NF <b>' + esc(n.numero || '—') + '</b> · ' + fmtDia(n.data) + ' · ' + money(n.valor) + (n.pedidoRepresentada ? ' <span class="muted">(ped. ' + esc(n.pedidoRepresentada) + ')</span>' : '') + '</div>').join('') + ant + (p.notas.length || ant ? '' : '<span class="muted">—</span>') + '</div>';
   }
+
+  // Formulário de motivo (baixa manual): motivos comuns + descrição
+  const MOTIVOS_LINHA = ['Pedido de outro representante', 'Bonificação / amostra sem pedido', 'Linha de total ou cabeçalho da planilha', 'Já conciliado em outro fechamento', 'Outro motivo'];
+  const MOTIVOS_REABRIR = ['Baixa feita por engano', 'A representada ainda vai faturar', 'Outro motivo'];
+  const MOTIVOS_PEDIDO = ['Cancelado pelo cliente', 'Cancelado pela representada', 'Pedido digitado em duplicidade', 'Não será faturado pela representada', 'Outro motivo'];
+  function motivoForm(tipo, chave, rotuloBotao) {
+    const lista = /pedido/.test(tipo) ? MOTIVOS_PEDIDO : tipo === 'pend-reabrir' ? MOTIVOS_REABRIR : MOTIVOS_LINHA;
+    return '<div class="motivo" data-motivo-form="' + tipo + '" data-chave="' + esc(chave) + '"><select data-mot="base">' + lista.map((m) => '<option>' + esc(m) + '</option>').join('') + '</select>' +
+      '<input data-mot="detalhe" maxlength="250" placeholder="Descreva o motivo (obrigatório em &quot;Outro motivo&quot;)">' +
+      '<div class="row"><button type="button" class="btn sm" style="background:#b91c1c" data-act="motivo-ok">' + esc(rotuloBotao || 'Dar baixa') + '</button><button type="button" class="btn s sm" data-act="motivo-cancelar">Voltar</button></div><div class="msg" data-mot-msg style="margin:0"></div></div>';
+  }
+  function lerMotivo(form) {
+    const base = form.querySelector('[data-mot="base"]').value;
+    const det = form.querySelector('[data-mot="detalhe"]').value.trim();
+    if (base === 'Outro motivo' && !det) return '';
+    return det ? (base === 'Outro motivo' ? det : base + ': ' + det) : base;
+  }
+  const tagPendente = (l) => (l.pendenteId ? '<div><span class="badge" style="color:#9a3412;background:#ffedd5">pendente desde ' + fmtDia(String(l.pendenteDesde || '').slice(0, 10)) + '</span>' + (l.pendenteArquivo ? '<div class="muted">' + esc(l.pendenteArquivo) + '</div>' : '') + '</div>' : '');
 
   function renderResultado() {
     const el = body().querySelector('[data-resultado]');
@@ -425,56 +454,67 @@
     const card = (key, n, extra) => { const c = STATUS[key]; return '<button type="button" class="card" data-filtro="' + key + '" aria-pressed="' + (imp.filtroStatus === key) + '" style="background:' + c[2] + ';color:' + c[1] + ';border-color:' + c[1] + '33"><span>' + c[0] + '</span><b>' + n + '</b>' + (extra ? '<small>' + extra + '</small>' : '') + '</button>'; };
     const lista = r.pedidos.filter((p) => !imp.filtroStatus || p.status === imp.filtroStatus);
     const semPedido = r.linhas.filter((l) => l.status === 'sem_pedido');
-    const ignoradas = r.linhas.filter((l) => l.status === 'ignorada');
+    const baixadasAqui = r.linhas.filter((l) => imp.baixasLinhas[l.linha]);
+    const pendAnteriores = r.linhas.filter((l) => l.pendenteId).length;
     const opcoesPedido = pedidos.length ? pedidos : r.pedidos;
     const selecionados = r.pedidos.filter((p) => imp.marcados.has(p.id));
     const podeConf = podeConciliar(user());
     el.innerHTML = '<section><h3>3. Resultado da conciliação — confira antes de confirmar</h3>' +
+      '<div class="info">O que não for confirmado agora fica <b>pendente</b> e volta automaticamente na próxima importação, até ser conciliado ou receber <b>baixa manual com motivo</b>.' + (pendAnteriores ? ' Esta análise inclui <b>' + pendAnteriores + '</b> linha(s) pendente(s) de fechamentos anteriores.' : '') + '</div>' +
       '<div class="cards">' + card('conciliado', s.conciliados, 'faturado = pedido') + card('parcial', s.parciais, 'falta faturar') + card('recebido', s.recebidos, 'digitado, sem nota') +
       card('divergente', s.divergentes, 'valor ou cliente') + card('sugestao', s.sugestoes, 'vínculo por cliente/valor') + card('nao_consta', s.naoConstam, 'enviado, não veio') +
       '<button type="button" class="card" data-filtro="sem_pedido" aria-pressed="' + (imp.filtroStatus === 'sem_pedido') + '" style="background:#fee2e2;color:#991b1b;border-color:#991b1b33"><span>Linhas sem pedido</span><b>' + s.linhasSemPedido + '</b><small>na planilha, não no sistema</small></button></div>' +
       '<div class="tot"><div><span>Pedidos analisados</span><b>' + s.pedidos + '</b></div><div><span>Valor dos pedidos</span><b>' + money(s.valorPedidos) + '</b></div><div><span>Faturado pela representada</span><b>' + money(s.valorFaturado) + '</b></div><div><span>Comissão sobre o faturado</span><b>' + money(s.comissaoFaturada) + '</b></div></div>' +
       (imp.filtroStatus === 'sem_pedido' ? '' :
-        '<div class="tw"><table><thead><tr><th><input type="checkbox" data-act="marcar-todos" aria-label="Marcar todos"' + (lista.filter((p) => p.linhas.length).every((p) => imp.marcados.has(p.id)) && lista.some((p) => p.linhas.length) ? ' checked' : '') + '></th><th>Situação</th><th>Pedido</th><th>Cliente / Representada</th><th class="r">Valor pedido</th><th>Nº na representada</th><th>Notas fiscais</th><th class="r">Faturado</th><th class="r">Diferença</th></tr></thead><tbody>' +
+        '<div class="tw"><table><thead><tr><th><input type="checkbox" data-act="marcar-todos" aria-label="Marcar todos"' + (lista.filter((p) => p.linhas.length).every((p) => imp.marcados.has(p.id)) && lista.some((p) => p.linhas.length) ? ' checked' : '') + '></th><th>Situação</th><th>Pedido</th><th>Cliente / Representada</th><th class="r">Valor pedido</th><th>Nº na representada</th><th>Notas fiscais</th><th class="r">Faturado</th><th class="r">Diferença</th><th>Baixa manual</th></tr></thead><tbody>' +
         (lista.length ? lista.map((p) => {
           const c = STATUS[p.status];
+          const baixa = imp.baixasPedidos[p.id];
           const sub = p.status === 'sugestao' ? '<div class="muted" style="margin-top:3px">valores: ' + esc(STATUS[p.statusValores][0]) + '</div>' : '';
-          return '<tr style="background:' + c[3] + '"><td>' + (p.linhas.length ? '<input type="checkbox" data-marcar="' + esc(p.id) + '"' + (imp.marcados.has(p.id) ? ' checked' : '') + ' aria-label="Confirmar pedido ' + esc(p.numero) + '">' : '') + '</td>' +
+          return '<tr data-pid="' + esc(p.id) + '" style="background:' + (baixa ? '#f1f5f9' : c[3]) + '"><td>' + (p.linhas.length && !baixa ? '<input type="checkbox" data-marcar="' + esc(p.id) + '"' + (imp.marcados.has(p.id) ? ' checked' : '') + ' aria-label="Confirmar pedido ' + esc(p.numero) + '">' : '') + '</td>' +
             '<td>' + badge(c) + sub + (p.metodo ? '<div class="muted" style="margin-top:3px">' + esc(METODO[p.metodo] || '') + '</div>' : '') + '</td>' +
             '<td><b>' + esc(p.numero) + '</b><div class="muted">' + fmtDia(p.data) + '</div></td>' +
             '<td>' + esc(p.cliente) + '<div class="muted">' + esc(p.representada || '') + '</div>' + p.avisos.map((a) => '<div class="warn">' + esc(a) + '</div>').join('') + '</td>' +
             '<td class="r">' + money(p.valor) + '</td>' +
             '<td>' + p.numerosRepresentada.map((n) => '<span class="chip">' + esc(n) + '</span>').join('') + p.numerosNovos.map((n) => '<span class="chip novo" title="Número novo, vindo da planilha">+ ' + esc(n) + '</span>').join('') + (p.numerosRepresentada.length + p.numerosNovos.length ? '' : '<span class="muted">—</span>') + '</td>' +
             '<td>' + nfsHtml(p) + '</td><td class="r"><b>' + money(p.faturado) + '</b></td>' +
-            '<td class="r" style="color:' + (Math.abs(p.diferenca) < 0.01 ? '#047857' : '#b91c1c') + '">' + money(p.diferenca) + '</td></tr>';
-        }).join('') : '<tr><td colspan="9" class="muted">Nenhum pedido nesta situação.</td></tr>') + '</tbody></table></div>') +
+            '<td class="r" style="color:' + (Math.abs(p.diferenca) < 0.01 ? '#047857' : '#b91c1c') + '">' + money(p.diferenca) + '</td>' +
+            '<td data-slot>' + (baixa ? '<div class="warn">Baixa: ' + esc(baixa) + '</div><button type="button" class="btn s sm" data-act="desfazer-baixa-pedido" data-id="' + esc(p.id) + '">Desfazer</button>'
+              : p.status === 'conciliado' || !podeConf ? '' : '<button type="button" class="btn s sm" data-act="baixa-pedido" data-id="' + esc(p.id) + '">Dar baixa</button>') + '</td></tr>';
+        }).join('') : '<tr><td colspan="10" class="muted">Nenhum pedido nesta situação.</td></tr>') + '</tbody></table></div>') +
       ((semPedido.length && (!imp.filtroStatus || imp.filtroStatus === 'sem_pedido')) ?
-        '<h3 style="margin-top:16px;color:#991b1b">Linhas da planilha sem pedido no MotorDesk (' + semPedido.length + ')</h3><p class="t">Vincule a um pedido (por exemplo, pedido digitado com outro número) ou ignore a linha.</p>' +
-        '<div class="tw"><table><thead><tr><th>Linha</th><th>Pedido na representada</th><th>Nosso pedido</th><th>Cliente</th><th>NF</th><th class="r">Valor faturado</th><th class="r">Valor pedido</th><th>Situação</th><th>Vincular ao pedido</th></tr></thead><tbody>' +
-        semPedido.map((l) => '<tr style="background:#fef2f2"><td>' + l.linha + '</td><td>' + esc(l.pedidoRepresentada || '—') + '</td><td>' + esc(l.nossoPedido || '—') + '</td><td>' + esc(l.cliente || '') + (l.documento ? '<div class="muted">' + esc(l.documento) + '</div>' : '') + '</td><td>' + esc(l.notaFiscal || '—') + '<div class="muted">' + fmtDia(l.dataFaturamento) + '</div></td><td class="r">' + money(l.valorFaturado) + '</td><td class="r">' + (l.valorPedido ? money(l.valorPedido) : '—') + '</td><td>' + esc(l.situacao || '') + '</td>' +
-          '<td><div class="row"><select data-vincular="' + l.linha + '" style="max-width:240px"><option value="">Escolha o pedido…</option>' + opcoesPedido.filter((p) => !/CANCEL/i.test(p.status || p.statusAtual || '')).map((p) => '<option value="' + esc(p.id) + '">' + esc(p.numero + ' — ' + p.cliente + ' — ' + money(p.valor)) + '</option>').join('') + '</select>' +
-          '<button type="button" class="btn s sm" data-act="ignorar" data-linha="' + l.linha + '">Ignorar</button></div></td></tr>').join('') + '</tbody></table></div>' : '') +
-      (ignoradas.length ? '<p class="muted" style="margin-top:8px">' + ignoradas.length + ' linha(s) ignorada(s). <button type="button" class="btn s sm" data-act="restaurar-ignoradas">Considerar de novo</button></p>' : '') +
+        '<h3 style="margin-top:16px;color:#991b1b">Linhas da planilha sem pedido no MotorDesk (' + semPedido.length + ')</h3><p class="t">Vincule a um pedido (por exemplo, pedido digitado com outro número). Se realmente não houver pedido, dê baixa informando o motivo; sem isso a linha continua pendente para a próxima conciliação.</p>' +
+        '<div class="tw"><table><thead><tr><th>Linha</th><th>Pedido na representada</th><th>Nosso pedido</th><th>Cliente</th><th>NF</th><th class="r">Valor faturado</th><th class="r">Valor pedido</th><th>Situação</th><th>Vincular ou dar baixa</th></tr></thead><tbody>' +
+        semPedido.map((l) => '<tr data-linha="' + l.linha + '" style="background:#fef2f2"><td>' + (l.pendenteId ? '—' : l.linha) + tagPendente(l) + '</td><td>' + esc(l.pedidoRepresentada || '—') + '</td><td>' + esc(l.nossoPedido || '—') + '</td><td>' + esc(l.cliente || '') + (l.documento ? '<div class="muted">' + esc(l.documento) + '</div>' : '') + '</td><td>' + esc(l.notaFiscal || '—') + '<div class="muted">' + fmtDia(l.dataFaturamento) + '</div></td><td class="r">' + money(l.valorFaturado) + '</td><td class="r">' + (l.valorPedido ? money(l.valorPedido) : '—') + '</td><td>' + esc(l.situacao || '') + '</td>' +
+          '<td data-slot><div class="row"><select data-vincular="' + l.linha + '" style="max-width:240px"><option value="">Vincular ao pedido…</option>' + opcoesPedido.filter((p) => !/CANCEL/i.test(p.status || p.statusAtual || '')).map((p) => '<option value="' + esc(p.id) + '">' + esc(p.numero + ' — ' + p.cliente + ' — ' + money(p.valor)) + '</option>').join('') + '</select>' +
+          (podeConf ? '<button type="button" class="btn s sm" data-act="baixa-linha" data-linha="' + l.linha + '">Dar baixa</button>' : '') + '</div></td></tr>').join('') + '</tbody></table></div>' : '') +
+      (baixadasAqui.length ? '<h3 style="margin-top:14px">Baixas manuais nesta conciliação (' + baixadasAqui.length + ')</h3><div class="tw"><table><thead><tr><th>Pedido na representada</th><th>Cliente</th><th>NF</th><th class="r">Valor</th><th>Motivo</th><th></th></tr></thead><tbody>' +
+        baixadasAqui.map((l) => '<tr><td>' + esc(l.pedidoRepresentada || '—') + '</td><td>' + esc(l.cliente || '') + '</td><td>' + esc(l.notaFiscal || '—') + '</td><td class="r">' + money(l.valorFaturado || l.valorPedido) + '</td><td>' + esc(imp.baixasLinhas[l.linha]) + '</td><td><button type="button" class="btn s sm" data-act="desfazer-baixa-linha" data-linha="' + l.linha + '">Desfazer</button></td></tr>').join('') + '</tbody></table></div>' : '') +
       '<div class="legend">' + Object.keys(STATUS).map((k) => badge(STATUS[k])).join('') + '</div>' +
-      '<div class="sticky-actions"><div class="muted">' + selecionados.length + ' pedido(s) marcado(s) · faturado ' + money(selecionados.reduce((t, p) => t + p.faturado, 0)) + '</div><div class="row">' +
+      '<div class="sticky-actions"><div class="muted">' + selecionados.length + ' pedido(s) marcado(s) · faturado ' + money(selecionados.reduce((t, p) => t + p.faturado, 0)) + ' · ' + Object.keys(imp.baixasPedidos).length + ' pedido(s) e ' + baixadasAqui.length + ' linha(s) com baixa</div><div class="row">' +
       '<button type="button" class="btn s" data-act="exportar-analise">Exportar análise (Excel)</button>' +
-      (podeConf ? '<button type="button" class="btn g" data-act="confirmar"' + (selecionados.length ? '' : ' disabled') + '>Confirmar conciliação dos marcados</button>' : '<span class="muted">Seu usuário pode analisar, mas não confirmar.</span>') +
+      (podeConf ? '<button type="button" class="btn g" data-act="confirmar">Confirmar conciliação</button>' : '<span class="muted">Seu usuário pode analisar, mas não confirmar.</span>') +
       '</div></div><div class="msg" data-cmsg></div></section>';
   }
 
   function confirmar(btn) {
-    const ids = [...imp.marcados];
-    if (!ids.length) return;
-    if (!body().querySelector('[data-confirm-box]')) {
-      const box = document.createElement('div');
-      box.className = 'info';
-      box.setAttribute('data-confirm-box', '');
-      box.innerHTML = 'Confirmar a conciliação de <b>' + ids.length + '</b> pedido(s)? Os números da representada, as notas fiscais, o valor faturado e a situação dos pedidos serão atualizados. ' +
-        '<div class="row" style="margin-top:8px"><button type="button" class="btn g" data-act="confirmar-sim">Sim, confirmar</button><button type="button" class="btn s" data-act="confirmar-nao">Voltar</button></div>';
-      btn.closest('.sticky-actions').after(box);
-      box.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-      return;
-    }
+    if (body().querySelector('[data-confirm-box]')) return;
+    const r = imp.resultado;
+    const marcados = [...imp.marcados];
+    const baixasP = Object.keys(imp.baixasPedidos).length;
+    const baixasL = Object.keys(imp.baixasLinhas).length;
+    const pendLinhas = r.linhas.filter((l) => !imp.baixasLinhas[l.linha] && l.status !== 'ignorada' && !(l.pedidoId && imp.marcados.has(l.pedidoId))).length;
+    const pendPedidos = r.pedidos.filter((p) => !imp.marcados.has(p.id) && !imp.baixasPedidos[p.id]).length;
+    const box = document.createElement('div');
+    box.className = 'info';
+    box.setAttribute('data-confirm-box', '');
+    box.innerHTML = '<b>Confirmar a conciliação?</b><ul style="margin:6px 0 0 18px;padding:0">' +
+      '<li><b>' + marcados.length + '</b> pedido(s) conciliado(s): números da representada, notas, valor faturado e situação atualizados.</li>' +
+      (baixasP || baixasL ? '<li><b>' + baixasP + '</b> pedido(s) e <b>' + baixasL + '</b> linha(s) com baixa manual (motivo registrado).</li>' : '') +
+      '<li><b>' + pendPedidos + '</b> pedido(s) e <b>' + pendLinhas + '</b> linha(s) continuam <b>pendentes</b> e voltam na próxima conciliação.</li></ul>' +
+      '<div class="row" style="margin-top:8px"><button type="button" class="btn g" data-act="confirmar-sim">Sim, confirmar</button><button type="button" class="btn s" data-act="confirmar-nao">Voltar</button></div>';
+    btn.closest('.sticky-actions').after(box);
+    box.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   }
 
   async function confirmarSim(btn) {
@@ -482,21 +522,83 @@
     btn.disabled = true;
     msg.className = 'msg'; msg.textContent = 'Gravando…';
     try {
-      const r = await api('POST', '/conciliacao/confirmar', { linhas: imp.linhas, opcoes: imp.opcoes, confirmar: [...imp.marcados], arquivo: imp.arquivo });
+      const r = await api('POST', '/conciliacao/confirmar', {
+        linhas: linhasEnvio(), opcoes: opcoesEnvio(), confirmar: [...imp.marcados], arquivo: imp.soPendencias ? 'Pendências anteriores' : imp.arquivo,
+        baixasLinhas: imp.baixasLinhas, baixasPedidos: imp.baixasPedidos,
+      });
       syncApp();
       const box = body().querySelector('[data-confirm-box]');
       if (box) box.remove();
-      imp.resultado = null;
-      imp.marcados = new Set();
-      imp.filtroStatus = '';
+      limparImportacao();
       await carregarPedidos().catch(() => {});
       tab = 'historico';
       render();
-      setTimeout(() => abrirHistorico(r.conciliacao.id, 'Conciliação gravada: ' + r.conciliacao.pedidos + ' pedido(s) atualizados.'), 50);
+      const rs = r.conciliacao.resumo || {};
+      setTimeout(() => abrirHistorico(r.conciliacao.id, 'Conciliação gravada: ' + r.conciliacao.pedidos + ' pedido(s) conciliado(s), ' + ((rs.pedidosBaixados || 0) + (rs.linhasBaixadas || 0)) + ' baixa(s) manual(is), ' + (rs.novasPendencias || 0) + ' nova(s) pendência(s).'), 50);
     } catch (err) {
       msg.className = 'msg bad'; msg.textContent = err.message;
       btn.disabled = false;
     }
+  }
+
+  function limparImportacao() {
+    Object.assign(imp, { arquivo: '', planilhas: [], aba: '', matriz: [], cabecalho: 0, colunas: [], mapa: {}, linhas: [], resultado: null, marcados: new Set(), filtroStatus: '', wb: null, baixasLinhas: {}, baixasPedidos: {}, soPendencias: false });
+    imp.opcoes.vinculos = {};
+    imp.opcoes.ignorar = [];
+  }
+
+  // ---------------------------------------------------------------------------
+  // Aba: pendências (linhas sem pedido e pedidos não conciliados, até a baixa manual)
+  // ---------------------------------------------------------------------------
+  async function renderPendencias(aviso) {
+    const b = body();
+    b.innerHTML = '<p class="t">Carregando pendências…</p>';
+    let r;
+    try { r = await api('GET', '/pendencias'); } catch (err) { b.innerHTML = '<p class="msg bad">' + esc(err.message) + '</p>'; return; }
+    if (!root || tab !== 'pendencias') return;
+    const podeConf = podeConciliar(user());
+    const SIT = { parcial: STATUS.parcial, divergente: STATUS.divergente, recebido: STATUS.recebido, aguardando: ['Aguardando a representada', '#92400e', '#ffedd5'] };
+    b.innerHTML = (aviso ? '<p class="msg ok">' + esc(aviso) + '</p>' : '') +
+      '<div class="info">Tudo o que ainda não fechou fica aqui e entra de novo em cada conciliação. Para tirar da lista sem conciliar, dê <b>baixa manual informando o motivo</b>. ' +
+      (r.linhas.length && podeConf ? '<div class="row" style="margin-top:8px"><button type="button" class="btn" data-act="conciliar-pendencias">Conciliar as pendências agora (sem planilha nova)</button><span class="muted">Útil depois de informar o nº do pedido que faltava.</span></div>' : '') + '</div>' +
+      '<h3>Linhas da representada sem pedido (' + r.linhas.length + ')</h3>' +
+      (r.linhas.length ? '<div class="tw"><table><thead><tr><th>Desde</th><th>Pedido na representada</th><th>Nosso pedido</th><th>Cliente</th><th>NF</th><th class="r">Valor</th><th>Baixa manual</th></tr></thead><tbody>' +
+        r.linhas.map((l) => '<tr data-pend="' + esc(l.id) + '" style="background:#fef2f2"><td>' + fmtDia(String(l.desde || '').slice(0, 10)) + '<div class="muted">' + esc(l.arquivo) + '</div></td><td>' + esc(l.pedidoRepresentada || '—') + '</td><td>' + esc(l.nossoPedido || '—') + '</td><td>' + esc(l.cliente || '') + (l.documento ? '<div class="muted">' + esc(l.documento) + '</div>' : '') + '</td><td>' + esc(l.notaFiscal || '—') + '<div class="muted">' + fmtDia(l.dataFaturamento) + '</div></td><td class="r">' + money(l.valorFaturado || l.valorPedido) + '</td>' +
+          '<td data-slot>' + (podeConf ? '<button type="button" class="btn s sm" data-act="pend-baixa-linha" data-id="' + esc(l.id) + '">Dar baixa</button>' : '') + '</td></tr>').join('') + '</tbody></table></div>' : '<p class="muted">Nenhuma linha pendente.</p>') +
+      '<h3 style="margin-top:16px">Pedidos ainda não conciliados (' + r.pedidos.length + ')</h3>' +
+      (r.pedidos.length ? '<div class="tw"><table><thead><tr><th>Situação</th><th>Pedido</th><th>Cliente / Representada</th><th class="r">Valor</th><th class="r">Faturado</th><th>Nº na representada</th><th>Baixa manual</th></tr></thead><tbody>' +
+        r.pedidos.map((p) => { const c = SIT[p.situacao] || SIT.aguardando; return '<tr data-pped="' + esc(p.id) + '"><td>' + badge(c) + '</td><td><b>' + esc(p.numero) + '</b><div class="muted">' + fmtDia(p.data) + '</div></td><td>' + esc(p.cliente) + '<div class="muted">' + esc(p.representada) + '</div></td><td class="r">' + money(p.valor) + '</td><td class="r">' + (p.faturado ? money(p.faturado) : '—') + '</td><td>' + (p.numerosRepresentada.map((n) => '<span class="chip">' + esc(n) + '</span>').join('') || '<span class="muted">—</span>') + '</td>' +
+          '<td data-slot>' + (podeConf ? '<button type="button" class="btn s sm" data-act="pend-baixa-pedido" data-id="' + esc(p.id) + '">Dar baixa</button>' : '') + '</td></tr>'; }).join('') + '</tbody></table></div>' : '<p class="muted">Nenhum pedido pendente.</p>') +
+      '<h3 style="margin-top:16px">Baixas manuais realizadas</h3>' +
+      (r.baixadas.length ? '<div class="tw"><table><thead><tr><th>Data</th><th>Item</th><th class="r">Valor</th><th>Motivo</th><th>Usuário</th><th></th></tr></thead><tbody>' +
+        r.baixadas.map((x) => '<tr data-bx="' + esc(x.id) + '"><td>' + fmtData(x.em) + '</td><td>' + esc(x.descricao) + '</td><td class="r">' + money(x.valor) + '</td><td>' + esc(x.motivo) + '</td><td>' + esc(x.por) + '</td><td data-slot>' + (x.tipo === 'pedido' && podeConf ? '<button type="button" class="btn s sm" data-act="pend-reabrir" data-id="' + esc(x.id) + '">Reabrir</button>' : '') + '</td></tr>').join('') + '</tbody></table></div>' : '<p class="muted">Nenhuma baixa manual.</p>');
+  }
+
+  function abrirMotivo(slot, tipo, chave, rotulo) {
+    if (!slot || slot.querySelector('[data-motivo-form]')) return;
+    slot.dataset.antes = slot.innerHTML;
+    slot.innerHTML = motivoForm(tipo, chave, rotulo);
+    const det = slot.querySelector('[data-mot="detalhe"]');
+    if (det) det.focus();
+  }
+
+  async function motivoOk(btn) {
+    const form = btn.closest('[data-motivo-form]');
+    const msg = form.querySelector('[data-mot-msg]');
+    const motivo = lerMotivo(form);
+    if (!motivo) { msg.className = 'msg bad'; msg.textContent = 'Descreva o motivo.'; return; }
+    const tipo = form.dataset.motivoForm;
+    const chave = form.dataset.chave;
+    if (tipo === 'linha') { imp.baixasLinhas[chave] = motivo; return analisar(); }
+    if (tipo === 'pedido') { imp.baixasPedidos[chave] = motivo; imp.marcados.delete(chave); return renderResultado(); }
+    btn.disabled = true;
+    try {
+      if (tipo === 'pend-linha') await api('POST', '/pendencias/linhas/' + encodeURIComponent(chave) + '/baixa', { motivo });
+      else if (tipo === 'pend-pedido') await api('POST', '/pedidos/' + encodeURIComponent(chave) + '/baixa', { motivo });
+      else if (tipo === 'pend-reabrir') await api('POST', '/pedidos/' + encodeURIComponent(chave) + '/reabrir', { motivo });
+      syncApp();
+      renderPendencias(tipo === 'pend-reabrir' ? 'Pedido reaberto: volta para as próximas conciliações.' : 'Baixa registrada com o motivo informado.');
+    } catch (err) { msg.className = 'msg bad'; msg.textContent = err.message; btn.disabled = false; }
   }
 
   function exportar(nome, linhas) {
@@ -619,8 +721,16 @@
     if (act === 'confirmar') return confirmar(t);
     if (act === 'confirmar-sim') return confirmarSim(t);
     if (act === 'confirmar-nao') { const box = t.closest('[data-confirm-box]'); if (box) box.remove(); return; }
-    if (act === 'ignorar') { imp.opcoes.ignorar.push(Number(t.dataset.linha)); return analisar(); }
-    if (act === 'restaurar-ignoradas') { imp.opcoes.ignorar = []; return analisar(); }
+    if (act === 'baixa-linha') return abrirMotivo(t.closest('[data-slot]'), 'linha', t.dataset.linha);
+    if (act === 'baixa-pedido') return abrirMotivo(t.closest('[data-slot]'), 'pedido', t.dataset.id, 'Marcar baixa');
+    if (act === 'desfazer-baixa-linha') { delete imp.baixasLinhas[t.dataset.linha]; return analisar(); }
+    if (act === 'desfazer-baixa-pedido') { delete imp.baixasPedidos[t.dataset.id]; return renderResultado(); }
+    if (act === 'pend-baixa-linha') return abrirMotivo(t.closest('[data-slot]'), 'pend-linha', t.dataset.id);
+    if (act === 'pend-baixa-pedido') return abrirMotivo(t.closest('[data-slot]'), 'pend-pedido', t.dataset.id);
+    if (act === 'pend-reabrir') return abrirMotivo(t.closest('[data-slot]'), 'pend-reabrir', t.dataset.id, 'Reabrir');
+    if (act === 'motivo-ok') return motivoOk(t);
+    if (act === 'motivo-cancelar') { const sl = t.closest('[data-slot]'); if (sl) sl.innerHTML = sl.dataset.antes || ''; return; }
+    if (act === 'conciliar-pendencias') { limparImportacao(); imp.soPendencias = true; tab = 'importar'; render(); return analisar(); }
     if (act === 'exportar-analise') { try { await exportarAnalise(); } catch (err) { const m = body().querySelector('[data-cmsg]'); if (m) { m.className = 'msg bad'; m.textContent = err.message; } } return; }
     if (act === 'exportar-pedidos') {
       try {

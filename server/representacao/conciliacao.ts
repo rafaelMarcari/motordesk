@@ -26,6 +26,10 @@ export interface LinhaPlanilha {
   dataFaturamento: string;
   valorFaturado: number;
   situacao: string;
+  /** Linha guardada como pendência numa conciliação anterior (preenchido só pelo servidor) */
+  pendenteId?: string;
+  pendenteDesde?: string;
+  pendenteArquivo?: string;
 }
 
 export interface OpcoesAnalise {
@@ -173,6 +177,10 @@ const valorPedido = (o: any) => round2(numero(o?.totalOrderAmount ?? o?.totalAmo
 const nomeRepresentada = (o: any) => String(o?.representedName || o?.representedCompanyName || '');
 const idRepresentada = (o: any) => String(o?.representedId || o?.representedCompanyId || '');
 const cancelado = (s: any) => /CANCEL/i.test(String(s || ''));
+/** Pedido que não precisa mais aparecer no fechamento: conciliado, baixado manualmente ou faturado sem divergência. */
+export const pedidoEncerrado = (o: any) =>
+  o?.reconciliationStatus === 'BAIXA_MANUAL' || o?.reconciliationStatus === 'CONCILIADO' ||
+  (String(o?.status || '') === 'FATURADO_TOTAL' && o?.reconciliationStatus !== 'DIVERGENTE' && o?.reconciliationStatus !== 'PARCIAL');
 const notaChave = (n: { numero: string; pedidoRepresentada: string; valor: number }) =>
   `${chaveNumero(n.numero)}|${chaveNumero(n.pedidoRepresentada)}|${n.numero ? '' : round2(n.valor)}`;
 
@@ -284,7 +292,7 @@ export function analisarConciliacao(
   const noEscopo = pedidos.filter((o) =>
     vinculados.has(String(o.id)) ||
     (pertenceRepresentada(o, opcoes.representadaId || '', representadas) && noPeriodo(o) &&
-      !cancelado(o.status) && !/DIGITA|RASCUNHO|DRAFT/i.test(String(o.status || '')) && String(o.status || '') !== 'FATURADO_TOTAL')
+      !cancelado(o.status) && !/DIGITA|RASCUNHO|DRAFT/i.test(String(o.status || '')) && !pedidoEncerrado(o))
   );
 
   // 4. Sugestões: mesmo cliente e valores que fecham com o pedido
@@ -436,6 +444,11 @@ export function analisarConciliacao(
       comissaoFaturada: round2(resultado.reduce((s, p) => s + p.comissaoFaturada, 0)),
     },
   };
+}
+
+/** Chave de uma linha para reconhecer a mesma linha em planilhas diferentes. */
+export function chaveLinha(l: LinhaPlanilha): string {
+  return [chaveNumero(l.pedidoRepresentada), chaveNumero(l.notaFiscal), chaveNumero(l.nossoPedido), round2(l.valorFaturado), round2(l.valorPedido)].join('|');
 }
 
 /** Situação do pedido no MotorDesk após confirmar a conciliação. */

@@ -14,6 +14,7 @@ import { CompanySupportService } from "./server/companySupportService.js";
 import * as notasApiBackend from "./src/services/notasApiBackend.js";
 import { registerFiscalRoutes } from "./server/fiscal/routes.ts";
 import { registerRepresentacaoRoutes } from "./server/representacao/routes.ts";
+import { registerFinanceiroRoutes, renovarTodas } from "./server/financeiro/routes.ts";
 
 dotenv.config();
 
@@ -573,7 +574,7 @@ const TENANT_COLLECTIONS = [
   'nonConformityReports', 'bankStatements', 'unitsOfMeasure', 'accessGroups', 'pendingPriceRevisions',
   'priceChangeHistory', 'priceCalculationHistory',
   // Representação comercial (pedidos, representadas, faturamento e conciliações)
-  'representativeOrders', 'representedCompanies', 'representativeFactoryOrders', 'factoryBillingImports', 'representativeCommissions', 'representativeReconciliations',
+  'representativeOrders', 'representedCompanies', 'representativeFactoryOrders', 'factoryBillingImports', 'representativeCommissions', 'representativeReconciliations', 'representativePendingLines', 'accountTypes',
 ];
 
 // Campos de contrato/licença da empresa: só o administrador mestre da plataforma altera
@@ -1536,6 +1537,8 @@ export function sanitizeAndIsolateCompanies(db: any): any {
     'factoryBillingImports',
     'representativeCommissions',
     'representativeReconciliations',
+    'representativePendingLines',
+    'accountTypes',
   ];
 
   const sanitized: any = { ...db };
@@ -2151,6 +2154,8 @@ export function mergeAppDatabase(existing: any, incoming: any): any {
     factoryBillingImports: mergeEntityCollection(existing.factoryBillingImports, incoming.factoryBillingImports, 'id'),
     representativeCommissions: mergeEntityCollection(existing.representativeCommissions, incoming.representativeCommissions, 'id'),
     representativeReconciliations: mergeEntityCollection(existing.representativeReconciliations, incoming.representativeReconciliations, 'id'),
+    representativePendingLines: mergeEntityCollection(existing.representativePendingLines, incoming.representativePendingLines, 'id'),
+    accountTypes: mergeEntityCollection(existing.accountTypes, incoming.accountTypes, 'id'),
     contractModules: { ...(existing.contractModules || {}), ...(incoming.contractModules || {}) },
     globalModules: { ...(existing.globalModules || {}), ...(incoming.globalModules || {}) },
     alertSettings: { ...(existing.alertSettings || {}), ...(incoming.alertSettings || {}) },
@@ -2226,6 +2231,8 @@ export function isolateDatabaseForContext(
     'factoryBillingImports',
     'representativeCommissions',
     'representativeReconciliations',
+    'representativePendingLines',
+    'accountTypes',
   ];
 
   const allRegistered = Array.isArray(db.registeredCompanies) && db.registeredCompanies.length > 0
@@ -3910,6 +3917,27 @@ app.post("/api/v1/:resource", requireApiScope("write"), async (req: any, res) =>
 // =========================================================================
 // EMISSÃO FISCAL PRÓPRIA (NF-e modelo 55) — /api/fiscal/v2, padrão Focus NFe
 // Certificado A1 e senha ficam no mesmo cofre cifrado das integrações (fora do app_store).
+// Tipos de conta e contas recorrentes (contas a pagar)
+registerFinanceiroRoutes(app, {
+  getStore: () => serverAppStoreCache,
+  mutateStore: (fn, meta) => mutateAppStore(fn, meta),
+  nextRev: () => nextRecordRev(),
+  access: (req: any, need) => {
+    if (!req.authUser) return { status: 401, error: "Sessão expirada ou inválida. Faça login novamente." };
+    const { companyId } = extractUserContext(req);
+    const company = findCompany(serverAppStoreCache, companyId);
+    if (!company || !userCompanyIds(req.authUser, serverAppStoreCache).includes(companyId)) return { status: 403, error: "Empresa não vinculada ao usuário." };
+    const u = req.authUser;
+    if (!hasEffectivePermission(u, company, "accessAccountsPayable") && !hasEffectivePermission(u, company, "accessFinancial")) {
+      return { status: 403, error: "Contas a pagar não liberado para o seu usuário." };
+    }
+    if (need === "editar" && !["accountsPayableCreate", "accountsPayableEdit", "accessUserManagement"].some((k) => hasEffectivePermission(u, company, k))) {
+      return { status: 403, error: "Seu usuário não tem permissão para alterar contas a pagar." };
+    }
+    return { companyId, actor: u.name || u.username, userId: u.id };
+  },
+});
+
 // Conciliação dos pedidos de representação com a planilha de fechamento da representada
 registerRepresentacaoRoutes(app, {
   getStore: () => serverAppStoreCache,
@@ -4892,7 +4920,19 @@ app.get("/api/cron/daily-backup", async (req, res) => {
   }
   try {
     const { created, meta } = await createDbBackup("daily_automated");
-    res.json({ success: true, created, backup: meta.filename, size: meta.fileSizeFormatted });
+    // Contas recorrentes sem data para acabar: mantém sempre os próximos 12 meses lançados
+    let renovadas = 0;
+    try {
+      await refreshServerCacheIfStale();
+      if (renovarTodas(serverAppStoreCache, () => 0).criadas > 0) await mutateAppStore((current) => {
+        const r = renovarTodas(current, nextRecordRev);
+        renovadas = r.criadas;
+        return r.next;
+      }, { source: "recorrencias_cron" });
+    } catch (err: any) {
+      console.error("[RECORRENCIAS] Falha na renovação diária:", err.message);
+    }
+    res.json({ success: true, created, backup: meta.filename, size: meta.fileSizeFormatted, recorrenciasRenovadas: renovadas });
   } catch (err: any) {
     console.error("[DB-BACKUP] Falha no backup diário:", err.message);
     res.status(500).json({ success: false, error: err.message });
