@@ -33,6 +33,23 @@ export const TIPOS_PADRAO = [
   { id: "padrao-avulsa", nome: "Despesa avulsa", categoria: "Outros", periodicidade: "VARIAVEL" },
 ];
 
+/** Tipos padrão do Contas a Receber (categorias iguais às da tela). */
+export const TIPOS_PADRAO_RECEBER = [
+  { id: "padrao-rec-mensalidade", nome: "Mensalidade / contrato de cliente", categoria: "Faturamento PJ / Frotas", periodicidade: "FIXA_INDETERMINADA" },
+  { id: "padrao-rec-comissao", nome: "Comissão de representação", categoria: "Outros", periodicidade: "VARIAVEL_MENSAL" },
+  { id: "padrao-rec-aluguel", nome: "Aluguel recebido", categoria: "Outros", periodicidade: "FIXA_MENSAL", meses: 12 },
+  { id: "padrao-rec-venda-prazo", nome: "Venda a prazo (parcelada)", categoria: "Duplicatas", periodicidade: "PARCELADA" },
+  { id: "padrao-rec-boleto", nome: "Boleto / duplicata", categoria: "Boletos", periodicidade: "PARCELADA" },
+  { id: "padrao-rec-servico", nome: "Serviço / O.S.", categoria: "O.S. / Serviços Mecânicos", periodicidade: "VARIAVEL" },
+  { id: "padrao-rec-balcao", nome: "Venda de peças / balcão", categoria: "Venda de Peças / Balcão", periodicidade: "VARIAVEL" },
+  { id: "padrao-rec-adiantamento", nome: "Sinal / adiantamento", categoria: "Adiantamento", periodicidade: "VARIAVEL" },
+  { id: "padrao-rec-avulsa", nome: "Receita avulsa", categoria: "Outros", periodicidade: "VARIAVEL" },
+];
+
+export type Natureza = "pagar" | "receber";
+export const COLECAO: Record<Natureza, string> = { pagar: "accountsPayable", receber: "accountsReceivable" };
+export const naturezaDe = (v: any): Natureza => (String(v || "").toLowerCase() === "receber" ? "receber" : "pagar");
+
 const pad2 = (n: number) => String(n).padStart(2, "0");
 
 /** Soma meses mantendo o dia de vencimento (31 vira o último dia dos meses mais curtos). */
@@ -52,7 +69,7 @@ const daEmpresa = (r: any, companyId: string) => r && (r.companyId || "comp-1") 
  * Completa as recorrências sem fim para manter MESES_A_FRENTE meses à frente de `hoje`.
  * Retorna as novas contas (não altera `contas`).
  */
-export function lancamentosParaRenovar(contas: any[], hoje: string, nextRev: () => number): any[] {
+export function lancamentosParaRenovar(contas: any[], hoje: string, nextRev: () => number, prefixo = "pay"): any[] {
   const grupos = new Map<string, any[]>();
   for (const c of contas || []) {
     const r = c?.recurrence;
@@ -77,7 +94,7 @@ export function lancamentosParaRenovar(contas: any[], hoje: string, nextRev: () 
       const valor = Number(ultima.recurrence?.valorBase ?? ultima.amount) || 0;
       novas.push({
         ...ultima,
-        id: `pay-${groupId}-${venc.replace(/-/g, "")}`,
+        id: `${prefixo}-${groupId}-${venc.replace(/-/g, "")}`,
         amount: valor,
         remainingAmount: valor,
         paidAmount: 0,
@@ -115,7 +132,7 @@ export function listarRecorrencias(contas: any[], companyId: string, hoje: strin
     return {
       groupId,
       tipo: base.recurrence?.tipo || base.expenseType,
-      fornecedor: base.supplierName,
+      fornecedor: base.supplierName || base.clientName || "",
       tipoConta: base.accountTypeName || "",
       categoria: base.category,
       valor: Number(base.recurrence?.valorBase ?? base.amount) || 0,

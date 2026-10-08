@@ -3917,22 +3917,25 @@ app.post("/api/v1/:resource", requireApiScope("write"), async (req: any, res) =>
 // =========================================================================
 // EMISSÃO FISCAL PRÓPRIA (NF-e modelo 55) — /api/fiscal/v2, padrão Focus NFe
 // Certificado A1 e senha ficam no mesmo cofre cifrado das integrações (fora do app_store).
-// Tipos de conta e contas recorrentes (contas a pagar)
+// Tipos de conta e contas recorrentes (contas a pagar e a receber)
 registerFinanceiroRoutes(app, {
   getStore: () => serverAppStoreCache,
   mutateStore: (fn, meta) => mutateAppStore(fn, meta),
   nextRev: () => nextRecordRev(),
-  access: (req: any, need) => {
+  access: (req: any, need, natureza) => {
     if (!req.authUser) return { status: 401, error: "Sessão expirada ou inválida. Faça login novamente." };
     const { companyId } = extractUserContext(req);
     const company = findCompany(serverAppStoreCache, companyId);
     if (!company || !userCompanyIds(req.authUser, serverAppStoreCache).includes(companyId)) return { status: 403, error: "Empresa não vinculada ao usuário." };
     const u = req.authUser;
-    if (!hasEffectivePermission(u, company, "accessAccountsPayable") && !hasEffectivePermission(u, company, "accessFinancial")) {
-      return { status: 403, error: "Contas a pagar não liberado para o seu usuário." };
+    const receber = natureza === "receber";
+    const nome = receber ? "Contas a receber" : "Contas a pagar";
+    if (!hasEffectivePermission(u, company, receber ? "accessAccountsReceivable" : "accessAccountsPayable") && !hasEffectivePermission(u, company, "accessFinancial")) {
+      return { status: 403, error: nome + " não liberado para o seu usuário." };
     }
-    if (need === "editar" && !["accountsPayableCreate", "accountsPayableEdit", "accessUserManagement"].some((k) => hasEffectivePermission(u, company, k))) {
-      return { status: 403, error: "Seu usuário não tem permissão para alterar contas a pagar." };
+    const editar = receber ? ["accountsReceivableCreate", "accountsReceivableEdit", "accessUserManagement"] : ["accountsPayableCreate", "accountsPayableEdit", "accessUserManagement"];
+    if (need === "editar" && !editar.some((k) => hasEffectivePermission(u, company, k))) {
+      return { status: 403, error: "Seu usuário não tem permissão para alterar " + nome.toLowerCase() + "." };
     }
     return { companyId, actor: u.name || u.username, userId: u.id };
   },

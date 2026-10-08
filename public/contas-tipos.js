@@ -1,5 +1,5 @@
 /**
- * MotorDesk - Tipos de conta e contas recorrentes (Contas a Pagar)
+ * MotorDesk - Tipos de conta e contas recorrentes (Contas a Pagar e Contas a Receber)
  *
  *  - Tipos de conta: padrão (Salários, Aluguel, Energia...) e os cadastrados pela empresa, cada um com a
  *    periodicidade sugerida (fixa por tempo indeterminado ou determinado, variável mensal, avulsa, parcelada).
@@ -18,6 +18,11 @@
     VARIAVEL: ['Avulsa / pontual', '#92400e', '#fef3c7'],
     PARCELADA: ['Parcelada / boleto', '#065f46', '#d1fae5'],
   };
+  const CATEGORIAS_RECEBER = [
+    ['O.S. / Serviços Mecânicos', 'O.S. / Serviços Mecânicos'], ['Venda de Peças / Balcão', 'Venda de Peças / Balcão'], ['Faturamento PJ / Frotas', 'Faturamento PJ / Frotas'],
+    ['Faturamento Industrial', 'Faturamento Industrial (NF-e)'], ['Duplicatas', 'Duplicata Mercantil / Cobrança'], ['Adiantamento', 'Sinal / Adiantamento de Cliente'],
+    ['Boletos', 'Boleto Bancário / CNAB'], ['Cartão / Pix', 'Cartão de Crédito / Pix'], ['Outros', 'Outros Títulos'],
+  ];
   const CATEGORIAS = [
     ['Despesas Fixas', 'Despesas Operacionais / Fixas'], ['Nota Fiscal de Estoque', 'Nota Fiscal de Peças / Matéria-Prima'], ['Nota Fiscal de Serviço', 'Nota Fiscal de Serviço'],
     ['Folha de Pagamento & Comissões', 'Folha de Pagamento & Comissões'], ['Impostos', 'Impostos & Tributos'], ['Tarifas', 'Tarifas Bancárias & Financiamentos'],
@@ -39,6 +44,18 @@
     { id: 'padrao-emprestimo', nome: 'Empréstimo / financiamento', categoria: 'Tarifas', periodicidade: 'PARCELADA' },
     { id: 'padrao-avulsa', nome: 'Despesa avulsa', categoria: 'Outros', periodicidade: 'VARIAVEL' },
   ];
+  // Mesmos tipos padrão do servidor para o Contas a Receber
+  window.__MD_TIPOS_CONTA_PADRAO_RECEBER = [
+    { id: 'padrao-rec-mensalidade', nome: 'Mensalidade / contrato de cliente', categoria: 'Faturamento PJ / Frotas', periodicidade: 'FIXA_INDETERMINADA' },
+    { id: 'padrao-rec-comissao', nome: 'Comissão de representação', categoria: 'Outros', periodicidade: 'VARIAVEL_MENSAL' },
+    { id: 'padrao-rec-aluguel', nome: 'Aluguel recebido', categoria: 'Outros', periodicidade: 'FIXA_MENSAL', meses: 12 },
+    { id: 'padrao-rec-venda-prazo', nome: 'Venda a prazo (parcelada)', categoria: 'Duplicatas', periodicidade: 'PARCELADA' },
+    { id: 'padrao-rec-boleto', nome: 'Boleto / duplicata', categoria: 'Boletos', periodicidade: 'PARCELADA' },
+    { id: 'padrao-rec-servico', nome: 'Serviço / O.S.', categoria: 'O.S. / Serviços Mecânicos', periodicidade: 'VARIAVEL' },
+    { id: 'padrao-rec-balcao', nome: 'Venda de peças / balcão', categoria: 'Venda de Peças / Balcão', periodicidade: 'VARIAVEL' },
+    { id: 'padrao-rec-adiantamento', nome: 'Sinal / adiantamento', categoria: 'Adiantamento', periodicidade: 'VARIAVEL' },
+    { id: 'padrao-rec-avulsa', nome: 'Receita avulsa', categoria: 'Outros', periodicidade: 'VARIAVEL' },
+  ];
 
   const esc = (v) => String(v == null ? '' : v).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const money = (v) => Number(v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -50,7 +67,8 @@
   const syncApp = () => { try { if (window.__motorDeskSyncNow) window.__motorDeskSyncNow('tipos-conta'); } catch (e) {} };
 
   async function api(method, path, body) {
-    const res = await fetch(API + path, { method, headers: { 'Content-Type': 'application/json', 'X-Company-Id': companyId() }, body: body ? JSON.stringify(body) : undefined });
+    const url = API + path + (path.includes('?') ? '&' : '?') + 'natureza=' + natureza;
+    const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json', 'X-Company-Id': companyId() }, body: body ? JSON.stringify(Object.assign({ natureza }, body)) : undefined });
     let data = null;
     try { data = await res.json(); } catch (e) {}
     if (!res.ok || !data || data.success === false) throw new Error((data && data.error) || 'Erro HTTP ' + res.status);
@@ -86,7 +104,7 @@
       '#md-tc .row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}',
       '#md-tc .inline{background:#fff;border:1px solid #fca5a5;border-radius:8px;padding:8px;margin-top:6px}',
       '#md-tc .info{border:1px solid #c7d2fe;background:#eef2ff;border-radius:10px;padding:10px 12px;font-size:13px;margin-bottom:12px;line-height:1.5}',
-      '#btn-pay-tipos-conta{padding:4px 10px;border-radius:4px;background:#eef2ff;border:1px solid #a5b4fc;font-size:12px;font-weight:600;color:#3730a3;cursor:pointer}',
+      '#btn-pay-tipos-conta,.md-btn-tipos-conta{padding:4px 10px;border-radius:4px;background:#eef2ff;border:1px solid #a5b4fc;font-size:12px;font-weight:600;color:#3730a3;cursor:pointer}',
     ].join('\n');
     document.head.appendChild(st);
   }
@@ -94,8 +112,11 @@
   let root = null;
   let tab = 'tipos';
   let editando = null;
+  let natureza = 'pagar';
+  const receber = () => natureza === 'receber';
 
-  function open(initialTab) {
+  function open(initialTab, nat) {
+    natureza = nat === 'receber' ? 'receber' : 'pagar';
     ensureStyles();
     if (root) root.remove();
     tab = initialTab === 'recorrencias' ? 'recorrencias' : 'tipos';
@@ -105,7 +126,7 @@
     root.setAttribute('role', 'dialog');
     root.setAttribute('aria-modal', 'true');
     root.setAttribute('aria-label', 'Tipos de conta e recorrências');
-    root.innerHTML = '<div class="p"><div class="hd"><div><h2>Tipos de conta e recorrências</h2><p class="sub">Contas a pagar fixas (tempo determinado ou indeterminado), variáveis, avulsas e parceladas.</p></div><button type="button" class="x" data-act="close" aria-label="Fechar">×</button></div>' +
+    root.innerHTML = '<div class="p"><div class="hd"><div><h2>Tipos de conta e recorrências — ' + (receber() ? 'Contas a Receber' : 'Contas a Pagar') + '</h2><p class="sub">' + (receber() ? 'Títulos a receber' : 'Contas a pagar') + ' fixas (tempo determinado ou indeterminado), variáveis, avulsas e parceladas.</p></div><button type="button" class="x" data-act="close" aria-label="Fechar">×</button></div>' +
       '<div class="tabs" role="tablist"><button type="button" class="tab" role="tab" data-tab="tipos">Tipos de conta</button><button type="button" class="tab" role="tab" data-tab="recorrencias">Contas recorrentes</button></div><div class="bd" data-body></div></div>';
     root.addEventListener('click', onClick);
     root.addEventListener('change', onChange);
@@ -123,12 +144,12 @@
 
   // ---- Tipos de conta ---------------------------------------------------------------------
   function formTipo(t) {
-    t = t || { nome: '', periodicidade: 'FIXA_INDETERMINADA', categoria: 'Despesas Fixas', meses: 12, observacao: '' };
+    t = t || { nome: '', periodicidade: 'FIXA_INDETERMINADA', categoria: receber() ? 'Outros' : 'Despesas Fixas', meses: 12, observacao: '' };
     return '<div class="box" data-form><h3>' + (editando ? 'Alterar tipo de conta' : 'Cadastrar tipo de conta') + '</h3><div class="grid">' +
-      '<label class="f">Nome *<input data-k="nome" maxlength="80" placeholder="Ex.: Aluguel do galpão, Salário vendedor" value="' + esc(t.nome) + '"></label>' +
+      '<label class="f">Nome *<input data-k="nome" maxlength="80" placeholder="' + (receber() ? 'Ex.: Comissão Fábrica ABC, Mensalidade cliente X' : 'Ex.: Aluguel do galpão, Salário vendedor') + '" value="' + esc(t.nome) + '"></label>' +
       '<label class="f">Periodicidade *<select data-k="periodicidade">' + Object.keys(PER).map((k) => '<option value="' + k + '"' + (t.periodicidade === k ? ' selected' : '') + '>' + PER[k][0] + '</option>').join('') + '</select></label>' +
       '<label class="f" data-meses' + (t.periodicidade === 'FIXA_MENSAL' ? '' : ' hidden') + '>Meses (tempo determinado)<input type="number" min="1" max="120" data-k="meses" value="' + esc(t.meses || 12) + '"></label>' +
-      '<label class="f">Categoria<select data-k="categoria">' + CATEGORIAS.map((c) => '<option value="' + esc(c[0]) + '"' + (t.categoria === c[0] ? ' selected' : '') + '>' + esc(c[1]) + '</option>').join('') + '</select></label>' +
+      '<label class="f">Categoria<select data-k="categoria">' + (receber() ? CATEGORIAS_RECEBER : CATEGORIAS).map((c) => '<option value="' + esc(c[0]) + '"' + (t.categoria === c[0] ? ' selected' : '') + '>' + esc(c[1]) + '</option>').join('') + '</select></label>' +
       '<label class="f">Observação<input data-k="observacao" maxlength="300" value="' + esc(t.observacao || '') + '"></label>' +
       '<div class="row"><button type="button" class="btn" data-act="salvar-tipo">' + (editando ? 'Salvar alteração' : 'Cadastrar') + '</button>' + (editando ? '<button type="button" class="btn s" data-act="cancelar-edicao">Cancelar</button>' : '') + '</div></div><div class="msg" data-fmsg></div></div>';
   }
@@ -140,7 +161,7 @@
     try { r = await api('GET', '/tipos-conta'); } catch (err) { b.innerHTML = '<p class="msg bad">' + esc(err.message) + '</p>'; return; }
     if (!root || tab !== 'tipos') return;
     const proprio = editando ? r.tipos.find((t) => t.id === editando) : null;
-    b.innerHTML = '<div class="info">O tipo escolhido ao cadastrar uma conta a pagar já preenche a categoria e a periodicidade. Os tipos padrão podem ser personalizados cadastrando um com o mesmo nome.</div>' +
+    b.innerHTML = '<div class="info">O tipo escolhido ao cadastrar ' + (receber() ? 'um título a receber' : 'uma conta a pagar') + ' já preenche a categoria e a periodicidade. Os tipos padrão podem ser personalizados cadastrando um com o mesmo nome.</div>' +
       (aviso ? '<p class="msg ok">' + esc(aviso) + '</p>' : '') + formTipo(proprio) +
       '<div class="tw"><table><thead><tr><th>Tipo de conta</th><th>Periodicidade</th><th>Categoria</th><th>Origem</th><th></th></tr></thead><tbody>' +
       r.tipos.map((t) => '<tr' + (t.ativo === false ? ' style="opacity:.55"' : '') + '><td><b>' + esc(t.nome) + '</b>' + (t.observacao ? '<div class="muted">' + esc(t.observacao) + '</div>' : '') + '</td><td>' + badge(PER[t.periodicidade] || PER.VARIAVEL, (PER[t.periodicidade] || PER.VARIAVEL)[0] + (t.periodicidade === 'FIXA_MENSAL' && t.meses ? ' (' + t.meses + ' meses)' : '')) + '</td><td>' + esc(t.categoria) + '</td>' +
@@ -181,7 +202,7 @@
           '<td>' + fmtDia(g.inicio) + ' → ' + (g.fim ? fmtDia(g.fim) : '<b>sem data para acabar</b>') + '</td><td>' + fmtDia(g.proximoVencimento) + '</td><td class="r">' + g.lancamentos + ' / ' + g.pagos + '</td>' +
           '<td>' + (g.encerrada ? badge(['Encerrada', '#7f1d1d', '#fee2e2']) + (g.encerramento ? '<div class="muted">' + fmtDia(g.encerramento.aPartirDe) + ' · ' + esc(g.encerramento.motivo) + '</div>' : '') : badge(['Ativa', '#065f46', '#d1fae5'])) + '</td>' +
           '<td>' + (g.encerrada || g.tipo === 'PARCELADA' ? '' : '<button type="button" class="btn d sm" data-act="encerrar" data-grupo="' + esc(g.groupId) + '">Encerrar</button>') + '<div data-slot></div></td></tr>').join('') + '</tbody></table></div>'
-        : '<p class="muted">Nenhuma conta recorrente ainda. Cadastre em Contas a Pagar → Novo, escolhendo uma periodicidade fixa ou variável mensal.</p>');
+        : '<p class="muted">Nenhuma conta recorrente ainda. Cadastre em ' + (receber() ? 'Contas a Receber' : 'Contas a Pagar') + ' → Novo, escolhendo uma periodicidade fixa ou variável mensal.</p>');
   }
 
   function abrirEncerrar(grupo) {
@@ -236,27 +257,34 @@
     if (act === 'encerrar-sim') return encerrar(a);
   }
 
-  // ---- Botão na barra de Contas a Pagar + renovação ao abrir a tela ---------------------------
+  // ---- Botão na barra de Contas a Pagar / a Receber + renovação ao abrir a tela -----------------
   const renovadas = new Set();
+  const TELAS = [
+    { nat: 'pagar', view: 'view-wareline-payables', novo: '#btn-pay-novo', excluir: '#btn-pay-excluir', id: 'btn-pay-tipos-conta' },
+    { nat: 'receber', view: 'view-wareline-receivables', novo: '#btn-rec-novo', excluir: '#btn-rec-excluir', id: 'btn-rec-tipos-conta' },
+  ];
   function injectButton() {
-    const view = document.getElementById('view-wareline-payables');
-    if (!view) return;
-    ensureStyles();
-    const novo = view.querySelector('#btn-pay-novo');
-    if (novo && !document.getElementById('btn-pay-tipos-conta')) {
-      const btn = document.createElement('button');
-      btn.type = 'button';
-      btn.id = 'btn-pay-tipos-conta';
-      btn.textContent = 'Tipos de conta e recorrências';
-      btn.addEventListener('click', () => open('tipos'));
-      const barra = novo.parentElement;
-      const excluir = barra.querySelector('#btn-pay-excluir');
-      (excluir || novo).after(btn);
-    }
-    const cid = companyId();
-    if (cid && !renovadas.has(cid)) {
-      renovadas.add(cid);
-      api('POST', '/recorrencias/renovar').then((r) => { if (r.criadas > 0) syncApp(); }).catch(() => {});
+    for (const t of TELAS) {
+      const view = document.getElementById(t.view);
+      if (!view) continue;
+      ensureStyles();
+      const novo = view.querySelector(t.novo);
+      if (novo && !document.getElementById(t.id)) {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.id = t.id;
+        btn.className = 'md-btn-tipos-conta';
+        btn.textContent = 'Tipos de conta e recorrências';
+        btn.addEventListener('click', () => open('tipos', t.nat));
+        const excluir = novo.parentElement.querySelector(t.excluir);
+        (excluir || novo).after(btn);
+      }
+      const chave = companyId() + ':' + t.nat;
+      if (companyId() && !renovadas.has(chave)) {
+        renovadas.add(chave);
+        fetch(API + '/recorrencias/renovar?natureza=' + t.nat, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Company-Id': companyId() }, body: JSON.stringify({ natureza: t.nat }) })
+          .then((r) => r.json()).then((r) => { if (r && r.criadas > 0) syncApp(); }).catch(() => {});
+      }
     }
   }
 
