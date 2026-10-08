@@ -423,16 +423,16 @@ export function registerTransacoesRoutes(app: Express, d: TransacoesDeps) {
           const r = l.registro;
           if (l.instId || (Array.isArray(r.installments) && r.installments.length)) { bloqueados.push(r.description || r.title || r.id); continue; }
           if (PAGO.test(String(r.status)) || num(r.paidAmount) > 0) { bloqueados.push(r.description || r.id); continue; }
-          cancelar(l.natureza, l.idx, "Excluído em Transações");
+          cancelar(l.natureza, l.idx, "Excluído em Lançamentos");
           if (proximas && r.recurrence?.groupId) {
             next[COL[l.natureza]].forEach((x: any, k: number) => {
-              if (k !== l.idx && x && daEmpresa(x, c.companyId) && x.recurrence?.groupId === r.recurrence.groupId && String(x.dueDate) > String(r.dueDate) && !cancelado(x.status) && !PAGO.test(String(x.status)) && !(num(x.paidAmount) > 0)) cancelar(l.natureza, k, "Excluído em Transações (esta e as próximas)");
+              if (k !== l.idx && x && daEmpresa(x, c.companyId) && x.recurrence?.groupId === r.recurrence.groupId && String(x.dueDate) > String(r.dueDate) && !cancelado(x.status) && !PAGO.test(String(x.status)) && !(num(x.paidAmount) > 0)) cancelar(l.natureza, k, "Excluído em Lançamentos (esta e as próximas)");
             });
             next[COL[l.natureza]] = next[COL[l.natureza]].map((x: any) => (x && x.recurrence?.groupId === r.recurrence.groupId && daEmpresa(x, c.companyId) ? { ...x, recurrence: { ...x.recurrence, ativo: false } } : x));
           }
         }
         if (!excluidos) return current;
-        next.history = historico(current, c.companyId, c.userId, c.actor, "Lançamentos excluídos", `${excluidos} lançamento(s) excluído(s) em Transações.`);
+        next.history = historico(current, c.companyId, c.userId, c.actor, "Lançamentos excluídos", `${excluidos} lançamento(s) excluído(s) em Lançamentos.`);
         return next;
       }, { source: "transacoes_excluir", companyId: c.companyId, userId: c.userId });
       res.json({ success: true, excluidos, bloqueados });

@@ -13,7 +13,7 @@
   const ITENS = [
     // [id do botão original, id no submenu, emoji, rótulo, depois de qual item do submenu (sem âncora: fim da lista)]
     // Cada item tem âncoras próprias: dois itens disputando a mesma posição ficariam se empurrando.
-    ['menu-btn-fin-transacoes', 'md-transacoes', '💵', 'Transações', ['flyout-sub-financial-accounts_payable', 'flyout-sub-financial-accounts_receivable']],
+    ['menu-btn-fin-transacoes', 'md-transacoes', '💵', 'Lançamentos', ['flyout-sub-financial-accounts_payable', 'flyout-sub-financial-accounts_receivable']],
     ['menu-btn-rep-conciliacao', 'md-conciliacao-pedidos', '✅', 'Conciliação de Pedidos', ['flyout-sub-financial-representative_orders']],
     ['menu-btn-notas-fiscais', 'md-notas-fiscais', '🧾', 'Notas Fiscais (NF-e)', ['flyout-sub-financial-fiscal', 'flyout-sub-financial-fiscal_conference']],
   ];

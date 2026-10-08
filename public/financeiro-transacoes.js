@@ -66,12 +66,12 @@
       '.md-fin h1{font-size:22px;font-weight:600;margin:0;color:#374151}',
       '.md-fin .nav{display:flex;flex-wrap:wrap;gap:2px;background:#fff;border:1px solid #e5e7eb;border-radius:999px;padding:3px}',
       '.md-fin .nav button{border:0;background:none;padding:7px 12px;border-radius:999px;font:inherit;font-size:13.5px;color:#4b5563;cursor:pointer}',
-      '.md-fin .nav button[aria-current=page]{background:#5b5bd6;color:#fff;font-weight:600}',
+      '.md-fin .nav button[aria-current=page]{background:#0f766e;color:#fff;font-weight:600}',
       '.md-fin .grow{flex:1}',
       '.md-fin .search{display:flex;align-items:center;gap:6px;background:#fff;border:1px solid #d1d5db;border-radius:8px;padding:0 10px;height:38px;min-width:220px}',
       '.md-fin .search input{border:0;outline:0;font:inherit;font-size:14px;width:100%;background:none}',
       '.md-fin .icon-btn{width:38px;height:38px;border-radius:999px;border:1px solid #d1d5db;background:#fff;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;color:#4b5563}',
-      '.md-fin .icon-btn:hover{border-color:#5b5bd6;color:#5b5bd6}',
+      '.md-fin .icon-btn:hover{border-color:#0f766e;color:#0f766e}',
       '.md-fin .icon-btn svg{width:18px;height:18px}',
       '.md-fin .card{background:#fff;border:1px solid #e5e7eb;border-radius:10px}',
       '.md-fin .card-h{padding:14px 16px 0}.md-fin .card-h h3{margin:0;font-size:17px;font-weight:600;color:#374151}.md-fin .card-h p{margin:2px 0 0;font-size:13px;color:#6b7280}',
@@ -90,7 +90,7 @@
       '.md-fin .conta{padding:14px 16px}',
       '.md-fin .conta-sel{display:flex;align-items:center;gap:10px;border-bottom:1px solid #e5e7eb;padding-bottom:12px;margin-bottom:12px}',
       '.md-fin .conta-sel .bank{width:38px;height:38px;border-radius:999px;background:#eef0f3;display:flex;align-items:center;justify-content:center;color:#6b7280}',
-      '.md-fin .conta-sel select{border:0;font:inherit;font-size:18px;font-weight:600;color:#5b5bd6;background:none;flex:1;cursor:pointer;min-width:0}',
+      '.md-fin .conta-sel select{border:0;font:inherit;font-size:18px;font-weight:600;color:#0f766e;background:none;flex:1;cursor:pointer;min-width:0}',
       '.md-fin .conta .l{display:flex;gap:10px;align-items:baseline;font-size:14px;padding:3px 0}',
       '.md-fin .conta .l b{font-size:18px}',
       '.md-fin .cal{padding:14px 16px}',
@@ -99,7 +99,7 @@
       '.md-fin .cal th{font-weight:500;color:#6b7280;font-size:12.5px;padding:6px 0;border-bottom:1px solid #e5e7eb}',
       '.md-fin .cal td{padding:4px 0;border-bottom:1px solid #f1f2f4}',
       '.md-fin .cal button{border:0;background:none;font:inherit;width:36px;height:36px;border-radius:999px;cursor:pointer;color:#374151;position:relative}',
-      '.md-fin .cal button:hover{background:#eef0ff}.md-fin .cal button.out{color:#c4c8cf}.md-fin .cal button.hoje{border:1.5px solid #374151}',
+      '.md-fin .cal button:hover{background:#f0fdfa}.md-fin .cal button.out{color:#c4c8cf}.md-fin .cal button.hoje{border:1.5px solid #374151}',
       '.md-fin .cal .dots{position:absolute;left:0;right:0;bottom:3px;display:flex;justify-content:center;gap:2px}',
       '.md-fin .cal .dots i{width:5px;height:5px;border-radius:9px;display:block}',
       '.md-fin .legend{display:flex;gap:14px;justify-content:center;font-size:12px;color:#6b7280;margin-top:8px}.md-fin .legend i{display:inline-block;width:18px;height:4px;border-radius:4px;vertical-align:middle;margin-right:5px}',
@@ -113,20 +113,20 @@
       '.md-fin .bar-line{display:flex;align-items:center;gap:8px;font-size:12.5px}.md-fin .bar-line .bar{flex:1}',
       '.md-fin .toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin:6px 0 12px}',
       '.md-fin .mes{display:flex;align-items:center;gap:8px}',
-      '.md-fin .mes .lbl{background:#5b5bd6;color:#fff;border-radius:999px;padding:8px 0;width:160px;text-align:center;font-weight:500;font-size:15px;letter-spacing:.03em}',
+      '.md-fin .mes .lbl{background:#0f766e;color:#fff;border-radius:999px;padding:8px 0;width:160px;text-align:center;font-weight:500;font-size:15px;letter-spacing:.03em}',
       '.md-fin .chip{border-radius:999px;padding:7px 16px;font:inherit;font-size:14px;cursor:pointer;background:#fff;border:1px solid #d1d5db}',
       '.md-fin .chip.rec{color:#059669;border-color:#a7f3d0}.md-fin .chip.rec[aria-pressed=true]{background:#10b981;color:#fff;border-color:#10b981}',
       '.md-fin .chip.des{color:#e11d48;border-color:#fecdd3}.md-fin .chip.des[aria-pressed=true]{background:#f43f5e;color:#fff;border-color:#f43f5e}',
-      '.md-fin .chip.trf{color:#5b5bd6;border-color:#c7d2fe}.md-fin .chip.trf[aria-pressed=true]{background:#5b5bd6;color:#fff;border-color:#5b5bd6}',
-      '.md-fin .chip.dia{background:#eef0ff;border-color:#c7d2fe;color:#3730a3}',
+      '.md-fin .chip.trf{color:#0f766e;border-color:#99f6e4}.md-fin .chip.trf[aria-pressed=true]{background:#0f766e;color:#fff;border-color:#0f766e}',
+      '.md-fin .chip.dia{background:#f0fdfa;border-color:#99f6e4;color:#115e59}',
       '.md-fin .btn{border:1px solid #d1d5db;background:#fff;border-radius:8px;padding:8px 14px;font:inherit;font-size:14px;cursor:pointer;color:#374151;display:inline-flex;align-items:center;gap:6px}',
       '.md-fin .btn:hover{border-color:#9ca3af}.md-fin .btn svg{width:16px;height:16px}',
-      '.md-fin .btn.pri{background:#5b5bd6;border-color:#5b5bd6;color:#fff}.md-fin .btn.pri:hover{background:#4949c4}',
+      '.md-fin .btn.pri{background:#0f766e;border-color:#0f766e;color:#fff}.md-fin .btn.pri:hover{background:#115e59}',
       '.md-fin .btn.danger{color:#be123c;border-color:#fecdd3}.md-fin .btn:disabled{opacity:.55;cursor:default}',
       '.md-fin .filtros{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;padding:12px 14px;border-bottom:1px solid #e5e7eb;background:#fafafb}',
       '.md-fin label.f{display:flex;flex-direction:column;gap:4px;font-size:12.5px;color:#4b5563}',
       '.md-fin input.i,.md-fin select.i,.md-fin textarea.i,.md-fin button.i{border:1px solid #d1d5db;border-radius:7px;padding:8px 10px;font:inherit;font-size:14px;background:#fff;color:#111827;width:100%}',
-      '.md-fin input.i:focus,.md-fin select.i:focus,.md-fin textarea.i:focus{outline:2px solid #c7d2fe;border-color:#5b5bd6}',
+      '.md-fin input.i:focus,.md-fin select.i:focus,.md-fin textarea.i:focus{outline:2px solid #99f6e4;border-color:#0f766e}',
       '.md-fin .tbl-wrap{overflow-x:auto}',
       '.md-fin table.tx{width:100%;border-collapse:collapse;font-size:14px;min-width:900px}',
       '.md-fin table.tx th{text-align:left;font-weight:600;color:#374151;padding:12px 8px;border-bottom:1px solid #e5e7eb;white-space:nowrap}',
@@ -134,10 +134,10 @@
       '.md-fin table.tx td{padding:11px 8px;border-bottom:1px solid #f1f2f4;vertical-align:middle}',
       '.md-fin table.tx td.trunc.c{max-width:190px}.md-fin table.tx td.trunc{max-width:250px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
       '.md-fin table.tx tr.lin{cursor:pointer}.md-fin table.tx tr.lin:hover td{background:#fafaff}',
-      '.md-fin table.tx tr.lin.sel td{background:#eef0ff}',
+      '.md-fin table.tx tr.lin.sel td{background:#f0fdfa}',
       '.md-fin .nova{padding:8px 10px;background:#f4f5f7}',
-      '.md-fin .nova button{width:100%;border:2px dashed #8b8bf0;border-radius:8px;background:#fff;color:#5b5bd6;font:inherit;font-size:15px;padding:8px;cursor:pointer}',
-      '.md-fin .nova button:hover{background:#f5f5ff}',
+      '.md-fin .nova button{width:100%;border:2px dashed #5eead4;border-radius:8px;background:#fff;color:#0f766e;font:inherit;font-size:15px;padding:8px;cursor:pointer}',
+      '.md-fin .nova button:hover{background:#f0fdfa}',
       '.md-fin .vazio{text-align:center;padding:46px 10px;color:#6b7280}.md-fin .vazio b{display:block;font-size:18px;color:#374151;margin-bottom:4px}',
       '.md-fin .sw{width:40px;height:22px;border-radius:999px;background:#d1d5db;border:0;position:relative;cursor:pointer;flex-shrink:0;transition:background .15s}',
       '.md-fin .sw::after{content:"";position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:999px;background:#fff;transition:left .15s;box-shadow:0 1px 2px rgba(0,0,0,.25)}',
@@ -147,7 +147,7 @@
       '.md-fin .totais{display:flex;justify-content:flex-end;padding:14px}',
       '.md-fin .totais .box{border:1px solid #e5e7eb;border-radius:10px;padding:12px 16px;min-width:300px;box-shadow:0 1px 3px rgba(0,0,0,.05)}',
       '.md-fin .totais .l{display:flex;justify-content:space-between;gap:30px;font-size:14px;padding:2px 0}.md-fin .totais .l.t{font-size:17px;font-weight:600;margin-bottom:4px}',
-      '.md-fin .lote{position:sticky;top:0;z-index:2;display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:10px 14px;background:#eef0ff;border-bottom:1px solid #c7d2fe;font-size:14px}',
+      '.md-fin .lote{position:sticky;top:0;z-index:2;display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:10px 14px;background:#f0fdfa;border-bottom:1px solid #99f6e4;font-size:14px}',
       '.md-fin .tag{display:inline-block;font-size:12px;padding:2px 8px;border-radius:999px;background:#f1f2f4;color:#4b5563;white-space:nowrap}',
       '.md-fin .msg{font-size:13.5px;margin:8px 0;padding:9px 12px;border-radius:8px}.md-fin .msg.ok{background:#ecfdf5;color:#047857}.md-fin .msg.bad{background:#fff1f2;color:#be123c}',
       '#md-fin-drawer{position:relative;z-index:10050}',
@@ -158,7 +158,7 @@
       '.md-fin .drawer .df{padding:14px 20px;border-top:1px solid #e5e7eb;display:flex;gap:8px;flex-wrap:wrap}',
       '.md-fin .seg{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}',
       '.md-fin .seg button{border:1px solid #d1d5db;background:#fff;border-radius:8px;padding:9px;font:inherit;font-size:14px;cursor:pointer}',
-      '.md-fin .seg button[aria-pressed=true].rec{background:#10b981;border-color:#10b981;color:#fff}.md-fin .seg button[aria-pressed=true].des{background:#f43f5e;border-color:#f43f5e;color:#fff}.md-fin .seg button[aria-pressed=true].trf{background:#5b5bd6;border-color:#5b5bd6;color:#fff}',
+      '.md-fin .seg button[aria-pressed=true].rec{background:#10b981;border-color:#10b981;color:#fff}.md-fin .seg button[aria-pressed=true].des{background:#f43f5e;border-color:#f43f5e;color:#fff}.md-fin .seg button[aria-pressed=true].trf{background:#0f766e;border-color:#0f766e;color:#fff}',
       '.md-fin .two{display:grid;grid-template-columns:1fr 1fr;gap:10px}',
       '.md-fin .chk{display:flex;align-items:center;gap:8px;font-size:14px;cursor:pointer}.md-fin .chk input{width:17px;height:17px}',
       '.md-fin .hint{font-size:12.5px;color:#6b7280;margin:-4px 0 0}',
@@ -169,11 +169,11 @@
       '.md-fin .loading{padding:60px;text-align:center;color:#6b7280}',
       '.md-fin .ct-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px;margin-bottom:16px}',
       '.md-fin .ct-card{display:flex;flex-direction:column;justify-content:space-between}.md-fin .ct-top{display:flex;gap:14px;align-items:center;padding:16px}',
-      '.md-fin .ct-ic{width:52px;height:52px;border-radius:10px;background:#5b5bd6;color:#fff;display:flex;align-items:center;justify-content:center;flex-shrink:0}',
+      '.md-fin .ct-ic{width:52px;height:52px;border-radius:10px;background:#0f766e;color:#fff;display:flex;align-items:center;justify-content:center;flex-shrink:0}',
       '.md-fin .ct-v{font-size:24px;font-weight:600}.md-fin .ct-v small{font-size:16px;font-weight:400;letter-spacing:.1em}',
-      '.md-fin .ct-mais{border:0;border-top:1px solid #f1f2f4;background:#fafafb;text-align:left;padding:12px 16px;color:#5b5bd6;font:inherit;font-size:15px;cursor:pointer;border-radius:0 0 10px 10px}.md-fin .ct-mais[aria-pressed=true]{background:#eef0ff}',
+      '.md-fin .ct-mais{border:0;border-top:1px solid #f1f2f4;background:#fafafb;text-align:left;padding:12px 16px;color:#0f766e;font:inherit;font-size:15px;cursor:pointer;border-radius:0 0 10px 10px}.md-fin .ct-mais[aria-pressed=true]{background:#f0fdfa}',
       '.md-fin .pills{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px}',
-      '.md-fin .pill{border:1px solid #d1d5db;background:#fff;color:#5b5bd6;border-radius:999px;padding:7px 16px;font:inherit;font-size:14.5px;cursor:pointer}.md-fin .pill[aria-pressed=true]{background:#5b5bd6;border-color:#5b5bd6;color:#fff}',
+      '.md-fin .pill{border:1px solid #d1d5db;background:#fff;color:#0f766e;border-radius:999px;padding:7px 16px;font:inherit;font-size:14.5px;cursor:pointer}.md-fin .pill[aria-pressed=true]{background:#0f766e;border-color:#0f766e;color:#fff}',
       '.md-fin .filtros-rel{padding:14px 16px;margin-bottom:14px}.md-fin .fr-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px}',
       '.md-fin .fr-linha{display:flex;flex-wrap:wrap;align-items:flex-end;gap:24px;margin-top:14px}',
       '.md-fin div.f{display:flex;flex-direction:column;gap:4px;font-size:12.5px;color:#4b5563}.md-fin .ms{position:relative}.md-fin .ms-btn{min-height:38px;text-align:left;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
@@ -186,11 +186,56 @@
       '.md-fin .res-l{display:flex;justify-content:space-between;align-items:center;padding:14px 4px;border-bottom:1px solid #f1f2f4;font-size:15.5px}.md-fin .res-l.t{font-weight:600;font-size:17px;border-bottom:0}',
       '.md-fin .imp-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:14px;margin-bottom:16px}',
       '.md-fin .imp-card{display:flex;flex-direction:column;justify-content:space-between}.md-fin .imp-top{display:flex;gap:14px;padding:16px}.md-fin .imp-top h3{margin:0 0 4px;font-size:19px;font-weight:500}.md-fin .imp-top p{margin:0;color:#6b7280;font-size:14px;line-height:1.4}.md-fin .imp-ic{flex-shrink:0}',
-      '.md-fin .imp-acoes{display:flex;border-top:1px solid #f1f2f4}.md-fin .imp-btn,.md-fin .imp-link{flex:1;text-align:center;padding:12px;color:#5b5bd6;font:inherit;font-size:15px;cursor:pointer;background:none;border:0}.md-fin .imp-btn:hover,.md-fin .imp-link:hover{background:#f5f5ff}.md-fin .imp-link{border-left:1px solid #f1f2f4;color:#6b7280}',
+      '.md-fin .imp-acoes{display:flex;border-top:1px solid #f1f2f4}.md-fin .imp-btn,.md-fin .imp-link{flex:1;text-align:center;padding:12px;color:#0f766e;font:inherit;font-size:15px;cursor:pointer;background:none;border:0}.md-fin .imp-btn:hover,.md-fin .imp-link:hover{background:#f0fdfa}.md-fin .imp-link{border-left:1px solid #f1f2f4;color:#6b7280}',
       '.md-fin .map-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px}.md-fin .imp-res{display:flex;flex-wrap:wrap;gap:16px;font-size:14px;font-weight:500}',
       '.md-fin .drawer.wide{width:min(980px,100vw)}',
       '.md-fin .conc-lista{display:flex;flex-direction:column}.md-fin .conc-it{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.3fr);gap:18px;padding:14px 16px;border-bottom:1px solid #f1f2f4}@media (max-width:800px){.md-fin .conc-it{grid-template-columns:1fr}}',
       '.md-fin .conc-it.conciliado{background:#f6fdf9}.md-fin .conc-it.ignorado{background:#fafafb;opacity:.85}.md-fin .conc-sis{display:flex;flex-direction:column;gap:6px;align-items:flex-start}.md-fin .chk.sug{align-items:flex-start;font-size:13.5px}.md-fin .conc-form{width:100%}',
+      '#md-fin{background:#f1f5f9;color:#0f172a}',
+      '.md-fin .wrap{padding:16px 22px 40px}',
+      '.md-fin .mdf-head{background:#0f172a;color:#e2e8f0;position:sticky;top:0;z-index:4;box-shadow:0 2px 6px rgba(15,23,42,.25)}',
+      '.md-fin .mdf-head-in{max-width:1500px;margin:0 auto;display:flex;flex-wrap:wrap;align-items:center;gap:10px;padding:14px 22px 4px}',
+      '.md-fin .mdf-kicker{font-size:11.5px;letter-spacing:.08em;text-transform:uppercase;color:#5eead4;font-weight:700}',
+      '.md-fin .mdf-title h1{color:#f8fafc;font-size:21px;margin:2px 0 0;font-weight:700}',
+      '.md-fin .mdf-tabs{max-width:1500px;margin:0 auto;display:flex;flex-wrap:wrap;gap:2px;padding:0 14px}',
+      '.md-fin .mdf-tabs button{border:0;background:none;color:#94a3b8;font:inherit;font-size:13.5px;font-weight:600;padding:10px 10px 11px;border-bottom:3px solid transparent;cursor:pointer}',
+      '.md-fin .mdf-tabs button:hover{color:#e2e8f0}.md-fin .mdf-tabs button[aria-current=page]{color:#fff;border-bottom-color:#14b8a6}',
+      '.md-fin .mdf-head .search{background:#1e293b;border-color:#334155;border-radius:6px;min-width:260px}.md-fin .mdf-head .search input{color:#f1f5f9}.md-fin .mdf-head .search input::placeholder{color:#94a3b8}',
+      '.md-fin .icon-btn{border-radius:6px}.md-fin .icon-btn.dark{background:#1e293b;border-color:#334155;color:#cbd5e1}',
+      '.md-fin .btn{border-radius:6px}.md-fin .btn.pri{background:#0f766e;border-color:#0f766e;color:#fff}.md-fin .btn.pri:hover{background:#115e59}.md-fin .btn.sm{padding:5px 10px;font-size:13px}',
+      '.md-fin .card{border-radius:6px;border-color:#e2e8f0;box-shadow:0 1px 2px rgba(15,23,42,.04)}.md-fin .card-h h3{color:#0f172a;font-size:16px}',
+      '.md-fin .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-bottom:14px}',
+      '.md-fin .kpi{background:#fff;border:1px solid #e2e8f0;border-top:4px solid #94a3b8;border-radius:6px;padding:12px 14px;display:flex;flex-direction:column;gap:4px;text-align:left;font:inherit;color:inherit}',
+      '.md-fin button.kpi{cursor:pointer}.md-fin button.kpi[aria-pressed=true]{outline:2px solid #0f172a}',
+      '.md-fin .kpi.ent{border-top-color:#059669}.md-fin .kpi.sai{border-top-color:#e11d48}.md-fin .kpi.res{border-top-color:#0f766e}.md-fin .kpi.res.neg .kpi-v{color:#be123c}.md-fin .kpi.cx{border-top-color:#0f172a}',
+      '.md-fin .kpi-t{font-size:11.5px;text-transform:uppercase;letter-spacing:.06em;color:#64748b;font-weight:700}.md-fin .kpi-v{font-size:22px;font-weight:700;color:#0f172a;font-variant-numeric:tabular-nums}.md-fin .kpi-s{font-size:12.5px;color:#64748b}',
+      '.md-fin .kpi-bar{height:5px;background:#e2e8f0;border-radius:2px;overflow:hidden}.md-fin .kpi-bar i{display:block;height:100%}.md-fin .kpi.ent .kpi-bar i{background:#059669}.md-fin .kpi.sai .kpi-bar i{background:#e11d48}',
+      '.md-fin .mdf-conta{padding:4px 8px;font-size:13px;margin:2px 0}',
+      '.md-fin .mes{gap:6px}.md-fin .mes .lbl{background:none;color:#0f172a;width:auto;min-width:170px;font-size:16px;font-weight:700;letter-spacing:0;padding:0 4px;text-align:center}.md-fin .mes .icon-btn{width:32px;height:32px}',
+      '.md-fin .seg-tipo{display:inline-flex;border:1px solid #cbd5e1;border-radius:6px;overflow:hidden;background:#fff}',
+      '.md-fin .seg-tipo button{border:0;border-right:1px solid #cbd5e1;background:none;padding:7px 14px;font:inherit;font-size:13.5px;color:#334155;cursor:pointer}.md-fin .seg-tipo button:last-child{border-right:0}.md-fin .seg-tipo button[aria-pressed=true]{background:#0f172a;color:#fff}',
+      '.md-fin table.tx th{background:#f8fafc;font-size:11.5px;text-transform:uppercase;letter-spacing:.05em;color:#475569}.md-fin table.tx th.n,.md-fin table.tx td.n{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}',
+      '.md-fin table.tx tr.lin:hover td{background:#f8fafc}.md-fin table.tx tr.lin.sel td{background:#f0fdfa}',
+      '.md-fin .tipo-dot{display:inline-block;width:7px;height:7px;border-radius:2px;margin-right:8px;vertical-align:middle}.md-fin .tipo-dot.g{background:#059669}.md-fin .tipo-dot.r{background:#e11d48}',
+      '.md-fin .sit{border:1px solid;border-radius:4px;padding:3px 9px;font:inherit;font-size:12.5px;font-weight:600;cursor:pointer;white-space:nowrap;background:#fff}',
+      '.md-fin .sit.ok{color:#047857;border-color:#a7f3d0;background:#ecfdf5}.md-fin .sit.aberto{color:#475569;border-color:#cbd5e1}.md-fin .sit.venc{color:#be123c;border-color:#fecdd3;background:#fff1f2}.md-fin .sit.parc{color:#b45309;border-color:#fde68a;background:#fffbeb}.md-fin .sit:disabled{cursor:default;opacity:.8}',
+      '.md-fin .rodape-tot{display:flex;flex-wrap:wrap;gap:22px;justify-content:flex-end;padding:12px 16px;border-top:1px solid #e2e8f0;background:#f8fafc;font-size:14px;color:#475569}.md-fin .rodape-tot .tot{font-size:15.5px}',
+      '.md-fin .grid-painel{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(0,1fr);gap:14px}@media (max-width:1000px){.md-fin .grid-painel{grid-template-columns:1fr}}',
+      '.md-fin .ag-venc{display:block;width:100%;text-align:left;border:1px solid #fecdd3;background:#fff1f2;color:#be123c;border-radius:6px;padding:8px 10px;font:inherit;font-size:13.5px;font-weight:600;cursor:pointer;margin-bottom:10px}',
+      '.md-fin .ag-dia{display:flex;gap:12px;padding:8px 0;border-bottom:1px solid #f1f5f9}.md-fin .ag-data{border:1px solid #e2e8f0;background:#f8fafc;border-radius:6px;width:52px;flex-shrink:0;display:flex;flex-direction:column;align-items:center;padding:4px 0;cursor:pointer;font:inherit}.md-fin .ag-data b{font-size:18px;color:#0f172a}.md-fin .ag-data span{font-size:11px;color:#64748b}',
+      '.md-fin .ag-dia ul{list-style:none;margin:0;padding:0;flex:1;min-width:0;display:flex;flex-direction:column;gap:4px;font-size:13.5px}.md-fin .ag-dia li{display:flex;justify-content:space-between;gap:8px}.md-fin .trunc-i{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
+      '.md-fin .rp{margin:8px 0 14px}.md-fin .rp-l{display:flex;justify-content:space-between;font-size:14px;margin-bottom:6px}.md-fin .rp-bar{position:relative;height:14px;background:#f1f5f9;border-radius:3px}.md-fin .rp-bar i{position:absolute;left:0;top:0;bottom:0;border-radius:3px}.md-fin .rp-bar i.prev{background:#cbd5e1}.md-fin .rp-bar i.real.g{background:#059669}.md-fin .rp-bar i.real.r{background:#e11d48}',
+      '.md-fin .top5 .rk{display:inline-flex;width:20px;height:20px;border-radius:4px;background:#0f172a;color:#fff;font-size:11.5px;align-items:center;justify-content:center;margin-right:8px}.md-fin .top5 .bar i{background:#0f766e}',
+      '.md-fin .drawer .dh{background:#0f172a}.md-fin .drawer .dh h2{color:#fff}.md-fin .drawer{border-radius:0}',
+      '.md-fin .seg button{border-radius:6px}.md-fin .seg button[aria-pressed=true].rec{background:#059669;border-color:#059669}.md-fin .seg button[aria-pressed=true].des{background:#e11d48;border-color:#e11d48}.md-fin .seg button[aria-pressed=true].trf{background:#0f172a;border-color:#0f172a}',
+      '.md-fin .pill{color:#334155;border-radius:6px;font-size:13.5px;padding:6px 12px}.md-fin .pill[aria-pressed=true]{background:#0f172a;border-color:#0f172a;color:#fff}',
+      '.md-fin .sw[aria-checked=true]{background:#0f766e}.md-fin .chip.dia{border-radius:6px;background:#f0fdfa;border-color:#99f6e4;color:#115e59}',
+      '.md-fin .imp-lista{display:flex;flex-direction:column;margin-bottom:18px}.md-fin .imp-row{display:flex;align-items:center;gap:14px;padding:14px 16px;border-bottom:1px solid #f1f5f9}.md-fin .imp-row:last-child{border-bottom:0}',
+      '.md-fin .imp-row .imp-ic{width:44px;height:44px;border-radius:6px;background:#f0fdfa;color:#0f766e;display:flex;align-items:center;justify-content:center;flex-shrink:0}.md-fin .imp-txt{flex:1;min-width:0}.md-fin .imp-txt h3{margin:0;font-size:15px}.md-fin .imp-txt p{margin:2px 0 0;font-size:13.5px;color:#64748b}',
+      '.md-fin .imp-row .imp-acoes{display:flex;gap:8px;border:0;flex-shrink:0}.md-fin .sec-t{font-size:15px;margin:0 0 8px;color:#0f172a}',
+      '.md-fin label.f.rel-sel{flex-direction:row;align-items:center;gap:8px;font-size:13.5px;color:#334155;font-weight:600}.md-fin table.tx th button{text-transform:inherit;letter-spacing:inherit;color:inherit}.md-fin table.rel tr.grp td{background:#f8fafc}.md-fin .rel-sel select{min-width:280px}.md-fin .rel-per{font-size:13.5px}',
+      '.md-fin table.rel tr.grp th{font-weight:700;background:#f8fafc}.md-fin .res-l.t{border-top:2px solid #0f172a;margin-top:6px}',
+      '.md-fin .conc-it.conciliado{background:#f0fdf4}.md-fin .vazio b{color:#0f172a}',
       '#menu-btn-fin-transacoes{width:100%;display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:8px;border:0;background:none;color:#cbd5e1;font-size:12px;font-weight:600;letter-spacing:.02em;cursor:pointer;text-align:left}',
       '#menu-btn-fin-transacoes:hover{background:#1e293b;color:#fff}#menu-btn-fin-transacoes svg{width:16px;height:16px;flex-shrink:0;color:#34d399}',
       '#menu-btn-fin-transacoes[aria-current=page]{background:#4f46e5;color:#fff}',
@@ -209,8 +254,10 @@
     userPlus: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" width="26" height="26"><circle cx="9" cy="8" r="4"/><path d="M2 21c0-4 3-6 7-6s7 2 7 6M19 8v6M16 11h6"/></svg>',
     userMinus: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" width="26" height="26"><circle cx="9" cy="8" r="4"/><path d="M2 21c0-4 3-6 7-6s7 2 7 6M16 11h6"/></svg>',
     cake: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" width="26" height="26"><path d="M4 21V12h16v9M2 21h20M4 16c2 1.5 4 1.5 6 0s4-1.5 6 0 4 1.5 4 0M12 8v4M12 4.5a1.5 1.5 0 0 1 0 3"/></svg>',
-    excel: '<svg viewBox="0 0 48 48" width="46" height="46" aria-hidden="true"><rect x="14" y="6" width="30" height="36" rx="3" fill="#21a366"/><rect x="29" y="6" width="15" height="36" rx="3" fill="#107c41"/><rect x="4" y="13" width="22" height="22" rx="3" fill="#185c37"/><path d="M10 18l4 6-4 6M20 18l-4 6 4 6" stroke="#fff" stroke-width="2.5" fill="none"/></svg>',
-    sheet: '<svg viewBox="0 0 48 48" width="46" height="46" aria-hidden="true"><circle cx="24" cy="24" r="20" fill="#2ca01c"/><path d="M16 17h9a5 5 0 0 1 0 10h-3M32 31h-9a5 5 0 0 1 0-10h3M19 14v17M29 17v17" stroke="#fff" stroke-width="2.6" fill="none" stroke-linecap="round"/></svg>',
+    impPlanilha: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="26" height="26" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M3 14h18M9 4v16M15 4v16"/></svg>',
+    impSistema: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" width="26" height="26" aria-hidden="true"><path d="M4 7h11M11 3l4 4-4 4M20 17H9M13 13l-4 4 4 4"/></svg>',
+    impContatos: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="26" height="26" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="11" r="2.5"/><path d="M5.5 17c.6-2 2-3 3.5-3s2.9 1 3.5 3M14 10h4M14 13h4"/></svg>',
+    impBanco: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="26" height="26" aria-hidden="true"><path d="M3 10h18L12 4zM5 10v7M9.5 10v7M14.5 10v7M19 10v7M3 20h18"/></svg>',
     users: '<svg viewBox="0 0 48 48" width="46" height="46" aria-hidden="true"><circle cx="24" cy="24" r="20" fill="#374151"/><g stroke="#fff" stroke-width="2.4" fill="none"><circle cx="24" cy="20" r="4"/><circle cx="15" cy="22" r="3"/><circle cx="33" cy="22" r="3"/><path d="M16 33c0-4 3.5-6 8-6s8 2 8 6M9 31c0-3 2-4.5 5-4.5M39 31c0-3-2-4.5-5-4.5"/></g></svg>',
     doc: '<svg viewBox="0 0 48 48" width="46" height="46" aria-hidden="true"><circle cx="24" cy="24" r="20" fill="#374151"/><g stroke="#fff" stroke-width="2.4" fill="none" stroke-linejoin="round"><path d="M18 13h9l5 5v17H18z"/><path d="M27 13v5h5M21 25h8M21 29h8"/></g></svg>',
     money: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M15 9.5c-.5-1-1.6-1.5-3-1.5-1.7 0-3 .9-3 2.1 0 2.9 6 1.4 6 4.2 0 1.2-1.3 2.2-3 2.2-1.5 0-2.7-.6-3.2-1.6M12 6.5v1.5M12 16v1.5"/></svg>',
@@ -234,9 +281,9 @@
   };
   st.rel.ate = (() => { const [y, m] = st.rel.de.split('-').map(Number); return st.rel.de.slice(0, 8) + String(new Date(Date.UTC(y, m, 0)).getUTCDate()).padStart(2, '0'); })();
   const PAGINAS = [
-    ['inicio', 'Visão geral', 'transacoes'], ['transacoes', 'Transações', 'transacoes'], ['contas', 'Contas', 'transacoes'],
-    ['contatos', 'Contatos', 'contatos'], ['relatorios', 'Relatórios', 'relatorios'], ['importacoes', 'Importações', 'importacoes'],
-    ['conciliacoes', 'Conciliações (OFX)', 'importacoes'], ['acessos', 'Acessos', 'acessos'],
+    ['inicio', 'Painel', 'transacoes'], ['transacoes', 'Lançamentos', 'transacoes'], ['contas', 'Contas', 'transacoes'],
+    ['contatos', 'Contatos', 'contatos'], ['relatorios', 'Relatórios', 'relatorios'], ['importacoes', 'Importar', 'importacoes'],
+    ['conciliacoes', 'Conciliação bancária', 'importacoes'], ['acessos', 'Acessos', 'acessos'],
   ];
   const paginaLiberada = (p) => {
     const m = st.modulo;
@@ -273,7 +320,7 @@
       drawerHost.addEventListener('submit', onSubmit);
       document.body.appendChild(drawerHost);
       root.setAttribute('role', 'region');
-      root.setAttribute('aria-label', 'Transações');
+      root.setAttribute('aria-label', 'Lançamentos financeiros');
       root.addEventListener('click', onClick);
       root.addEventListener('change', onChange);
       root.addEventListener('input', onInput);
@@ -306,7 +353,7 @@
     st.carregando = true; st.erro = '';
     try {
       if (!st.modulo) { st.modulo = await api('GET', '/modulo'); menuInfo = st.modulo; }
-      if (!paginaLiberada(st.pagina)) { const p = PAGINAS.find((x) => paginaLiberada(x[0])); if (!p) throw new Error(st.modulo.contratado ? 'Nenhuma tela do módulo Transações liberada para o seu usuário.' : 'O módulo Transações não foi contratado por esta empresa.'); st.pagina = p[0]; render(); }
+      if (!paginaLiberada(st.pagina)) { const p = PAGINAS.find((x) => paginaLiberada(x[0])); if (!p) throw new Error(st.modulo.contratado ? 'Nenhuma tela do módulo Lançamentos liberada para o seu usuário.' : 'O módulo Lançamentos não foi contratado por esta empresa.'); st.pagina = p[0]; render(); }
       const pg = st.pagina;
       if (pg === 'contatos') { st.ct.dados = await api('GET', '/contatos'); return; }
       if (pg === 'relatorios') { st.rel.dados = await api('GET', '/relatorio?de=' + st.rel.de + '&ate=' + st.rel.ate); return; }
@@ -333,16 +380,18 @@
     if (!root) return;
     const foco = document.activeElement && (root.contains(document.activeElement) || drawerHost.contains(document.activeElement)) && document.activeElement.dataset ? document.activeElement.dataset.k : null;
     const nav = PAGINAS.filter((p) => paginaLiberada(p[0]));
-    let html = '<div class="wrap"><div class="top"><h1>' + esc((PAGINAS.find((p) => p[0] === st.pagina) || PAGINAS[1])[1]) + '</h1>' +
-      '<nav class="nav" aria-label="Financeiro">' + nav.map((n) => '<button type="button" data-act="pagina" data-p="' + n[0] + '"' + (st.pagina === n[0] ? ' aria-current="page"' : '') + '>' + n[1] + '</button>').join('') + '</nav><span class="grow"></span>';
-    if (st.pagina === 'transacoes') html += '<label class="search">' + IC.search + '<input data-k="busca" placeholder="Pesquisar..." aria-label="Pesquisar transações" value="' + esc(st.busca) + '"></label>';
-    if (st.pagina === 'contatos') html += '<label class="search">' + IC.search + '<input data-k="busca-ct" placeholder="Pesquisar..." aria-label="Pesquisar contatos" value="' + esc(st.ct.busca) + '"></label>';
-    if (['inicio', 'transacoes', 'contas'].includes(st.pagina) && st.dados && podeCriarAlgo()) html += '<button type="button" class="icon-btn" data-act="nova" title="Nova transação" aria-label="Nova transação">' + IC.plus + '</button>';
-    if (st.pagina === 'contatos' && st.ct.dados && st.ct.dados.podeEditar) html += '<button type="button" class="icon-btn" data-act="novo-contato" title="Novo contato" aria-label="Novo contato">' + IC.plus + '</button>';
-    html += '<button type="button" class="icon-btn" data-act="fechar" title="Fechar" aria-label="Fechar">' + IC.close + '</button></div>';
+    const atual = PAGINAS.find((p) => p[0] === st.pagina) || PAGINAS[1];
+    const empresa = st.modulo && st.modulo.empresa ? st.modulo.empresa.nome : '';
+    let html = '<header class="mdf-head"><div class="mdf-head-in"><div class="mdf-title"><span class="mdf-kicker">Financeiro' + (empresa ? ' · ' + esc(empresa) : '') + '</span><h1>' + esc(atual[1]) + '</h1></div><span class="grow"></span>';
+    if (st.pagina === 'transacoes') html += '<label class="search">' + IC.search + '<input data-k="busca" placeholder="Buscar histórico, contato, categoria" aria-label="Buscar lançamentos" value="' + esc(st.busca) + '"></label>';
+    if (st.pagina === 'contatos') html += '<label class="search">' + IC.search + '<input data-k="busca-ct" placeholder="Buscar nome, documento, e-mail" aria-label="Buscar contatos" value="' + esc(st.ct.busca) + '"></label>';
+    if (['inicio', 'transacoes', 'contas'].includes(st.pagina) && st.dados && podeCriarAlgo()) html += '<button type="button" class="btn pri" data-act="nova">' + IC.plus + ' Novo lançamento</button>';
+    if (st.pagina === 'contatos' && st.ct.dados && st.ct.dados.podeEditar) html += '<button type="button" class="btn pri" data-act="novo-contato">' + IC.plus + ' Novo contato</button>';
+    html += '<button type="button" class="icon-btn dark" data-act="fechar" title="Fechar" aria-label="Fechar">' + IC.close + '</button></div>' +
+      '<nav class="mdf-tabs" aria-label="Financeiro">' + nav.map((n) => '<button type="button" data-act="pagina" data-p="' + n[0] + '"' + (st.pagina === n[0] ? ' aria-current="page"' : '') + '>' + n[1] + '</button>').join('') + '</nav></header><div class="wrap">';
     if (st.msg) html += '<div class="msg ' + (st.msg.ok ? 'ok' : 'bad') + '" role="status">' + esc(st.msg.texto) + '</div>';
     if (st.erro) html += '<div class="msg bad">' + esc(st.erro) + ' <button type="button" class="btn" data-act="recarregar">Tentar de novo</button></div>';
-    if (st.modulo && st.modulo.master && !st.modulo.contratado) html += '<div class="aviso" style="margin-bottom:12px">Esta empresa não contratou o módulo Transações. Só a conta mestre vê estas telas; marque a contratação em Acessos.</div>';
+    if (st.modulo && st.modulo.master && !st.modulo.contratado) html += '<div class="aviso" style="margin-bottom:12px">Esta empresa não contratou o módulo Lançamentos. Só a conta mestre vê estas telas; marque a contratação em Acessos.</div>';
     const pg = st.pagina;
     const pronto = { inicio: st.dados, transacoes: st.dados, contas: st.dados, contatos: st.ct.dados, relatorios: st.rel.dados, importacoes: st.imp.dados, conciliacoes: st.conc.dados, acessos: st.modulo }[pg];
     if (!pronto) html += st.erro ? '' : '<div class="loading">Carregando…</div>';
@@ -363,107 +412,101 @@
 
   const podeCriarAlgo = () => st.dados && (st.dados.permissoes.receber.criar || st.dados.permissoes.pagar.criar || st.dados.permissoes.contas);
   const contaNome = (id) => { const c = st.dados && st.dados.contas.find((x) => x.id === id); return c ? c.nome : '—'; };
-  const mesLabel = (m) => MESES[Number(m.slice(5, 7)) - 1] + '/' + m.slice(0, 4);
+  const mesLabel = (m) => MESES_LONGOS[Number(m.slice(5, 7)) - 1] + ' de ' + m.slice(0, 4);
   const mesLongo = (m) => MESES_LONGOS[Number(m.slice(5, 7)) - 1] + '/' + m.slice(0, 4);
+  const pct = (a, b) => (b > 0 ? (a / b) * 100 : 100);
 
-  function cardConta() {
+  // Seletor de conta + saldo, usado dentro dos indicadores
+  function seletorConta() {
     const d = st.dados;
+    return '<select class="i mdf-conta" data-k="conta" aria-label="Conta"><option value="">Todas as contas</option>' + d.contas.map((c) => '<option value="' + esc(c.id) + '"' + (c.id === st.conta ? ' selected' : '') + '>' + esc(c.nome) + '</option>').join('') + '</select>';
+  }
+  function indicadores() {
+    const d = st.dados;
+    const R = d.resumo.receitas, D = d.resumo.despesas, p = d.permissoes;
     const atual = st.conta ? d.contas.find((c) => c.id === st.conta) : null;
     const saldo = atual ? atual.saldoAtual : d.contas.reduce((a, c) => a + c.saldoAtual, 0);
     const prev = atual ? atual.previsaoMes : d.contas.reduce((a, c) => a + c.previsaoMes, 0);
-    return '<div class="card conta"><div class="conta-sel"><span class="bank">' + IC.bank + '</span><select data-k="conta" aria-label="Conta">' +
-      '<option value="">Todas as contas</option>' + d.contas.map((c) => '<option value="' + esc(c.id) + '"' + (c.id === st.conta ? ' selected' : '') + '>' + esc(c.nome) + '</option>').join('') + '</select></div>' +
-      '<div class="l"><span class="g">Saldo atual:</span><b class="' + (saldo < 0 ? 'r' : '') + '">' + money(saldo) + '</b></div>' +
-      '<div class="l"><span class="muted">Previsão do mês:</span><b style="font-size:15px">' + money(prev) + '</b></div></div>';
+    const res = R.previsto - D.previsto;
+    const tile = (cls, titulo, valor, linha2, barra) => '<div class="kpi ' + cls + '"><div class="kpi-t">' + titulo + '</div><div class="kpi-v">' + valor + '</div>' + (barra != null ? '<div class="kpi-bar"><i style="width:' + Math.min(100, barra) + '%"></i></div>' : '') + '<div class="kpi-s">' + linha2 + '</div></div>';
+    return '<section class="kpis" aria-label="Indicadores do mês">' +
+      (p.receber.ver ? tile('ent', 'Entradas no mês', money(R.realizado), 'de ' + money(R.previsto) + ' previstas · ' + Math.round(pct(R.realizado, R.previsto)) + '%', pct(R.realizado, R.previsto)) : '') +
+      (p.pagar.ver ? tile('sai', 'Saídas no mês', money(D.realizado), 'de ' + money(D.previsto) + ' previstas · ' + Math.round(pct(D.realizado, D.previsto)) + '%', pct(D.realizado, D.previsto)) : '') +
+      tile('res' + (res < 0 ? ' neg' : ''), 'Saldo previsto do mês', money(res), 'realizado até agora: ' + money(R.realizado - D.realizado)) +
+      '<div class="kpi cx"><div class="kpi-t">Saldo em conta</div>' + seletorConta() + '<div class="kpi-v' + (saldo < 0 ? ' r' : '') + '">' + money(saldo) + '</div><div class="kpi-s">fim do mês (previsão): ' + money(prev) + '</div></div>' +
+      '</section>';
   }
 
   function grafico(serie, altura) {
     if (!serie || !serie.length) return '';
-    const W = 560, H = altura || 230, pl = 84, pr = 10, pt = 12, pb = 26;
+    const W = 640, H = altura || 230, pl = 84, pr = 12, pt = 14, pb = 28;
     const curto = (v) => Number(v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 });
     const vals = serie.map((p) => p.saldo);
     let min = Math.min(0, ...vals), max = Math.max(0, ...vals);
     if (max === min) max = min + 1;
     const x = (i) => pl + (i * (W - pl - pr)) / Math.max(1, serie.length - 1);
     const y = (v) => pt + ((max - v) * (H - pt - pb)) / (max - min);
+    // Barras diárias (positivo/negativo) com a linha do saldo por cima
+    const larg = Math.max(2, (W - pl - pr) / serie.length - 3);
+    const barras = serie.map((p, i) => { const y0 = y(0), y1 = y(p.saldo); return '<rect x="' + (x(i) - larg / 2).toFixed(1) + '" y="' + Math.min(y0, y1).toFixed(1) + '" width="' + larg.toFixed(1) + '" height="' + Math.max(1, Math.abs(y1 - y0)).toFixed(1) + '" fill="' + (p.saldo < 0 ? '#fecdd3' : '#ccfbf1') + '"/>'; }).join('');
     const pts = serie.map((p, i) => x(i).toFixed(1) + ',' + y(p.saldo).toFixed(1)).join(' ');
     const hoje = hojeISO();
     const iHoje = serie.findIndex((p) => p.dia === hoje);
-    const marcas = [0, Math.floor((serie.length - 1) / 2), serie.length - 1];
+    const marcas = [0, Math.floor((serie.length - 1) / 3), Math.floor((serie.length - 1) * 2 / 3), serie.length - 1];
     const fim = serie[serie.length - 1].saldo;
-    return '<svg viewBox="0 0 ' + W + ' ' + H + '" width="100%" role="img" aria-label="Saldo projetado no mês: termina em ' + esc(money(fim)) + '">' +
-      '<line x1="' + pl + '" x2="' + (W - pr) + '" y1="' + y(0) + '" y2="' + y(0) + '" stroke="#d1d5db"/>' +
-      '<line x1="' + pl + '" x2="' + pl + '" y1="' + pt + '" y2="' + (H - pb) + '" stroke="#e5e7eb"/>' +
-      (Math.abs(y(max) - y(0)) > 14 ? '<text x="' + (pl - 6) + '" y="' + (y(max) + 4) + '" text-anchor="end" font-size="13" fill="#6b7280">' + esc(curto(max)) + '</text>' : '') +
-      (min < 0 && Math.abs(y(min) - y(0)) > 14 ? '<text x="' + (pl - 6) + '" y="' + (y(min) + 4) + '" text-anchor="end" font-size="13" fill="#6b7280">' + esc(curto(min)) + '</text>' : '') +
-      '<text x="' + (pl - 6) + '" y="' + (y(0) + 4) + '" text-anchor="end" font-size="13" fill="#6b7280">R$ 0</text>' +
-      (iHoje >= 0 ? '<line x1="' + x(iHoje) + '" x2="' + x(iHoje) + '" y1="' + pt + '" y2="' + (H - pb) + '" stroke="#c7d2fe" stroke-dasharray="3 3"/>' : '') +
-      '<polyline fill="none" stroke="#5b5bd6" stroke-width="2.2" stroke-linejoin="round" points="' + pts + '"/>' +
-      marcas.map((i) => '<text x="' + x(i) + '" y="' + (H - 8) + '" text-anchor="middle" font-size="13" fill="#6b7280">' + ddmm(serie[i].dia) + '</text>').join('') +
+    return '<svg viewBox="0 0 ' + W + ' ' + H + '" width="100%" role="img" aria-label="Saldo projetado no mês: termina em ' + esc(money(fim)) + '">' + barras +
+      '<line x1="' + pl + '" x2="' + (W - pr) + '" y1="' + y(0) + '" y2="' + y(0) + '" stroke="#94a3b8"/>' +
+      (Math.abs(y(max) - y(0)) > 14 ? '<text x="' + (pl - 8) + '" y="' + (y(max) + 4) + '" text-anchor="end" font-size="13" fill="#64748b">' + esc(curto(max)) + '</text>' : '') +
+      (min < 0 && Math.abs(y(min) - y(0)) > 14 ? '<text x="' + (pl - 8) + '" y="' + (y(min) + 4) + '" text-anchor="end" font-size="13" fill="#64748b">' + esc(curto(min)) + '</text>' : '') +
+      '<text x="' + (pl - 8) + '" y="' + (y(0) + 4) + '" text-anchor="end" font-size="13" fill="#64748b">R$ 0</text>' +
+      (iHoje >= 0 ? '<line x1="' + x(iHoje) + '" x2="' + x(iHoje) + '" y1="' + pt + '" y2="' + (H - pb) + '" stroke="#0f172a" stroke-dasharray="2 4"/><text x="' + x(iHoje) + '" y="' + (pt + 2) + '" text-anchor="middle" font-size="11" fill="#0f172a">hoje</text>' : '') +
+      '<polyline fill="none" stroke="#0f766e" stroke-width="2.4" stroke-linejoin="round" points="' + pts + '"/>' +
+      marcas.map((i) => '<text x="' + x(i) + '" y="' + (H - 8) + '" text-anchor="middle" font-size="13" fill="#64748b">' + ddmm(serie[i].dia) + '</text>').join('') +
       '</svg>';
   }
 
-  function anel(pct, cor, rotulo) {
-    const r = 54, c = 2 * Math.PI * r;
-    const p = Math.max(0, Math.min(100, pct));
-    return '<div class="ring"><svg width="140" height="140" viewBox="0 0 140 140" role="img" aria-label="' + rotulo + ': ' + Math.round(p) + '%">' +
-      '<circle cx="70" cy="70" r="' + r + '" fill="none" stroke="#eef0f3" stroke-width="10"/>' +
-      '<circle cx="70" cy="70" r="' + r + '" fill="none" stroke="' + cor + '" stroke-width="10" stroke-linecap="round" stroke-dasharray="' + (c * p / 100).toFixed(1) + ' ' + c.toFixed(1) + '" transform="rotate(-90 70 70)"/>' +
-      '<text x="70" y="62" text-anchor="middle" font-size="14" font-weight="600" fill="' + cor + '">' + rotulo + '</text>' +
-      '<text x="70" y="88" text-anchor="middle" font-size="22" fill="#111827">' + Math.round(p) + '%</text></svg></div>';
-  }
-  const pct = (a, b) => (b > 0 ? (a / b) * 100 : 100);
-
-  function calendario() {
+  // Agenda: próximos lançamentos em aberto (a partir de hoje) e os vencidos do mês
+  function agenda() {
     const d = st.dados;
-    const [y, m] = st.mes.split('-').map(Number);
-    const primeiro = new Date(Date.UTC(y, m - 1, 1));
-    const offset = (primeiro.getUTCDay() + 6) % 7; // segunda = 0
-    const inicio = new Date(Date.UTC(y, m - 1, 1 - offset));
     const hoje = hojeISO();
-    let rows = '';
-    for (let w = 0; w < 6; w++) {
-      let tds = '';
-      for (let k = 0; k < 7; k++) {
-        const dt = new Date(inicio.getTime() + (w * 7 + k) * 86400000);
-        const iso = dt.toISOString().slice(0, 10);
-        const fora = iso.slice(0, 7) !== st.mes;
-        const c = !fora && d.calendario[iso];
-        const dots = c ? '<span class="dots">' + (c.receitas ? '<i style="background:#10b981"></i>' : '') + (c.despesas ? '<i style="background:#f43f5e"></i>' : '') + (c.transferencias ? '<i style="background:#5b5bd6"></i>' : '') + '</span>' : '';
-        const titulo = c ? ((c.receitas ? c.receitas + ' recebimento(s) ' : '') + (c.despesas ? c.despesas + ' despesa(s) ' : '') + (c.transferencias ? c.transferencias + ' transferência(s)' : '')).trim() : '';
-        tds += '<td><button type="button" class="' + (fora ? 'out' : '') + (iso === hoje ? ' hoje' : '') + '"' + (fora ? ' tabindex="-1"' : ' data-act="dia" data-dia="' + iso + '"') + (titulo ? ' title="' + esc(titulo) + '"' : '') + ' aria-label="' + ddmmaaaa(iso) + (titulo ? ', ' + esc(titulo) : '') + '">' + dt.getUTCDate() + dots + '</button></td>';
-      }
-      rows += '<tr>' + tds + '</tr>';
-      if (w >= 3 && new Date(inicio.getTime() + ((w + 1) * 7) * 86400000).toISOString().slice(0, 7) !== st.mes) break;
+    const abertos = d.transacoes.filter((t) => !t.pago).sort((a, b) => a.data.localeCompare(b.data));
+    const vencidos = abertos.filter((t) => t.data < hoje);
+    const proximos = abertos.filter((t) => t.data >= hoje).slice(0, 8);
+    const porDia = new Map();
+    for (const t of proximos) { if (!porDia.has(t.data)) porDia.set(t.data, []); porDia.get(t.data).push(t); }
+    let h = '<div class="card agenda"><div class="card-h"><h3>Agenda de vencimentos</h3><p>' + mesLongo(st.mes) + ' · em aberto</p></div><div class="card-b">';
+    if (vencidos.length) h += '<button type="button" class="ag-venc" data-act="ag-vencidos">' + vencidos.length + ' lançamento(s) vencido(s) · ' + money(vencidos.reduce((a, t) => a + t.valor - t.valorPago, 0)) + '</button>';
+    if (!porDia.size) h += '<p class="muted" style="margin:6px 0">Nada a vencer no restante do mês.</p>';
+    for (const [dia, itens] of porDia) {
+      h += '<div class="ag-dia"><button type="button" class="ag-data" data-act="dia" data-dia="' + dia + '" aria-label="Ver lançamentos de ' + ddmmaaaa(dia) + '"><b>' + dia.slice(8, 10) + '</b><span>' + MESES[Number(dia.slice(5, 7)) - 1] + '</span></button><ul>' +
+        itens.map((t) => '<li><span class="trunc-i">' + esc(t.descricao) + '</span><b class="' + (t.tipo === 'receita' ? 'g' : 'r') + '">' + (t.tipo === 'receita' ? '+' : '−') + money(t.valor - t.valorPago) + '</b></li>').join('') + '</ul></div>';
     }
-    return '<div class="card cal"><div class="cal-h"><h3>' + MESES_LONGOS[m - 1] + ' - ' + y + '</h3><div style="display:flex;gap:6px">' +
-      '<button type="button" class="icon-btn" data-act="mes" data-n="-1" aria-label="Mês anterior">' + IC.left + '</button><button type="button" class="icon-btn" data-act="mes" data-n="1" aria-label="Próximo mês">' + IC.right + '</button></div></div>' +
-      '<table data-sort-enhanced="true"><thead><tr><th>Seg</th><th>Ter</th><th>Qua</th><th>Qui</th><th>Sex</th><th>Sáb</th><th>Dom</th></tr></thead><tbody>' + rows + '</tbody></table>' +
-      '<div class="legend"><span><i style="background:#10b981"></i>Recebimentos</span><span><i style="background:#f43f5e"></i>Despesas</span><span><i style="background:#5b5bd6"></i>Transferências</span></div></div>';
+    return h + '</div></div>';
   }
 
   function renderInicio() {
     const d = st.dados;
     const R = d.resumo.receitas, D = d.resumo.despesas;
-    const contaTxt = st.conta ? contaNome(st.conta) : 'Todas as contas';
-    const res = R.previsto - D.previsto;
-    const resReal = R.realizado - D.realizado;
+    const contaTxt = st.conta ? contaNome(st.conta) : 'todas as contas';
     const maxTop = Math.max(1, ...d.topGastos.map((t) => t.valor));
-    return '<div class="grid-inicio">' +
-      '<div class="card"><div class="card-h"><h3>Previsto / realizado no mês</h3><p>' + mesLongo(st.mes) + ' - ' + esc(contaTxt) + '</p></div><div class="card-b">' +
-      '<div class="rings">' + anel(pct(R.realizado, R.previsto), '#10b981', 'Recebido') + anel(pct(D.realizado, D.previsto), '#f43f5e', 'Pago') + '</div>' +
-      '<div class="kv"><div><h4>Recebimentos</h4><div class="l g"><span>Recebido</span><span>' + money(R.realizado) + '</span></div><div class="l g"><span>Falta</span><span>' + money(R.previsto - R.realizado) + '</span></div><div class="l t"><span>Previsto</span><span>' + money(R.previsto) + '</span></div></div>' +
-      '<div><h4>Despesas</h4><div class="l r"><span>Pago</span><span>' + money(D.realizado) + '</span></div><div class="l r"><span>Falta</span><span>' + money(D.previsto - D.realizado) + '</span></div><div class="l t"><span>Previsto</span><span>' + money(D.previsto) + '</span></div></div></div></div></div>' +
-      '<div class="card"><div class="card-h"><h3>Fluxo de caixa</h3><p>' + mesLongo(st.mes) + ' - ' + esc(contaTxt) + ' · saldo projetado dia a dia</p></div><div class="card-b">' + grafico(d.serie, 260) + '</div></div>' +
-      '<div class="side">' + cardConta() + calendario() + '</div>' +
-      '<div class="card"><div class="card-h"><h3>Resultado do mês</h3><p>' + mesLongo(st.mes) + ' - ' + esc(contaTxt) + '</p></div><div class="card-b">' +
-      '<div class="kv"><div><div class="l"><span>Resultado previsto</span><b class="' + (res < 0 ? 'r' : 'g') + '">' + money(res) + '</b></div><div class="l"><span>Resultado realizado</span><b class="' + (resReal < 0 ? 'r' : 'g') + '">' + money(resReal) + '</b></div></div>' +
-      '<div><div class="bar-line"><span style="width:92px">Recebimentos</span><span class="bar"><i style="width:' + pct(R.previsto, Math.max(R.previsto, D.previsto)) + '%;background:#10b981"></i></span></div>' +
-      '<div class="bar-line" style="margin-top:8px"><span style="width:92px">Despesas</span><span class="bar"><i style="width:' + pct(D.previsto, Math.max(R.previsto, D.previsto)) + '%;background:#f43f5e"></i></span></div></div></div>' +
-      '<p style="margin:14px 0 0"><button type="button" class="btn" data-act="pagina" data-p="transacoes">Ver as transações do mês</button></p></div></div>' +
-      '<div class="card top5"><div class="card-h"><h3>Top 5 gastos do mês anterior</h3><p>' + mesLongo(somaMes(st.mes, -1)) + ' - ' + esc(contaTxt) + '</p></div><div class="card-b">' +
-      (d.topGastos.length ? d.topGastos.map((t) => '<div class="it"><div class="l"><span>' + esc(t.categoria) + '</span><span class="r">' + money(t.valor) + '</span></div><div class="bar"><i style="width:' + (t.valor / maxTop * 100) + '%;background:#f43f5e"></i></div></div>').join('') : '<p class="muted">Nenhuma despesa no mês anterior.</p>') +
+    const maxPrev = Math.max(R.previsto, D.previsto, 1);
+    const linha = (rot, real, prev, cor) => '<div class="rp"><div class="rp-l"><span>' + rot + '</span><span><b>' + money(real) + '</b> / ' + money(prev) + '</span></div><div class="rp-bar"><i class="prev" style="width:' + (prev / maxPrev * 100) + '%"></i><i class="real ' + cor + '" style="width:' + (real / maxPrev * 100) + '%"></i></div></div>';
+    return indicadores() +
+      '<div class="toolbar"><div class="mes">' + navegadorMes() + '</div></div>' +
+      '<div class="grid-painel">' +
+      '<div class="card"><div class="card-h"><h3>Evolução do saldo</h3><p>' + mesLongo(st.mes) + ' · ' + esc(contaTxt) + ' · pagos pela data do pagamento, em aberto pelo vencimento</p></div><div class="card-b">' + grafico(d.serie, 250) + '</div></div>' +
+      agenda() +
+      '<div class="card"><div class="card-h"><h3>Realizado × previsto</h3><p>barra clara: previsto · barra escura: realizado</p></div><div class="card-b">' +
+      linha('Entradas', R.realizado, R.previsto, 'g') + linha('Saídas', D.realizado, D.previsto, 'r') +
+      '<p style="margin:14px 0 0"><button type="button" class="btn" data-act="pagina" data-p="transacoes">Abrir os lançamentos do mês</button></p></div></div>' +
+      '<div class="card top5"><div class="card-h"><h3>Maiores saídas por categoria</h3><p>' + mesLongo(somaMes(st.mes, -1)) + ' (mês anterior)</p></div><div class="card-b">' +
+      (d.topGastos.length ? d.topGastos.map((t, i) => '<div class="it"><div class="l"><span><span class="rk">' + (i + 1) + '</span>' + esc(t.categoria) + '</span><span>' + money(t.valor) + '</span></div><div class="bar"><i style="width:' + (t.valor / maxTop * 100) + '%"></i></div></div>').join('') : '<p class="muted">Sem saídas no mês anterior.</p>') +
       '</div></div></div>';
+  }
+
+  function navegadorMes() {
+    return '<button type="button" class="icon-btn" data-act="mes" data-n="-1" aria-label="Mês anterior">' + IC.left + '</button><span class="lbl" aria-live="polite">' + mesLabel(st.mes) + '</span><button type="button" class="icon-btn" data-act="mes" data-n="1" aria-label="Próximo mês">' + IC.right + '</button>' +
+      (st.mes !== hojeISO().slice(0, 7) ? '<button type="button" class="btn sm" data-act="mes-atual">Mês atual</button>' : '');
   }
 
   function listaFiltrada() {
@@ -485,101 +528,99 @@
     return lista;
   }
 
+  function situacao(t) {
+    const rec = t.tipo === 'receita';
+    if (t.pago) return ['ok', rec ? 'Recebido' : 'Pago'];
+    if (t.parcial) return ['parc', 'Parcial'];
+    if (t.data < hojeISO()) return ['venc', 'Vencido'];
+    return ['aberto', 'Em aberto'];
+  }
+
   function renderTransacoes() {
     const d = st.dados;
-    const R = d.resumo.receitas, D = d.resumo.despesas;
     const p = d.permissoes;
-    let h = '<div class="resumo"><div class="res-prev"><div class="lbl">Resultado previsto no mês</div><div class="val ' + (R.previsto - D.previsto < 0 ? 'r' : '') + '">' + money(R.previsto - D.previsto) + '</div>' +
-      '<div class="pb">' +
-      (p.receber.ver ? '<div><h4>Recebimentos</h4><div class="bar-line"><span class="bar"><i style="width:' + pct(R.realizado, R.previsto) + '%;background:#10b981"></i></span><span class="g">' + pct(R.realizado, R.previsto).toFixed(2).replace('.', ',') + '%</span></div><div class="row g"><span>Recebido</span><span>' + money(R.realizado) + '</span></div><div class="row muted"><span>Previsto</span><span>' + money(R.previsto) + '</span></div></div>' : '') +
-      (p.pagar.ver ? '<div><h4>Despesas</h4><div class="bar-line"><span class="bar"><i style="width:' + pct(D.realizado, D.previsto) + '%;background:#f43f5e"></i></span><span class="r">' + pct(D.realizado, D.previsto).toFixed(2).replace('.', ',') + '%</span></div><div class="row r"><span>Pago</span><span>' + money(D.realizado) + '</span></div><div class="row muted"><span>Previsto</span><span>' + money(D.previsto) + '</span></div></div>' : '') +
-      '</div></div><div>' + grafico(d.serie, 170) + '</div>' + cardConta() + '</div>';
-
-    h += '<div class="toolbar"><div class="mes"><button type="button" class="icon-btn" data-act="mes" data-n="-1" aria-label="Mês anterior">' + IC.left + '</button><span class="lbl" aria-live="polite">' + mesLabel(st.mes) + '</span><button type="button" class="icon-btn" data-act="mes" data-n="1" aria-label="Próximo mês">' + IC.right + '</button></div>';
+    let h = indicadores();
+    const modo = st.trf ? 'trf' : st.rec && st.des ? 'todos' : st.rec ? 'rec' : 'des';
+    const seg = [['todos', 'Tudo'], ['rec', 'Entradas'], ['des', 'Saídas'], ['trf', 'Transferências']].filter((x) => (x[0] !== 'rec' || p.receber.ver) && (x[0] !== 'des' || p.pagar.ver) && (x[0] !== 'todos' || (p.receber.ver && p.pagar.ver)));
+    h += '<div class="toolbar"><div class="mes">' + navegadorMes() + '</div>';
     if (st.dia) h += '<button type="button" class="chip dia" data-act="limpar-dia" aria-label="Remover filtro do dia">Dia ' + ddmm(st.dia) + ' ✕</button>';
-    h += '<span class="grow"></span>';
-    if (p.receber.ver) h += '<button type="button" class="chip rec" data-act="chip" data-c="rec" aria-pressed="' + (!st.trf && st.rec) + '">Recebimentos</button>';
-    if (p.pagar.ver) h += '<button type="button" class="chip des" data-act="chip" data-c="des" aria-pressed="' + (!st.trf && st.des) + '">Despesas</button>';
-    h += '<button type="button" class="chip trf" data-act="chip" data-c="trf" aria-pressed="' + st.trf + '" style="margin-left:14px">Transferências</button></div>';
-
-    h += '<div class="card">';
+    h += '<span class="grow"></span><div class="seg-tipo" role="group" aria-label="Tipo de lançamento">' + seg.map((x) => '<button type="button" data-act="tipo" data-t="' + x[0] + '" aria-pressed="' + (modo === x[0]) + '">' + x[1] + '</button>').join('') + '</div>';
+    if (!st.trf) h += '<button type="button" class="btn" data-act="filtros" aria-expanded="' + st.mostrarFiltros + '">' + IC.filter + ' Filtros' + (Object.values(st.filtros).some(Boolean) ? ' •' : '') + '</button>';
+    h += '</div><div class="card">';
     if (st.trf) return h + renderTransferencias() + '</div>';
-
-    h += '<div style="display:flex;justify-content:flex-end;padding:10px 14px;border-bottom:1px solid #e5e7eb"><button type="button" class="btn" data-act="filtros" aria-expanded="' + st.mostrarFiltros + '">' + IC.filter + ' Filtrar' + (Object.values(st.filtros).some(Boolean) ? ' •' : '') + '</button></div>';
     if (st.mostrarFiltros) {
       const cats = [...new Set(d.transacoes.map((t) => t.categoria))].sort();
       const cont = [...new Set(d.transacoes.map((t) => t.contato).filter(Boolean))].sort();
       const modos = [...new Set(d.transacoes.map((t) => t.modo).filter(Boolean))].sort();
       const sel = (k, rot, ops, labels) => '<label class="f">' + rot + '<select class="i" data-k="f-' + k + '"><option value="">Todos</option>' + ops.map((o, i) => '<option value="' + esc(o) + '"' + (st.filtros[k] === o ? ' selected' : '') + '>' + esc(labels ? labels[i] : o) + '</option>').join('') + '</select></label>';
-      h += '<div class="filtros">' + sel('categoria', 'Categoria', cats) + sel('contato', 'Contato', cont) + sel('situacao', 'Situação', ['pagos', 'nao_pagos', 'vencidos'], ['Pagos', 'Não pagos', 'Vencidos']) + sel('modo', 'Modo de pagamento', modos) +
-        '<label class="f" style="justify-content:flex-end"><button type="button" class="btn" data-act="limpar-filtros">Limpar</button></label></div>';
+      h += '<div class="filtros">' + sel('categoria', 'Categoria', cats) + sel('contato', 'Cliente / fornecedor', cont) + sel('situacao', 'Situação', ['pagos', 'nao_pagos', 'vencidos'], ['Pagos / recebidos', 'Em aberto', 'Vencidos']) + sel('modo', 'Forma de pagamento', modos) +
+        '<label class="f" style="justify-content:flex-end"><button type="button" class="btn" data-act="limpar-filtros">Limpar filtros</button></label></div>';
     }
     const lista = listaFiltrada();
     if (st.sel.size) {
       const podeB = p.receber.baixar || p.pagar.baixar, podeX = p.receber.excluir || p.pagar.excluir;
       h += '<div class="lote" role="toolbar" aria-label="Ações nos selecionados"><b>' + st.sel.size + ' selecionado(s)</b>' +
-        (podeB ? '<button type="button" class="btn" data-act="lote-pagar">Marcar como pago</button><button type="button" class="btn" data-act="lote-despagar">Marcar como não pago</button>' : '') +
+        (podeB ? '<button type="button" class="btn" data-act="lote-pagar">Dar baixa</button><button type="button" class="btn" data-act="lote-despagar">Desfazer baixa</button>' : '') +
         (podeX ? '<button type="button" class="btn danger" data-act="lote-excluir">Excluir</button>' : '') +
         '<button type="button" class="btn" data-act="lote-limpar">Limpar seleção</button></div>';
     }
-    const so = st.rec && !st.des ? 'rec' : !st.rec && st.des ? 'des' : '';
-    const colContato = so === 'rec' ? 'Recebido de' : so === 'des' ? 'Pago a' : 'Recebido de / Pago a';
-    const th = (campo, rot) => '<th><button type="button" data-act="ordem" data-campo="' + campo + '">' + rot + (st.ordem.campo === campo ? (st.ordem.asc ? ' ▴' : ' ▾') : ' ↕') + '</button></th>';
+    const th = (campo, rot, cls) => '<th' + (cls ? ' class="' + cls + '"' : '') + '><button type="button" data-act="ordem" data-campo="' + campo + '">' + rot + (st.ordem.campo === campo ? (st.ordem.asc ? ' ↑' : ' ↓') : '') + '</button></th>';
     const todosSel = lista.length > 0 && lista.every((t) => st.sel.has(t.id));
     h += '<div class="tbl-wrap"><table class="tx" data-sort-enhanced="true"><thead><tr><th style="width:34px"><input type="checkbox" data-act="sel-todos" aria-label="Selecionar todos"' + (todosSel ? ' checked' : '') + '></th>' +
-      th('data', 'Data') + th('descricao', 'Descrição') + th('contato', colContato) + th('categoria', 'Categoria') + th('valor', 'Valor') + '<th>Tipo pagamento</th><th>Modo de pagamento</th><th>Pago?</th></tr></thead><tbody>';
-    const podeNova = (st.rec && p.receber.criar) || (st.des && p.pagar.criar);
-    if (podeNova) h += '<tr><td colspan="9" class="nova"><button type="button" data-act="nova">+ Nova transação</button></td></tr>';
-    const hoje = hojeISO();
+      th('data', 'Vencimento') + th('descricao', 'Histórico') + th('contato', 'Cliente / fornecedor') + th('categoria', 'Categoria') + '<th>Forma</th><th>Condição</th>' + th('valor', 'Valor', 'n') + '<th>Situação</th></tr></thead><tbody>';
     for (const t of lista) {
       const rec = t.tipo === 'receita';
       const podeB = rec ? p.receber.baixar : p.pagar.baixar;
-      const vencido = !t.pago && t.data < hoje;
+      const [cls, rot] = situacao(t);
       h += '<tr class="lin' + (st.sel.has(t.id) ? ' sel' : '') + '" data-act="abrir" data-id="' + esc(t.id) + '">' +
         '<td><input type="checkbox" data-act="sel" data-id="' + esc(t.id) + '" aria-label="Selecionar ' + esc(t.descricao) + '"' + (st.sel.has(t.id) ? ' checked' : '') + '></td>' +
-        '<td style="white-space:nowrap' + (vencido ? ';color:#be123c' : '') + '"' + (vencido ? ' title="Vencido"' : '') + '>' + ddmm(t.data) + '</td>' +
-        '<td class="trunc" title="' + esc(t.descricao + (t.observacao ? ' — ' + t.observacao : '')) + '">' + esc(t.descricao) + '</td>' +
-        '<td class="trunc c" title="' + esc(t.contato) + '">' + esc(t.contato || '—') + '</td><td><span class="tag">' + esc(t.categoria) + '</span></td>' +
-        '<td style="white-space:nowrap" class="' + (rec ? 'g' : 'r') + '">' + (rec ? '' : '- ') + money(t.valor) + '</td>' +
-        '<td style="white-space:nowrap">' + esc(t.tipoPagamento) + '</td><td>' + esc(t.modo || '—') + '</td>' +
-        '<td><button type="button" class="sw' + (rec ? '' : ' des') + '" role="switch" aria-checked="' + t.pago + '" data-act="pago" data-id="' + esc(t.id) + '" aria-label="' + (rec ? 'Recebido' : 'Pago') + '"' + (podeB ? '' : ' disabled') + ' title="' + (t.pago ? (rec ? 'Recebido em ' : 'Pago em ') + ddmmaaaa(t.dataPagamento) : 'Marcar como ' + (rec ? 'recebido' : 'pago')) + '"></button>' + (t.parcial ? '<span class="sw-parcial">parcial: ' + money(t.valorPago) + '</span>' : '') + '</td></tr>';
+        '<td style="white-space:nowrap">' + ddmmaaaa(t.data) + '</td>' +
+        '<td class="trunc" title="' + esc(t.descricao + (t.observacao ? ' — ' + t.observacao : '')) + '"><span class="tipo-dot ' + (rec ? 'g' : 'r') + '" aria-hidden="true"></span>' + esc(t.descricao) + '</td>' +
+        '<td class="trunc c" title="' + esc(t.contato) + '">' + esc(t.contato || '—') + '</td><td>' + esc(t.categoria) + '</td>' +
+        '<td>' + esc(t.modo || '—') + '</td><td style="white-space:nowrap" class="muted">' + esc(t.tipoPagamento) + '</td>' +
+        '<td class="n ' + (rec ? 'g' : 'r') + '">' + (rec ? '+ ' : '− ') + money(t.valor) + '</td>' +
+        '<td><button type="button" class="sit ' + cls + '" role="switch" aria-checked="' + t.pago + '" data-act="pago" data-id="' + esc(t.id) + '"' + (podeB ? '' : ' disabled') + ' title="' + (t.pago ? (rec ? 'Recebido em ' : 'Pago em ') + ddmmaaaa(t.dataPagamento) + ' · clique para desfazer' : 'Clique para dar baixa hoje') + '">' + rot + (t.parcial ? ' · ' + money(t.valorPago) : '') + '</button></td></tr>';
     }
     h += '</tbody></table></div>';
-    if (!lista.length) h += '<div class="vazio"><b>' + (d.transacoes.length ? 'Nada encontrado' : 'A lista está vazia') + '</b>' + (d.transacoes.length ? 'Mude os filtros ou a pesquisa.' : 'Nenhuma transação em ' + mesLongo(st.mes) + '.') + '</div>';
+    if (!lista.length) {
+      const podeNova = (st.rec && p.receber.criar) || (st.des && p.pagar.criar);
+      h += '<div class="vazio"><b>' + (d.transacoes.length ? 'Nenhum lançamento com esses filtros' : 'Nenhum lançamento em ' + mesLabel(st.mes)) + '</b>' + (d.transacoes.length ? 'Ajuste os filtros ou a busca.' : 'Use "Novo lançamento" para registrar uma entrada ou saída.') + (podeNova && !d.transacoes.length ? '<p><button type="button" class="btn pri" data-act="nova">' + IC.plus + ' Novo lançamento</button></p>' : '') + '</div>';
+    }
     const rs = lista.filter((t) => t.tipo === 'receita'), ds = lista.filter((t) => t.tipo === 'despesa');
     const s = (l, c) => l.reduce((a, t) => a + t[c], 0);
     const total = s(rs, 'valor') - s(ds, 'valor');
-    h += '<div class="totais"><div class="box"><div class="l t"><span>Total</span><span class="' + (total < 0 ? 'r' : '') + '">' + money(total) + '</span></div>' +
-      (rs.length || st.rec ? '<div class="l g"><span>Recebido</span><span>' + money(s(rs, 'valorPago')) + '</span></div><div class="l muted"><span>A receber</span><span>' + money(s(rs, 'valor') - s(rs, 'valorPago')) + '</span></div>' : '') +
-      (ds.length || st.des ? '<div class="l r"><span>Pago</span><span>' + money(s(ds, 'valorPago')) + '</span></div><div class="l muted"><span>A pagar</span><span>' + money(s(ds, 'valor') - s(ds, 'valorPago')) + '</span></div>' : '') +
-      '</div></div>';
+    const aberto = s(rs, 'valor') - s(rs, 'valorPago') - (s(ds, 'valor') - s(ds, 'valorPago'));
+    h += '<div class="rodape-tot"><span>' + lista.length + ' lançamento(s)</span>' +
+      (rs.length ? '<span>Entradas <b class="g">' + money(s(rs, 'valor')) + '</b></span>' : '') + (ds.length ? '<span>Saídas <b class="r">' + money(s(ds, 'valor')) + '</b></span>' : '') +
+      '<span>Em aberto <b>' + money(aberto) + '</b></span><span class="tot">Saldo <b class="' + (total < 0 ? 'r' : 'g') + '">' + money(total) + '</b></span></div>';
     return h + '</div>';
   }
 
   function renderTransferencias() {
     const d = st.dados;
-    let h = '<div class="tbl-wrap"><table class="tx" data-sort-enhanced="true"><thead><tr><th>Data</th><th>Descrição</th><th>De</th><th>Para</th><th>Valor</th><th></th></tr></thead><tbody>';
-    if (d.permissoes.contas) h += '<tr><td colspan="6" class="nova"><button type="button" data-act="nova-trf">+ Nova transferência</button></td></tr>';
+    let h = '';
+    if (d.permissoes.contas) h += '<div style="display:flex;justify-content:flex-end;padding:10px 14px;border-bottom:1px solid #e2e8f0"><button type="button" class="btn pri" data-act="nova-trf">' + IC.plus + ' Nova transferência</button></div>';
+    h += '<div class="tbl-wrap"><table class="tx" data-sort-enhanced="true"><thead><tr><th>Data</th><th>Histórico</th><th>Saiu de</th><th>Entrou em</th><th class="n">Valor</th><th></th></tr></thead><tbody>';
     for (const t of d.transferencias) {
-      h += '<tr><td>' + ddmm(t.data) + '</td><td>' + esc(t.descricao) + '</td><td>' + esc(contaNome(t.deContaId)) + '</td><td>' + esc(contaNome(t.paraContaId)) + '</td><td style="color:#5b5bd6">' + money(t.valor) + '</td>' +
-        '<td>' + (d.permissoes.contas ? '<button type="button" class="btn danger" data-act="excluir-trf" data-id="' + esc(t.recordId) + '">Excluir</button>' : '') + '</td></tr>';
+      h += '<tr><td>' + ddmmaaaa(t.data) + '</td><td>' + esc(t.descricao) + '</td><td>' + esc(contaNome(t.deContaId)) + '</td><td>' + esc(contaNome(t.paraContaId)) + '</td><td class="n">' + money(t.valor) + '</td>' +
+        '<td>' + (d.permissoes.contas ? '<button type="button" class="btn danger sm" data-act="excluir-trf" data-id="' + esc(t.recordId) + '">Excluir</button>' : '') + '</td></tr>';
     }
     h += '</tbody></table></div>';
-    if (!d.transferencias.length) h += '<div class="vazio"><b>Nenhuma transferência</b>Transferências entre contas em ' + mesLongo(st.mes) + ' aparecem aqui.</div>';
+    if (!d.transferencias.length) h += '<div class="vazio"><b>Nenhuma transferência em ' + mesLabel(st.mes) + '</b>Movimentações entre suas contas (ex.: do caixa para o banco).</div>';
     return h;
   }
 
   function renderContas() {
     const d = st.dados;
-    let h = '<p class="muted" style="margin:0 0 14px">Contas bancárias, carteira e caixa. O saldo atual é o saldo inicial mais tudo o que foi recebido e pago em cada conta até hoje.</p><div class="contas-grid">';
+    let h = '<div class="card"><div class="card-h" style="display:flex;align-items:center;gap:10px;padding-bottom:12px"><div><h3>Contas e caixas</h3><p>Saldo atual = saldo inicial + tudo o que entrou e saiu de cada conta até hoje.</p></div><span class="grow"></span>' +
+      (d.permissoes.contas ? '<button type="button" class="btn pri" data-act="nova-conta">' + IC.plus + ' Nova conta</button>' : '') + '</div>' +
+      '<div class="tbl-wrap"><table class="tx" data-sort-enhanced="true"><thead><tr><th>Conta</th><th>Tipo</th><th class="n">Saldo inicial</th><th class="n">Saldo atual</th><th class="n">Previsão no fim do mês</th><th></th></tr></thead><tbody>';
     for (const c of d.contas) {
-      h += '<div class="card conta-card"><h3>' + esc(c.nome) + (c.principal ? ' <span class="tag">principal</span>' : '') + '</h3><div class="muted" style="font-size:13px">' + esc(TIPOS_CONTA[c.tipo] || 'Conta') + (c.banco ? ' · ' + esc(c.banco) : '') + '</div>' +
-        '<div class="s ' + (c.saldoAtual < 0 ? 'r' : '') + '">' + money(c.saldoAtual) + '</div><div class="muted" style="font-size:13px">Saldo atual · previsão do mês ' + money(c.previsaoMes) + '</div>' +
-        '<div class="muted" style="font-size:12.5px;margin-top:6px">Saldo inicial ' + money(c.saldoInicial) + (c.dataSaldoInicial ? ' em ' + ddmmaaaa(c.dataSaldoInicial) : '') + '</div>' +
-        (d.permissoes.contas ? '<div style="display:flex;gap:8px;margin-top:12px"><button type="button" class="btn" data-act="editar-conta" data-id="' + esc(c.id) + '">Editar</button>' + (c.principal ? '' : '<button type="button" class="btn danger" data-act="desativar-conta" data-id="' + esc(c.id) + '">Desativar</button>') + '</div>' : '') + '</div>';
+      h += '<tr><td><b>' + esc(c.nome) + '</b>' + (c.principal ? ' <span class="tag">principal</span>' : '') + (c.banco ? '<div class="muted" style="font-size:12.5px">' + esc(c.banco) + '</div>' : '') + '</td><td>' + esc(TIPOS_CONTA[c.tipo] || 'Conta') + '</td>' +
+        '<td class="n">' + money(c.saldoInicial) + (c.dataSaldoInicial ? '<div class="muted" style="font-size:12px">em ' + ddmmaaaa(c.dataSaldoInicial) + '</div>' : '') + '</td><td class="n ' + (c.saldoAtual < 0 ? 'r' : '') + '"><b>' + money(c.saldoAtual) + '</b></td><td class="n">' + money(c.previsaoMes) + '</td>' +
+        '<td style="white-space:nowrap">' + (d.permissoes.contas ? '<button type="button" class="btn sm" data-act="editar-conta" data-id="' + esc(c.id) + '">Editar</button>' + (c.principal ? '' : ' <button type="button" class="btn danger sm" data-act="desativar-conta" data-id="' + esc(c.id) + '">Desativar</button>') : '') + '</td></tr>';
     }
-    if (d.permissoes.contas) h += '<button type="button" class="card conta-card" data-act="nova-conta" style="border:2px dashed #8b8bf0;color:#5b5bd6;font:inherit;font-size:15px;cursor:pointer;min-height:150px">+ Nova conta</button>';
-    return h + '</div>';
+    return h + '</tbody></table></div></div>';
   }
 
   // ---------------------------------------------------------------------------
@@ -605,14 +646,13 @@
   function renderContatos() {
     const d = st.ct.dados;
     const r = d.resumo;
-    const card = (cls, ic, titulo, valor, extra, c) => '<div class="card ct-card"><div class="ct-top"><span class="ct-ic">' + ic + '</span><div><div class="muted">' + titulo + '</div><div class="ct-v ' + cls + '">' + valor + (extra !== '' ? ' <small class="muted">(' + extra + ')</small>' : '') + '</div></div></div>' +
-      '<button type="button" class="ct-mais" data-act="ct-cartao" data-c="' + c + '" aria-pressed="' + (st.ct.cartao === c) + '">' + (st.ct.cartao === c ? 'Mostrar todos' : 'Ver mais') + '</button></div>';
-    let h = '<div class="ct-cards">' + card('g', IC.userPlus, 'Deve para mim', money(r.deveParaMim.valor), r.deveParaMim.contatos, 'deve') +
-      card('r', IC.userMinus, 'Eu devo', money(r.euDevo.valor), r.euDevo.contatos, 'devo') + card('', IC.cake, 'Aniversariantes nesse mês', String(r.aniversariantes), '', 'aniv') + '</div>';
+    const card = (cls, titulo, valor, extra, c) => '<button type="button" class="kpi ct-card ' + cls + '" data-act="ct-cartao" data-c="' + c + '" aria-pressed="' + (st.ct.cartao === c) + '"><span class="kpi-t">' + titulo + '</span><span class="kpi-v">' + valor + '</span><span class="kpi-s">' + extra + ' · ' + (st.ct.cartao === c ? 'filtro ativo, clique para mostrar todos' : 'clique para listar') + '</span></button>';
+    let h = '<div class="kpis">' + card('ent', 'A receber de contatos', money(r.deveParaMim.valor), r.deveParaMim.contatos + ' contato(s)', 'deve') +
+      card('sai', 'A pagar a contatos', money(r.euDevo.valor), r.euDevo.contatos + ' contato(s)', 'devo') + card('res', 'Aniversários no mês', String(r.aniversariantes), 'contatos com data de nascimento', 'aniv') + '</div>';
     h += '<div class="pills" role="group" aria-label="Tipo do contato">' + [['todos', 'Todos'], ...Object.entries(TIPOS_CT)].map(([k, l]) => '<button type="button" class="pill" data-act="ct-tipo" data-t="' + k + '" aria-pressed="' + (st.ct.tipo === k) + '">' + l + '</button>').join('') + '</div>';
     const lista = contatosFiltrados();
     const th = (campo, rot) => '<th><button type="button" data-act="ct-ordem" data-campo="' + campo + '">' + rot + (st.ct.ordem.campo === campo ? (st.ct.ordem.asc ? ' ▴' : ' ▾') : ' ↕') + '</button></th>';
-    h += '<div class="card"><div class="tbl-wrap"><table class="tx" data-sort-enhanced="true"><thead><tr>' + th('nome', 'Nome') + th('tipo', 'Tipo do contato') + '<th>CPF/CNPJ</th><th>Email</th><th>Telefone</th>' + th('aReceber', 'Deve para mim') + th('aPagar', 'Eu devo') + '<th>Atualizado em</th></tr></thead><tbody>';
+    h += '<div class="card"><div class="tbl-wrap"><table class="tx" data-sort-enhanced="true"><thead><tr>' + th('nome', 'Nome') + th('tipo', 'Tipo do contato') + '<th>CPF/CNPJ</th><th>Email</th><th>Telefone</th>' + th('aReceber', 'A receber') + th('aPagar', 'A pagar') + '<th>Atualizado em</th></tr></thead><tbody>';
     for (const x of lista) {
       h += '<tr class="lin" data-act="ct-abrir" data-ref="' + esc(x.ref) + '"><td class="trunc">' + esc(x.nome) + (x.semCadastro ? ' <span class="tag">sem cadastro</span>' : '') + '</td><td>' + esc(TIPOS_CT[x.tipo] || 'Outro') + '</td><td style="white-space:nowrap">' + esc(x.documento || '—') + '</td>' +
         '<td class="trunc c">' + esc(x.email || '—') + '</td><td style="white-space:nowrap">' + esc(x.telefone || '—') + '</td>' +
@@ -620,7 +660,7 @@
         '<td style="white-space:nowrap">' + (x.atualizadoEm ? ddmmaaaa(String(x.atualizadoEm).slice(0, 10)) : '—') + '</td></tr>';
     }
     h += '</tbody></table></div>';
-    if (!lista.length) h += '<div class="vazio"><b>' + (d.contatos.length ? 'Nada encontrado' : 'A lista está vazia') + '</b>' + (d.contatos.length ? 'Mude o filtro ou a pesquisa.' : 'Comece adicionando o seu primeiro contato.') + (d.podeEditar && !d.contatos.length ? '<p><button type="button" class="btn pri" data-act="novo-contato">+ Adicionar</button></p>' : '') + '</div>';
+    if (!lista.length) h += '<div class="vazio"><b>' + (d.contatos.length ? 'Nenhum contato com esse filtro' : 'Nenhum contato cadastrado') + '</b>' + (d.contatos.length ? 'Ajuste o filtro ou a busca.' : 'Cadastre clientes, fornecedores, colaboradores e sócios aqui ou importe uma planilha.') + (d.podeEditar && !d.contatos.length ? '<p><button type="button" class="btn pri" data-act="novo-contato">' + IC.plus + ' Novo contato</button></p>' : '') + '</div>';
     return h + '</div>';
   }
 
@@ -630,7 +670,7 @@
     const travaTipo = editando && (c.tipo === 'cliente' || c.tipo === 'fornecedor');
     const podeEditar = st.ct.dados ? st.ct.dados.podeEditar : true;
     const dis = podeEditar ? '' : ' disabled';
-    const corpo = (c.aReceber || c.aPagar ? '<div class="two"><div class="card" style="padding:10px 12px"><div class="muted" style="font-size:12.5px">Deve para mim</div><b class="g">' + money(c.aReceber) + '</b></div><div class="card" style="padding:10px 12px"><div class="muted" style="font-size:12.5px">Eu devo</div><b class="r">' + money(c.aPagar) + '</b></div></div>' : '') +
+    const corpo = (c.aReceber || c.aPagar ? '<div class="two"><div class="card" style="padding:10px 12px"><div class="muted" style="font-size:12.5px">A receber</div><b class="g">' + money(c.aReceber) + '</b></div><div class="card" style="padding:10px 12px"><div class="muted" style="font-size:12.5px">A pagar</div><b class="r">' + money(c.aPagar) + '</b></div></div>' : '') +
       '<label class="f">Tipo do contato<select class="i" name="tipo"' + (travaTipo || !podeEditar ? ' disabled' : '') + '>' + Object.entries(TIPOS_CT).map(([k, l]) => '<option value="' + k + '"' + ((c.tipo || 'cliente') === k ? ' selected' : '') + '>' + l + '</option>').join('') + '</select></label>' +
       (travaTipo ? '<p class="hint">' + (c.tipo === 'cliente' ? 'Cliente' : 'Fornecedor') + ': o cadastro completo fica na tela de ' + (c.tipo === 'cliente' ? 'Clientes' : 'Fornecedores') + '.</p>' : '') +
       '<label class="f">Nome *<input class="i" name="nome" required maxlength="120" value="' + esc(c.nome || '') + '" data-autofocus' + dis + '></label>' +
@@ -645,11 +685,11 @@
   // Relatórios
   // ---------------------------------------------------------------------------
   const RELATORIOS = [
-    ['Fluxo de caixa', [['resultados', 'Resultados'], ['extrato', 'Extrato'], ['gastos_recebimentos', 'Gastos/Recebimentos'], ['historico', 'Histórico']]],
-    ['Gastos', [['g_descricao', 'Por descrição'], ['g_periodo', 'Por período'], ['g_categoria', 'Por categoria'], ['g_modo', 'Por modo de pagamento'], ['g_contato', 'Por contato']]],
-    ['Recebimentos', [['r_categoria', 'Por categoria'], ['r_periodo', 'Por período'], ['r_modo', 'Por modo de pagamento'], ['r_contato', 'Por contato']]],
+    ['Visão do período', [['resultados', 'Demonstrativo do período'], ['extrato', 'Extrato com saldo acumulado'], ['gastos_recebimentos', 'Entradas e saídas por categoria'], ['historico', 'Evolução mês a mês']]],
+    ['Saídas', [['g_categoria', 'Saídas por categoria'], ['g_descricao', 'Saídas por histórico'], ['g_contato', 'Saídas por fornecedor/contato'], ['g_modo', 'Saídas por forma de pagamento'], ['g_periodo', 'Saídas por período']]],
+    ['Entradas', [['r_categoria', 'Entradas por categoria'], ['r_contato', 'Entradas por cliente/contato'], ['r_modo', 'Entradas por forma de pagamento'], ['r_periodo', 'Entradas por período']]],
   ];
-  const nomeRelatorio = (k) => { for (const g of RELATORIOS) for (const r of g[1]) if (r[0] === k) return (g[0] === 'Fluxo de caixa' ? '' : g[0] + ' ') + r[1].replace(/^Por /, 'por '); return ''; };
+  const nomeRelatorio = (k) => { for (const g of RELATORIOS) for (const r of g[1]) if (r[0] === k) return r[1]; return ''; };
   const grupoTipoPag = (t) => (/^Parcelado/.test(t) ? 'Parcelado' : /^Fixo/.test(t) ? 'Fixo' : /^Recorrente/.test(t) ? 'Recorrente' : 'Único');
 
   function relLinhas() {
@@ -687,10 +727,10 @@
     let html = '', csv = [];
     if (k === 'resultados') {
       const cats = agrupar(des, (t) => t.categoria);
-      html = '<div class="res-l"><span class="g">＋ Recebimentos</span><b class="g">' + money(soma(rec)) + '</b></div>' +
-        cats.map((g) => '<div class="res-l"><span><span class="r">—</span> ' + esc(g.chave) + '</span><b class="r">' + money(g.total) + '</b></div>').join('') +
-        '<div class="res-l t"><span>Resultado</span><b class="' + (soma(rec) - soma(des) < 0 ? 'r' : 'g') + '">' + money(soma(rec) - soma(des)) + '</b></div>';
-      csv = [['Item', 'Valor'], ['Recebimentos', soma(rec)], ...cats.map((g) => [g.chave, -g.total]), ['Resultado', soma(rec) - soma(des)]];
+      html = '<table class="rel"><tbody><tr class="grp"><th>Total de entradas</th><td class="n g"><b>' + money(soma(rec)) + '</b></td></tr><tr class="grp"><th>Saídas por categoria</th><td></td></tr>' +
+        cats.map((g) => '<tr><td style="padding-left:22px">' + esc(g.chave) + '</td><td class="n r">' + money(g.total) + '</td></tr>').join('') +
+        '<tr class="grp"><th>Total de saídas</th><td class="n r"><b>' + money(soma(des)) + '</b></td></tr></tbody></table><div class="res-l t"><span>Saldo do período</span><b class="' + (soma(rec) - soma(des) < 0 ? 'r' : 'g') + '">' + money(soma(rec) - soma(des)) + '</b></div>';
+      csv = [['Item', 'Valor'], ['Total de entradas', soma(rec)], ...cats.map((g) => [g.chave, -g.total]), ['Total de saídas', -soma(des)], ['Saldo do período', soma(rec) - soma(des)]];
     } else if (k === 'extrato') {
       const ord = [...linhas].sort((a, b) => a.dataRef.localeCompare(b.dataRef) || a.descricao.localeCompare(b.descricao));
       let saldo = 0;
@@ -700,27 +740,27 @@
       csv.unshift(['Data', 'Descrição', 'Contato', 'Categoria', 'Conta', 'Situação', 'Valor', 'Saldo']);
     } else if (k === 'gastos_recebimentos') {
       const gr = agrupar(rec, (t) => t.categoria), gd = agrupar(des, (t) => t.categoria);
-      html = '<h4 class="g" style="margin:4px 0 6px">Recebimentos</h4>' + tabelaGrupo(gr, 'g', 'Categoria') + '<h4 class="r" style="margin:18px 0 6px">Gastos</h4>' + tabelaGrupo(gd, 'r', 'Categoria');
-      csv = [['Tipo', 'Categoria', 'Lançamentos', 'Valor'], ...gr.map((g) => ['Recebimento', g.chave, g.qtd, g.total]), ...gd.map((g) => ['Gasto', g.chave, g.qtd, g.total])];
+      html = '<h4 class="g" style="margin:4px 0 6px">Entradas</h4>' + tabelaGrupo(gr, 'g', 'Categoria') + '<h4 class="r" style="margin:18px 0 6px">Saídas</h4>' + tabelaGrupo(gd, 'r', 'Categoria');
+      csv = [['Tipo', 'Categoria', 'Lançamentos', 'Valor'], ...gr.map((g) => ['Entrada', g.chave, g.qtd, g.total]), ...gd.map((g) => ['Saída', g.chave, g.qtd, g.total])];
     } else if (k === 'historico') {
       const meses = mesesEntre(d.de, d.ate);
       const max = Math.max(1, ...meses.map((m) => Math.max(soma(rec.filter((t) => t.dataRef.startsWith(m))), soma(des.filter((t) => t.dataRef.startsWith(m))))));
-      html = '<table class="rel"><thead><tr><th>Mês</th><th class="n">Recebimentos</th><th class="n">Gastos</th><th class="n">Resultado</th><th style="width:28%"></th></tr></thead><tbody>' +
+      html = '<table class="rel"><thead><tr><th>Mês</th><th class="n">Entradas</th><th class="n">Saídas</th><th class="n">Saldo</th><th style="width:28%"></th></tr></thead><tbody>' +
         meses.map((m) => { const r = soma(rec.filter((t) => t.dataRef.startsWith(m))), g = soma(des.filter((t) => t.dataRef.startsWith(m))); csv.push([mesLongo(m), r, g, r - g]); return '<tr><td>' + mesLongo(m) + '</td><td class="n g">' + money(r) + '</td><td class="n r">' + money(g) + '</td><td class="n ' + (r - g < 0 ? 'r' : 'g') + '">' + money(r - g) + '</td><td><span class="bar" style="margin-bottom:3px"><i style="width:' + (r / max * 100) + '%;background:#10b981"></i></span><span class="bar"><i style="width:' + (g / max * 100) + '%;background:#f43f5e"></i></span></td></tr>'; }).join('') + '</tbody></table>';
-      csv.unshift(['Mês', 'Recebimentos', 'Gastos', 'Resultado']);
+      csv.unshift(['Mês', 'Entradas', 'Saídas', 'Saldo']);
     } else {
       const lista = k.startsWith('g_') ? des : rec;
       const cor = k.startsWith('g_') ? 'r' : 'g';
       const tipo = k.slice(2);
       const chave = tipo === 'descricao' ? (t) => t.descricao : tipo === 'categoria' ? (t) => t.categoria : tipo === 'modo' ? (t) => t.modo || '—' : tipo === 'contato' ? (t) => t.contato || '—' : (t) => chavePeriodo(t, d);
-      const rot = { descricao: 'Descrição', categoria: 'Categoria', modo: 'Modo de pagamento', contato: 'Contato', periodo: 'Período' }[tipo];
+      const rot = { descricao: 'Histórico', categoria: 'Categoria', modo: 'Forma de pagamento', contato: 'Contato', periodo: 'Período' }[tipo];
       let grupos = agrupar(lista, chave);
       if (tipo === 'periodo') grupos = grupos.sort((a, b) => { const p = (s) => (/\//.test(s) && s.length === 10 ? s.split('/').reverse().join('') : s); return String(p(a.chave)).localeCompare(String(p(b.chave))); });
       if (tipo === 'periodo' && (Date.parse(d.ate) - Date.parse(d.de)) / 86400000 > 62) { const ordem = mesesEntre(d.de, d.ate).map(mesLongo); grupos = grupos.sort((a, b) => ordem.indexOf(a.chave) - ordem.indexOf(b.chave)); }
       html = tabelaGrupo(grupos, cor, rot);
       csv = [[rot, 'Lançamentos', 'Valor'], ...grupos.map((g) => [g.chave, g.qtd, g.total])];
     }
-    if (!linhas.length) html = '<div class="vazio"><b>Nada no período</b>Mude as datas ou os filtros.</div>';
+    if (!linhas.length) html = '<div class="vazio"><b>Sem lançamentos no período</b>Ajuste as datas ou os filtros.</div>';
     return { html, csv };
   }
   const contaNomeRel = (id) => { const c = st.rel.dados && st.rel.dados.contas.find((x) => x.id === id); return c ? c.nome : '—'; };
@@ -738,15 +778,15 @@
     const uniq = (fn) => [...new Set(base.map(fn).filter(Boolean))].sort().map((x) => [x, x]);
     let h = '<div class="card filtros-rel"><div class="fr-grid">' +
       '<label class="f">Data inicial<input class="i" type="date" data-k="rel-de" value="' + f.de + '"></label><label class="f">Data final<input class="i" type="date" data-k="rel-ate" value="' + f.ate + '"></label>' +
-      multi('cats', 'Categorias', uniq((t) => t.categoria)) + multi('contas', 'Contas bancárias', d.contas.map((c) => [c.id, c.nome])) + multi('contatos', 'Contatos', uniq((t) => t.contato || '—')) + multi('modos', 'Modos de pagamento', uniq((t) => t.modo || '—')) +
-      '<label class="f">Tipo pagamento<select class="i" data-k="rel-tipopag"><option value="">Todos</option>' + ['Único', 'Parcelado', 'Fixo', 'Recorrente'].map((x) => '<option' + (f.tipoPag === x ? ' selected' : '') + '>' + x + '</option>').join('') + '</select></label></div>' +
-      '<div class="fr-linha"><div><div class="muted" style="font-size:13px;margin-bottom:4px">Incluir lançamentos</div><label class="chk" style="display:inline-flex;margin-right:16px"><input type="checkbox" data-k="rel-pagos"' + (f.pagos ? ' checked' : '') + '> Pagos</label><label class="chk" style="display:inline-flex"><input type="checkbox" data-k="rel-naopagos"' + (f.naoPagos ? ' checked' : '') + '> Não pagos</label></div>' +
-      '<div><div class="muted" style="font-size:13px;margin-bottom:4px">Mostrar por data de</div><label class="chk" style="display:inline-flex;margin-right:16px"><input type="radio" name="rel-por" data-k="rel-por" value="pagamento"' + (f.por === 'pagamento' ? ' checked' : '') + '> Pagamento</label><label class="chk" style="display:inline-flex"><input type="radio" name="rel-por" data-k="rel-por" value="competencia"' + (f.por === 'competencia' ? ' checked' : '') + '> Competência</label></div>' +
+      multi('cats', 'Categorias', uniq((t) => t.categoria)) + multi('contas', 'Contas', d.contas.map((c) => [c.id, c.nome])) + multi('contatos', 'Clientes / fornecedores', uniq((t) => t.contato || '—')) + multi('modos', 'Formas de pagamento', uniq((t) => t.modo || '—')) +
+      '<label class="f">Condição<select class="i" data-k="rel-tipopag"><option value="">Todas</option>' + ['Único', 'Parcelado', 'Fixo', 'Recorrente'].map((x) => '<option' + (f.tipoPag === x ? ' selected' : '') + '>' + x + '</option>').join('') + '</select></label></div>' +
+      '<div class="fr-linha"><div><div class="muted" style="font-size:13px;margin-bottom:4px">Considerar</div><label class="chk" style="display:inline-flex;margin-right:16px"><input type="checkbox" data-k="rel-pagos"' + (f.pagos ? ' checked' : '') + '> Baixados</label><label class="chk" style="display:inline-flex"><input type="checkbox" data-k="rel-naopagos"' + (f.naoPagos ? ' checked' : '') + '> Em aberto</label></div>' +
+      '<div><div class="muted" style="font-size:13px;margin-bottom:4px">Data de referência</div><label class="chk" style="display:inline-flex;margin-right:16px"><input type="radio" name="rel-por" data-k="rel-por" value="pagamento"' + (f.por === 'pagamento' ? ' checked' : '') + '> Caixa (data da baixa)</label><label class="chk" style="display:inline-flex"><input type="radio" name="rel-por" data-k="rel-por" value="competencia"' + (f.por === 'competencia' ? ' checked' : '') + '> Competência (emissão)</label></div>' +
       '<span class="grow"></span><button type="button" class="btn" data-act="rel-limpar">Limpar</button></div></div>';
     const r = montarRelatorio();
     st.rel.ultimo = r;
-    h += '<div class="rel-grid"><nav class="card rel-menu" aria-label="Relatórios">' + RELATORIOS.map((g) => '<div class="rel-g">' + g[0] + '</div>' + g[1].map((x) => '<button type="button" data-act="rel" data-r="' + x[0] + '"' + (f.relatorio === x[0] ? ' aria-current="true"' : '') + '>' + x[1] + '</button>').join('')).join('') + '</nav>' +
-      '<section class="card rel-body"><div class="rel-h"><h3>' + esc(nomeRelatorio(f.relatorio)) + ' - ' + ddmmaaaa(d.de) + ' à ' + ddmmaaaa(d.ate) + '</h3><span class="grow"></span><button type="button" class="btn" data-act="rel-csv">Baixar planilha</button><button type="button" class="btn" data-act="rel-imprimir">Imprimir</button></div>' + r.html + '</section></div>';
+    h += '<section class="card rel-body"><div class="rel-h"><label class="f rel-sel">Relatório<select class="i" data-k="rel-tipo">' + RELATORIOS.map((g) => '<optgroup label="' + g[0] + '">' + g[1].map((x) => '<option value="' + x[0] + '"' + (f.relatorio === x[0] ? ' selected' : '') + '>' + x[1] + '</option>').join('') + '</optgroup>').join('') + '</select></label>' +
+      '<span class="muted rel-per">' + ddmmaaaa(d.de) + ' a ' + ddmmaaaa(d.ate) + '</span><span class="grow"></span><button type="button" class="btn" data-act="rel-csv">Exportar CSV</button><button type="button" class="btn" data-act="rel-imprimir">Imprimir</button></div>' + r.html + '</section>';
     return h;
   }
 
@@ -929,22 +969,23 @@
   function renderImportacoes() {
     const d = st.imp.dados;
     const cards = [
-      ['padrao', IC.excel, 'Importação padrão', 'Lançamentos de outros sistemas ou planilhas, no nosso formato padrão (Excel ou CSV).', true],
-      ['zeropaper', IC.sheet, 'Outro sistema', 'Planilha exportada de outro sistema financeiro (ex.: Zero Paper); as colunas são reconhecidas.', false],
-      ['contatos', IC.users, 'Contatos', 'Clientes, fornecedores e outros contatos, em Excel ou CSV.', true],
-      ['ofx', IC.doc, 'OFX', 'Extrato do banco no formato OFX, para conciliar com os lançamentos.', false],
+      ['padrao', IC.impPlanilha, 'Planilha de lançamentos', 'Entradas e saídas em Excel (.xlsx) ou CSV, no modelo do MotorDesk.', true],
+      ['zeropaper', IC.impSistema, 'Planilha de outro sistema', 'Exportação de outro sistema financeiro (ex.: Zero Paper). As colunas são reconhecidas e você confere antes de gravar.', false],
+      ['contatos', IC.impContatos, 'Cadastro de contatos', 'Clientes, fornecedores, colaboradores e sócios em Excel ou CSV.', true],
+      ['ofx', IC.impBanco, 'Extrato bancário (OFX)', 'Arquivo OFX baixado do internet banking, para a conciliação bancária.', false],
     ];
     const podeImportar = st.modulo && (st.modulo.editar || st.modulo.master);
-    let h = '<div class="imp-cards">' + cards.map((c) => '<div class="card imp-card"><div class="imp-top"><span class="imp-ic">' + c[1] + '</span><div><h3>' + c[2] + '</h3><p>' + c[3] + '</p></div></div><div class="imp-acoes">' +
-      (podeImportar ? '<label class="imp-btn">Importar<input type="file" data-k="arquivo" data-tipo="' + c[0] + '" accept="' + (c[0] === 'ofx' ? '.ofx,.OFX' : '.xlsx,.xls,.csv,.txt') + '" hidden></label>' : '<span class="muted" style="padding:12px">Sem permissão para importar</span>') +
-      (c[4] ? '<button type="button" class="imp-link" data-act="modelo" data-t="' + c[0] + '">Baixar modelo</button>' : '') + '</div></div>').join('') + '</div>';
-    h += '<div class="card"><div class="tbl-wrap"><table class="tx" data-sort-enhanced="true"><thead><tr><th>Nome do arquivo</th><th>Situação</th><th>Origem</th><th>Transações importadas</th><th>Importado em</th><th></th></tr></thead><tbody>';
+    let h = '<div class="card imp-lista">' + cards.map((c) => '<div class="imp-row"><span class="imp-ic">' + c[1] + '</span><div class="imp-txt"><h3>' + c[2] + '</h3><p>' + c[3] + '</p></div><div class="imp-acoes">' +
+      (c[4] ? '<button type="button" class="btn sm" data-act="modelo" data-t="' + c[0] + '">Modelo</button>' : '') +
+      (podeImportar ? '<label class="btn pri sm" style="cursor:pointer">Selecionar arquivo<input type="file" data-k="arquivo" data-tipo="' + c[0] + '" accept="' + (c[0] === 'ofx' ? '.ofx,.OFX' : '.xlsx,.xls,.csv,.txt') + '" hidden></label>' : '<span class="muted">Sem permissão para importar</span>') +
+      '</div></div>').join('') + '</div><h3 class="sec-t">Histórico de importações</h3>';
+    h += '<div class="card"><div class="tbl-wrap"><table class="tx" data-sort-enhanced="true"><thead><tr><th>Arquivo</th><th>Resultado</th><th>Tipo</th><th>Registros gravados</th><th>Quando / quem</th><th></th></tr></thead><tbody>';
     for (const x of d.importacoes) {
       h += '<tr><td class="trunc">' + esc(x.arquivo) + '</td><td>' + esc(x.situacao) + (x.ignoradas ? ' <span class="tag">' + x.ignoradas + ' ignorada(s)</span>' : '') + '</td><td>' + esc(x.origem) + '</td><td>' + (x.transacoes || 0) + '</td><td style="white-space:nowrap">' + new Date(x.importadoEm).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) + ' · ' + esc(x.importadoPor || '') + '</td>' +
         '<td>' + (x.tipo === 'ofx' ? '<button type="button" class="btn" data-act="ir-conciliar" data-conta="' + esc(x.contaId || '') + '">Conciliar</button>' : '') + '</td></tr>';
     }
     h += '</tbody></table></div>';
-    if (!d.importacoes.length) h += '<div class="vazio"><b>Importar arquivo externo</b>Clique em uma das opções acima para fazer uma nova importação.</div>';
+    if (!d.importacoes.length) h += '<div class="vazio"><b>Nenhuma importação feita</b>Os arquivos importados aparecem aqui, com o resultado de cada um.</div>';
     return h + '</div>';
   }
 
@@ -1002,7 +1043,7 @@
     h += '</div>';
     const lista = d.itens.filter((i) => st.conc.filtro === 'todos' || i.situacao === st.conc.filtro);
     h += '<div class="card">';
-    if (!d.itens.length) return h + '<div class="vazio"><b>Nenhum extrato importado' + (conta ? ' para ' + esc(conta.nome) : '') + '</b>Importe o arquivo OFX do banco para conferir os lançamentos.</div></div>';
+    if (!d.itens.length) return h + '<div class="vazio"><b>Nenhum extrato importado' + (conta ? ' para ' + esc(conta.nome) : '') + '</b>Baixe o extrato em OFX no internet banking e importe aqui para conferir com os lançamentos.</div></div>';
     if (!lista.length) return h + '<div class="vazio"><b>Nada aqui</b>' + (st.conc.filtro === 'pendente' ? 'Todas as movimentações deste extrato já foram tratadas.' : 'Mude o filtro.') + '</div></div>';
     h += '<div class="conc-lista">';
     for (const i of lista) {
@@ -1020,7 +1061,7 @@
           '<div style="display:flex;gap:8px;margin-top:8px"><button type="button" class="btn pri" data-act="conc-criar">Criar e conciliar</button><button type="button" class="btn" data-act="conc-cancelar">Cancelar</button></div></div>';
       } else {
         if (i.sugestoes && i.sugestoes.length) {
-          h += '<div class="muted" style="font-size:12.5px;margin-bottom:4px">Sugestão do sistema</div>' + i.sugestoes.map((s, k) => '<label class="chk sug"><input type="radio" name="sug-' + esc(i.itemId) + '" value="' + esc(s.id) + '"' + (k === 0 ? ' checked' : '') + '> <span><b>' + esc(s.descricao) + '</b><br><span class="muted">' + ddmmaaaa(s.data) + ' · ' + esc(s.contato || 'sem contato') + ' · ' + money(s.valor) + (s.pago ? ' · <b>já baixado</b> (só vincula)' : '') + '</span></span></label>').join('');
+          h += '<div class="muted" style="font-size:12.5px;margin-bottom:4px">Lançamento correspondente</div>' + i.sugestoes.map((s, k) => '<label class="chk sug"><input type="radio" name="sug-' + esc(i.itemId) + '" value="' + esc(s.id) + '"' + (k === 0 ? ' checked' : '') + '> <span><b>' + esc(s.descricao) + '</b><br><span class="muted">' + ddmmaaaa(s.data) + ' · ' + esc(s.contato || 'sem contato') + ' · ' + money(s.valor) + (s.pago ? ' · <b>já baixado</b> (só vincula)' : '') + '</span></span></label>').join('');
         } else {
           const abertos = d.abertos.filter((t) => t.tipo === tipo).sort((a, b) => Math.abs(a.valor - Math.abs(i.valor)) - Math.abs(b.valor - Math.abs(i.valor)) || Math.abs(Date.parse(a.data) - Date.parse(i.data)) - Math.abs(Date.parse(b.data) - Date.parse(i.data))).slice(0, 200);
           h += '<div class="muted" style="font-size:12.5px;margin-bottom:4px">Nenhum lançamento com esse valor e data.</div><select class="i" data-k="conc-busca" data-i="' + esc(i.itemId) + '" aria-label="Escolher lançamento"><option value="">Escolher um lançamento…</option>' + abertos.map((t) => '<option value="' + esc(t.id) + '">' + ddmm(t.data) + ' · ' + esc(t.descricao).slice(0, 60) + ' · ' + money(t.valor) + (t.pago ? ' · pago' : '') + '</option>').join('') + '</select>';
@@ -1035,13 +1076,13 @@
   // ---------------------------------------------------------------------------
   // Acessos (contratação pela empresa e telas liberadas a cada usuário)
   // ---------------------------------------------------------------------------
-  const TELAS_ACESSO = [['transacoes', 'Visão geral, Transações e Contas'], ['editar', 'Lançar, editar e dar baixa'], ['contatos', 'Contatos'], ['relatorios', 'Relatórios'], ['importacoes', 'Importações e conciliação OFX']];
+  const TELAS_ACESSO = [['transacoes', 'Painel, Lançamentos e Contas'], ['editar', 'Lançar, editar e dar baixa'], ['contatos', 'Contatos'], ['relatorios', 'Relatórios'], ['importacoes', 'Importações e conciliação OFX']];
   function renderAcessos() {
     const m = st.modulo;
     let h = '<div class="card" style="padding:16px;margin-bottom:14px"><h3 style="margin:0 0 4px;font-size:17px">Contratação do módulo</h3>' +
-      '<p class="muted" style="margin:0 0 12px;font-size:13.5px">Empresa: <b>' + esc(m.empresa.nome) + '</b>. Sem contratação, as telas do módulo Transações ficam bloqueadas para todos os usuários desta empresa.</p>' +
+      '<p class="muted" style="margin:0 0 12px;font-size:13.5px">Empresa: <b>' + esc(m.empresa.nome) + '</b>. Sem contratação, as telas do módulo Lançamentos ficam bloqueadas para todos os usuários desta empresa.</p>' +
       (m.gerenciaContrato
-        ? '<div style="display:flex;align-items:center;gap:12px"><button type="button" class="sw" role="switch" aria-checked="' + m.contratado + '" data-act="contrato" aria-label="Módulo Transações contratado"></button><b>' + (m.contratado ? 'Contratado' : 'Não contratado') + '</b><span class="muted" style="font-size:13px">(só o administrador da plataforma altera)</span></div>'
+        ? '<div style="display:flex;align-items:center;gap:12px"><button type="button" class="sw" role="switch" aria-checked="' + m.contratado + '" data-act="contrato" aria-label="Módulo Lançamentos contratado"></button><b>' + (m.contratado ? 'Contratado' : 'Não contratado') + '</b><span class="muted" style="font-size:13px">(só o administrador da plataforma altera)</span></div>'
         : '<b class="' + (m.contratado ? 'g' : 'r') + '">' + (m.contratado ? 'Contratado' : 'Não contratado') + '</b>') + '</div>';
     if (!m.gerenciaUsuarios) return h + '<div class="card vazio"><b>Liberação por usuário</b>Só quem gerencia usuários pode liberar as telas.</div>';
     if (!m.contratado) h += '<div class="aviso" style="margin-bottom:14px">O módulo não está contratado: as liberações abaixo só valem depois da contratação.</div>';
@@ -1067,7 +1108,7 @@
   function renderDrawer() {
     const dr = st.drawer;
     if (dr.tipo === 'contato' || dr.tipo === 'importar' || dr.tipo === 'ofx') { const [t, c, r, w] = dr.tipo === 'contato' ? drawerContato() : dr.tipo === 'ofx' ? drawerOFX() : drawerImportar(); return moldura(t, c, r, w); }
-    let titulo = 'Nova transação', corpo = '', rodape = '';
+    let titulo = 'Novo lançamento', corpo = '', rodape = '';
     const d = st.dados;
     if (dr.tipo === 'conta') {
       const c = dr.conta || {};
@@ -1085,12 +1126,12 @@
       const modo = dr.modo; // receita | despesa | transferencia
       const rec = modo === 'receita';
       const p = d.permissoes;
-      titulo = editando ? (rec ? 'Recebimento' : 'Despesa') : 'Nova transação';
+      titulo = editando ? (rec ? 'Entrada' : 'Saída') : 'Novo lançamento';
       const travado = editando && !t.editavel;
       if (!editando) {
         const segs = [];
-        if (p.receber.criar) segs.push('<button type="button" class="rec" data-act="modo" data-m="receita" aria-pressed="' + (modo === 'receita') + '">Recebimento</button>');
-        if (p.pagar.criar) segs.push('<button type="button" class="des" data-act="modo" data-m="despesa" aria-pressed="' + (modo === 'despesa') + '">Despesa</button>');
+        if (p.receber.criar) segs.push('<button type="button" class="rec" data-act="modo" data-m="receita" aria-pressed="' + (modo === 'receita') + '">Entrada</button>');
+        if (p.pagar.criar) segs.push('<button type="button" class="des" data-act="modo" data-m="despesa" aria-pressed="' + (modo === 'despesa') + '">Saída</button>');
         if (p.contas && d.contas.length > 1) segs.push('<button type="button" class="trf" data-act="modo" data-m="transferencia" aria-pressed="' + (modo === 'transferencia') + '">Transferência</button>');
         corpo += '<div class="seg" role="group" aria-label="Tipo">' + segs.join('') + '</div>';
       }
@@ -1271,6 +1312,9 @@
     if (act === 'mes') { st.mes = somaMes(st.mes, Number(t.dataset.n)); st.dia = ''; st.sel.clear(); render(); carregar(); return; }
     if (act === 'dia') { st.dia = t.dataset.dia; st.pagina = 'transacoes'; st.trf = false; render(); return; }
     if (act === 'limpar-dia') { st.dia = ''; render(); return; }
+    if (act === 'tipo') { const tp = t.dataset.t; st.trf = tp === 'trf'; if (!st.trf) { st.rec = tp === 'todos' || tp === 'rec'; st.des = tp === 'todos' || tp === 'des'; if (!d.permissoes.receber.ver) st.rec = false; if (!d.permissoes.pagar.ver) st.des = false; } st.sel.clear(); render(); return; }
+    if (act === 'mes-atual') { st.mes = hojeISO().slice(0, 7); st.dia = ''; st.sel.clear(); render(); carregar(); return; }
+    if (act === 'ag-vencidos') { st.pagina = 'transacoes'; st.trf = false; st.dia = ''; st.filtros.situacao = 'vencidos'; st.mostrarFiltros = true; render(); return; }
     if (act === 'chip') {
       const c = t.dataset.c;
       if (c === 'trf') st.trf = !st.trf;
@@ -1380,7 +1424,7 @@
       }
       case 'contrato': {
         const novo = !st.modulo.contratado;
-        if (!window.confirm(novo ? 'Marcar o módulo Transações como contratado por esta empresa?' : 'Remover o módulo Transações do contrato desta empresa? As telas ficam bloqueadas para os usuários dela.')) return true;
+        if (!window.confirm(novo ? 'Marcar o módulo Lançamentos como contratado por esta empresa?' : 'Remover o módulo Lançamentos do contrato desta empresa? As telas ficam bloqueadas para os usuários dela.')) return true;
         executar(() => api('POST', '/modulo/contrato', { contratado: novo }), novo ? 'Módulo contratado.' : 'Módulo removido do contrato.');
         return true;
       }
@@ -1404,6 +1448,7 @@
     if (kk === 'imp-mapa') { st.drawer.mapa[e.target.dataset.campo] = e.target.value === '' ? '' : Number(e.target.value); render(); return; }
     if (kk === 'imp-tipopadrao') { st.drawer.tipoPadrao = e.target.value; render(); return; }
     if (kk === 'rel-de' || kk === 'rel-ate') { const v = e.target.value; if (!v) return; st.rel[kk === 'rel-de' ? 'de' : 'ate'] = v; if (st.rel.ate < st.rel.de) { aviso('A data final é anterior à inicial.', false); render(); return; } st.rel.dados = null; render(); carregar(); return; }
+    if (kk === 'rel-tipo') { st.rel.relatorio = e.target.value; render(); return; }
     if (kk === 'rel-tipopag') { st.rel.tipoPag = e.target.value; render(); return; }
     if (kk === 'rel-pagos') { st.rel.pagos = e.target.checked; render(); return; }
     if (kk === 'rel-naopagos') { st.rel.naoPagos = e.target.checked; render(); return; }
@@ -1471,10 +1516,10 @@
       btn = document.createElement('button');
       btn.type = 'button';
       btn.id = 'menu-btn-fin-transacoes';
-      btn.title = 'Transações';
+      btn.title = 'Lançamentos';
       btn.addEventListener('click', () => open('transacoes'));
     }
-    const html = IC.money + (collapsed ? '' : '<span>TRANSAÇÕES</span>');
+    const html = IC.money + (collapsed ? '' : '<span>LANÇAMENTOS</span>');
     if (btn.innerHTML !== html) btn.innerHTML = html;
     btn.style.justifyContent = collapsed ? 'center' : '';
     if (root) btn.setAttribute('aria-current', 'page');

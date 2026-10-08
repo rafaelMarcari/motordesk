@@ -3964,7 +3964,7 @@ registerFinanceiroRoutes(app, {
 });
 
 // Transações (recebimentos, despesas e transferências do mês, contas bancárias)
-// Módulo "Transações" (financeiro no formato lançamentos do mês): a empresa contrata (globalModules.accessFinTransacoes)
+// Módulo "Lançamentos" (financeiro no formato lançamentos do mês): a empresa contrata (globalModules.accessFinTransacoes)
 // e cada usuário recebe as telas liberadas. Conta mestre vê tudo; administrador da empresa recebe tudo o que foi contratado.
 const FIN_TELAS = { transacoes: "accessFinTransacoes", contatos: "accessFinContatos", relatorios: "accessFinRelatorios", importacoes: "accessFinImportacoes" } as const;
 const FIN_EDITAR = "finTransacoesEditar";
@@ -3985,8 +3985,8 @@ function finAccess(req: any, need: string, natureza: "receber" | "pagar" | null,
   const u = req.authUser;
   const fp = finPermissoesDe(u, company);
   if (!fp.telas[tela]) {
-    const nomes: Record<FinTela, string> = { transacoes: "Transações", contatos: "Contatos", relatorios: "Relatórios", importacoes: "Importações e conciliação" };
-    return { status: 403, error: fp.contratado ? `Tela ${nomes[tela]} não liberada para o seu usuário.` : "O módulo Transações não foi contratado por esta empresa." };
+    const nomes: Record<FinTela, string> = { transacoes: "Lançamentos", contatos: "Contatos", relatorios: "Relatórios", importacoes: "Importações e conciliação" };
+    return { status: 403, error: fp.contratado ? `Tela ${nomes[tela]} não liberada para o seu usuário.` : "O módulo Lançamentos não foi contratado por esta empresa." };
   }
   const tem = (k: string) => hasEffectivePermission(u, company, k);
   // Quem tem a tela vê recebimentos e despesas; lançar, baixar e excluir exigem a liberação de edição
@@ -4060,7 +4060,7 @@ app.post("/api/financeiro/modulo/contrato", async (req: any, res) => {
       };
       const next: any = { ...current, registeredCompanies: (current.registeredCompanies || []).map(ajusta) };
       if (current.companyInfo?.id === companyId) next.companyInfo = ajusta(current.companyInfo);
-      next.history = [{ id: `hst-fin-${Date.now()}`, date: new Date().toISOString(), type: "system", title: "Contratação de módulo", description: `Módulo Transações ${contratado ? "contratado" : "removido do contrato"} para a empresa.`, userId: req.authUser.id, userName: req.authUser.name || req.authUser.username, companyId, clientId: "system", vehicleId: "system" }, ...(current.history || [])];
+      next.history = [{ id: `hst-fin-${Date.now()}`, date: new Date().toISOString(), type: "system", title: "Contratação de módulo", description: `Módulo Lançamentos ${contratado ? "contratado" : "removido do contrato"} para a empresa.`, userId: req.authUser.id, userName: req.authUser.name || req.authUser.username, companyId, clientId: "system", vehicleId: "system" }, ...(current.history || [])];
       return achou ? next : current;
     }, { source: "modulo_contrato", companyId, userId: req.authUser.id });
     if (!achou) return res.status(404).json({ success: false, error: "Empresa não encontrada." });
@@ -4093,7 +4093,7 @@ app.post("/api/financeiro/modulo/usuarios", async (req: any, res) => {
       if (!ok) return current;
       const alvo = users.find((x: any) => x?.id === userId);
       const desc = (Object.keys(FIN_TELAS) as FinTela[]).map((t) => `${t}: ${alvo.permissions[FIN_TELAS[t]] ? "sim" : "não"}`).join(", ") + `, lançar/baixar: ${alvo.permissions[FIN_EDITAR] ? "sim" : "não"}`;
-      return { ...current, users, history: [{ id: `hst-fin-${Date.now()}`, date: new Date().toISOString(), type: "system", title: "Acesso ao módulo Transações", description: `${alvo.name || alvo.username}: ${desc}.`, userId: req.authUser.id, userName: req.authUser.name || req.authUser.username, companyId, clientId: "system", vehicleId: "system" }, ...(current.history || [])] };
+      return { ...current, users, history: [{ id: `hst-fin-${Date.now()}`, date: new Date().toISOString(), type: "system", title: "Acesso ao módulo Lançamentos", description: `${alvo.name || alvo.username}: ${desc}.`, userId: req.authUser.id, userName: req.authUser.name || req.authUser.username, companyId, clientId: "system", vehicleId: "system" }, ...(current.history || [])] };
     }, { source: "modulo_usuarios", companyId, userId: req.authUser.id });
     if (!ok) return res.status(404).json({ success: false, error: "Usuário não encontrado nesta empresa." });
     res.json({ success: true });
