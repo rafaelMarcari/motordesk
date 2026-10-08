@@ -1846,6 +1846,9 @@ export function mergeAppDatabase(existing: any, incoming: any): any {
     for (const u of incoming.users) {
       if (u && u.id) {
         const prev = usersMap.get(u.id);
+        // Cópia desatualizada do usuário (revisão anterior à gravada): mantém a do banco.
+        // Sem isso, outra aba/computador com a base antiga devolvia módulos e acessos já removidos.
+        if (prev && u._rev !== undefined && u._rev !== null && (Number(prev._rev) || 0) > (Number(u._rev) || 0)) continue;
         let safeCompanyId = u.companyId;
         // If the user had an established companyId originally and incoming attempted to reassign it
         // across unrelated companies without allowedCompanyIds, preserve the original company affiliation
@@ -1872,7 +1875,7 @@ export function mergeAppDatabase(existing: any, incoming: any): any {
         const safeMustChange = u.mustChangePassword !== undefined ? u.mustChangePassword : (prev ? prev.mustChangePassword : undefined);
         const safeHasChosen = u.hasChosenPassword !== undefined ? u.hasChosenPassword : (prev ? prev.hasChosenPassword : undefined);
 
-        usersMap.set(u.id, {
+        const mergedUser: any = {
           ...prev,
           ...u,
           permissions: u.permissions ? { ...(prev?.permissions || {}), ...u.permissions } : prev?.permissions,
@@ -1883,7 +1886,12 @@ export function mergeAppDatabase(existing: any, incoming: any): any {
           hasChosenPassword: safeHasChosen,
           companyId: safeCompanyId,
           allowedCompanyIds: u.allowedCompanyIds || (prev ? prev.allowedCompanyIds : undefined)
-        });
+        };
+        const { _rev: _prevRev, ...prevBody } = prev || {};
+        const { _rev: _nextRev, ...nextBody } = mergedUser;
+        if (!prev || JSON.stringify(prevBody) !== JSON.stringify(nextBody)) mergedUser._rev = nextRecordRev();
+        else mergedUser._rev = prev._rev;
+        usersMap.set(u.id, mergedUser);
       }
     }
   }

@@ -116,16 +116,10 @@
     });
   }
 
-  // Interceptar envio de formulários para garantir envio imediato ao banco
   function hookFormCompletions() {
-    document.addEventListener('submit', (e) => {
-      log('Formulário submetido. Acionando garantia de persistência imediata no Banco Central...');
-      setTimeout(() => {
-        if (window.__motorDeskDb && typeof window.__motorDeskDb.saveDatabaseImmediate === 'function' && window.__CURRENT_DB) {
-          window.__motorDeskDb.saveDatabaseImmediate(window.__CURRENT_DB);
-        }
-      }, 50);
-    }, true);
+    // O envio de formulários não regrava mais window.__CURRENT_DB: o app já grava cada alteração,
+    // e essa cópia é a última resposta do servidor (anterior à edição). Regravá-la desfazia a
+    // alteração recém-salva (ex.: módulo removido de um usuário voltava a aparecer).
 
     // Garantir redirecionamento estrito para tela de login ao clicar em Sair do Sistema
     document.addEventListener('click', (e) => {
