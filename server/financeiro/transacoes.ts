@@ -18,14 +18,15 @@ import { somarMeses } from "./recorrencias.ts";
 
 export type Natureza = "receber" | "pagar";
 export type Need = "ler" | "criar" | "baixar" | "excluir" | "contas";
+export type Tela = "transacoes" | "contatos" | "relatorios" | "importacoes";
 
 export interface TransacoesDeps {
   getStore: () => any;
   mutateStore: (fn: (current: any) => any, meta: { source: string; companyId?: string; userId?: string }) => Promise<any>;
   nextRev: () => number;
   /** natureza null = leitura geral (recebimentos e/ou despesas que o usuário pode ver) */
-  access: (req: any, need: Need, natureza: Natureza | null) =>
-    | { companyId: string; actor: string; userId: string; ver: Record<Natureza, boolean>; pode: (need: Need, natureza: Natureza) => boolean }
+  access: (req: any, need: Need, natureza: Natureza | null, tela?: Tela) =>
+    | { companyId: string; actor: string; userId: string; ver: Record<Natureza, boolean>; pode: (need: Need, natureza: Natureza) => boolean; telas: Record<Tela, boolean>; master: boolean; contratado: boolean }
     | { status: number; error: string };
 }
 
@@ -262,7 +263,7 @@ function historico(current: any, companyId: string, userId: string, actor: strin
 
 export function registerTransacoesRoutes(app: Express, d: TransacoesDeps) {
   const ctx = (req: any, res: any, need: Need, natureza: Natureza | null) => {
-    const r = d.access(req, need, natureza);
+    const r = d.access(req, need, natureza, "transacoes");
     if ("status" in r) { res.status(r.status).json({ success: false, error: r.error }); return null; }
     return r;
   };
@@ -281,6 +282,7 @@ export function registerTransacoesRoutes(app: Express, d: TransacoesDeps) {
         pagar: { ver: c.ver.pagar, criar: c.pode("criar", "pagar"), baixar: c.pode("baixar", "pagar"), excluir: c.pode("excluir", "pagar") },
         contas: c.pode("contas", "pagar"),
       },
+      telas: c.telas, contratado: c.contratado,
     });
   });
 
@@ -312,43 +314,9 @@ export function registerTransacoesRoutes(app: Express, d: TransacoesDeps) {
     let criados: any[] = [];
     try {
       await d.mutateStore((current) => {
-        const contas = contasDaEmpresa(current, c.companyId);
-        const contaId = contas.some((x) => x.id === b.contaId) ? String(b.contaId) : principalId(c.companyId);
-        const base = Date.now();
-        const grupo = `trx-${base.toString(36)}`;
-        const diaVenc = Number(data.slice(8, 10));
-        const pre = natureza === "receber" ? "rec" : "pay";
-        const montar = (i: number, venc: string, amt: number, parcela: string, recurrence: any) => {
-          const v = r2(amt);
-          const reg: any = {
-            id: `${pre}-${base}-${i}`, companyId: c.companyId,
-            ...(natureza === "receber" ? { clientName: contato || "Cliente não informado", clientId: contatoId || "" } : { supplierName: contato || "Fornecedor não informado", supplierId: contatoId || "" }),
-            category: categoria, description: descricao, notes: observacao || undefined,
-            amount: v, remainingAmount: v, paidAmount: 0, dueDate: venc, date: data, emissionDate: data,
-            status: "pending", installment: parcela, expenseType: rep === "UNICA" ? "VARIAVEL" : rep,
-            paymentMethod: modo || undefined, bankAccountId: contaId, origem: "transacoes",
-            createdAt: new Date().toISOString(), createdBy: c.actor, _rev: d.nextRev(),
-            ...(recurrence ? { recurrence } : {}),
-          };
-          return reg;
-        };
-        let novos: any[] = [];
-        if (rep === "PARCELADA") {
-          const parte = Math.floor((valor / vezes) * 100) / 100;
-          novos = Array.from({ length: vezes }, (_, i) => montar(i, somarMeses(data, i, diaVenc), i === vezes - 1 ? valor - parte * (vezes - 1) : parte, `${String(i + 1).padStart(2, "0")}/${String(vezes).padStart(2, "0")}`, { groupId: grupo, tipo: rep, indice: i + 1, total: vezes }));
-        } else if (rep === "FIXA_MENSAL") {
-          novos = Array.from({ length: vezes }, (_, i) => montar(i, somarMeses(data, i, diaVenc), valor, `${String(i + 1).padStart(2, "0")}/${String(vezes).padStart(2, "0")}`, { groupId: grupo, tipo: rep, indice: i + 1, total: vezes, fim: somarMeses(data, vezes - 1, diaVenc), diaVencimento: diaVenc, valorBase: valor }));
-        } else if (rep === "FIXA_INDETERMINADA" || rep === "VARIAVEL_MENSAL") {
-          novos = Array.from({ length: 12 }, (_, i) => montar(i, somarMeses(data, i, diaVenc), valor, `Mês ${i + 1}`, { groupId: grupo, tipo: rep, indice: i + 1, total: null, ativo: true, diaVencimento: diaVenc, valorBase: valor, valorEstimado: rep === "VARIAVEL_MENSAL" }));
-        } else {
-          novos = [montar(0, data, valor, "01/01", null)];
-        }
+        const { novos, movs } = montarLancamentos(current, c, natureza, { descricao, valor, data, contato, contatoId, categoria, modo, observacao, contaId: b.contaId, rep, vezes, pago, dataPagamento }, d.nextRev, String(Date.now()));
         const extras: any = {};
-        if (pago) {
-          const p = novos[0];
-          Object.assign(p, { status: "paid", paidAmount: p.amount, remainingAmount: 0, paymentDate: dataPagamento });
-          extras.financialTransactions = [...(Array.isArray(current.financialTransactions) ? current.financialTransactions : []), movimento(natureza, p, null, p.amount, dataPagamento, modo, contaId, c, d, false)];
-        }
+        if (movs.length) extras.financialTransactions = [...(Array.isArray(current.financialTransactions) ? current.financialTransactions : []), ...movs];
         criados = novos;
         const total = r2(novos.reduce((a, x) => a + x.amount, 0));
         return {
@@ -417,45 +385,9 @@ export function registerTransacoesRoutes(app: Express, d: TransacoesDeps) {
     try {
       await d.mutateStore((current) => {
         const next: any = { ...current, accountsReceivable: [...(current.accountsReceivable || [])], accountsPayable: [...(current.accountsPayable || [])] };
-        const movs: any[] = [];
-        const contas = contasDaEmpresa(current, c.companyId);
-        const contaPedida = contas.some((x) => x.id === b.contaId) ? String(b.contaId) : "";
-        for (const id of ids) {
-          const l = localizar(next, id, c.companyId);
-          if (!l || cancelado(l.registro.status)) continue;
-          const r = { ...l.registro };
-          const contaId = contaPedida || r.bankAccountId || principalId(c.companyId);
-          if (l.instId) {
-            const insts = [...(r.installments || [])];
-            const i = insts.findIndex((x: any, k: number) => (x?.id || `#${k}`) === l.instId);
-            if (i < 0) continue;
-            const inst = { ...insts[i] };
-            const valor = num(inst.amount);
-            const jaPago = PAGO.test(String(inst.status)) || num(inst.paidAmount) >= valor - 0.005;
-            if (jaPago === pago) continue;
-            const efetivo = pago ? valor - num(inst.paidAmount) : num(inst.paidAmount);
-            Object.assign(inst, pago
-              ? { status: "paid", paidAmount: valor, paymentDate: data, paymentMethod: modo || inst.paymentMethod, bankAccountId: contaId }
-              : { status: "pending", paidAmount: 0, paymentDate: undefined, bankAccountId: inst.bankAccountId });
-            insts[i] = inst;
-            const total = insts.reduce((a: number, x: any) => a + num(x?.amount), 0);
-            const pagoTotal = insts.reduce((a: number, x: any) => a + num(x?.paidAmount), 0);
-            Object.assign(r, { installments: insts, paidAmount: r2(pagoTotal), remainingAmount: r2(total - pagoTotal), status: pagoTotal >= total - 0.005 ? "paid" : pagoTotal > 0 ? "partially_paid" : "pending" });
-            movs.push(movimento(l.natureza, r, inst, r2(efetivo), pago ? data : hojeISO(), modo || inst.paymentMethod, contaId, c, d, !pago));
-          } else {
-            const valor = num(r.amount ?? r.totalAmount);
-            const jaPago = PAGO.test(String(r.status)) || num(r.paidAmount) >= valor - 0.005;
-            if (jaPago === pago) continue;
-            const efetivo = pago ? valor - num(r.paidAmount) : num(r.paidAmount);
-            Object.assign(r, pago
-              ? { status: "paid", paidAmount: valor, remainingAmount: 0, paymentDate: data, paymentMethod: modo || r.paymentMethod, bankAccountId: contaId }
-              : { status: "pending", paidAmount: 0, remainingAmount: valor, paymentDate: undefined, settlementDate: undefined });
-            movs.push(movimento(l.natureza, r, null, r2(efetivo), pago ? data : hojeISO(), modo || r.paymentMethod, contaId, c, d, !pago));
-          }
-          r.updatedAt = new Date().toISOString(); r._rev = d.nextRev();
-          next[COL[l.natureza]][l.idx] = r;
-          alterados++;
-        }
+        const r = aplicarPagamentos(next, c, ids, pago, data, b.contaId, modo, d.nextRev);
+        alterados = r.alterados;
+        const movs = r.movs;
         if (!alterados) return current;
         next.financialTransactions = [...(Array.isArray(current.financialTransactions) ? current.financialTransactions : []), ...movs];
         next.history = historico(current, c.companyId, c.userId, c.actor, pago ? "Lançamentos marcados como pagos" : "Pagamento desfeito", `${alterados} lançamento(s) ${pago ? "marcados como pagos em " + data : "voltaram para não pagos"}.`);
@@ -593,8 +525,99 @@ export function registerTransacoesRoutes(app: Express, d: TransacoesDeps) {
   });
 }
 
+
+/** Monta os títulos de um lançamento (única, parcelada, fixa ou recorrente) no formato de Contas a Receber/Pagar. */
+export function montarLancamentos(current: any, c: any, natureza: Natureza, x: any, nextRev: () => number, idBase: string) {
+  const contas = contasDaEmpresa(current, c.companyId);
+  const contaId = contas.some((k) => k.id === x.contaId) ? String(x.contaId) : principalId(c.companyId);
+  const rep = String(x.rep || "UNICA");
+  const vezes = Math.round(num(x.vezes));
+  const valor = r2(num(x.valor));
+  const data = String(x.data);
+  const grupo = `trx-${Number(idBase.replace(/\D/g, "").slice(0, 15) || Date.now()).toString(36)}`;
+  const diaVenc = Number(data.slice(8, 10));
+  const pre = natureza === "receber" ? "rec" : "pay";
+  const montar = (i: number, venc: string, amt: number, parcela: string, recurrence: any) => {
+    const v = r2(amt);
+    return {
+      id: `${pre}-${idBase}-${i}`, companyId: c.companyId,
+      ...(natureza === "receber" ? { clientName: x.contato || "Cliente não informado", clientId: x.contatoId || "" } : { supplierName: x.contato || "Fornecedor não informado", supplierId: x.contatoId || "" }),
+      category: x.categoria || "Outros", description: x.descricao, notes: x.observacao || undefined,
+      amount: v, remainingAmount: v, paidAmount: 0, dueDate: venc, date: data, emissionDate: data,
+      status: "pending", installment: parcela, expenseType: rep === "UNICA" ? "VARIAVEL" : rep,
+      paymentMethod: x.modo || undefined, bankAccountId: contaId, origem: x.origem || "transacoes", importId: x.importId || undefined,
+      createdAt: new Date().toISOString(), createdBy: c.actor, _rev: nextRev(),
+      ...(recurrence ? { recurrence } : {}),
+    } as any;
+  };
+  let novos: any[] = [];
+  if (rep === "PARCELADA") {
+    const parte = Math.floor((valor / vezes) * 100) / 100;
+    novos = Array.from({ length: vezes }, (_, i) => montar(i, somarMeses(data, i, diaVenc), i === vezes - 1 ? valor - parte * (vezes - 1) : parte, `${String(i + 1).padStart(2, "0")}/${String(vezes).padStart(2, "0")}`, { groupId: grupo, tipo: rep, indice: i + 1, total: vezes }));
+  } else if (rep === "FIXA_MENSAL") {
+    novos = Array.from({ length: vezes }, (_, i) => montar(i, somarMeses(data, i, diaVenc), valor, `${String(i + 1).padStart(2, "0")}/${String(vezes).padStart(2, "0")}`, { groupId: grupo, tipo: rep, indice: i + 1, total: vezes, fim: somarMeses(data, vezes - 1, diaVenc), diaVencimento: diaVenc, valorBase: valor }));
+  } else if (rep === "FIXA_INDETERMINADA" || rep === "VARIAVEL_MENSAL") {
+    novos = Array.from({ length: 12 }, (_, i) => montar(i, somarMeses(data, i, diaVenc), valor, `Mês ${i + 1}`, { groupId: grupo, tipo: rep, indice: i + 1, total: null, ativo: true, diaVencimento: diaVenc, valorBase: valor, valorEstimado: rep === "VARIAVEL_MENSAL" }));
+  } else {
+    novos = [montar(0, data, valor, "01/01", null)];
+  }
+  const movs: any[] = [];
+  if (x.pago) {
+    const p = novos[0];
+    const dp = x.dataPagamento || data;
+    Object.assign(p, { status: "paid", paidAmount: p.amount, remainingAmount: 0, paymentDate: dp });
+    movs.push(movimento(natureza, p, null, p.amount, dp, x.modo, contaId, c, nextRev, false));
+  }
+  return { novos, movs, contaId };
+}
+
+/** Marca/desmarca como pago (altera next em memória). Usado por Transações, importação e conciliação OFX. */
+export function aplicarPagamentos(next: any, c: any, ids: string[], pago: boolean, data: string, contaPedidaId: any, modo: string, nextRev: () => number) {
+  let alterados = 0;
+  const movs: any[] = [];
+  const contas = contasDaEmpresa(next, c.companyId);
+  const contaPedida = contas.some((x) => x.id === contaPedidaId) ? String(contaPedidaId) : "";
+  for (const id of ids) {
+    const l = localizar(next, id, c.companyId);
+    if (!l || cancelado(l.registro.status)) continue;
+    const r = { ...l.registro };
+    const contaId = contaPedida || r.bankAccountId || principalId(c.companyId);
+    if (l.instId) {
+      const insts = [...(r.installments || [])];
+      const i = insts.findIndex((x: any, k: number) => (x?.id || `#${k}`) === l.instId);
+      if (i < 0) continue;
+      const inst = { ...insts[i] };
+      const valor = num(inst.amount);
+      const jaPago = PAGO.test(String(inst.status)) || num(inst.paidAmount) >= valor - 0.005;
+      if (jaPago === pago) continue;
+      const efetivo = pago ? valor - num(inst.paidAmount) : num(inst.paidAmount);
+      Object.assign(inst, pago
+        ? { status: "paid", paidAmount: valor, paymentDate: data, paymentMethod: modo || inst.paymentMethod, bankAccountId: contaId }
+        : { status: "pending", paidAmount: 0, paymentDate: undefined, bankAccountId: inst.bankAccountId });
+      insts[i] = inst;
+      const total = insts.reduce((a: number, x: any) => a + num(x?.amount), 0);
+      const pagoTotal = insts.reduce((a: number, x: any) => a + num(x?.paidAmount), 0);
+      Object.assign(r, { installments: insts, paidAmount: r2(pagoTotal), remainingAmount: r2(total - pagoTotal), status: pagoTotal >= total - 0.005 ? "paid" : pagoTotal > 0 ? "partially_paid" : "pending" });
+      movs.push(movimento(l.natureza, r, inst, r2(efetivo), pago ? data : hojeISO(), modo || inst.paymentMethod, contaId, c, nextRev, !pago));
+    } else {
+      const valor = num(r.amount ?? r.totalAmount);
+      const jaPago = PAGO.test(String(r.status)) || num(r.paidAmount) >= valor - 0.005;
+      if (jaPago === pago) continue;
+      const efetivo = pago ? valor - num(r.paidAmount) : num(r.paidAmount);
+      Object.assign(r, pago
+        ? { status: "paid", paidAmount: valor, remainingAmount: 0, paymentDate: data, paymentMethod: modo || r.paymentMethod, bankAccountId: contaId }
+        : { status: "pending", paidAmount: 0, remainingAmount: valor, paymentDate: undefined, settlementDate: undefined });
+      movs.push(movimento(l.natureza, r, null, r2(efetivo), pago ? data : hojeISO(), modo || r.paymentMethod, contaId, c, nextRev, !pago));
+    }
+    r.updatedAt = new Date().toISOString(); r._rev = nextRev();
+    next[COL[l.natureza]][l.idx] = r;
+    alterados++;
+  }
+  return { alterados, movs };
+}
+
 // Movimento de caixa (mesma coleção usada pelo Fluxo de Caixa / DRE). Estorno = movimento inverso.
-function movimento(natureza: Natureza, r: any, inst: any, valor: number, data: string, modo: string, contaId: string, c: any, d: TransacoesDeps, estorno: boolean) {
+function movimento(natureza: Natureza, r: any, inst: any, valor: number, data: string, modo: string, contaId: string, c: any, nextRev: () => number, estorno: boolean) {
   const receita = natureza === "receber";
   const tipo = receita !== estorno ? "income" : "expense";
   const desc = r.description || r.title || r.category || "";
@@ -606,6 +629,8 @@ function movimento(natureza: Natureza, r: any, inst: any, valor: number, data: s
     companyId: c.companyId,
     description: `${estorno ? "Estorno de " + (receita ? "recebimento" : "pagamento") : receita ? "Recebimento" : "Pagamento"}: ${desc}${inst ? ` (parcela ${inst.installmentNumber || ""})` : ""}`,
     referenceId: r.id, installmentId: inst?.id || undefined, paymentMethod: modo || undefined, bankAccountId: contaId,
-    createdByName: c.actor, origem: "transacoes", estorno: estorno || undefined, _rev: d.nextRev(),
+    createdByName: c.actor, origem: "transacoes", estorno: estorno || undefined, _rev: nextRev(),
   };
 }
+
+export { COL, PREFIXO, SEP, PAGO, hojeISO, num, r2, dia, texto, cancelado, daEmpresa, principalId, localizar, historico, movimento, transferenciasDe, naturezaDoId };

@@ -16,6 +16,7 @@ import { registerFiscalRoutes } from "./server/fiscal/routes.ts";
 import { registerRepresentacaoRoutes } from "./server/representacao/routes.ts";
 import { registerFinanceiroRoutes, renovarTodas } from "./server/financeiro/routes.ts";
 import { registerTransacoesRoutes } from "./server/financeiro/transacoes.ts";
+import { registerFinanceiroExtrasRoutes } from "./server/financeiro/extras.ts";
 
 dotenv.config();
 
@@ -575,7 +576,7 @@ const TENANT_COLLECTIONS = [
   'nonConformityReports', 'bankStatements', 'unitsOfMeasure', 'accessGroups', 'pendingPriceRevisions',
   'priceChangeHistory', 'priceCalculationHistory',
   // Representação comercial (pedidos, representadas, faturamento e conciliações)
-  'representativeOrders', 'representedCompanies', 'representativeFactoryOrders', 'factoryBillingImports', 'representativeCommissions', 'representativeReconciliations', 'representativePendingLines', 'accountTypes', 'bankAccounts', 'bankTransfers',
+  'representativeOrders', 'representedCompanies', 'representativeFactoryOrders', 'factoryBillingImports', 'representativeCommissions', 'representativeReconciliations', 'representativePendingLines', 'accountTypes', 'bankAccounts', 'bankTransfers', 'financeContacts', 'financeImports',
 ];
 
 // Campos de contrato/licença da empresa: só o administrador mestre da plataforma altera
@@ -1542,6 +1543,8 @@ export function sanitizeAndIsolateCompanies(db: any): any {
     'accountTypes',
     'bankAccounts',
     'bankTransfers',
+    'financeContacts',
+    'financeImports',
   ];
 
   const sanitized: any = { ...db };
@@ -2169,6 +2172,8 @@ export function mergeAppDatabase(existing: any, incoming: any): any {
     accountTypes: mergeEntityCollection(existing.accountTypes, incoming.accountTypes, 'id'),
     bankAccounts: mergeEntityCollection(existing.bankAccounts, incoming.bankAccounts, 'id'),
     bankTransfers: mergeEntityCollection(existing.bankTransfers, incoming.bankTransfers, 'id'),
+    financeContacts: mergeEntityCollection(existing.financeContacts, incoming.financeContacts, 'id'),
+    financeImports: mergeEntityCollection(existing.financeImports, incoming.financeImports, 'id'),
     contractModules: { ...(existing.contractModules || {}), ...(incoming.contractModules || {}) },
     globalModules: { ...(existing.globalModules || {}), ...(incoming.globalModules || {}) },
     alertSettings: { ...(existing.alertSettings || {}), ...(incoming.alertSettings || {}) },
@@ -2248,6 +2253,8 @@ export function isolateDatabaseForContext(
     'accountTypes',
     'bankAccounts',
     'bankTransfers',
+    'financeContacts',
+    'financeImports',
   ];
 
   const allRegistered = Array.isArray(db.registeredCompanies) && db.registeredCompanies.length > 0
@@ -3957,37 +3964,142 @@ registerFinanceiroRoutes(app, {
 });
 
 // Transações (recebimentos, despesas e transferências do mês, contas bancárias)
+// Módulo "Transações" (financeiro no formato lançamentos do mês): a empresa contrata (globalModules.accessFinTransacoes)
+// e cada usuário recebe as telas liberadas. Conta mestre vê tudo; administrador da empresa recebe tudo o que foi contratado.
+const FIN_TELAS = { transacoes: "accessFinTransacoes", contatos: "accessFinContatos", relatorios: "accessFinRelatorios", importacoes: "accessFinImportacoes" } as const;
+const FIN_EDITAR = "finTransacoesEditar";
+type FinTela = keyof typeof FIN_TELAS;
+function finPermissoesDe(u: any, company: any) {
+  const master = isMasterAccount(u);
+  const contratado = companyAllowsPermission(company, "accessFinTransacoes");
+  const tem = (k: string) => hasEffectivePermission(u, company, k);
+  const telas = Object.fromEntries((Object.keys(FIN_TELAS) as FinTela[]).map((t) => [t, master || (contratado && tem(FIN_TELAS[t]))])) as Record<FinTela, boolean>;
+  const editar = master || (contratado && (tem(FIN_EDITAR) || tem("accessUserManagement")));
+  return { master, contratado, telas, editar };
+}
+function finAccess(req: any, need: string, natureza: "receber" | "pagar" | null, tela: FinTela = "transacoes") {
+  if (!req.authUser) return { status: 401, error: "Sessão expirada ou inválida. Faça login novamente." };
+  const { companyId } = extractUserContext(req);
+  const company = findCompany(serverAppStoreCache, companyId);
+  if (!company || !userCompanyIds(req.authUser, serverAppStoreCache).includes(companyId)) return { status: 403, error: "Empresa não vinculada ao usuário." };
+  const u = req.authUser;
+  const fp = finPermissoesDe(u, company);
+  if (!fp.telas[tela]) {
+    const nomes: Record<FinTela, string> = { transacoes: "Transações", contatos: "Contatos", relatorios: "Relatórios", importacoes: "Importações e conciliação" };
+    return { status: 403, error: fp.contratado ? `Tela ${nomes[tela]} não liberada para o seu usuário.` : "O módulo Transações não foi contratado por esta empresa." };
+  }
+  const tem = (k: string) => hasEffectivePermission(u, company, k);
+  // Quem tem a tela vê recebimentos e despesas; lançar, baixar e excluir exigem a liberação de edição
+  // (ou as permissões de Contas a Receber / Contas a Pagar que já existiam)
+  const ver = { receber: true, pagar: true };
+  const chaves: Record<string, Record<string, string[]>> = {
+    criar: { receber: ["accountsReceivableCreate", "accountsReceivableEdit"], pagar: ["accountsPayableCreate", "accountsPayableEdit"] },
+    baixar: { receber: ["accountsReceivableSettle", "accountsReceivableCreate", "accountsReceivableEdit"], pagar: ["accountsPayableSettle", "accountsPayableCreate", "accountsPayableEdit"] },
+    excluir: { receber: ["accountsReceivableCancel", "accountsReceivableEdit"], pagar: ["accountsPayableCancel", "accountsPayableEdit"] },
+  };
+  const pode = (n: string, nat: "receber" | "pagar") => {
+    if (n === "ler") return true;
+    if (fp.editar) return true;
+    if (n === "contas") return tem("accessFinancial");
+    return (chaves[n]?.[nat] || []).some(tem);
+  };
+  if (need !== "ler" && !pode(need, natureza || "pagar")) return { status: 403, error: "Seu usuário pode consultar, mas não alterar lançamentos." };
+  return { companyId, actor: u.name || u.username, userId: u.id, ver, pode, telas: fp.telas, master: fp.master, contratado: fp.contratado };
+}
+
 registerTransacoesRoutes(app, {
   getStore: () => serverAppStoreCache,
   mutateStore: (fn, meta) => mutateAppStore(fn, meta),
   nextRev: () => nextRecordRev(),
-  access: (req: any, need, natureza) => {
-    if (!req.authUser) return { status: 401, error: "Sessão expirada ou inválida. Faça login novamente." };
-    const { companyId } = extractUserContext(req);
-    const company = findCompany(serverAppStoreCache, companyId);
-    if (!company || !userCompanyIds(req.authUser, serverAppStoreCache).includes(companyId)) return { status: 403, error: "Empresa não vinculada ao usuário." };
-    const u = req.authUser;
-    const tem = (k: string) => hasEffectivePermission(u, company, k);
-    const ver = {
-      receber: tem("accessAccountsReceivable") || tem("accessFinancial"),
-      pagar: tem("accessAccountsPayable") || tem("accessFinancial"),
-    };
-    const chaves: Record<string, Record<string, string[]>> = {
-      criar: { receber: ["accountsReceivableCreate", "accountsReceivableEdit"], pagar: ["accountsPayableCreate", "accountsPayableEdit"] },
-      baixar: { receber: ["accountsReceivableSettle", "accountsReceivableCreate", "accountsReceivableEdit"], pagar: ["accountsPayableSettle", "accountsPayableCreate", "accountsPayableEdit"] },
-      excluir: { receber: ["accountsReceivableCancel", "accountsReceivableEdit"], pagar: ["accountsPayableCancel", "accountsPayableEdit"] },
-    };
-    const pode = (n: string, nat: "receber" | "pagar") => {
-      if (n === "ler") return ver[nat];
-      if (n === "contas") return tem("accessFinancial") || tem("accessUserManagement") || ["accountsPayableCreate", "accountsPayableEdit", "accountsReceivableCreate", "accountsReceivableEdit"].some(tem);
-      return ver[nat] && (tem("accessUserManagement") || (chaves[n]?.[nat] || []).some(tem));
-    };
-    if (!ver.receber && !ver.pagar) return { status: 403, error: "Financeiro não liberado para o seu usuário." };
-    if (need === "contas" ? !pode("contas", "pagar") : natureza ? !pode(need, natureza) : false) {
-      return { status: 403, error: "Seu usuário não tem permissão para esta operação." };
-    }
-    return { companyId, actor: u.name || u.username, userId: u.id, ver, pode };
-  },
+  access: (req: any, need, natureza, tela) => finAccess(req, need, natureza, tela || "transacoes") as any,
+});
+registerFinanceiroExtrasRoutes(app, {
+  getStore: () => serverAppStoreCache,
+  mutateStore: (fn, meta) => mutateAppStore(fn, meta),
+  nextRev: () => nextRecordRev(),
+  access: (req: any, need, natureza, tela) => finAccess(req, need, natureza, tela || "transacoes") as any,
+});
+
+// Contratação do módulo pela empresa e telas liberadas a cada usuário
+app.get("/api/financeiro/modulo", (req: any, res) => {
+  if (!req.authUser) return res.status(401).json({ success: false, error: "Sessão expirada ou inválida. Faça login novamente." });
+  const { companyId } = extractUserContext(req);
+  const db = serverAppStoreCache;
+  const company = findCompany(db, companyId);
+  if (!company || !userCompanyIds(req.authUser, db).includes(companyId)) return res.status(403).json({ success: false, error: "Empresa não vinculada ao usuário." });
+  const u = req.authUser;
+  const fp = finPermissoesDe(u, company);
+  const gerencia = canManageUsers(u, company);
+  const usuarios = gerencia
+    ? (db?.users || [])
+      .filter((x: any) => x && !isMasterAccount(x) && userCompanyIds(x, db).includes(companyId))
+      .map((x: any) => {
+        const p = finPermissoesDe(x, company);
+        return { id: x.id, nome: x.name || x.username, username: x.username, role: x.role, ativo: isUserActive(x), telas: p.telas, editar: p.editar };
+      })
+    : [];
+  res.json({
+    success: true, empresa: { id: company.id, nome: company.name || company.tradeName || "" },
+    contratado: fp.contratado, telas: fp.telas, editar: fp.editar, master: fp.master,
+    gerenciaContrato: fp.master, gerenciaUsuarios: gerencia, usuarios,
+  });
+});
+
+app.post("/api/financeiro/modulo/contrato", async (req: any, res) => {
+  if (!req.authUser) return res.status(401).json({ success: false, error: "Sessão expirada ou inválida. Faça login novamente." });
+  if (!isMasterAccount(req.authUser)) return res.status(403).json({ success: false, error: "Só o administrador da plataforma altera a contratação de módulos." });
+  const { companyId } = extractUserContext(req);
+  const contratado = req.body?.contratado !== false;
+  try {
+    let achou = false;
+    await mutateAppStore((current) => {
+      const ajusta = (c: any) => {
+        if (!c || c.id !== companyId) return c;
+        achou = true;
+        return { ...c, globalModules: { ...(c.globalModules || {}), accessFinTransacoes: contratado } };
+      };
+      const next: any = { ...current, registeredCompanies: (current.registeredCompanies || []).map(ajusta) };
+      if (current.companyInfo?.id === companyId) next.companyInfo = ajusta(current.companyInfo);
+      next.history = [{ id: `hst-fin-${Date.now()}`, date: new Date().toISOString(), type: "system", title: "Contratação de módulo", description: `Módulo Transações ${contratado ? "contratado" : "removido do contrato"} para a empresa.`, userId: req.authUser.id, userName: req.authUser.name || req.authUser.username, companyId, clientId: "system", vehicleId: "system" }, ...(current.history || [])];
+      return achou ? next : current;
+    }, { source: "modulo_contrato", companyId, userId: req.authUser.id });
+    if (!achou) return res.status(404).json({ success: false, error: "Empresa não encontrada." });
+    res.json({ success: true, contratado });
+  } catch (err: any) {
+    res.status(503).json({ success: false, error: "Não foi possível gravar agora. Tente novamente." });
+  }
+});
+
+app.post("/api/financeiro/modulo/usuarios", async (req: any, res) => {
+  if (!req.authUser) return res.status(401).json({ success: false, error: "Sessão expirada ou inválida. Faça login novamente." });
+  const { companyId } = extractUserContext(req);
+  const db = serverAppStoreCache;
+  const company = findCompany(db, companyId);
+  if (!company || !canManageUsers(req.authUser, company) || !userCompanyIds(req.authUser, db).includes(companyId)) return res.status(403).json({ success: false, error: "Só quem gerencia usuários pode liberar telas." });
+  const userId = String(req.body?.userId || "");
+  const telas = req.body?.telas || {};
+  const editar = req.body?.editar;
+  try {
+    let ok = false;
+    await mutateAppStore((current) => {
+      const users = (current.users || []).map((x: any) => {
+        if (!x || x.id !== userId || isMasterAccount(x) || !userCompanyIds(x, current).includes(companyId)) return x;
+        ok = true;
+        const permissions = { ...(x.permissions || {}) };
+        for (const t of Object.keys(FIN_TELAS) as FinTela[]) if (typeof telas[t] === "boolean") permissions[FIN_TELAS[t]] = telas[t];
+        if (typeof editar === "boolean") permissions[FIN_EDITAR] = editar;
+        return { ...x, permissions, updatedAt: new Date().toISOString(), _rev: nextRecordRev() };
+      });
+      if (!ok) return current;
+      const alvo = users.find((x: any) => x?.id === userId);
+      const desc = (Object.keys(FIN_TELAS) as FinTela[]).map((t) => `${t}: ${alvo.permissions[FIN_TELAS[t]] ? "sim" : "não"}`).join(", ") + `, lançar/baixar: ${alvo.permissions[FIN_EDITAR] ? "sim" : "não"}`;
+      return { ...current, users, history: [{ id: `hst-fin-${Date.now()}`, date: new Date().toISOString(), type: "system", title: "Acesso ao módulo Transações", description: `${alvo.name || alvo.username}: ${desc}.`, userId: req.authUser.id, userName: req.authUser.name || req.authUser.username, companyId, clientId: "system", vehicleId: "system" }, ...(current.history || [])] };
+    }, { source: "modulo_usuarios", companyId, userId: req.authUser.id });
+    if (!ok) return res.status(404).json({ success: false, error: "Usuário não encontrado nesta empresa." });
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(503).json({ success: false, error: "Não foi possível gravar agora. Tente novamente." });
+  }
 });
 
 // Conciliação dos pedidos de representação com a planilha de fechamento da representada

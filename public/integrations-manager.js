@@ -386,7 +386,8 @@
     const html = ICON + (collapsed ? '' : '<span>Integrações e API</span>');
     if (btn.innerHTML !== html) btn.innerHTML = html;
     btn.style.justifyContent = collapsed ? 'center' : '';
-    if (btn.parentElement !== nav || nav.lastElementChild !== btn) nav.appendChild(btn);
+    // A posição (logo abaixo de "Conexões & Módulos") é definida por menu-agrupado.js
+    if (btn.parentElement !== nav) nav.appendChild(btn);
   }
 
   setInterval(injectMenu, 1000);
