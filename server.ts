@@ -767,6 +767,25 @@ function clampPermissionsToContract(target: any, db: any): void {
   }
 }
 
+// Quem gerencia usuários só libera para outra pessoa o que ele mesmo tem; também não promove alguém a
+// administrador da empresa sem ser administrador. Liberações acima do próprio acesso voltam ao valor anterior.
+function blockPrivilegeEscalation(actor: any, company: any, prev: any, next: any): void {
+  if (!actor || isMasterAccount(actor)) return;
+  if (next.role === 'admin' && prev?.role !== 'admin' && actor.role !== 'admin') next.role = prev?.role || 'atendente';
+  for (const field of ['permissions', 'individualExceptions', 'customPermissions']) {
+    const novo = next[field];
+    if (!novo || typeof novo !== 'object') continue;
+    const antes = (prev && prev[field]) || {};
+    const limpo = { ...novo };
+    for (const [key, value] of Object.entries(novo)) {
+      if (value === true && antes[key] !== true && !hasEffectivePermission(actor, company, key)) {
+        if (antes[key] === undefined) delete limpo[key]; else limpo[key] = antes[key];
+      }
+    }
+    next[field] = limpo;
+  }
+}
+
 /**
  * Filtra o que um usuário pode gravar via POST /api/db antes do merge:
  * - registros só das empresas em que ele está cadastrado;
@@ -902,6 +921,7 @@ function guardIncomingDatabase(current: any, incoming: any, user: any, activeCom
         next.allowedCompanyIds = [...new Set([...outsideScope, ...requested])];
       }
       clampPermissionsToContract(next, db);
+      if (!master) blockPrivilegeEscalation(user, activeCompany, prev, next);
       guarded.push(next);
     }
     out.users = guarded;
@@ -4079,11 +4099,17 @@ app.post("/api/financeiro/modulo/usuarios", async (req: any, res) => {
   const userId = String(req.body?.userId || "");
   const telas = req.body?.telas || {};
   const editar = req.body?.editar;
+  // Só libera o que o próprio usuário tem (conta mestre libera tudo)
+  if (!isMasterAccount(req.authUser)) {
+    const meu = finPermissoesDe(req.authUser, company);
+    const negada = (Object.keys(FIN_TELAS) as FinTela[]).find((t) => telas[t] === true && !meu.telas[t]) || (editar === true && !meu.editar ? "editar" : "");
+    if (negada) return res.status(403).json({ success: false, error: "Você não pode liberar uma tela que o seu próprio usuário não tem." });
+  }
   try {
     let ok = false;
     await mutateAppStore((current) => {
       const users = (current.users || []).map((x: any) => {
-        if (!x || x.id !== userId || isMasterAccount(x) || !userCompanyIds(x, current).includes(companyId)) return x;
+        if (!x || x.id !== userId || x.id === req.authUser.id || isMasterAccount(x) || !userCompanyIds(x, current).includes(companyId)) return x;
         ok = true;
         const permissions = { ...(x.permissions || {}) };
         for (const t of Object.keys(FIN_TELAS) as FinTela[]) if (typeof telas[t] === "boolean") permissions[FIN_TELAS[t]] = telas[t];
@@ -4096,6 +4122,85 @@ app.post("/api/financeiro/modulo/usuarios", async (req: any, res) => {
       return { ...current, users, history: [{ id: `hst-fin-${Date.now()}`, date: new Date().toISOString(), type: "system", title: "Acesso ao módulo Lançamentos", description: `${alvo.name || alvo.username}: ${desc}.`, userId: req.authUser.id, userName: req.authUser.name || req.authUser.username, companyId, clientId: "system", vehicleId: "system" }, ...(current.history || [])] };
     }, { source: "modulo_usuarios", companyId, userId: req.authUser.id });
     if (!ok) return res.status(404).json({ success: false, error: "Usuário não encontrado nesta empresa." });
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(503).json({ success: false, error: "Não foi possível gravar agora. Tente novamente." });
+  }
+});
+
+// Telas que não estão no catálogo de permissões do cadastro de usuários: liberação por usuário.
+// Quem gerencia usuários só libera o que o próprio usuário tem.
+const TELAS_EXTRAS: Array<{ chave: string; rotulo: string; dica: string; grupo: string }> = [
+  { chave: "accessFinTransacoes", rotulo: "Painel, Lançamentos e Contas", dica: "Consultar entradas, saídas e saldos", grupo: "Módulo Lançamentos (financeiro)" },
+  { chave: "finTransacoesEditar", rotulo: "Lançar, editar e dar baixa", dica: "Sem isto, a pessoa só consulta os lançamentos", grupo: "Módulo Lançamentos (financeiro)" },
+  { chave: "accessFinContatos", rotulo: "Contatos", dica: "A receber / a pagar por contato", grupo: "Módulo Lançamentos (financeiro)" },
+  { chave: "accessFinRelatorios", rotulo: "Relatórios financeiros", dica: "Demonstrativo, extrato e agrupamentos", grupo: "Módulo Lançamentos (financeiro)" },
+  { chave: "accessFinImportacoes", rotulo: "Importar e conciliação bancária", dica: "Planilhas, OFX e conciliação", grupo: "Módulo Lançamentos (financeiro)" },
+  { chave: "accessBackup", rotulo: "Backup da empresa", dica: "Baixar a cópia dos dados da empresa (restaurar é só do administrador da plataforma)", grupo: "Sistema" },
+  { chave: "accessDeviceConnections", rotulo: "Conexões & Módulos", dica: "Ver computadores conectados e módulos da empresa", grupo: "Sistema" },
+];
+function valorTelaExtra(u: any, company: any, chave: string): boolean {
+  if (chave.startsWith("accessFin") || chave === FIN_EDITAR) {
+    const fp = finPermissoesDe(u, company);
+    if (chave === FIN_EDITAR) return fp.editar;
+    const tela = (Object.keys(FIN_TELAS) as FinTela[]).find((t) => FIN_TELAS[t] === chave);
+    return tela ? fp.telas[tela] : false;
+  }
+  return hasEffectivePermission(u, company, chave);
+}
+const contextoAcessos = (req: any) => {
+  if (!req.authUser) return { status: 401, error: "Sessão expirada ou inválida. Faça login novamente." } as const;
+  const { companyId } = extractUserContext(req);
+  const db = serverAppStoreCache;
+  const company = findCompany(db, companyId);
+  if (!company || !userCompanyIds(req.authUser, db).includes(companyId)) return { status: 403, error: "Empresa não vinculada ao usuário." } as const;
+  if (!canManageUsers(req.authUser, company)) return { status: 403, error: "Só quem gerencia usuários pode liberar telas." } as const;
+  return { companyId, company, db, actor: req.authUser };
+};
+
+app.get("/api/acessos/telas-extras", (req: any, res) => {
+  const c: any = contextoAcessos(req);
+  if (c.status) return res.status(c.status).json({ success: false, error: c.error });
+  const master = isMasterAccount(c.actor);
+  const usuarios = (c.db?.users || [])
+    .filter((x: any) => x && !isMasterAccount(x) && userCompanyIds(x, c.db).includes(c.companyId))
+    .map((x: any) => ({ id: x.id, nome: x.name || x.username, username: x.username, role: x.role, valores: Object.fromEntries(TELAS_EXTRAS.map((t) => [t.chave, valorTelaExtra(x, c.company, t.chave)])) }));
+  res.json({
+    success: true,
+    telas: TELAS_EXTRAS,
+    podeConceder: Object.fromEntries(TELAS_EXTRAS.map((t) => [t.chave, master || valorTelaExtra(c.actor, c.company, t.chave)])),
+    lancamentosContratado: companyAllowsPermission(c.company, "accessFinTransacoes"),
+    usuarios,
+  });
+});
+
+app.post("/api/acessos/telas-extras", async (req: any, res) => {
+  const c: any = contextoAcessos(req);
+  if (c.status) return res.status(c.status).json({ success: false, error: c.error });
+  const userId = String(req.body?.userId || "");
+  const pedidas = req.body?.permissoes || {};
+  const chaves = TELAS_EXTRAS.map((t) => t.chave).filter((k) => typeof pedidas[k] === "boolean");
+  if (!chaves.length) return res.status(400).json({ success: false, error: "Nenhuma tela informada." });
+  if (!isMasterAccount(c.actor)) {
+    const negada = chaves.find((k) => pedidas[k] === true && !valorTelaExtra(c.actor, c.company, k));
+    if (negada) return res.status(403).json({ success: false, error: `Você não pode liberar "${TELAS_EXTRAS.find((t) => t.chave === negada)!.rotulo}" porque o seu próprio usuário não tem esse acesso.` });
+  }
+  try {
+    let alvo: any = null;
+    await mutateAppStore((current) => {
+      const users = (current.users || []).map((x: any) => {
+        if (!x || x.id !== userId || isMasterAccount(x) || !userCompanyIds(x, current).includes(c.companyId)) return x;
+        if (x.id === c.actor.id) return x; // ninguém altera as próprias liberações
+        const permissions = { ...(x.permissions || {}) };
+        for (const k of chaves) permissions[k] = pedidas[k];
+        alvo = { ...x, permissions, updatedAt: new Date().toISOString(), _rev: nextRecordRev() };
+        return alvo;
+      });
+      if (!alvo) return current;
+      const desc = chaves.map((k) => `${TELAS_EXTRAS.find((t) => t.chave === k)!.rotulo}: ${pedidas[k] ? "liberado" : "bloqueado"}`).join(", ");
+      return { ...current, users, history: [{ id: `hst-acs-${Date.now()}`, date: new Date().toISOString(), type: "system", title: "Liberação de telas", description: `${alvo.name || alvo.username}: ${desc}.`, userId: c.actor.id, userName: c.actor.name || c.actor.username, companyId: c.companyId, clientId: "system", vehicleId: "system" }, ...(current.history || [])] };
+    }, { source: "acessos_telas", companyId: c.companyId, userId: c.actor.id });
+    if (!alvo) return res.status(404).json({ success: false, error: userId === c.actor.id ? "Você não pode alterar as suas próprias liberações." : "Usuário não encontrado nesta empresa." });
     res.json({ success: true });
   } catch (err: any) {
     res.status(503).json({ success: false, error: "Não foi possível gravar agora. Tente novamente." });
@@ -5199,13 +5304,31 @@ app.get("/api/backup/download/:filename", requireMaster, async (req, res) => {
   }
 });
 
-// Download de backup 100% isolado por ID da Empresa
-app.get("/api/backup/download-company/:companyId", requireMaster, async (req, res) => {
+// Download de backup 100% isolado por ID da Empresa.
+// Administrador da plataforma: qualquer empresa. Usuário com "Backup da empresa" liberado: só as empresas dele,
+// sem senhas, configuração fiscal (certificado) nem chaves de integração.
+app.get("/api/backup/download-company/:companyId", async (req: any, res) => {
+  const u = req.authUser;
+  if (!u) return res.status(401).json({ success: false, error: "Sessão expirada ou inválida. Faça login novamente." });
+  const master = isMasterAccount(u);
+  const { companyId } = req.params;
+  if (!master) {
+    const company = findCompany(serverAppStoreCache, companyId);
+    if (!company || !userCompanyIds(u, serverAppStoreCache).includes(companyId)) return res.status(403).json({ success: false, error: "Empresa não vinculada ao usuário." });
+    if (!hasEffectivePermission(u, company, "accessBackup")) return res.status(403).json({ success: false, error: "Backup da empresa não liberado para o seu usuário." });
+  }
   try {
-    const { companyId } = req.params;
     const service = DailyBackupService.getInstance();
     const isolatedData = await service.getIsolatedCompanyBackup(getDbSnapshotForBackup, companyId);
-    
+    if (!master) {
+      const semSegredos = (lista: any) => (Array.isArray(lista) ? lista.map((x: any) => { if (!x || typeof x !== "object") return x; const { passwordHash, ...resto } = x; return resto; }) : lista);
+      isolatedData.users = semSegredos(isolatedData.users);
+      if (isolatedData.database) isolatedData.database.users = isolatedData.users;
+      delete isolatedData.sefazConfig;
+      for (const k of Object.keys(isolatedData)) if (/apiKey|webhook|certificat|vault|secret|token|session/i.test(k)) { delete isolatedData[k]; if (isolatedData.database) delete isolatedData.database[k]; }
+      isolatedData._exportNote = (isolatedData._exportNote || "") + " Cópia para conferência: sem senhas, certificado e chaves de integração.";
+    }
+
     const nowStr = new Date().toISOString().split("T")[0];
     const filename = isolatedData.metadata?.suggestedFilename || `motordesk_backup_empresa_${companyId}_${nowStr}.json`;
     
