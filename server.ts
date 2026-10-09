@@ -19,6 +19,7 @@ import { registerTransacoesRoutes } from "./server/financeiro/transacoes.ts";
 import { registerFinanceiroExtrasRoutes } from "./server/financeiro/extras.ts";
 import { registerSaudeRoutes } from "./server/saude/indicadores.ts";
 import { registerMarcaRoutes } from "./server/marca/cabecalho.ts";
+import { conteudoSiteV2, preservarCamposNovos } from "./server/site/dor-remedio.ts";
 
 dotenv.config();
 
@@ -2966,14 +2967,26 @@ app.get(["/api/landing", "/api/site"], async (req, res) => {
     } catch (e) {}
   }
 
-  const company = serverAppStoreCache?.companyInfo || null;
-  const companies = serverAppStoreCache?.registeredCompanies || [];
+  // Conteúdo "a dor e o remédio" (versão 2): gravado no banco uma única vez, guardando o anterior
+  if (landing && conteudoSiteV2(landing)) {
+    try {
+      await mutateAppStore((current) => {
+        const novo = conteudoSiteV2(current?.landingContent);
+        return novo ? { ...current, landingContent: novo } : current;
+      }, { source: "site_conteudo_v2" });
+      landing = serverAppStoreCache?.landingContent || conteudoSiteV2(landing) || landing;
+    } catch (e) {
+      landing = conteudoSiteV2(landing) || landing; // mostra a versão nova mesmo se a gravação falhar agora
+    }
+  }
 
+  // Rota pública: só o conteúdo do site. Os cadastros das empresas (CPF/RG de representantes, contratos,
+  // mensalidades) não saem daqui.
   return res.json({
     success: true,
     landingContent: landing || null,
-    companyInfo: company,
-    registeredCompanies: companies,
+    companyInfo: null,
+    registeredCompanies: [],
     source: "central_database"
   });
 });
@@ -2988,7 +3001,8 @@ app.post(["/api/landing", "/api/site"], requireMaster, async (req: any, res) => 
   try {
     await mutateAppStore((current) => {
       const currentData = current || {};
-      currentData.landingContent = landingContent;
+      // o editor do site não conhece os campos novos (dores, versão): ficam os que já estão gravados
+      currentData.landingContent = preservarCamposNovos(landingContent, currentData.landingContent);
       return currentData;
     }, { source: "landing_content_updated" });
 
