@@ -5342,7 +5342,7 @@ function IndustrialHierarchicalSidebar(props) {
     className: "pt-2 pb-1 space-y-1 border-t border-slate-800/80 my-1",
     children: [
       // 1. IDENTIFICAÇÃO CLARA DO NÚMERO DA EMPRESA CADASTRADA
-      (!isCollapsed || isHovered) && t.jsxs("div", {
+      /*MD-MENU-IND-CARTAO-v1*/false && t.jsxs("div", {
         className: "px-2.5 py-2 mb-2 rounded-xl bg-slate-900 border border-slate-800 text-slate-300 shadow-xs",
         children: [
           t.jsxs("div", {
@@ -5371,7 +5371,7 @@ function IndustrialHierarchicalSidebar(props) {
       }),
 
       // 2. BOTÃO EXCLUSIVO PARA O USUÁRIO QA: GESTÃO & POLÍTICA DE BACKUP
-      true && t.jsxs("div", {
+      false && t.jsxs("div", {
         className: "px-2 py-1.5 mb-2 rounded-xl bg-gradient-to-r from-amber-500/20 via-purple-500/15 to-blue-500/20 border border-amber-500/40 text-amber-200",
         children: [
           t.jsxs("div", {

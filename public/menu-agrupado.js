@@ -1,8 +1,9 @@
 /**
  * MotorDesk - Organiza os itens de menu acrescentados pelos módulos extras dentro dos grupos que já existem.
  *
- *  - Transações, Conciliação de Pedidos e Notas Fiscais (NF-e) entram no submenu "Financeiro & Fiscal"
+ *  - Lançamentos, Conciliação de Pedidos e Notas Fiscais (NF-e) entram no submenu "Financeiro & Fiscal"
  *    (painel que abre ao passar o mouse), com o mesmo visual dos itens de lá, e saem da lista principal.
+ *    Na Indústria o submenu equivalente é o do módulo 12 "Financeiro / Fiscal".
  *  - Cada módulo continua decidindo quem vê o item (o botão original fica no menu, oculto, e é ele que
  *    abre a tela). Sem o grupo Financeiro para o usuário, os itens continuam na lista principal.
  *  - Integrações e API fica logo abaixo de "Conexões & Módulos".
@@ -12,12 +13,16 @@
 
   const ITENS = [
     // [id do botão original, id no submenu, emoji, rótulo, depois de qual item do submenu (sem âncora: fim da lista)]
+    // As âncoras são o final do id ("accounts_payable" = flyout-sub-<grupo>-accounts_payable).
     // Cada item tem âncoras próprias: dois itens disputando a mesma posição ficariam se empurrando.
-    ['menu-btn-fin-transacoes', 'md-transacoes', '💵', 'Lançamentos', ['flyout-sub-financial-accounts_payable', 'flyout-sub-financial-accounts_receivable']],
-    ['menu-btn-rep-conciliacao', 'md-conciliacao-pedidos', '✅', 'Conciliação de Pedidos', ['flyout-sub-financial-representative_orders']],
-    ['menu-btn-notas-fiscais', 'md-notas-fiscais', '🧾', 'Notas Fiscais (NF-e)', ['flyout-sub-financial-fiscal', 'flyout-sub-financial-fiscal_conference']],
+    ['menu-btn-fin-transacoes', 'md-transacoes', '💵', 'Lançamentos', ['accounts_payable', 'accounts_receivable']],
+    ['menu-btn-rep-conciliacao', 'md-conciliacao-pedidos', '✅', 'Conciliação de Pedidos', ['representative_orders']],
+    ['menu-btn-notas-fiscais', 'md-notas-fiscais', '🧾', 'Notas Fiscais (NF-e)', ['fiscal', 'fiscal_conference']],
   ];
   const CLASSE = 'md-menu-agrupado';
+  // Submenu Financeiro de cada layout: "financial" (Oficina, Comércio e híbrido) e "ind_mod_financeiro" (Indústria)
+  const GRUPOS = ['financial', 'ind_mod_financeiro'];
+  const grupoAtual = () => GRUPOS.find((g) => document.getElementById('menu-btn-' + g + '-parent')) || '';
 
   function estilos() {
     if (document.getElementById('md-menu-agrupado-style')) return;
@@ -30,19 +35,21 @@
   // Só agrupa quando o usuário vê o grupo Financeiro & Fiscal (senão os itens ficariam inacessíveis)
   function atualizarAgrupamento() {
     if (!document.body) return;
-    const temGrupo = Boolean(document.getElementById('menu-btn-financial-parent'));
+    const temGrupo = Boolean(grupoAtual());
     document.body.classList.toggle(CLASSE, temGrupo);
   }
 
   function preencherSubmenu() {
-    const painel = document.getElementById('flyout-menu-container-financial');
+    const grupo = grupoAtual();
+    const painel = grupo && document.getElementById('flyout-menu-container-' + grupo);
     if (!painel || !document.body || !document.body.classList.contains(CLASSE)) return;
-    const modelo = painel.querySelector('button[id^="flyout-sub-financial-"]:not([data-md-extra])');
+    const prefixo = 'flyout-sub-' + grupo + '-';
+    const modelo = painel.querySelector('button[id^="' + prefixo + '"]:not([data-md-extra])');
     if (!modelo) return;
     const lista = modelo.parentElement;
     for (const [origem, id, emoji, rotulo, ancoras] of ITENS) {
       const original = document.getElementById(origem);
-      const subId = 'flyout-sub-financial-' + id;
+      const subId = prefixo + id;
       let item = document.getElementById(subId);
       if (!original) { if (item) item.remove(); continue; }
       if (!item) {
@@ -63,15 +70,19 @@
           if (botao) botao.click();
         });
       }
-      const ancora = ancoras.map((a) => document.getElementById(a)).find((a) => a && a.parentElement === lista);
+      const ancora = ancoras.map((a) => document.getElementById(prefixo + a)).find((a) => a && a.parentElement === lista);
       if (ancora) { if (ancora.nextElementSibling !== item) ancora.after(item); }
       else if (item.parentElement !== lista) lista.appendChild(item);
     }
     // Rodapé "N telas disponíveis" passa a contar os itens acrescentados
     const total = lista.querySelectorAll('button[id^="flyout-sub-"]').length;
-    const rodape = [...painel.querySelectorAll('span, div')].find((e) => e.children.length === 0 && /^\d+ telas? disponíve(l|is)$/.test((e.textContent || '').trim()));
+    // (o texto divide o elemento com a bolinha colorida: troca só os pedaços de texto, mantendo a bolinha)
+    const rodape = [...painel.querySelectorAll('span, div')].find((e) => /^\d+ telas? disponíve(l|is)$/.test((e.textContent || '').trim()) && [...e.childNodes].some((n) => n.nodeType === 3 && /\d/.test(n.nodeValue)));
     const texto = total + (total === 1 ? ' tela disponível' : ' telas disponíveis');
-    if (rodape && rodape.textContent.trim() !== texto) rodape.textContent = texto;
+    if (rodape && rodape.textContent.trim() !== texto) {
+      [...rodape.childNodes].filter((n) => n.nodeType === 3).forEach((n) => n.remove());
+      rodape.appendChild(document.createTextNode(texto));
+    }
   }
 
   // Integrações e API logo abaixo de "Conexões & Módulos"
@@ -91,7 +102,7 @@
 
   let agendado = false;
   new MutationObserver(() => {
-    if (agendado || !document.getElementById('flyout-menu-container-financial')) return;
+    if (agendado || !GRUPOS.some((g) => document.getElementById('flyout-menu-container-' + g))) return;
     agendado = true;
     requestAnimationFrame(() => { agendado = false; preencherSubmenu(); });
   })

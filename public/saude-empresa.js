@@ -69,6 +69,8 @@
       '#md-saude .msg{background:#fef2f2;border:1px solid #fecaca;color:#991b1b;border-radius:8px;padding:12px 14px}',
       '#menu-btn-saude-empresa{width:100%;display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:8px;border:0;background:none;color:#cbd5e1;font-size:12px;font-weight:600;letter-spacing:.02em;cursor:pointer;text-align:left}',
       '#menu-btn-saude-empresa:hover{background:#1e293b;color:#fff}#menu-btn-saude-empresa svg{width:16px;height:16px;flex-shrink:0;color:#f472b6}#menu-btn-saude-empresa[aria-current=page]{background:#4f46e5;color:#fff}',
+      // Na Indústria acompanha as linhas dos módulos (mais compactas e em tom mais suave)
+      '#menu-btn-saude-empresa.md-saude-ind{padding:8px 12px;margin:2px 0;color:#94a3b8;text-transform:uppercase}#menu-btn-saude-empresa.md-saude-ind:hover{color:#f1f5f9}#menu-btn-saude-empresa.md-saude-ind svg{width:14px;height:14px}',
       '@media print{#md-saude{position:static}#md-saude .hd .ib,#md-saude .hd .bt{display:none}}',
     ].join('\n');
     document.head.appendChild(s);
@@ -188,9 +190,11 @@
     const html = ICON + (recolhido ? '' : '<span>SAÚDE DA EMPRESA</span>');
     if (btn.innerHTML !== html) btn.innerHTML = html;
     btn.style.justifyContent = recolhido ? 'center' : '';
-    const ancora = document.getElementById('menu-btn-dashboard');
-    if (ancora && ancora.parentElement === nav) { if (ancora.nextElementSibling !== btn) ancora.after(btn); }
+    // Logo após o Dashboard; na Indústria (sem Dashboard no menu), logo após o "Rastrear Processo"
+    const ancora = document.getElementById('menu-btn-dashboard') || document.getElementById('menu-btn-rastrear-processo');
+    if (ancora && nav.contains(ancora)) { if (ancora.nextElementSibling !== btn) ancora.after(btn); }
     else if (btn.parentElement !== nav) nav.prepend(btn);
+    btn.classList.toggle('md-saude-ind', Boolean(ancora && ancora.id === 'menu-btn-rastrear-processo'));
     if (root) posicionar();
   }
 

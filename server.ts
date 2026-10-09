@@ -4222,6 +4222,24 @@ registerSaudeRoutes(app, {
   },
 });
 
+// Cartão da empresa no menu lateral (todos os ramos): só identificação, para quem está vinculado à empresa
+app.get("/api/empresa-ativa", (req: any, res) => {
+  if (!req.authUser) return res.status(401).json({ success: false, error: "Sessão expirada ou inválida. Faça login novamente." });
+  const { companyId } = extractUserContext(req);
+  const company: any = findCompany(serverAppStoreCache, companyId);
+  if (!company || !userCompanyIds(req.authUser, serverAppStoreCache).includes(companyId)) return res.status(403).json({ success: false, error: "Empresa não vinculada ao usuário." });
+  const inativa = company.active === false || /^(inactive|inativ|blocked|bloque|suspens)/i.test(String(company.status || ""));
+  res.json({
+    success: true,
+    id: company.id,
+    nome: company.tradeName || company.name || "",
+    razaoSocial: company.name || "",
+    cnpj: company.cnpj || company.document || "",
+    segmento: normalizeBusinessType(company.businessType, company.name),
+    ativa: !inativa,
+  });
+});
+
 // Conciliação dos pedidos de representação com a planilha de fechamento da representada
 registerRepresentacaoRoutes(app, {
   getStore: () => serverAppStoreCache,
