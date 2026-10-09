@@ -4750,7 +4750,7 @@ function IndustrialProcessTracker(props) {
                   }),
                   t.jsx("button", {
                     type: "button",
-                    onClick: () => onNavigate && onNavigate(st.route),
+                    onClick: () => { /*MD-RASTREAR-NAV-v1*/try { window.__mdRastrearIniciar && window.__mdRastrearIniciar((curr.stages || []).map((x) => ({ num: x.num, name: x.name, sector: x.sector, route: x.route, doc: x.doc })), (curr.stages || []).indexOf(st), curr.id, curr.item); } catch (e) {} onNavigate && onNavigate(st.route); },
                     className: `px-2.5 py-1 rounded-lg text-[11px] font-bold shrink-0 transition cursor-pointer ${isDone ? "bg-emerald-100 hover:bg-emerald-200 text-emerald-800" : isCurrent ? "bg-indigo-600 hover:bg-indigo-500 text-white shadow-xs" : "bg-white hover:bg-slate-100 text-slate-700 border border-slate-200"}`,
                     children: "Abrir Tela →"
                   })
@@ -5960,8 +5960,8 @@ var indHub = (() => {
         }
         function ReactElement(type, key, props, owner, debugStack, debugTask) {
           var refProp = props.ref;
-          type = {
-            $typeof: REACT_ELEMENT_TYPE,
+          type = {/*MD-REACT-DEV-RUNTIME-v2*/
+            $$typeof: REACT_ELEMENT_TYPE,
             type,
             key,
             props,
@@ -6053,7 +6053,7 @@ var indHub = (() => {
         function isValidElement(object) {
           return "object" === typeof object && null !== object && object.$typeof === REACT_ELEMENT_TYPE;
         }
-        var React3 = (init_react(), __toCommonJS(react_exports)), REACT_ELEMENT_TYPE = /* @__PURE__ */ Symbol.for("react.transitional.element"), REACT_PORTAL_TYPE = /* @__PURE__ */ Symbol.for("react.portal"), REACT_FRAGMENT_TYPE = /* @__PURE__ */ Symbol.for("react.fragment"), REACT_STRICT_MODE_TYPE = /* @__PURE__ */ Symbol.for("react.strict_mode"), REACT_PROFILER_TYPE = /* @__PURE__ */ Symbol.for("react.profiler"), REACT_CONSUMER_TYPE = /* @__PURE__ */ Symbol.for("react.consumer"), REACT_CONTEXT_TYPE = /* @__PURE__ */ Symbol.for("react.context"), REACT_FORWARD_REF_TYPE = /* @__PURE__ */ Symbol.for("react.forward_ref"), REACT_SUSPENSE_TYPE = /* @__PURE__ */ Symbol.for("react.suspense"), REACT_SUSPENSE_LIST_TYPE = /* @__PURE__ */ Symbol.for("react.suspense_list"), REACT_MEMO_TYPE = /* @__PURE__ */ Symbol.for("react.memo"), REACT_LAZY_TYPE = /* @__PURE__ */ Symbol.for("react.lazy"), REACT_ACTIVITY_TYPE = /* @__PURE__ */ Symbol.for("react.activity"), REACT_VIEW_TRANSITION_TYPE = /* @__PURE__ */ Symbol.for("react.view_transition"), REACT_CLIENT_REFERENCE = /* @__PURE__ */ Symbol.for("react.client.reference"), ReactSharedInternals = React3.__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE, hasOwnProperty = Object.prototype.hasOwnProperty, isArrayImpl = Array.isArray, createTask = console.createTask ? console.createTask : function() {
+        var React3 = (init_react(), __toCommonJS(react_exports)), REACT_ELEMENT_TYPE = /* @__PURE__ */ Symbol.for("react.transitional.element"), REACT_PORTAL_TYPE = /* @__PURE__ */ Symbol.for("react.portal"), REACT_FRAGMENT_TYPE = /* @__PURE__ */ Symbol.for("react.fragment"), REACT_STRICT_MODE_TYPE = /* @__PURE__ */ Symbol.for("react.strict_mode"), REACT_PROFILER_TYPE = /* @__PURE__ */ Symbol.for("react.profiler"), REACT_CONSUMER_TYPE = /* @__PURE__ */ Symbol.for("react.consumer"), REACT_CONTEXT_TYPE = /* @__PURE__ */ Symbol.for("react.context"), REACT_FORWARD_REF_TYPE = /* @__PURE__ */ Symbol.for("react.forward_ref"), REACT_SUSPENSE_TYPE = /* @__PURE__ */ Symbol.for("react.suspense"), REACT_SUSPENSE_LIST_TYPE = /* @__PURE__ */ Symbol.for("react.suspense_list"), REACT_MEMO_TYPE = /* @__PURE__ */ Symbol.for("react.memo"), REACT_LAZY_TYPE = /* @__PURE__ */ Symbol.for("react.lazy"), REACT_ACTIVITY_TYPE = /* @__PURE__ */ Symbol.for("react.activity"), REACT_VIEW_TRANSITION_TYPE = /* @__PURE__ */ Symbol.for("react.view_transition"), REACT_CLIENT_REFERENCE = /* @__PURE__ */ Symbol.for("react.client.reference"), ReactSharedInternals = /*MD-REACT-DEV-RUNTIME-v1*/(React3 && React3.__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE) || { A: null, recentlyCreatedOwnerStacks: 0 }, hasOwnProperty = Object.prototype.hasOwnProperty, isArrayImpl = Array.isArray, createTask = console.createTask ? console.createTask : function() {
           return null;
         };
         React3 = {
@@ -8621,7 +8621,7 @@ function TVe({db:e,currentUser:a,currentCompany:s={id:"comp-01",name:"Matriz Ind
     );
   }
   return null;
-})(),(m==="trace_process"||m==="trace_product")&&t.jsx(IndustrialProcessTracker,{onNavigate:(route)=>{
+})(),(window.__mdIndTab=m,window.__mdIndIrTracker=()=>p("trace_process"),null),(m==="trace_process"||m==="trace_product")&&t.jsx(IndustrialProcessTracker,{onNavigate:window.__mdIndNav=(route)=>{
     const extViews = ["fiscal","accounts_receivable","accounts_payable","financial","carriers","clients","parts","quotations","withdrawals","services","budgets"];
     if (extViews.includes(route)) {
       if (typeof l === "function") l(route);

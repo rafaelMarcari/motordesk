@@ -17,6 +17,7 @@ import { registerRepresentacaoRoutes } from "./server/representacao/routes.ts";
 import { registerFinanceiroRoutes, renovarTodas } from "./server/financeiro/routes.ts";
 import { registerTransacoesRoutes } from "./server/financeiro/transacoes.ts";
 import { registerFinanceiroExtrasRoutes } from "./server/financeiro/extras.ts";
+import { registerSaudeRoutes } from "./server/saude/indicadores.ts";
 
 dotenv.config();
 
@@ -4136,6 +4137,7 @@ const TELAS_EXTRAS: Array<{ chave: string; rotulo: string; dica: string; grupo: 
   { chave: "accessFinContatos", rotulo: "Contatos", dica: "A receber / a pagar por contato", grupo: "Módulo Lançamentos (financeiro)" },
   { chave: "accessFinRelatorios", rotulo: "Relatórios financeiros", dica: "Demonstrativo, extrato e agrupamentos", grupo: "Módulo Lançamentos (financeiro)" },
   { chave: "accessFinImportacoes", rotulo: "Importar e conciliação bancária", dica: "Planilhas, OFX e conciliação", grupo: "Módulo Lançamentos (financeiro)" },
+  { chave: "accessSaudeEmpresa", rotulo: "Saúde da empresa", dica: "Indicadores do negócio numa tela só (caixa, vendas, inadimplência, estoque...)", grupo: "Gestão" },
   { chave: "accessBackup", rotulo: "Backup da empresa", dica: "Baixar a cópia dos dados da empresa (restaurar é só do administrador da plataforma)", grupo: "Sistema" },
   { chave: "accessDeviceConnections", rotulo: "Conexões & Módulos", dica: "Ver computadores conectados e módulos da empresa", grupo: "Sistema" },
 ];
@@ -4205,6 +4207,19 @@ app.post("/api/acessos/telas-extras", async (req: any, res) => {
   } catch (err: any) {
     res.status(503).json({ success: false, error: "Não foi possível gravar agora. Tente novamente." });
   }
+});
+
+// Saúde da empresa: indicadores numa tela só (todos os ramos), liberada por usuário
+registerSaudeRoutes(app, {
+  getStore: () => serverAppStoreCache,
+  access: (req: any) => {
+    if (!req.authUser) return { status: 401, error: "Sessão expirada ou inválida. Faça login novamente." };
+    const { companyId } = extractUserContext(req);
+    const company = findCompany(serverAppStoreCache, companyId);
+    if (!company || !userCompanyIds(req.authUser, serverAppStoreCache).includes(companyId)) return { status: 403, error: "Empresa não vinculada ao usuário." };
+    if (!hasEffectivePermission(req.authUser, company, "accessSaudeEmpresa")) return { status: 403, error: "A tela Saúde da empresa não está liberada para o seu usuário. Peça ao administrador (Criar Usuários / Níveis → editar → Outras telas do sistema)." };
+    return { companyId, company, businessType: normalizeBusinessType(company.businessType, company.name) };
+  },
 });
 
 // Conciliação dos pedidos de representação com a planilha de fechamento da representada
