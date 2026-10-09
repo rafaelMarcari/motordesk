@@ -6,7 +6,8 @@
  * O atalho usa o próprio botão de Backup do menu (#btn-sidebar-backup), que só existe para quem pode
  * fazer backup; enquanto o atalho está no cartão, aquele item fica oculto para não aparecer duas vezes.
  * Com o menu recolhido, o cartão vira só as iniciais da empresa.
- * Dados: GET /api/empresa-ativa.
+ * Dados: GET /api/empresa-ativa. Ficam também em window.__mdEmpresaAtiva (evento "md-empresa-ativa") para o
+ * cabeçalho (logo) e a exportação (nome, CNPJ e logo nos arquivos); window.__mdEmpresaAtivaRecarregar() busca de novo.
  */
 (function () {
   'use strict';
@@ -53,7 +54,11 @@
       .then((r) => r.json().then((d) => ({ ok: r.ok, d })))
       .then(({ ok, d }) => {
         if (!ok || !d || !d.success) throw new Error('sem dados');
-        if (companyId() === cid) { dados = d; dadosDe = cid; }
+        if (companyId() === cid) {
+          dados = d; dadosDe = cid;
+          window.__mdEmpresaAtiva = d;
+          window.dispatchEvent(new CustomEvent('md-empresa-ativa', { detail: d }));
+        }
       })
       .catch(() => { novaTentativa = Date.now() + 5000; })
       .finally(() => { buscando = false; });
@@ -69,7 +74,8 @@
     const nav = document.querySelector('#sidebar-container nav');
     const cid = companyId();
     if (!nav || !user() || !cid) { remover(); return; }
-    if (dadosDe !== cid) { dados = null; buscar(cid); }
+    // ao buscar de novo a mesma empresa (ex.: logo trocado), mantém o que está na tela até chegar a resposta
+    if (dadosDe !== cid) { if (!dados || dados.id !== cid) dados = null; buscar(cid); }
     estilos();
     const sb = document.getElementById('sidebar-container');
     const recolhido = sb && sb.offsetWidth < 100;
@@ -106,7 +112,8 @@
   }
 
   // Troca de empresa: busca os dados de novo
-  window.addEventListener('motordesk_company_switched', () => { dadosDe = ''; novaTentativa = 0; });
+  window.addEventListener('motordesk_company_switched', () => { dadosDe = ''; novaTentativa = 0; window.__mdEmpresaAtiva = null; });
+  window.__mdEmpresaAtivaRecarregar = () => { dadosDe = ''; novaTentativa = 0; ciclo(); };
   setInterval(ciclo, 700);
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', ciclo); else ciclo();
 })();

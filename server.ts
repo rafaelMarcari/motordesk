@@ -18,6 +18,7 @@ import { registerFinanceiroRoutes, renovarTodas } from "./server/financeiro/rout
 import { registerTransacoesRoutes } from "./server/financeiro/transacoes.ts";
 import { registerFinanceiroExtrasRoutes } from "./server/financeiro/extras.ts";
 import { registerSaudeRoutes } from "./server/saude/indicadores.ts";
+import { registerMarcaRoutes } from "./server/marca/cabecalho.ts";
 
 dotenv.config();
 
@@ -838,6 +839,9 @@ function guardIncomingDatabase(current: any, incoming: any, user: any, activeCom
   // Conteúdo do site (~750 KB com imagens) só muda pelo editor do site (POST /api/landing):
   // fora das gravações comuns, cada salvamento fica bem menor (limite de 4,5 MB por requisição na Vercel)
   delete out.landingContent;
+  // Logo das empresas e propaganda do cabeçalho só mudam pelas rotas próprias (uma cópia antiga não as desfaz)
+  delete out.marcaEmpresas;
+  delete out.divulgacaoSistema;
   // Vale para todos, inclusive administradores da plataforma: nota só é autorizada pelo provedor fiscal
   if (!fiscalProviderActive()) blockSimulatedFiscalRecords(db, out);
   const master = isMasterAccount(user);
@@ -943,6 +947,9 @@ function stripSecretsForClient(data: any, user: any, companyId?: string): any {
   if (out.sefazConfig && !hasEffectivePermission(user, companyForUser(data, user, companyId) || data.companyInfo, 'accessFiscal')) {
     out.sefazConfig = {};
   }
+  // Servidos por rotas próprias (/api/empresa-ativa e /api/divulgacao): não vão no banco do navegador
+  delete out.marcaEmpresas;
+  delete out.divulgacaoSistema;
   if (out.sharedSettings && typeof out.sharedSettings === 'object') {
     const ids = new Set(userCompanyIds(user, serverAppStoreCache || data));
     out.sharedSettings = Object.fromEntries(Object.entries(out.sharedSettings).filter(([cid]) => ids.has(cid)));
@@ -4138,6 +4145,8 @@ const TELAS_EXTRAS: Array<{ chave: string; rotulo: string; dica: string; grupo: 
   { chave: "accessFinRelatorios", rotulo: "Relatórios financeiros", dica: "Demonstrativo, extrato e agrupamentos", grupo: "Módulo Lançamentos (financeiro)" },
   { chave: "accessFinImportacoes", rotulo: "Importar e conciliação bancária", dica: "Planilhas, OFX e conciliação", grupo: "Módulo Lançamentos (financeiro)" },
   { chave: "accessSaudeEmpresa", rotulo: "Saúde da empresa", dica: "Indicadores do negócio numa tela só (caixa, vendas, inadimplência, estoque...)", grupo: "Gestão" },
+  { chave: "exportarDados", rotulo: "Exportar dados das telas", dica: "Botão Exportar das listas: PDF, Excel, CSV, Word, JSON e XML", grupo: "Gestão" },
+  { chave: "gerenciarLogoEmpresa", rotulo: "Logo da empresa no cabeçalho", dica: "Enviar, trocar ou remover o logo (aparece no cabeçalho e nos PDFs)", grupo: "Gestão" },
   { chave: "accessBackup", rotulo: "Backup da empresa", dica: "Baixar a cópia dos dados da empresa (restaurar é só do administrador da plataforma)", grupo: "Sistema" },
   { chave: "accessDeviceConnections", rotulo: "Conexões & Módulos", dica: "Ver computadores conectados e módulos da empresa", grupo: "Sistema" },
 ];
@@ -4222,22 +4231,24 @@ registerSaudeRoutes(app, {
   },
 });
 
-// Cartão da empresa no menu lateral (todos os ramos): só identificação, para quem está vinculado à empresa
-app.get("/api/empresa-ativa", (req: any, res) => {
-  if (!req.authUser) return res.status(401).json({ success: false, error: "Sessão expirada ou inválida. Faça login novamente." });
-  const { companyId } = extractUserContext(req);
-  const company: any = findCompany(serverAppStoreCache, companyId);
-  if (!company || !userCompanyIds(req.authUser, serverAppStoreCache).includes(companyId)) return res.status(403).json({ success: false, error: "Empresa não vinculada ao usuário." });
-  const inativa = company.active === false || /^(inactive|inativ|blocked|bloque|suspens)/i.test(String(company.status || ""));
-  res.json({
-    success: true,
-    id: company.id,
-    nome: company.tradeName || company.name || "",
-    razaoSocial: company.name || "",
-    cnpj: company.cnpj || company.document || "",
-    segmento: normalizeBusinessType(company.businessType, company.name),
-    ativa: !inativa,
-  });
+// Cartão da empresa no menu, logo da empresa no cabeçalho e propaganda do MotorDesk (todos os ramos)
+registerMarcaRoutes(app, {
+  getStore: () => serverAppStoreCache,
+  mutateStore: (fn, meta) => mutateAppStore(fn, meta),
+  contexto: (req: any) => {
+    if (!req.authUser) return { status: 401, error: "Sessão expirada ou inválida. Faça login novamente." };
+    const { companyId } = extractUserContext(req);
+    const company: any = findCompany(serverAppStoreCache, companyId);
+    if (!company || !userCompanyIds(req.authUser, serverAppStoreCache).includes(companyId)) return { status: 403, error: "Empresa não vinculada ao usuário." };
+    const u = req.authUser;
+    return {
+      companyId, company, user: u,
+      businessType: normalizeBusinessType(company.businessType, company.name),
+      master: isMasterAccount(u),
+      podeLogo: hasEffectivePermission(u, company, "gerenciarLogoEmpresa"),
+      podeExportar: hasEffectivePermission(u, company, "exportarDados"),
+    };
+  },
 });
 
 // Conciliação dos pedidos de representação com a planilha de fechamento da representada
