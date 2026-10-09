@@ -23,6 +23,7 @@
   let dadosDe = '';        // empresa a que os dados se referem
   let buscando = false;
   let novaTentativa = 0;
+  let buscadoEm = 0;       // a cada 3 minutos busca de novo (logo ou nome alterados em outra máquina)
 
   function estilos() {
     if (document.getElementById('md-empresa-cartao-style')) return;
@@ -55,7 +56,7 @@
       .then(({ ok, d }) => {
         if (!ok || !d || !d.success) throw new Error('sem dados');
         if (companyId() === cid) {
-          dados = d; dadosDe = cid;
+          dados = d; dadosDe = cid; buscadoEm = Date.now();
           window.__mdEmpresaAtiva = d;
           window.dispatchEvent(new CustomEvent('md-empresa-ativa', { detail: d }));
         }
@@ -75,6 +76,7 @@
     const cid = companyId();
     if (!nav || !user() || !cid) { remover(); return; }
     // ao buscar de novo a mesma empresa (ex.: logo trocado), mantém o que está na tela até chegar a resposta
+    if (dadosDe === cid && Date.now() - buscadoEm > 180000) dadosDe = '';
     if (dadosDe !== cid) { if (!dados || dados.id !== cid) dados = null; buscar(cid); }
     estilos();
     const sb = document.getElementById('sidebar-container');

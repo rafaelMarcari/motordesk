@@ -839,8 +839,7 @@ function guardIncomingDatabase(current: any, incoming: any, user: any, activeCom
   // Conteúdo do site (~750 KB com imagens) só muda pelo editor do site (POST /api/landing):
   // fora das gravações comuns, cada salvamento fica bem menor (limite de 4,5 MB por requisição na Vercel)
   delete out.landingContent;
-  // Logo das empresas e propaganda do cabeçalho só mudam pelas rotas próprias (uma cópia antiga não as desfaz)
-  delete out.marcaEmpresas;
+  // Divulgação do cabeçalho só muda pela rota própria (uma cópia antiga não a desfaz)
   delete out.divulgacaoSistema;
   // Vale para todos, inclusive administradores da plataforma: nota só é autorizada pelo provedor fiscal
   if (!fiscalProviderActive()) blockSimulatedFiscalRecords(db, out);
@@ -947,8 +946,7 @@ function stripSecretsForClient(data: any, user: any, companyId?: string): any {
   if (out.sefazConfig && !hasEffectivePermission(user, companyForUser(data, user, companyId) || data.companyInfo, 'accessFiscal')) {
     out.sefazConfig = {};
   }
-  // Servidos por rotas próprias (/api/empresa-ativa e /api/divulgacao): não vão no banco do navegador
-  delete out.marcaEmpresas;
+  // Servida pela rota própria (/api/divulgacao): não vai no banco do navegador
   delete out.divulgacaoSistema;
   if (out.sharedSettings && typeof out.sharedSettings === 'object') {
     const ids = new Set(userCompanyIds(user, serverAppStoreCache || data));
@@ -4146,7 +4144,6 @@ const TELAS_EXTRAS: Array<{ chave: string; rotulo: string; dica: string; grupo: 
   { chave: "accessFinImportacoes", rotulo: "Importar e conciliação bancária", dica: "Planilhas, OFX e conciliação", grupo: "Módulo Lançamentos (financeiro)" },
   { chave: "accessSaudeEmpresa", rotulo: "Saúde da empresa", dica: "Indicadores do negócio numa tela só (caixa, vendas, inadimplência, estoque...)", grupo: "Gestão" },
   { chave: "exportarDados", rotulo: "Exportar dados das telas", dica: "Botão Exportar das listas: PDF, Excel, CSV, Word, JSON e XML", grupo: "Gestão" },
-  { chave: "gerenciarLogoEmpresa", rotulo: "Logo da empresa no cabeçalho", dica: "Enviar, trocar ou remover o logo (aparece no cabeçalho e nos PDFs)", grupo: "Gestão" },
   { chave: "accessBackup", rotulo: "Backup da empresa", dica: "Baixar a cópia dos dados da empresa (restaurar é só do administrador da plataforma)", grupo: "Sistema" },
   { chave: "accessDeviceConnections", rotulo: "Conexões & Módulos", dica: "Ver computadores conectados e módulos da empresa", grupo: "Sistema" },
 ];
@@ -4245,7 +4242,8 @@ registerMarcaRoutes(app, {
       companyId, company, user: u,
       businessType: normalizeBusinessType(company.businessType, company.name),
       master: isMasterAccount(u),
-      podeLogo: hasEffectivePermission(u, company, "gerenciarLogoEmpresa"),
+      // o logo é o do cadastro da empresa (Criar Usuários / Níveis): pode alterá-lo quem gerencia usuários
+      podeLogo: canManageUsers(u, company),
       podeExportar: hasEffectivePermission(u, company, "exportarDados"),
     };
   },

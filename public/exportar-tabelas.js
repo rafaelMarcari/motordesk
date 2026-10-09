@@ -150,6 +150,8 @@
         resolve(logoCache.png);
       };
       img.onerror = () => { logoCache = { src, png: null }; resolve(null); };
+      // logo informado por endereço (https://…): carrega com CORS para poder entrar no PDF; se o site não permitir, sai sem logo
+      if (/^https?:/i.test(src)) img.crossOrigin = 'anonymous';
       img.src = src;
     });
   }

@@ -1,9 +1,9 @@
 /**
  * MotorDesk - Cabeçalho: logo da empresa contratante e divulgação do MotorDesk (todos os segmentos)
  *
- *  - Logo: no começo do cabeçalho, antes do seletor de empresa. Quem tem a liberação "Logo da empresa no
- *    cabeçalho" (administradores, ou usuários liberados) envia, troca ou remove clicando nele. A imagem é
- *    reduzida no navegador antes do envio. O mesmo logo sai nos PDFs exportados.
+ *  - Logo: no começo do cabeçalho, antes do seletor de empresa. É o logo do cadastro da empresa (Criar Usuários /
+ *    Níveis → Logomarca / Imagem da Empresa); quem pode alterar o cadastro clica nele e vai direto para essa seção.
+ *    O mesmo logo sai nos PDFs exportados.
  *  - Divulgação: faixa fina logo abaixo do cabeçalho com mensagens do MotorDesk que se alternam (para ao passar
  *    o mouse). Pode ser ocultada até o próximo acesso. O administrador da plataforma edita as mensagens pela
  *    engrenagem da própria faixa.
@@ -40,13 +40,6 @@
       '#md-cab-logo .vazio{height:34px;padding:0 10px;border-radius:8px;border:1px dashed #cbd5e1;background:#f8fafc;color:#64748b;font:inherit;font-size:11.5px;font-weight:600;cursor:pointer;white-space:nowrap}',
       '#md-cab-logo .vazio:hover{border-color:#818cf8;color:#4338ca;background:#eef2ff}',
       '#md-cab-logo button:focus-visible,#md-cab-promo button:focus-visible,#md-cab-promo a:focus-visible{outline:2px solid #6366f1;outline-offset:2px}',
-      '#md-cab-logo-pop{position:fixed;z-index:10060;width:300px;background:#fff;border:1px solid #e2e8f0;border-radius:12px;box-shadow:0 18px 40px rgba(15,23,42,.18);padding:14px;font-size:12.5px;color:#334155}',
-      '#md-cab-logo-pop h4{margin:0 0 2px;font-size:13.5px;color:#0f172a}#md-cab-logo-pop p{margin:0 0 10px;color:#64748b;font-size:12px;line-height:1.45}',
-      '#md-cab-logo-pop .prev{height:84px;border:1px solid #e2e8f0;border-radius:8px;background:repeating-conic-gradient(#f8fafc 0 25%,#fff 0 50%) 0 0/16px 16px;display:flex;align-items:center;justify-content:center;margin-bottom:10px;color:#94a3b8}',
-      '#md-cab-logo-pop .prev img{max-height:70px;max-width:260px;object-fit:contain}',
-      '#md-cab-logo-pop .bts{display:flex;gap:6px;flex-wrap:wrap}#md-cab-logo-pop button{font:inherit;font-size:12px;font-weight:600;border-radius:7px;padding:6px 10px;cursor:pointer;border:1px solid #cbd5e1;background:#fff;color:#334155}',
-      '#md-cab-logo-pop button.pri{background:#4f46e5;border-color:#4f46e5;color:#fff}#md-cab-logo-pop button.pri:hover{background:#4338ca}#md-cab-logo-pop button.rem{color:#b91c1c}',
-      '#md-cab-logo-pop .msg{margin-top:8px;font-size:11.5px}#md-cab-logo-pop .msg.erro{color:#b91c1c}#md-cab-logo-pop .msg.ok{color:#047857}',
       // divulgação
       '#md-cab-promo{display:flex;align-items:center;justify-content:center;height:30px;padding:0 12px;background:linear-gradient(90deg,#f8fafc,#eef2ff 50%,#f8fafc);border-bottom:1px solid #e2e8f0;color:#475569;font-size:12.5px;flex-shrink:0;position:relative;z-index:9}',
       '#md-cab-promo .faixa{display:flex;align-items:center;gap:8px;min-width:0;max-width:100%}',
@@ -79,108 +72,63 @@
   }
 
   // ---------------------------------------------------------------- logo
+  // É o logo do cadastro da empresa (Criar Usuários / Níveis → Logomarca / Imagem da Empresa). Quem pode alterar
+  // o cadastro clica nele e vai direto para essa seção; ao salvar o cadastro, o cabeçalho se atualiza.
   const empresa = () => window.__mdEmpresaAtiva && window.__mdEmpresaAtiva.id === companyId() ? window.__mdEmpresaAtiva : null;
-  let pop = null;
+  const espera = (ms) => new Promise((r) => setTimeout(r, ms));
+  const secaoLogo = () => {
+    const rot = [...document.querySelectorAll('#workspace-main-content label')].find((l) => /Logomarca\s*\/\s*Imagem da Empresa/i.test(l.textContent || ''));
+    return rot ? rot.parentElement : null;
+  };
 
-  function fecharPop() { if (pop) { pop.remove(); pop = null; document.removeEventListener('mousedown', foraDoPop, true); } }
-  function foraDoPop(e) { if (pop && !pop.contains(e.target) && !e.target.closest('#md-cab-logo')) fecharPop(); }
-
-  // Reduz para no máximo 480×160 px e devolve PNG (ou JPEG, se o PNG ficar grande)
-  function prepararImagem(arquivo) {
-    return new Promise((resolve, reject) => {
-      if (!/^image\/(png|jpeg|webp|svg\+xml|gif)$/.test(arquivo.type)) return reject(new Error('Escolha uma imagem PNG, JPG, WebP ou SVG.'));
-      if (arquivo.size > 5 * 1024 * 1024) return reject(new Error('Arquivo acima de 5 MB. Escolha uma imagem menor.'));
-      const leitor = new FileReader();
-      leitor.onerror = () => reject(new Error('Não foi possível ler o arquivo.'));
-      leitor.onload = () => {
-        const img = new Image();
-        img.onerror = () => reject(new Error('Não foi possível abrir a imagem.'));
-        img.onload = () => {
-          const w0 = img.naturalWidth || 480, h0 = img.naturalHeight || 160;
-          const k = Math.min(1, 480 / w0, 160 / h0);
-          const cv = document.createElement('canvas');
-          cv.width = Math.max(1, Math.round(w0 * k)); cv.height = Math.max(1, Math.round(h0 * k));
-          const ctx = cv.getContext('2d');
-          ctx.drawImage(img, 0, 0, cv.width, cv.height);
-          let url = cv.toDataURL('image/png');
-          if (url.length > 380000) {
-            const cv2 = document.createElement('canvas'); cv2.width = cv.width; cv2.height = cv.height;
-            const c2 = cv2.getContext('2d'); c2.fillStyle = '#fff'; c2.fillRect(0, 0, cv2.width, cv2.height); c2.drawImage(cv, 0, 0);
-            url = cv2.toDataURL('image/jpeg', 0.85);
-          }
-          resolve(url);
-        };
-        img.src = leitor.result;
-      };
-      leitor.readAsDataURL(arquivo);
-    });
-  }
-
-  function abrirPop() {
-    const e = empresa();
-    if (!e || !e.podeLogo) return;
-    if (pop) { fecharPop(); return; }
-    pop = document.createElement('div');
-    pop.id = 'md-cab-logo-pop';
-    pop.setAttribute('role', 'dialog');
-    pop.setAttribute('aria-label', 'Logo da empresa');
-    const desenhar = (msg, tipo) => {
-      const at = empresa() || e;
-      pop.innerHTML = '<h4>Logo da empresa</h4><p>Aparece no cabeçalho para todos os usuários de <b>' + esc(at.nome) + '</b> e nos PDFs exportados. Prefira PNG com fundo transparente.</p>' +
-        '<div class="prev">' + (at.logo ? '<img src="' + esc(at.logo) + '" alt="Logo atual">' : 'Sem logo') + '</div>' +
-        '<div class="bts"><button type="button" class="pri" data-a="escolher">' + (at.logo ? 'Trocar imagem' : 'Escolher imagem') + '</button>' +
-        (at.logoProprio ? '<button type="button" class="rem" data-a="remover">Remover</button>' : '') +
-        '<button type="button" data-a="fechar">Fechar</button></div>' +
-        '<input type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" hidden>' +
-        (msg ? '<div class="msg ' + (tipo || '') + '" role="status">' + esc(msg) + '</div>' : '');
-    };
-    desenhar();
-    pop.addEventListener('click', async (ev) => {
-      const b = ev.target.closest('button[data-a]');
-      if (!b) return;
-      if (b.dataset.a === 'fechar') return fecharPop();
-      if (b.dataset.a === 'escolher') return pop.querySelector('input[type=file]').click();
-      if (b.dataset.a === 'remover') {
-        if (!window.confirm('Remover o logo da empresa do cabeçalho e dos PDFs?')) return;
-        try { await api('PUT', '/api/empresa-ativa/logo', { logo: null }); desenhar('Logo removido.', 'ok'); window.__mdEmpresaAtivaRecarregar && window.__mdEmpresaAtivaRecarregar(); } catch (err) { desenhar(err.message, 'erro'); }
+  async function abrirCadastroLogo() {
+    const menu = document.getElementById('menu-btn-users');
+    if (!menu) return;
+    let sec = secaoLogo();
+    if (!sec) {
+      menu.click();
+      // a seção fica na aba de dados da empresa ("Dados da Oficina & WhatsApp", "Dados da Loja"…, conforme o ramo)
+      const aba = () => [...document.querySelectorAll('#workspace-main-content button')].find((b) => /^\s*Dados d[aoe]s?\s/i.test(b.textContent || ''));
+      for (let i = 0; i < 40 && !(sec = secaoLogo()); i++) {
+        const a = aba();
+        if (a && !a._mdClicada) { a._mdClicada = true; a.click(); }
+        await espera(150);
       }
-    });
-    pop.addEventListener('change', async (ev) => {
-      const inp = ev.target; if (!inp.files || !inp.files[0]) return;
-      try {
-        desenhar('Enviando…');
-        const logo = await prepararImagem(inp.files[0]);
-        await api('PUT', '/api/empresa-ativa/logo', { logo });
-        if (window.__mdEmpresaAtiva) { window.__mdEmpresaAtiva.logo = logo; window.__mdEmpresaAtiva.logoProprio = true; }
-        desenhar('Logo atualizado.', 'ok');
-        window.__mdEmpresaAtivaRecarregar && window.__mdEmpresaAtivaRecarregar();
-        cicloLogo();
-      } catch (err) { desenhar(err.message, 'erro'); }
-    });
-    document.body.appendChild(pop);
-    const slot = document.getElementById('md-cab-logo');
-    const r = slot.getBoundingClientRect();
-    pop.style.left = Math.max(8, Math.min(r.left, window.innerWidth - 310)) + 'px';
-    pop.style.top = (r.bottom + 8) + 'px';
-    setTimeout(() => document.addEventListener('mousedown', foraDoPop, true), 0);
-    const pri = pop.querySelector('button.pri'); if (pri) pri.focus();
+    }
+    if (!sec) return;
+    sec.scrollIntoView({ behavior: reduzMovimento() ? 'auto' : 'smooth', block: 'center' });
+    // destaque por estilo direto (o React reescreve as classes da seção ao redesenhar)
+    sec.style.outline = '3px solid #818cf8'; sec.style.outlineOffset = '4px';
+    sec.dataset.mdDestaque = '1';
+    setTimeout(() => { sec.style.outline = ''; sec.style.outlineOffset = ''; delete sec.dataset.mdDestaque; }, 3500);
+    const enviar = sec.querySelector('label input[type=file]');
+    const alvo = enviar ? enviar.closest('label') : null;
+    if (alvo) { alvo.setAttribute('tabindex', '0'); alvo.focus({ preventScroll: true }); }
   }
+
+  // Salvou o cadastro da empresa: busca de novo (o logo pode ter mudado)
+  document.addEventListener('click', (ev) => {
+    if (!ev.target.closest || !ev.target.closest('#btn-save-company-info')) return;
+    const recarregar = () => window.__mdEmpresaAtivaRecarregar && window.__mdEmpresaAtivaRecarregar();
+    setTimeout(recarregar, 2000); setTimeout(recarregar, 6000);
+  }, true);
 
   function cicloLogo() {
     const bar = document.getElementById('top-workspace-bar');
     let slot = document.getElementById('md-cab-logo');
     const e = empresa();
     const grupo = bar && document.getElementById('top-company-switcher-select') && document.getElementById('top-company-switcher-select').closest('#top-workspace-bar > div');
-    if (!bar || !grupo || !e || (!e.logo && !e.podeLogo)) { if (slot) slot.remove(); if (!e || !bar) fecharPop(); return; }
+    const podeAbrir = Boolean(e && e.podeLogo && document.getElementById('menu-btn-users'));
+    if (!bar || !grupo || !e || (!e.logo && !podeAbrir)) { if (slot) slot.remove(); return; }
     if (!slot) {
       slot = document.createElement('div');
       slot.id = 'md-cab-logo';
-      slot.addEventListener('click', (ev) => { if (ev.target.closest('button')) abrirPop(); });
+      slot.addEventListener('click', (ev) => { if (ev.target.closest('button')) abrirCadastroLogo(); });
     }
     const html = e.logo
-      ? (e.podeLogo ? '<button type="button" class="lg" title="Logo de ' + esc(e.nome) + ' — clique para trocar" aria-label="Trocar o logo da empresa">' : '<div class="lg" title="' + esc(e.nome) + '">') +
-        '<img src="' + esc(e.logo) + '" alt="Logo de ' + esc(e.nome) + '">' + (e.podeLogo ? '</button>' : '</div>')
-      : '<button type="button" class="vazio" title="Enviar o logo da empresa">＋ Logo da empresa</button>';
+      ? (podeAbrir ? '<button type="button" class="lg" title="Logo de ' + esc(e.nome) + ' — clique para alterar no cadastro da empresa" aria-label="Alterar o logo no cadastro da empresa">' : '<div class="lg" title="' + esc(e.nome) + '">') +
+        '<img src="' + esc(e.logo) + '" alt="Logo de ' + esc(e.nome) + '">' + (podeAbrir ? '</button>' : '</div>')
+      : '<button type="button" class="vazio" title="Cadastrar o logo da empresa">＋ Logo da empresa</button>';
     if (slot._html !== html) { slot._html = html; slot.innerHTML = html; }
     if (grupo.firstElementChild !== slot) grupo.prepend(slot);
   }
@@ -317,7 +265,7 @@
 
   function ciclo() { if (!document.body) return; estilos(); cicloLogo(); cicloPromo(); }
   window.addEventListener('md-empresa-ativa', ciclo);
-  window.addEventListener('motordesk_company_switched', () => { divulgDe = ''; fecharPop(); });
+  window.addEventListener('motordesk_company_switched', () => { divulgDe = ''; });
   setInterval(ciclo, 800);
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', ciclo); else ciclo();
 })();
